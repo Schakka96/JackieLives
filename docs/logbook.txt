@@ -295,3 +295,101 @@ KEY FACTS FOR NEXT SESSION
   field to `to`.
 - ALL DEPLOYED (v0.23). Awaiting Antonia's in-game test of: subtitle position, the 777-line
   audio in the linear test, and the branching box (render + highlight + F select).
+
+--------------------------------------------------------------------------------
+2026-06-16 (continued)  -  SUBTITLES FIXED + STYLED DIALOGUE PICKER (v0.24 -> v0.27)
+--------------------------------------------------------------------------------
+- SUBTITLES NOW WORK (real bottom band). v0.22-0.24 fell back to the blue notification
+  field because the CET push errored: "ToVariant: Unknown type ''". ROOT CAUSE: CET can't
+  infer the array element type from a plain Lua table of structs. FIX (v0.26): force the
+  type -> ToVariant({ line }, "array:scnDialogLineData") (and "array:CRUID" for hide).
+  CONFIRMED in-game: subtitles show for the F-talk and linear-dialogue paths. LESSON:
+  for array<T> blackboard variants in CET, pass the explicit "array:<RTTIName>" string.
+- DIALOGUE PICKER moved off the native interaction hub (which rendered choices side-by-side
+  as separate F/R/1 input prompts, and whose styling we can't control) to a CUSTOM ImGui
+  box drawn in onDraw BEFORE the overlay gate. KEY FACT CONFIRMED: a CET ImGui window DOES
+  render during gameplay (overlay closed) and survives closing the overlay - so custom HUD
+  UI from CET Lua is viable after all (contradicts the v0.13 "can't draw in gameplay" note;
+  that was about attaching to the native HUD root, not drawing our own window).
+- v0.24 box was invisible: a window FLAG enum was nil on this build -> the whole draw errored
+  under pcall. FIX: defensive flag builder that sums only flags that exist (skips nil).
+- Styled to match the game's dialogue picker (docs/dialogue_picker_design.png): borderless +
+  transparent (NoTitleBar + NoBackground), speaker name in a thin red-framed child box on the
+  LEFT, choices stacked vertically on the right, selected row = SOLID yellow bar via Selectable.
+  Exact colors from Antonia: unsel #73eff0, sel-text #4d1505, bar #f8db4b, frame #743a39.
+- BUG fixed: the highlight bar grew wider every frame (AlwaysAutoResize + a fill-width
+  Selectable = feedback loop). FIX: drop AlwaysAutoResize, set an explicit window size, and
+  size each Selectable to its own text width (ImGui.CalcTextSize, which reflects the window
+  font scale when called inside Begin). Bar now hugs the text.
+- Selection: F confirms the highlighted row; a bound "Jackie dialogue: next choice" key
+  (Antonia uses "-") cycles the highlight. Removed the Choice2/3/number selection (R/1 were
+  bound elsewhere and didn't fire). V's chosen line shows as a subtitle ~1s before Jackie replies.
+- Cosmetic cut-corner frames (single clipped corner on the name box + bar) deliberately NOT
+  done - ImGui draws plain rects; would need manual polylines. Low priority, noted.
+- AUDIO: all 777 lines play as his real voice (re-encoded Opus->Vorbis). Quality is the
+  website source (lossy-on-lossy); WolvenKit HQ extraction is the next upgrade (step list given;
+  drop-in under the same jl_<string_id> names). Portable ffmpeg lives in tools/ffmpeg (gitignored).
+- Parallel SESSION 2 (schedule positions: misty/noodle coords, chair-sit groundwork, CET window
+  cleanup) was MERGED safely into live mod/JackieLives without clobbering the v0.25-0.27 work.
+
+================================================================================
+WHAT WORKS NOW (v0.27)
+================================================================================
+- Look at Jackie -> native "[F] Talk" prompt (permanent, look-driven). Press F -> grunt +
+  a branching conversation: he speaks (REAL voice via Audioware + a real bottom SUBTITLE),
+  then a custom game-styled choice box appears (name tag left, vertical choices, yellow
+  selection bar). Cycle key moves the highlight, F selects; V's pick shows ~1s, then his reply.
+- Linear test dialogue + branching dialogue both runnable from the CET window too.
+- 777 Jackie voice lines converted + playable (Audioware); jl_fallback.wav safety net.
+- Summon/dismiss companion, daily schedule (positions captured incl. Misty's), subtitles,
+  styled dialogue UI - all from CET Lua + AMM + Audioware. No WolvenKit needed yet.
+================================================================================
+
+================================================================================
+2026-06-16  -  SESSION 3: HOLOCALL FEATURE (v0.28 -> v0.30)
+================================================================================
+GOAL: call Jackie on a gig via a phone-call dialogue; he then spawns at a distance and
+walks in. Asked whether to disable his "death flag" or mimic how other mods call NPCs.
+
+NATIVE PHONE - SOLVED BY PROBING (full detail in docs/native_phone_probes.md):
+- There is NO HolocallSystem class (Codeware Reflection: NOT FOUND). Calls run through the
+  scriptable PhoneSystem: reachable via Game.GetScriptableSystemsContainer():Get("PhoneSystem").
+- THE call entry point is:
+    PhoneSystem:TriggerCall(questPhoneCallMode, Bool, CName callId, Bool, questPhoneCallPhase,
+                            Bool, Bool, Bool, questPhoneCallVisuals)
+  mode Video(2) = holocall. Phases: Undefined0 / IncomingCall1 / StartCall2(connected) / EndCall3.
+  callId CName: "jackie" (alive) / "jackie_dead" (dead). visuals Default(0).
+- In-game behaviour (captured live to probe_fires.txt via Codeware reflection dump + Observe):
+  * IncomingCall on "jackie" -> game plays its OWN canned call (don't want).
+  * StartCall -> a SILENT, persistent, see-through holocall window (our canvas). Stays till EndCall.
+  * EndCall -> clean hang up.
+  * Calling "jackie_dead" fires TriggerCall(Video, jackie_dead, IncomingCall) then EndCall ~13s
+    later (rings, never connects) - so the dead contact is perfect to hijack (no canned content).
+- KEY TECHNIQUE: probing was done by writing a Codeware reflection dump + Observe hooks INTO the
+  mod (Config.probeNativePhone) that write to files in the deployed mod folder (phone_methods.txt,
+  probe_fires.txt) which the dev reads directly. The CET console TRUNCATES big pasted blocks, so
+  in-mod file output beats console copy/OCR.
+
+CALL FLOW SHIPPED (Antonia's design, v0.30):
+  RING (native IncomingCall ~2s) -> STOP (EndCall, aborts canned call) -> CONNECT (StartCall, the
+  empty transparent window) -> our branching VOICE conversation runs over it -> end of any strand
+  shows a RANDOM V farewell (12 text-only lines, Config.callFarewells) -> hang up (EndCall) ->
+  "Let's do it." schedules the spawn/arrival. Watchdog + "Force hang up" button so a call can
+  never get permanently stuck (the first attempt that kept StartCall open DURING the choice box
+  got stuck - the connected window owns input; sequence avoids overlapping them).
+- IMMERSIVE LINK: Observe PhoneSystem:TriggerCall; when the PLAYER calls Jackie from the in-game
+  phone (IncomingCall on a 'jackie' id, not our own - reentrancy guard JL.call.selfTriggering),
+  route into our flow (onPlayerCalledJackie). Config.nativeCall.hijackPlayerCalls.
+- LINE DIVERSITY: nodes can carry a jackiePool (array) -> engine picks one at random. Seeded from
+  tools/voice-tagger/classify_lines.py, which buckets all 779 playable lines into greeting/
+  farewell/agreement/howdoing (classify_out.json, gitignored - verbatim transcripts). Most lines
+  are quest-specific; auto-sort gives candidates, human curation still needed. OPEN OFFER: add the
+  4 bins to the tagger UI (index.html) for manual curation.
+- DEATH FLAG: turned out IRRELEVANT. We never use the native phone's contact-availability path - we
+  drive TriggerCall directly and hijack the player's call - so no death-flag/contact unlock needed.
+
+REMAINING FOR v1.0: the ARRIVAL (spawn-at-distance + walk-in, not landing in a wall). Being done in
+a SEPARATE concurrent session (see docs/spawn_at_distance_research.md, untracked - that session owns
+it). My basic arrivalTick (spawn companion -> teleport to a point ahead of V after 0.8s) is a
+placeholder the other session is replacing with navmesh-validated placement.
+================================================================================

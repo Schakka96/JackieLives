@@ -2,3 +2,5 @@
 audio/
 # scratch outputs
 lines_test.json
+# classifier output (contains verbatim CDPR transcripts - keep out of the public repo)
+classify_out.json

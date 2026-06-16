@@ -2,6 +2,92 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.28 — HOLOCALL "Call Jackie onto a gig" (BUILT, awaiting in-game test, 2026-06-16)
+Reuses the working voiced dialogue engine + AMM summon AS a phone call — **not** the native phone UI,
+so **no death flag / contact unlock is needed** (see "death flag" note below). New in `config.lua`:
+`Config.call` (ringSeconds/ringEvent/spawnDelay/spawnDistance) + `Config.callTree` (the call conversation).
+Flow: **"Call Jackie (holocall)"** button / `jl_call` hotkey → "Calling Jackie..." ring (~2.5s) → he picks
+up and the SAME styled choice box runs `callTree` → choosing **"Got a gig. You in?" → "See you soon."**
+(choice carries `action = "summon_arrival"`) ends the call → **`spawnDelay` (5s) later** Jackie spawns
+`spawnDistance` (18m) ahead of V and **walks in** (AMM companion AI paths him).
+- [x] **First in-game test (Antonia) done.** Bugs found + FIXED in v0.28a (deployed): (a) Jackie spawned
+      ON the player — teleport-to-distance silently failed (likely `GetWorldForward` nil → fell back to V's
+      exact spot, and/or AMM repositioned him a frame after our teleport). Fix: robust `arrivalPoint()` (3
+      facing fallbacks + never returns V's spot + logs the point) and teleport ~0.8s AFTER spawn so AMM is
+      done. (b) Subtitles didn't show during the call — null speaker on a phone call (no Jackie entity);
+      fix: carry the line on the player. (c) V's chosen line too brief → `Config.dialogue.choiceHold = 2.5`s.
+- [ ] **RE-TEST the call** after restart: spawn-at-distance + walk-in, call subtitles, 2.5s V line. If he
+      still ends up near V, read the console `[JackieLives] Call: arrival point via ...` line — tells us which
+      facing source was used + the computed point (debug built in). Leash-snap is the fallback hypothesis.
+- [x] **NATIVE PHONE UI — SOLVED via probing (2026-06-16).** Full investigation in `docs/native_phone_probes.md`.
+      No HolocallSystem class; calls run through `PhoneSystem:TriggerCall(mode, false, callId, true, phase,
+      false,false,false, visuals)`. Recipe: mode `Video(2)`, callId CName `jackie`/`jackie_dead`, phases
+      `IncomingCall(1)`/`StartCall(2)`/`EndCall(3)`. In-game test findings: `IncomingCall` on `jackie` plays the
+      game's OWN canned call; **`StartCall` opens a silent, persistent see-through holocall window** (our canvas);
+      `EndCall` hangs up cleanly. We can fire TriggerCall ourselves (Codeware reflection confirmed PhoneSystem
+      reachable via scriptable-systems container).
+- [x] **v0.29a first integrated attempt FAILED** — opening `StartCall` and keeping it up *while* the choice
+      box ran left the call stuck (input/UI conflict; convo never finished -> no `EndCall` -> phone blocked).
+      Likely worsened by a residual stuck call from earlier raw-CONNECT tests. Reverted; added a **Force hang up**
+      button + watchdog so a call can never stay permanently stuck.
+- [ ] **v0.30 — IMMERSIVE LINK + line diversity, TEST.**
+  - **Player phone-call hijack:** Observe `PhoneSystem:TriggerCall`; when the PLAYER calls Jackie (IncomingCall
+    on a 'jackie' call id, not one of our own — re-entrancy guard `JL.call.selfTriggering`), route into our
+    flow (`onPlayerCalledJackie`). `Config.nativeCall.hijackPlayerCalls`. So calling Jackie from the in-game
+    phone now triggers our conversation. TEST: in-game phone -> call Jackie -> our convo runs.
+  - **Random Jackie lines:** nodes can carry a `jackiePool` (array); engine picks one at random. callTree
+    ring/howbeen/gig now have voiced pools seeded from the 777-line scan.
+  - **Line scan:** `tools/voice-tagger/classify_lines.py` buckets all 779 playable lines into greeting/
+    farewell/agreement/howdoing -> `classify_out.json` (gitignored; verbatim transcripts). Curated the best
+    generic ones into the pools. OFFER: add the 4 bins to the tagger UI (index.html) for manual curation if
+    Antonia wants finer control.
+- [ ] **v0.29b — Antonia's flow, TEST.** "Call Jackie (holocall)" = native **RING (IncomingCall ~2s)** ->
+      **STOP (EndCall)** to abort the canned native call -> **CONNECT (StartCall)** empty transparent window ->
+      our branching voice convo runs over it -> at the end of any strand a **random V farewell** (12 in
+      `Config.callFarewells`, text-only) -> **hang up (EndCall)** -> "Let's do it." spawns him to walk in.
+      Toggle `Config.nativeCall.useNativeWindow`. STILL the open risk: does the connected window steal the
+      choice-box input? If the convo can't be navigated, that's the blocker to solve next.
+- [ ] **Polish: avatar thumbnail.** CONNECT window is see-through (avatar not loaded). Try the RING-first load,
+      or render Jackie's portrait ourselves, so the window looks like a real call.
+- [ ] Later: real native holocall (portrait/video) = separate large WolvenKit `.scene`/contact task (Tier 2/3).
+
+> **"Death flag" investigation (answered):** the native holocall is driven by quest `.scene`/`.questphase`
+> resources — it can't be triggered with custom audio from CET Lua. Existing mods only convert holocalls→
+> audiocalls (nexus 9422) or do text-SMS via CET JSON (cyberscript77 wiki). Flipping Jackie's "dead" fact would
+> only change how the native contact *renders*; it would NOT make our custom voiced dialogue play through the
+> native phone. So for the MVP the death flag is moot — our call "goes through" because it's our own UI.
+
+## ✅ CURRENT STATE — v0.27 (CONFIRMED in-game, 2026-06-16). Full history: `docs/logbook.txt`.
+Conversation system is END-TO-END working from pure CET Lua + AMM + Audioware (no WolvenKit yet):
+- [x] **Real bottom SUBTITLES** — fixed via `ToVariant({line}, "array:scnDialogLineData")` (CET couldn't
+      infer the array type). Show for F-talk and dialogue.
+- [x] **777 lines play as Jackie's real voice** (Audioware; Opus→Vorbis). `jl_fallback.wav` safety net.
+- [x] **Branching dialogue** — F starts it: Jackie speaks (voice+subtitle) → custom **game-styled choice box**
+      (name tag left w/ red frame, vertical choices, solid yellow selection bar; colors #73eff0/#4d1505/
+      #f8db4b/#743a39). Cycle key (bound to "-") moves highlight, F selects; V's pick shows ~1s then his reply.
+      Box draws during gameplay and survives closing the CET overlay.
+- [x] Custom CET ImGui HUD during gameplay is VIABLE (key unblock). Highlight-bar-growth bug fixed
+      (text-width Selectable, no AlwaysAutoResize).
+### Next priorities (in order)
+1. **WolvenKit HQ audio** — Antonia installs WolvenKit; I batch-extract the game's own VO (`vo_wem` paths in
+   lines.json) → wav → drop into the bank under the SAME `jl_<string_id>` names (pure drop-in). Step list in chat/logbook.
+2. **Write real dialogue content** into `Config.dialogueTree` (data-driven; the engine is done).
+3. Session-2 carryovers: give `misty` a schedule slot; chair-sit at noodle bar; follow/dismiss-via-dialogue.
+4. (Cosmetic, low pri) cut-corner frames on the box — needs manual polylines, skipped for now.
+
+
+## VERSION CONTROL / GITHUB (2026-06-16, session 2)
+- [x] **Dedicated git repo created** inside `Cyberpunk_modding/` (was wrongly rooted at parent
+      `Projects/` — an empty stray init that would have published all research; removed it).
+      Repo-local identity `Antonia <schakka83@gmail.com>` (global config unavailable). 2 commits.
+- [x] **`.gitignore` hardened for public release.** Excludes CDPR audio (`*.ogg/.wav/.wem`,
+      `voice-tagger/audio/`), verbatim transcript dumps (`lines.json`, `index.json`), the ffmpeg
+      binary, chat history, and `.claude/settings.local.json`. Repo is ~594 KB of pure source.
+- [x] Added `LICENSE` (MIT, code only), `ASSETS_NOTICE.md`, top-level `README.md`, `docs/GITHUB.md`.
+- [ ] **Antonia: create the PUBLIC repo on github.com** (empty, no README/license), then we run
+      `git remote add origin <url>` + `git push -u origin main`. Steps in `docs/GITHUB.md`.
+- [ ] After first push: regular workflow is `git add -A` → `git commit -m "..."` → `git push`.
+
 ## SESSION 2 (parallel edit, 2026-06-16) — MERGED into live `mod/JackieLives/`
 > Session 2 staged its edits in a throwaway `working_copy_session2/`, then merged the cleanup +
 > captured coords surgically into the live files (which the main session had advanced to v0.26 with
@@ -301,6 +387,13 @@ exact action CName) -> add it to `INTERACT_ACTIONS` in init.lua. These are the n
 - Whether "Heroes"/ofrenda fires regardless of body choice (needs in-game verification).
 
 ## Problems & Resolutions (log)
+- **"Make Jackie callable by disabling his death flag" (2026-06-16) - REFRAMED, not needed.** Initial idea
+  was to flip the "Jackie is dead" fact so a native holocall would connect. Investigated: the native holocall
+  (portrait/video) is driven by quest `.scene`/`.questphase` resources and can't be fed custom audio from CET
+  Lua; existing mods only convert holocalls->audiocalls or do text-SMS (cyberscript77). The death fact only
+  governs how the native contact *renders*, not whether our own dialogue can play. RESOLUTION: build the call
+  as our existing voiced choice box ("Calling Jackie..." -> pick up -> callTree) — the death flag is irrelevant
+  because we never touch the native phone. A true native holocall stays a separate WolvenKit task.
 - **Audioware silent, manifest registered 0 ids (2026-06-16) - RESOLVED.** `Play`/`Duration` did nothing,
   log said "Registry error: not found" and "a total of: 0 id(s)". ROOT CAUSE: the scraped `.ogg` are **Opus**
   codec (header `OpusHead`); Audioware's backend (kira/Symphonia) decodes Ogg-**Vorbis**/WAV/MP3/FLAC, NOT

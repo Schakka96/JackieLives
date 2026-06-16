@@ -4,6 +4,11 @@
 local Config = {}
 
 -- ---- master toggles -------------------------------------------------------
+-- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
+-- [JackieLives PROBE] line whenever one fires. Open your phone + call Jackie, then read the
+-- CET console to see which methods drive the call (tells us if a native hook is viable).
+-- Turn OFF (false) once we're done investigating. See docs/native_phone_probes.md.
+Config.probeNativePhone      = true
 Config.enableSchedule        = true
 Config.scheduleCheckInterval = 2.0     -- seconds between schedule/proximity checks
 Config.proximityRadius       = 45.0    -- metres: idle Jackie appears when you're this close to his spot
@@ -93,6 +98,7 @@ Config.testDialogue = {
 -- this key (you used "-") and keep this label matching it. F selects the highlighted row.
 Config.dialogue = {
   cycleHint = "-",
+  choiceHold = 2.5,   -- seconds V's chosen line stays on screen before Jackie's reply
 }
 
 -- ---- branching dialogue tree (v0.23) -------------------------------------
@@ -129,6 +135,95 @@ Config.dialogueTree = {
       jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
       choices = {
         { text = "(Leave)", to = nil },
+      },
+    },
+  },
+}
+
+-- ---- HOLOCALL: call Jackie onto a gig (v0.28) ----------------------------
+-- "Calling Jackie..." (ring) -> he picks up -> the SAME branching choice box runs a
+-- short CALL tree (below) -> if you ask him onto a gig, the call ends and `spawnDelay`
+-- seconds later Jackie SPAWNS at `spawnDistance` metres from V and WALKS IN (companion AI
+-- paths him to you). This is OUR voiced dialogue box dressed as a call - NOT the native
+-- phone UI - so no death-flag / contact unlock is needed (see docs/DESIGN.md, TODO).
+-- A real native holocall (portrait/video) is a separate, much larger WolvenKit task.
+Config.call = {
+  ringSeconds   = 2.0,   -- native ring (IncomingCall) plays this long, then we abort + connect
+  ringEvent     = "ono_jackie_phone",  -- extra WWise ring SFX layered on ("" = silent)
+  spawnDelay    = 5.0,   -- seconds after the call ends before Jackie spawns
+  spawnDistance = 18.0,  -- metres ahead of V he spawns at, then walks in as companion
+}
+
+-- V's hang-up sign-offs. At the end of any call strand one of these is shown as V's last line
+-- (text only — V has no voice, so these are free to add) then the call hangs up. Add freely.
+Config.callFarewells = {
+  "Later, choom.",
+  "Catch you on the flip side.",
+  "Stay frosty, hermano.",
+  "See ya, Jackie.",
+  "Talk soon.",
+  "Keep your phone on, yeah?",
+  "Preem. Out.",
+  "Don't keep me waitin'.",
+  "Be safe out there.",
+  "Adios, choomba.",
+  "Catch you later.",
+  "Nova. Later, hermano.",
+}
+
+-- NATIVE phone call (v0.29 experiment). We drive the game's real holocall UI via
+-- PhoneSystem:TriggerCall (discovered by probing — see docs/native_phone_probes.md). The
+-- call id is a quest phone-call CName: "jackie" (alive) shows his avatar + connects;
+-- "jackie_dead" is the dead-state call (rings, no connect). Phases: IncomingCall(1) =
+-- ringing, StartCall(2) = connected/avatar live, EndCall(3) = hang up. mode Video(2) = holo.
+Config.nativeCall = {
+  id                = "jackie_dead", -- quest phone-call CName for the call (avatar source)
+  hijackPlayerCalls = true,          -- when the PLAYER calls Jackie from the in-game phone, route that
+                                     --   call into our flow (immersive). Observes PhoneSystem:TriggerCall.
+  useNativeWindow   = true,          -- ON (Antonia's design): RING (IncomingCall ~2s) -> STOP (EndCall,
+                                   --   aborts the canned native call) -> CONNECT (StartCall, the empty
+                                   --   transparent window) -> our branching voice convo runs over it ->
+                                   --   random V farewell -> hang up (EndCall). false = text "Calling..." only.
+}
+
+-- The CALL conversation. Same node format as Config.dialogueTree. A choice may carry
+-- action = "summon_arrival" -> when that choice ends the call, the delayed spawn fires.
+Config.callTree = {
+  start = "ring",
+  nodes = {
+    -- Jackie's line on each node is picked at random from `jackiePool` (real voice + subtitle),
+    -- for variety. Pools seeded from the 777-line scan (tools/voice-tagger/classify_out.json);
+    -- add more {text, sfx="jl_<id>"} freely — any id from audioware/JackieLives/index.json works.
+    ring = {
+      jackiePool = {
+        { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
+        { text = "Talk to me, choomba.",                                         sfx = "jl_2239163066690486272" },
+        { text = "Hey V - you alive? How's things in the viper pit?",            sfx = "jl_1691260805748551680" },
+        { text = "Straight to biz, eh, chica?",                                  sfx = "jl_1777946122915868672" },
+      },
+      choices = {
+        { text = "Got a gig. You in?",       to = "gig"     },
+        { text = "Just checkin' in on you.", to = "howbeen" },
+        { text = "Never mind.",              to = nil       },   -- -> random farewell -> hang up
+      },
+    },
+    howbeen = {
+      jackiePool = {
+        { text = "Does not get any higher, choom.", sfx = "jl_1660221856871665664" },
+        { text = "Eh, you know how it is, can't complain. But we ain't here to shoot the shit about me.", sfx = "jl_1861666308579323904" },
+      },
+      choices = {
+        { text = "Good. Actually - got a gig.", to = "gig" },
+        { text = "Glad to hear it.",             to = nil  },   -- -> random farewell -> hang up
+      },
+    },
+    gig = {
+      jackiePool = {
+        { text = "So let's do our thing.",  sfx = "jl_1762127358882361344" },
+        { text = "Hold on, V, I'm comin'.", sfx = "jl_1714251940705820672" },
+      },
+      choices = {
+        { text = "Let's do it.", to = nil, action = "summon_arrival" },  -- -> farewell -> hang up -> spawn
       },
     },
   },

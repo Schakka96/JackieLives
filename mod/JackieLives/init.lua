@@ -23,6 +23,8 @@ local JL = {
              voIndex = 0, voText = "" },
   summon = { spawn = nil, active = false, companionSet = false },
   idle   = { spawn = nil, locationKey = nil },
+  arrival = { at = nil },   -- holocall: clock time at which a called-in Jackie spawns
+  call    = { ringingAt = nil },  -- holocall: clock time he "picks up" after the ring
   timer  = 0,
   clock  = 0,        -- accumulated game seconds (for talk cooldowns)
   lastTalk = -999,
@@ -852,7 +854,9 @@ local function speakJackieLine(text, sfx)
   if not spoke then spoke = playVoice("jl_fallback") end
   local secs = voiceDuration(sfx) or 3.0
   hideSubtitle()
-  showDialogueText("Jackie", text or "", secs + 0.6, dialogueTarget())
+  -- carrier entity for the subtitle band: Jackie if spawned, else the player (on a phone
+  -- call Jackie isn't in the world yet, and a null speaker can make the band skip the line).
+  showDialogueText("Jackie", text or "", secs + 0.6, dialogueTarget() or Game.GetPlayer())
   log("Branch: Jackie '" .. tostring(text) .. "' sfx=" .. tostring(sfx) .. " spoke=" .. tostring(spoke))
   return secs
 end
@@ -968,10 +972,13 @@ local function closeChoiceMenu()
   menu.shown, Branch.open, menu.choices = false, false, nil
 end
 
--- enter a node: Jackie speaks, then (after his line) the choices appear
-Branch.start = function(nodeKey)
-  local tree = Config.dialogueTree
+-- enter a node: Jackie speaks, then (after his line) the choices appear.
+-- `tree` lets a CALL (Config.callTree) reuse this engine; it persists in bstate.tree so
+-- mid-conversation Branch.start(nextNode) stays in the same tree. Default = dialogueTree.
+Branch.start = function(nodeKey, tree)
+  tree = tree or bstate.tree or Config.dialogueTree
   if not tree or not tree.nodes then return end
+  bstate.tree = tree
   nodeKey = nodeKey or tree.start
   local node = tree.nodes[nodeKey]
   if not node then log("Branch: node '" .. tostring(nodeKey) .. "' missing"); return end
@@ -980,7 +987,13 @@ Branch.start = function(nodeKey)
   closeChoiceMenu()
   pcall(hideJackieChoiceBox)        -- clear the native "[F] Talk" prompt while we talk
   bstate.node = node
-  local secs = speakJackieLine(node.jackie and node.jackie.text, node.jackie and node.jackie.sfx)
+  -- a node may give a single `jackie` line OR a `jackiePool` (array) we pick from at random
+  local jline = node.jackie
+  if node.jackiePool and #node.jackiePool > 0 then
+    local i = 1; pcall(function() i = math.random(1, #node.jackiePool) end)
+    jline = node.jackiePool[i]
+  end
+  local secs = speakJackieLine(jline and jline.text, jline and jline.sfx)
   bstate.openAt = (JL.clock or 0) + secs + 0.4
 end
 
@@ -994,9 +1007,11 @@ Branch.confirm = function(idx)
   closeChoiceMenu()
   log("Branch: selected #" .. tostring(idx) .. " '" .. tostring(c.text) .. "'")
   hideSubtitle()
-  showDialogueText("V", c.text or "", 1.4, Game.GetPlayer())   -- V's pick, shown briefly
-  bstate.pending   = c.to or "__end__"
-  bstate.pendingAt = (JL.clock or 0) + 1.0                     -- 1s before Jackie replies
+  local hold = (Config.dialogue and Config.dialogue.choiceHold) or 2.5
+  showDialogueText("V", c.text or "", hold, Game.GetPlayer())  -- V's pick, shown before Jackie replies
+  bstate.pending       = c.to or "__end__"
+  bstate.pendingAction = c.action                              -- e.g. "summon_arrival" (fires at call end)
+  bstate.pendingAt     = (JL.clock or 0) + hold                -- wait out V's line before Jackie replies
 end
 
 -- move the highlight (wraps); the ImGui box redraws every frame, so no push needed
@@ -1011,7 +1026,253 @@ end
 Branch.kick = function()
   if Branch.busy then return end
   if not lookedAtJackie() then return end
-  Branch.start(nil)
+  Branch.start(nil, Config.dialogueTree)   -- always the talk tree, never a leftover call tree
+end
+
+-- ---------------------------------------------------------------------------
+-- HOLOCALL (v0.28): "Calling Jackie..." -> he picks up (runs Config.callTree in the
+-- same choice box) -> asking him onto a gig ends the call and, spawnDelay seconds later,
+-- spawns him spawnDistance metres ahead of V; companion AI then walks him in.
+-- Reuses the existing voiced dialogue engine + AMM summon; no native phone / death flag.
+-- ---------------------------------------------------------------------------
+
+-- A point Config.call.spawnDistance metres ahead of V (so he visibly walks in). Tries
+-- several ways to read V's facing; logs which one worked + the final point so a bad spawn
+-- is debuggable from the console. NEVER returns V's exact spot (that = "in your face").
+local function arrivalPoint()
+  local pl = Game.GetPlayer(); if not pl then return nil end
+  local pp; pcall(function() pp = pl:GetWorldPosition() end)
+  if not pp then return nil end
+  local d = (Config.call and Config.call.spawnDistance) or 18.0
+
+  -- 1) GetWorldForward (Vector4); 2) derive from world orientation quaternion; 3) camera forward.
+  local fwd, how
+  pcall(function() fwd = pl:GetWorldForward() end)
+  if fwd then how = "GetWorldForward" end
+  if not fwd then
+    pcall(function()
+      local q = pl:GetWorldOrientation()
+      if q then local f = Quaternion.GetForward(q); if f then fwd = f; how = "orientation" end end
+    end)
+  end
+  if not fwd then
+    pcall(function()
+      local cs = Game.GetCameraSystem()
+      if cs and cs.GetActiveCameraForward then local f = cs:GetActiveCameraForward(); if f then fwd = f; how = "camera" end end
+    end)
+  end
+
+  local pt
+  if fwd then
+    pt = Vector4.new(pp.x + fwd.x * d, pp.y + fwd.y * d, pp.z + fwd.z * d, 1.0)
+  else
+    pt = Vector4.new(pp.x + d, pp.y, pp.z, 1.0)   -- last resort: +X so he's NEVER on top of V
+    how = "fallback+X"
+  end
+  log(("Call: arrival point via %s -> { %.2f, %.2f, %.2f } (V at %.2f, %.2f, %.2f)")
+      :format(tostring(how), pt.x, pt.y, pt.z, pp.x, pp.y, pp.z))
+  return pt
+end
+
+-- ---------------------------------------------------------------------------
+-- NATIVE holocall driver (v0.29): drive the game's real phone call UI directly via
+-- PhoneSystem:TriggerCall (recipe from docs/native_phone_probes.md). Lets us show Jackie's
+-- real avatar + ringtone, then (later) hand off to our voice + dialogue box.
+-- ---------------------------------------------------------------------------
+-- Resolve a quest phone-call enum value: prefer the CET-exposed enum global, else integer.
+local function phoneEnum(enumName, fieldName, intFallback)
+  local v
+  pcall(function() v = _G[enumName] and _G[enumName][fieldName] end)
+  if v ~= nil then return v end
+  return intFallback
+end
+
+local function getPhoneSystem()
+  local ps
+  pcall(function() ps = Game.GetScriptableSystemsContainer():Get(CName.new("PhoneSystem")) end)
+  return ps
+end
+
+-- Fire one phase of a native call. phaseName/Int: IncomingCall/1, StartCall/2, EndCall/3.
+local function triggerNativeCall(callId, phaseName, phaseInt)
+  local ps = getPhoneSystem()
+  if not ps then JL.ui.status = "Native call: PhoneSystem unavailable"; log("Native call: no PhoneSystem"); return false end
+  local mode    = phoneEnum("questPhoneCallMode",    "Video",   2)
+  local phase   = phoneEnum("questPhoneCallPhase",   phaseName, phaseInt)
+  local visuals = phoneEnum("questPhoneCallVisuals", "Default", 0)
+  local ok, err = pcall(function()
+    JL.call.selfTriggering = true        -- so our own call doesn't re-fire the player-call hijack hook
+    ps:TriggerCall(mode, false, CName.new(callId), true, phase, false, false, false, visuals)
+  end)
+  JL.call.selfTriggering = false
+  JL.ui.status = ("Native call %s -> %s : %s"):format(callId, phaseName, ok and "ok" or "FAIL")
+  log(("Native call: TriggerCall('%s', %s) ok=%s %s"):format(callId, phaseName, tostring(ok), ok and "" or tostring(err)))
+  return ok
+end
+
+-- Open the silent, persistent native holocall window (StartCall) as the call "canvas".
+local function openNativeCallWindow()
+  if not (Config.nativeCall and Config.nativeCall.useNativeWindow) then return end
+  triggerNativeCall((Config.nativeCall and Config.nativeCall.id) or "jackie_dead", "StartCall", 2)
+  JL.call.nativeOpen = true
+end
+
+-- Close the native holocall window (EndCall). Safe to call when none is open.
+local function closeNativeCallWindow()
+  if not JL.call.nativeOpen then return end
+  JL.call.nativeOpen = false
+  triggerNativeCall((Config.nativeCall and Config.nativeCall.id) or "jackie_dead", "EndCall", 3)
+end
+
+-- A random V hang-up sign-off (text only; V has no voice).
+local function pickFarewell()
+  local f = Config.callFarewells
+  if not f or #f == 0 then return "Later." end
+  local i = 1
+  pcall(function() i = math.random(1, #f) end)
+  return f[i] or f[1]
+end
+
+-- Teleport a spawned NPC to `pos` (used to place a called-in Jackie at distance).
+local function teleportEntity(handle, pos)
+  if not handle or not pos then return end
+  pcall(function()
+    local tf = Game.GetTeleportationFacility()
+    if tf then tf:Teleport(handle, pos, EulerAngles.new(0.0, 0.0, 0.0)) end
+  end)
+end
+
+-- Run an action attached to a finished call choice. "summon_arrival" -> schedule the
+-- delayed spawn-at-distance (the actual spawn happens in arrivalTick).
+local function runCallAction(name)
+  if name ~= "summon_arrival" then return end
+  if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
+  if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
+  local delay = (Config.call and Config.call.spawnDelay) or 5.0
+  JL.arrival.at = (JL.clock or 0) + delay
+  JL.ui.status = ("Jackie's on his way (%.0fs)..."):format(delay)
+  log("Call: arrival scheduled in " .. tostring(delay) .. "s.")
+end
+
+-- Begin a holocall. With useNativeWindow: fire the native RING (IncomingCall) now; callTick
+-- then aborts it (STOP) and switches to the CONNECT window before running our convo.
+local function startCall()
+  if Branch.open or Branch.busy or dlg.active then JL.ui.status = "Busy - finish the current talk first."; return end
+  if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
+  if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
+  Branch.busy = true                       -- reserve so the look-prompt / talk don't fight the ring
+  pcall(hideJackieChoiceBox)
+  local id   = (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
+  local ring = (Config.call and Config.call.ringEvent) or ""
+  if ring ~= "" then pcall(function() playVoice(ring) end) end
+  if Config.nativeCall and Config.nativeCall.useNativeWindow then
+    triggerNativeCall(id, "IncomingCall", 1)   -- native ring (avatar + ringtone)
+  end
+  local secs = (Config.call and Config.call.ringSeconds) or 2.0
+  showOnscreenMsg("Calling Jackie...", secs + 0.5)
+  JL.call.ringingAt = (JL.clock or 0) + secs
+  JL.ui.status = "Calling Jackie..."
+  log("Call: ringing...")
+end
+
+-- Stepped from onUpdate. Sequences the call:
+--  ringingAt   -> abort native ring (STOP/EndCall), arm connectAt (+0.2s)
+--  connectAt   -> open the CONNECT window (StartCall), start our branching convo
+--  hangupAt    -> (set at convo end) hide the farewell, hang up (EndCall), run the queued action
+--  watchdogAt  -> safety: force hang up if a call somehow never completes (no permanent stuck call)
+local function callTick()
+  local now = JL.clock or 0
+  local id  = (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
+  local native = Config.nativeCall and Config.nativeCall.useNativeWindow
+
+  if JL.call.ringingAt and now >= JL.call.ringingAt then
+    JL.call.ringingAt = nil
+    if native then
+      triggerNativeCall(id, "EndCall", 3)        -- STOP: abort the canned native ring
+      JL.call.connectAt = now + 0.2              -- brief gap, then connect
+    else
+      JL.call.connectAt = now                    -- text-only flow: go straight to the convo
+    end
+  end
+
+  if JL.call.connectAt and now >= JL.call.connectAt then
+    JL.call.connectAt = nil
+    if native then openNativeCallWindow() end     -- CONNECT: empty transparent window stays up
+    JL.call.watchdogAt = now + 300                -- safety net (force-end if a call never completes)
+    Branch.busy = false                           -- Branch.start re-sets it
+    local tree = Config.callTree
+    Branch.start(tree and tree.start or nil, tree)
+  end
+
+  if JL.call.hangupAt and now >= JL.call.hangupAt then
+    JL.call.hangupAt = nil
+    JL.call.watchdogAt = nil
+    hideSubtitle()
+    pcall(closeNativeCallWindow)                  -- hang up
+    local act = JL.call.hangupAction; JL.call.hangupAction = nil
+    JL.ui.status = "Call ended."; log("Call: ended.")
+    if act then pcall(function() runCallAction(act) end) end
+  end
+
+  if JL.call.watchdogAt and now >= JL.call.watchdogAt then
+    JL.call.watchdogAt = nil
+    if JL.call.nativeOpen then pcall(closeNativeCallWindow) end
+    Branch.busy = false
+    log("Call: watchdog force-ended a lingering call.")
+  end
+end
+
+-- The player dialled Jackie from the in-game phone (the game fired IncomingCall). Route it into
+-- our flow: the native ring is already playing, so we just arm callTick (STOP -> CONNECT -> convo)
+-- without re-firing IncomingCall ourselves.
+local function onPlayerCalledJackie()
+  if Branch.open or Branch.busy or dlg.active then return end   -- already talking
+  if JL.summon.active then return end                          -- already with you
+  if isMainQuestActive() then return end
+  Branch.busy = true
+  local ring = (Config.call and Config.call.ringEvent) or ""
+  if ring ~= "" then pcall(function() playVoice(ring) end) end
+  JL.call.ringingAt = (JL.clock or 0) + ((Config.call and Config.call.ringSeconds) or 2.0)
+  JL.ui.status = "Jackie picking up..."
+  log("Hijack: player called Jackie from the phone -> running our flow.")
+end
+
+-- Observe PhoneSystem:TriggerCall; when the PLAYER calls Jackie's contact (IncomingCall on a
+-- 'jackie' call id, not one of our own TriggerCalls), hand off to onPlayerCalledJackie.
+local function setupCallHijack()
+  if not (Config.nativeCall and Config.nativeCall.hijackPlayerCalls) then return end
+  local ok, err = pcall(function()
+    Observe("PhoneSystem", "TriggerCall", function(self, mode, b1, callId, b2, phase)
+      if JL.call.selfTriggering then return end                -- ignore our own TriggerCalls
+      local nm = tostring(callId)
+      if not nm:find("jackie") then return end                 -- only Jackie's contact
+      if not tostring(phase):find("IncomingCall") then return end
+      pcall(onPlayerCalledJackie)
+    end)
+  end)
+  log("Call hijack " .. (ok and "registered (player phone calls to Jackie -> our flow)." or ("FAILED: " .. tostring(err))))
+end
+
+-- Stepped from onUpdate. Two phases:
+--  (1) at JL.arrival.at  -> spawn Jackie as a companion, then arm a teleport ~0.8s later.
+--  (2) at JL.arrival.teleportAt -> teleport him to the distant arrival point (AMM has by
+--      now finished placing him, so our teleport sticks); companion AI then walks him to V.
+local function arrivalTick()
+  if JL.arrival.at and (JL.clock or 0) >= JL.arrival.at then
+    JL.arrival.at = nil
+    local spawn, err = ammSpawn(1)
+    if not spawn then JL.ui.status = "Arrival spawn failed: " .. tostring(err); log("Arrival spawn failed: " .. tostring(err)); return end
+    JL.summon.spawn, JL.summon.active, JL.summon.companionSet = spawn, true, false
+    JL.arrival.teleportAt = (JL.clock or 0) + 0.8
+    JL.ui.status = "Jackie arriving - walking in."
+    log("Call: Jackie spawned; teleport-to-distance armed (+0.8s).")
+  end
+  if JL.arrival.teleportAt and (JL.clock or 0) >= JL.arrival.teleportAt then
+    JL.arrival.teleportAt = nil
+    local h = JL.summon.spawn and JL.summon.spawn.handle
+    if h then teleportEntity(h, arrivalPoint())
+    else log("Call: arrival teleport skipped (no handle yet).") end
+  end
 end
 
 -- stepped from onUpdate: (1) reveal the menu once Jackie's line has played; (2) after the
@@ -1027,8 +1288,22 @@ local function branchTick()
     if nxt and nxt ~= "__end__" then
       Branch.start(nxt)
     else
-      hideSubtitle(); Branch.busy = false
-      JL.ui.status = "Dialogue ended."; log("Branch: end.")
+      Branch.busy = false
+      local wasCall = (bstate.tree == Config.callTree)
+      bstate.tree = nil
+      local act = bstate.pendingAction; bstate.pendingAction = nil
+      if wasCall then
+        -- end of a call strand: V's random sign-off shows, THEN we hang up (callTick.hangupAt)
+        hideSubtitle()
+        showDialogueText("V", pickFarewell(), 1.8, Game.GetPlayer())
+        JL.call.hangupAction = act
+        JL.call.hangupAt = (JL.clock or 0) + 1.8
+        JL.ui.status = "Call wrapping up..."
+      else
+        hideSubtitle()
+        JL.ui.status = "Dialogue ended."; log("Branch: end.")
+        if act then pcall(function() runCallAction(act) end) end
+      end
     end
   end
 end
@@ -1073,10 +1348,98 @@ end
 -- ---------------------------------------------------------------------------
 -- Events
 -- ---------------------------------------------------------------------------
+-- DEBUG (Config.probeNativePhone). Two parts, both writing to files in the mod folder so the
+-- output can be read back without OCR / fragile console copy:
+--  1) dumpPhoneReflection() -> uses Codeware's Reflection to write the REAL method names of the
+--     phone/holocall classes to  phone_methods.txt  (so we stop guessing method names).
+--  2) hooks that, when they fire, append to  probe_fires.txt  (open phone, call Jackie -> we see
+--     exactly which methods drive the call).
+local PROBE_CANDIDATE_CLASSES = {
+  "PhoneSystem", "HolocallSystem",
+  "PhoneDialerGameController", "PhoneDialerLogicController", "PhoneDialerNPCDataView",
+  "PhoneConversationManager", "PhoneMessagePopupGameController",
+  "gameuiHolocallReceiverGameController", "HolocallReceiverGameController",
+  "ContactsListItemVirtualController", "gameuiContactsListGameController",
+  "PhoneContactsManagerGameController", "JournalManager",
+}
+
+local function methodName(m)
+  local nm
+  pcall(function() nm = m:GetFullName() end)
+  if not nm then pcall(function() nm = m:GetName() end) end
+  return tostring(nm)
+end
+
+local function dumpPhoneReflection()
+  if not Reflection then log("PROBE: Codeware Reflection global missing — is Codeware loaded?"); return end
+  local out = {}
+  local function w(s) out[#out + 1] = tostring(s) end
+  for _, cn in ipairs(PROBE_CANDIDATE_CLASSES) do
+    local cls
+    pcall(function() cls = Reflection.GetClass(cn) end)
+    if not cls then
+      w("=== " .. cn .. " : CLASS NOT FOUND ===")
+    else
+      local parent = "?"
+      pcall(function() local p = cls:GetParent(); if p then parent = tostring(p:GetName()) end end)
+      w("=== " .. cn .. "  (parent: " .. parent .. ") ===")
+      local methods
+      pcall(function() methods = cls:GetMethods() end)
+      if not methods then pcall(function() methods = cls:GetFunctions() end) end
+      if methods then
+        for _, m in ipairs(methods) do w("    " .. methodName(m)) end
+      else
+        w("    (could not list methods)")
+      end
+    end
+    w("")
+  end
+  local f = io.open("phone_methods.txt", "w")
+  if f then f:write(table.concat(out, "\n")); f:close(); log("PROBE: wrote phone_methods.txt (" .. #out .. " lines).")
+  else log("PROBE: could not open phone_methods.txt for writing.") end
+end
+
+local function probeFire(tag, detail)
+  local line = tag .. (detail and ("  | " .. detail) or "")
+  log("PROBE FIRED  " .. line)
+  local f = io.open("probe_fires.txt", "a")
+  if f then f:write(("%.1f  %s\n"):format(JL.clock or 0, line)); f:close() end
+end
+
+-- Real method names (from phone_methods.txt). argfmt(self, ...) -> a string of captured args,
+-- so we learn e.g. Jackie's call CName passed to TriggerCall. Uses Observe (before-call).
+local function setupNativePhoneProbe()
+  pcall(dumpPhoneReflection)
+  local f = io.open("probe_fires.txt", "w")   -- truncate stale fires
+  if f then f:write("# probe fires (t  Class::Method | args) - open phone, call Jackie\n"); f:close() end
+
+  local function hook(cls, method, argfmt)
+    local cb = function(self, ...)
+      local detail
+      if argfmt then local ok, d = pcall(argfmt, self, ...); if ok then detail = d end end
+      probeFire(cls .. "::" .. method, detail)
+    end
+    pcall(function() Observe(cls, method, cb) end)
+  end
+
+  hook("PhoneSystem", "TriggerCall", function(self, a1, a2, a3, a4, a5, a6, a7, a8, a9)
+    return ("args: %s | %s | %s | %s | %s | %s | %s | %s | %s"):format(
+      tostring(a1), tostring(a2), tostring(a3), tostring(a4), tostring(a5),
+      tostring(a6), tostring(a7), tostring(a8), tostring(a9))
+  end)
+  hook("PhoneSystem", "OnPickupPhone")
+  hook("PhoneDialerGameController", "CallSelectedContact")
+  hook("PhoneMessagePopupGameController", "TryCallContact")
+  hook("PhoneMessagePopupGameController", "CallContact")
+  log("PROBE armed (real names). Open phone, call Jackie -> probe_fires.txt.")
+end
+
 registerForEvent("onInit", function()
   getAMM()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
-  log("Loaded v0.27. AMM present: " .. tostring(JL.amm ~= nil))
+  if Config.probeNativePhone then pcall(setupNativePhoneProbe) end
+  pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
+  log("Loaded v0.30. AMM present: " .. tostring(JL.amm ~= nil))
 end)
 
 -- Track overlay visibility so the window only shows while the CET overlay is open.
@@ -1088,6 +1451,8 @@ registerForEvent("onUpdate", function(dt)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
   pcall(branchTick)
+  pcall(callTick)       -- holocall: ring -> pick up
+  pcall(arrivalTick)    -- holocall: scheduled spawn-at-distance
   if JL.summon.spawn and JL.summon.spawn.handle and not JL.summon.companionSet then
     local amm = getAMM()
     pcall(function()
@@ -1137,6 +1502,26 @@ registerForEvent("onDraw", function()
   if ImGui.Button("Summon Jackie (companion)") then summonJackie() end
   ImGui.SameLine()
   if ImGui.Button("Dismiss Jackie") then dismissJackie() end
+  if ImGui.Button("Call Jackie (holocall)") then startCall() end
+  ImGui.SameLine()
+  ImGui.TextWrapped("ring -> choices -> ask onto a gig -> he spawns at distance + walks in")
+
+  ImGui.Separator()
+  ImGui.Text("NATIVE phone test (drives the real call UI via PhoneSystem:TriggerCall):")
+  ImGui.Text("Call id: '" .. tostring(Config.nativeCall and Config.nativeCall.id) .. "'  (edit Config.nativeCall.id)")
+  local id = (Config.nativeCall and Config.nativeCall.id) or "jackie"
+  if ImGui.Button("Native: RING (IncomingCall)") then triggerNativeCall(id, "IncomingCall", 1) end
+  ImGui.SameLine()
+  if ImGui.Button("Native: CONNECT (StartCall)") then triggerNativeCall(id, "StartCall", 2) end
+  ImGui.SameLine()
+  if ImGui.Button("Native: END (EndCall)") then triggerNativeCall(id, "EndCall", 3) end
+  if ImGui.Button("Force hang up (clear stuck call)") then
+    JL.call.nativeOpen = false
+    triggerNativeCall(id, "EndCall", 3)
+    triggerNativeCall("jackie", "EndCall", 3)   -- clear either call id
+  end
+  ImGui.TextWrapped("Click RING -> does Jackie's avatar + ringtone show? Then CONNECT -> does he appear " ..
+                    "connected, and does the game play its OWN canned Jackie call, or stay silent (so we add ours)? END hangs up.")
   JL.ui.forceMainQuest = ImGui.Checkbox("Force main-quest active (test decline)", JL.ui.forceMainQuest)
 
   ImGui.Separator()
@@ -1174,7 +1559,7 @@ registerForEvent("onDraw", function()
   ImGui.Text("Dialogue (summon Jackie first so his voice plays on him):")
   if ImGui.Button("Play test dialogue (linear)") then startDialogue(Config.testDialogue) end
   ImGui.SameLine()
-  if ImGui.Button("Play branching dialogue") then pcall(function() Branch.start(nil) end) end
+  if ImGui.Button("Play branching dialogue") then pcall(function() Branch.start(nil, Config.dialogueTree) end) end
   ImGui.TextWrapped("Branch: F=confirm highlighted choice; bind 'Jackie dialogue: next choice' to move highlight.")
 
   ImGui.Separator()
@@ -1185,6 +1570,7 @@ registerForEvent("onDraw", function()
 end)
 
 registerForEvent("onShutdown", function()
+  pcall(closeNativeCallWindow)   -- never leave a holocall window stuck open
   pcall(hideJackieChoiceBox)
   pcall(hideSubtitle)
   pcall(clearIdle)
@@ -1192,6 +1578,7 @@ registerForEvent("onShutdown", function()
 end)
 
 registerHotkey("jl_summon",  "Summon Jackie",            function() summonJackie() end)
+registerHotkey("jl_call",    "Call Jackie (holocall)",   function() startCall() end)
 registerHotkey("jl_dismiss", "Dismiss Jackie",           function() dismissJackie() end)
 registerHotkey("jl_capture", "Capture position",         function() capturePosition() end)
 registerHotkey("jl_toggle",  "Show/Hide Jackie window",  function() JL.ui.open = not JL.ui.open end)
