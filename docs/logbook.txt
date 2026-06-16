@@ -1,0 +1,297 @@
+================================================================================
+JACKIE LIVES - PROJECT LOGBOOK
+================================================================================
+A chronological record of steps taken, fixes made, and lessons learned.
+Log last written: 2026-06-16 (day session)
+(Per-step times are approximate; the project ran late 2026-06-15 into 2026-06-16.)
+
+Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
+
+--------------------------------------------------------------------------------
+2026-06-15  -  KICKOFF & DESIGN
+--------------------------------------------------------------------------------
+- Defined the project: a Cyberpunk 2077 mod that brings Jackie Welles back after
+  his Act 1 death, lore-friendly, as a "living city NPC" (NOT a default follower).
+- Decisions locked:
+    * Option B revival: Jackie survived, was smuggled out, went into hiding;
+      a retrieval questline brings him back. Gated on the "send Jackie to Vik"
+      body choice at the end of The Heist.
+    * The Quiet Life: he works a bar + is a low-level Heywood community fixer;
+      summonable to SIDE jobs only; V declines summoning him to MAIN quests.
+    * Vik beat = add an info shard + objective (do NOT rewrite his voiced scene).
+- Reality-checks established: keep Jackie BESIDE the main story (a separate
+  optional layer) to avoid quest-dependency breakage; reuse existing frameworks
+  (CET, AMM, Codeware, etc.) rather than reinventing spawn/follow/combat AI.
+- Created scaffolding: CLAUDE.md (ground rules), docs/DESIGN.md (lore + systems +
+  reality-checks, incl. detail_ideas.txt folded into section 10), TODO.md.
+- Confirmed environment: game owned on STEAM, build = Patch 2.3 / 2.31 (Oct 2025
+  public). Whole core mod stack supports it. Chose Vortex as mod manager.
+- Wrote docs/SETUP.md (Phase 0-4 install guide).
+
+--------------------------------------------------------------------------------
+2026-06-16 (early hours)  -  SETUP COMPLETE + MVP BUILD
+--------------------------------------------------------------------------------
+- Antonia completed SETUP: Vortex + core stack + AMM installed; verified Jackie
+  spawns and follows via AMM. Installed versions recorded in SETUP.md:
+    Game 2.3/2.31, RED4ext 1.30.0, redscript 0.5.31, CET 1.37.1, TweakXL 1.11.3,
+    ArchiveXL 1.26.8, Codeware 1.20.3, AMM 2.12.5.
+- Researched AMM source: its spawn/companion logic (NewSpawn -> SpawnNPC ->
+  SetNPCAsCompanion, friendly attitude) is reachable from our own CET mod via
+  GetMod("AppearanceMenuMod"). So our mod owns trigger/schedule/ban, and delegates
+  the hard spawn+combat AI to AMM.
+- Built mod v0.1 (mod/JackieLives/): summon companion, dismiss, daily schedule
+  (instant proximity spawn), position-capture tool, main-quest decline (test
+  toggle), ImGui window + hotkeys.
+- Built deploy.ps1 (auto-detects Steam install) and tools/voice-tagger/ (a
+  phone-friendly web app to audition + tag Jackie's voice lines).
+
+--------------------------------------------------------------------------------
+2026-06-16  -  DEBUGGING THE SUMMON (v0.2 -> v0.3)
+--------------------------------------------------------------------------------
+- First in-game test: window showed, but "Summon" failed: "Jackie record not
+  found", and "Game hour: ?".
+- v0.2: added robust matching (pairs()) + a "Run diagnostics" dump + defensive
+  GameTime read.
+- Diagnostics revealed the ROOT CAUSE: AMM.API.GetAMMCharacters() returns only
+  AMM's 19 CUSTOM characters (V, Johnny, Hanako, Nibbles the cat, ...), NOT the
+  base-game roster. Jackie is a base-game NPC in AMM's separate SQLite DB.
+- v0.3 FIX: discover Jackie's record at runtime from AMM.Spawn.spawnedNPCs after
+  spawning him once via AMM's menu ("Find Jackie" button).
+    -> DISCOVERED: Jackie's spawn record = "Character.Jackie".
+    -> Pinned in config.jackieRecord; summon now works with no AMM-menu step.
+- Also fixed "Game hour: ?": GameTime:GetHour() returns nil in this version;
+  added a multi-method probe that finds the working call.
+
+*** MVP CONFIRMED IN-GAME (v0.3): Jackie summons, FOLLOWS, FIGHTS alongside V,
+    and uses COMBAT BARKS. Time/schedule state correct (hour 4 -> "asleep"). ***
+
+--------------------------------------------------------------------------------
+2026-06-16  -  WINDOW, TALK TRIGGER, VOICE PLAYBACK (v0.4 -> v0.8)
+--------------------------------------------------------------------------------
+- v0.4: VO playback experiment - 3 buttons (AudioEvent / SoundPlayEvent /
+  GameObject.PlaySoundEvent via QueueEvent). Result: SILENT, no errors.
+- v0.5: Fixed the annoying always-on window. CAUSE: CET calls onDraw every frame
+  regardless of overlay state (HUD mods rely on this). FIX: track onOverlayOpen/
+  onOverlayClose and only draw while the overlay is open (the pattern AMM uses).
+  Also built the Talk-to-Jackie TRIGGER: look at Jackie + press a bound key ->
+  random line from a pool (greeting vs conversation) with chance + cooldown.
+  Added a "conversation" category to the voice tagger.
+- Clarified the talk goal: use the game's interact input + random VO (a fully
+  NATIVE dialogue-choice prompt is heavy and was deliberately deferred).
+- v0.6: Switched VO playback from the (silent) QueueEvent approach to
+  Game.GetAudioSystem():Play(event, entityID, emitter) - the call working
+  dialogue mods use. Added a "Play on V" toggle to separate method-vs-event.
+  Also reworked deploy.ps1 to overwrite in place (robocopy) so it can run while
+  the game is open.
+    BUG: an em-dash (non-ASCII) in deploy.ps1 broke Windows PowerShell 5.1's
+    parser (reads files as ANSI) -> "string missing terminator". v0.6 never
+    deployed.
+- v0.7: Rewrote deploy.ps1 ASCII-only (FIXED). Also fixed Dismiss: it relied on
+  AMM's DespawnNPC alone, which silently failed, leaving the NPC in-world; each
+  failed dismiss + new summon stacked ORPHAN Jackies. FIX: robust despawn (AMM ->
+  DynamicEntitySystem DeleteEntity -> dispose) + a "Dismiss ALL Jackies" cleanup.
+
+*** VO RESULT (v0.7): the test sound PLAYS ON V but NOT on Jackie. ***
+    -> Confirms AudioSystem:Play is the correct METHOD.
+    -> The silence on Jackie is because "ono_v_effort_short" is V's grunt and is
+       not in JACKIE's audio bank. We need event names that ARE his.
+
+- KEY LESSON (research): AudioSystem:Play needs WWise EVENT NAMES from
+  eventsmetadata.json (base\sound\event\). These are DIFFERENT from SoundDB /
+  Dialogue Database, which give String IDs + .wem paths (subtitle->file mapping).
+  That mismatch is why Jackie's line names weren't findable in the DB.
+
+- v0.8: Built a VOICE RECORDER - hooks AudioSystem:Play via CET Observe and logs
+  the unique event names firing on Jackie's entity ([REC-JACKIE]).
+    *** RESULT: DID NOT WORK. Recorder turned ON, Jackie barked many lines in
+        combat as a companion, but unique events stayed at 0. ***
+    -> Means his barks do NOT pass through the scripting layer of AudioSystem:Play
+       (likely native-to-native, or a different VO/bark system), so CET Observe
+       never fires. This is the current OPEN PROBLEM.
+
+--------------------------------------------------------------------------------
+2026-06-16 (day)  -  RECORDER ROOT-CAUSED + REBUILT (v0.10) & SOUNDDB SCRAPER
+--------------------------------------------------------------------------------
+- Antonia re-tested the v0.8 recorder: "Recorder: ON" but NOTHING recorded, even
+  with "Jackie only" UNticked. So it wasn't a filter problem - the hook never fired.
+- ROOT CAUSE (researched + confirmed): CET's Observe only fires when a SCRIPT calls
+  a function. Jackie's combat barks are triggered by the game's native C++ code,
+  which never routes through the script-side stub of AudioSystem:Play. So Observe on
+  AudioSystem:Play can't see native barks. Dead end (matches "0 events unfiltered").
+- FIX (v0.10): hook the SCRIPTED subtitle controller instead. The game calls
+  SubtitlesGameController:OnHideLine(lineData) for every displayed line, so CET can
+  observe it (proven by shipping subtitle mods, e.g. "Subtitles - Two Lines").
+  v0.10 reads lineData.text / .speakerName / .id (the String ID), filters to Jackie
+  by speaker name/record (works for ANY Jackie, not just our spawned entity),
+  dedupes by String ID, and a "Dump to file" button writes recorded_lines.json into
+  the mod folder (CET io is sandboxed there). REQUIRES subtitles ON. Deployed.
+  -> TESTED: ALSO caught nothing (counter 0, jackie filter on AND off). So the
+     subtitle hook didn't fire either. We have never confirmed CET Observe fires at
+     all in this install. Need the "Recorder hook registered: ..." console line to
+     tell registration-failure (wrong class for v2.3) from firing-failure (subs off
+     / wrong method). DE-PRIORITISED: the scraper catalogue already identifies lines.
+
+- SOUNDDB SCRAPER (big win). Investigated sounddb.redmodding.org: it's a JS app over
+  a public API at https://sounddb.zhincore.eu/v1 (OpenAPI at /api.json, Scalar docs).
+  KEY DISCOVERIES:
+    * Search DSL: /search/subtitles?q=actor:Jackie  -> Jackie's lines.
+      777 UNIQUE lines (totalCount says 977 = gender-variant hits; per_page caps 200).
+    * Each item: id (String ID), female/male {text, vo.main = .wem path, lipsyncAnim},
+      scenes{actors, addressees, quests, nodes{context, expression}}.
+    * AUDIO IS DOWNLOADABLE (we were wrong before): the frontend plays .ogg previews
+      from  https://static.zhincore.eu/cp/vo/<wem-path>.ogg  (public, 200 audio/ogg).
+      Formula from the frontend: PREVIEW + "vo/" + wem.replace(".wem",".ogg").
+  -> Built tools/voice-tagger/scrape_jackie.py (stdlib Python, polite throttle,
+     resume-safe). Ran it: 777 lines + 777 .ogg (~3.5 MB) into the tagger. lines.json
+     also carries string_id / vo_wem / context / expression / quests for the mod.
+  -> Verified the tagger in a local server: shows "0/777 tagged", audio plays,
+     context/quest hints render, no console errors. Tagger waitlist LIFTED.
+  -> Reshapes playback: Route B (Audioware + these .ogg) is now the clear path; no
+     WolvenKit extraction needed. (Route A WWise-event play stays dead for deep
+     dialogue lines, which have no standalone event.)
+- Also: confirmed Python 3.14 IS installed here (the old "no Python" note is stale);
+  made deploy.ps1 exit 0 on success (robocopy's code 3 was bubbling up).
+
+- RECORDER tested by Antonia -> still 0 (subtitles WERE on, his lines were visible).
+  So the subtitle hook didn't fire either. SHELVED per Antonia (the catalogue already
+  identifies his lines). Pivoted to what she actually wants: a button to play Jackie.
+
+- v0.11: PLAYBACK (Route A) for Jackie's VOICE EVENTS. Key realization via SoundDB's
+  EVENTS db: Jackie has his own WWise events - 25 ono_jackie_* (greet, laughs, curious,
+  effort, attack, pain, death, choking, fall, phone...) plus vo_3d_jackie / vo_q003_*
+  / q201_sc_03_jackie_vo_*. Those ARE playable by name via AudioSystem:Play (same call
+  as the V grunt) and, being HIS events, should sound on him. Added Config.jackieEvents
+  + a "Jackie voice" dropdown with Play / Random / typed-event buttons, and wired the
+  look-at "Talk to Jackie" key to real event pools (greet vs conversation). Deployed.
+  IMPORTANT distinction stands: these are efforts/barks/reactions, NOT the 777 full
+  dialogue SENTENCES (String IDs) - those aren't WWise events and still need a separate
+  path (native play-by-String-ID research, or extract-her-.wem + Audioware).
+
+- CONFIRMED in-game: ono_jackie_greet plays on Jackie (Route A works!).
+- v0.12: immersive talk - look at Jackie + bound key (no overlay) -> weighted grunt
+  (95% greet/curious/phone, 5% bump/additional/laughs_soft). config.talk/talkLines.
+- v0.13: NATIVE-STYLE TALK PROMPT. Antonia wants the real dialogue box look (speaker
+  name top-left, yellow band, F to select). Investigated: the real choice box is
+  engine-native (C++ controllers fed by the interaction system). NIF/World Builder
+  only place FIXED-spot prompts; no clean way to summon the real widget on look-at
+  (keanuwheeze built a whole framework precisely because there's no shortcut). So
+  built a dialogue-box LOOK-ALIKE on the HUD with ink (inkCanvas + bg + yellow band +
+  "JACKIE" + "Talk" + "[F]"), attached via Observe('gameuiHUDGameController',
+  'OnInitialize') -> GetRootCompoundWidget() -> Reparent. Shown while looking at
+  Jackie within range (updateTalkPrompt in onUpdate). Setters try struct + 2-arg forms
+  and each widget is pcall'd, so a wrong ink call degrades instead of blanking. FIRST
+  CUT - ink layout/positioning likely needs a tweak after Antonia sees it. The bound
+  key (set to F) still drives the actual grunt.
+- v0.13 TESTED -> FAILED: red error "Function OnInitialize in class gameuiHUDGameController
+  does not exist"; no box. Root cause: gameuiHUDGameController is NATIVE in 2.3 (no
+  scriptable OnInitialize to Observe); inkHUDGameController is a per-MODULE base, not the
+  HUD root. So CET LUA CANNOT attach a custom widget to the HUD root in 2.3. (Literal box
+  would need NIF/World-Builder placement, or a redscript module that wraps the native
+  HUD/interaction - redscript can hook native methods Lua can't.) Also: CET won't bind F
+  (game reserves it for Interact); Antonia used "=" and grunt-on-look works.
+- v0.14: dropped the ink box. Talk prompt now uses the game's NATIVE on-screen message
+  (SimpleScreenMessage -> UI_Notifications.OnscreenMessage blackboard; reliable, no hook).
+  Look at Jackie in range -> "Talk to Jackie [<key>]" (re-shown every 2.5s while looking)
+  -> bound key plays the grunt. keyLabel configurable (config.talk.keyLabel, default "=").
+  Honest native-text prompt, NOT the yellow-band box (that's a NIF/redscript follow-up).
+- v0.14 CONFIRMED by Antonia: message prompt shows (blue text) on look; "=" plays the grunt.
+- SESSION END (context high). Antonia chose ROUTE (b): a redscript module for a real
+  "Talk" BOX on a MOVING NPC -> do it in a NEW session. Also queued: immersive SUMMON
+  via PHONE CALL (options "How are you doing?" / "Need some help with a job." -> spawn
+  as companion + walk to V); dead-Jackie call shows only LOGO not VIDEO (try disabling
+  the "Jackie is dead" fact); job-call response line "So let's do our thing." String ID
+  1762127358882361344. All captured in TODO "NEXT SESSION" + memory.
+
+--------------------------------------------------------------------------------
+2026-06-16 02:36  -  WRAP-UP (v0.9)
+--------------------------------------------------------------------------------
+- Per Antonia: permanently removed three CET-window buttons we will never use
+  again: "Hide window", "Dismiss ALL Jackies", "Find Jackie (after AMM spawn)".
+  (Their underlying functions remain in code where still referenced.)
+- Bumped to v0.9. Session paused for the night; continue tomorrow.
+
+================================================================================
+WHAT WORKS NOW (v0.14)
+================================================================================
+- Jackie VOICE confirmed playing on him (ono_jackie_greet). Talk = look at him +
+  bound key (Antonia uses "=") -> weighted grunt. v0.14 shows a NATIVE on-screen
+  message prompt "Talk to Jackie [<key>]" while looking at him nearby (reliable;
+  the literal yellow-band box isn't attachable from CET Lua in 2.3 - see notes).
+- Summon Jackie as a combat companion (follows, fights, uses combat barks).
+- Dismiss works; no more duplicate Jackies.
+- Main-quest decline flow (test toggle; real detection still stubbed).
+- Daily schedule logic + game-time read correct (needs captured coords to place
+  idle Jackie at his spots - coords pending from Antonia).
+- Window only shows while the CET overlay is open.
+- deploy.ps1 overwrites in place (works with game open; ASCII-only; exits 0).
+- Jackie VOICE playback (Route A): AudioSystem:Play on his own WWise events
+  (ono_jackie_* / vo_*jackie*). "Jackie voice" dropdown + Play/Random/typed buttons;
+  Talk-to-Jackie look+key plays from real event pools. (Awaiting in-game confirm.)
+- Voice catalogue: all 777 Jackie dialogue lines + .ogg audio in the tagger (scraper).
+- Line recorder: SHELVED (both hooks caught 0; catalogue already identifies lines).
+
+================================================================================
+NEXT STEP - PLAYBACK OF FULL DIALOGUE SENTENCES (the 777 String IDs)
+================================================================================
+Voice EVENTS now play (Route A). The remaining piece is playing his full spoken
+SENTENCES - those are dialogue String IDs, NOT WWise events, so AudioSystem:Play
+can't reach them. Options, decide after confirming Route-A events in-game:
+  (A) Native "play dialogue line by String ID" via the scene/voiceover system -
+      research; no clean call found yet. Best if it exists (installed audio, full Q).
+  (B) Extract HER OWN .wem with WolvenKit (same compressed bytes the game uses - not
+      a re-compression) + play via Audioware. Reliable fallback.
+  Do NOT use the website .ogg for in-game playback (those are tagger-only, re-compressed).
+
+================================================================================
+KEY FACTS FOR NEXT SESSION
+================================================================================
+- Jackie's spawn record:  Character.Jackie  (pinned in config.jackieRecord)
+- Architecture: CET mod (mod/JackieLives) delegates spawn+combat to AMM via
+  GetMod("AppearanceMenuMod") -> AMM.Spawn:NewSpawn/SpawnNPC/SetNPCAsCompanion.
+- AMM gotcha: GetAMMCharacters() = only ~19 custom NPCs; base NPCs come from
+  AMM.Spawn.spawnedNPCs (after an AMM spawn) or its SQLite DB.
+- CET Observe fires only on SCRIPT-originated calls. Native-triggered events
+  (combat barks via AudioSystem:Play) are invisible to Observe -> hook a SCRIPTED
+  path instead (we use SubtitlesGameController:OnHideLine).
+- SoundDB API: https://sounddb.zhincore.eu/v1 (OpenAPI /api.json). Search DSL
+  q=actor:Jackie ; per_page<=200 ; item.female/male.vo.main = .wem path.
+  Audio preview .ogg: https://static.zhincore.eu/cp/vo/<wem>.ogg (replace .wem->.ogg).
+  Re-pull anytime: tools/voice-tagger/scrape_jackie.py.
+- Python 3.14 IS installed (run scripts with `python`); serve the tagger with
+  `python -m http.server 8123`.
+- Fast dev loop: edit mod/JackieLives -> .\deploy.ps1 (works with game open) ->
+  restart game (CET "Reload all mods" is unreliable here; just restart).
+- Coords for the schedule (noodle stand MB8 / El Coyote Cojo / Afterlife) are
+  pending from Antonia; paste into config.locations when provided.
+================================================================================
+
+--------------------------------------------------------------------------------
+2026-06-16 (continued)  -  REAL VOICE + SUBTITLES + BRANCHING (v0.19 -> v0.23)
+--------------------------------------------------------------------------------
+- v0.19: "[F] Talk" box made PERMANENT (config.talk.useChoiceBox=true + boxRefresh
+  heartbeat). CONFIRMED in-game: box shows on look, hides on look-away, grunt on F.
+- AUDIOWARE wired for real voice. Public API: Game.GetAudioSystemExt():Play(CName)
+  / :Duration(CName) (from r6/scripts/Audioware/Ext.reds). Manifest goes in
+  <game>\r6\audioware\<Mod>\ (.yml + audio); deploy.ps1 now ships audioware/JackieLives.
+- v0.20 FAILED silently: spoke=true but no sound, Duration fell back to config dur.
+  Audioware log: "0 id(s)" + "Registry error: not found". ROOT CAUSE = the scraped
+  .ogg are OPUS (header OpusHead); Audioware/kira decodes Vorbis/WAV/MP3/FLAC, not Opus.
+- v0.21: proved the pipe with a stdlib-generated test_tone.wav + a "Test audio" button.
+  CONFIRMED by Antonia: beep plays, ver 1.9.2, test_tone REGISTERED. Pipe is good.
+- CONVERSION: downloaded a portable ffmpeg (tools/ffmpeg, gitignored, 211MB) and wrote
+  tools/convert_audio.py -> re-encoded all 777 Opus .ogg to Ogg Vorbis (jl_<string_id>.ogg,
+  ~24MB) + regenerated the manifest (779 entries incl. test_tone + jl_fallback) + index.json.
+- v0.22 SUBTITLES: switched dialogue text from the blue notification field
+  (UI_Notifications.OnscreenMessage) to the REAL bottom band via UIGameData.ShowDialogLine
+  / HideDialogLine (scnDialogLineData) - the same path Audioware uses (Codeware.reds).
+  pcall-guarded with the old msg as fallback.
+- v0.23 BRANCHING: Config.dialogueTree (open->howbeen/gig/bye). Jackie speaks a node line
+  (voice+subtitle), then a multi-choice native hub appears; choices are SILENT text (so the
+  missing V audio is moot). Selection: F confirms the HIGHLIGHTED row; bound "Jackie dialogue:
+  next choice" (jl_cycle_choice) moves the highlight; Choice2/3 keys also work if the build
+  fires them (all actions logged while a menu is open). Buttons: "Play branching dialogue",
+  "Play test dialogue (linear)". Fallback jl_fallback.wav covers any clip that won't play.
+- Found+fixed a load-breaker before test: `goto` is reserved in LuaJIT; renamed the tree
+  field to `to`.
+- ALL DEPLOYED (v0.23). Awaiting Antonia's in-game test of: subtitle position, the 777-line
+  audio in the linear test, and the branching box (render + highlight + F select).

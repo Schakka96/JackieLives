@@ -1,0 +1,45 @@
+Making Jackie feel alive
+Jackie will live in the city and have a probabilistic schedule meaning he can be found in different locations.
+e.g.: 
+at his bar most of the time, 
+at El Coyote Cojo,
+at his moms place where he lives and sleeps  (I read that her house doesn’t exist within map boundaries so we have to add it in by physically inserting that interior in one of the empty buildings in heywood). 
+at his favorite restaurant, 
+At the noodle place
+at Mistys, 
+at Vics, 
+at the Afterlife (this reminds me we need to remove Jackies drink and memory option with the bartender at the afterlife, put this on 3rd tier priority), drinking at the bar there or enjoying the strippers, 
+at Lizzies, 
+at Delamain’s workshop,
+Sleeping,
+unavailable
+Jackie will have JackieCurrentState flags for these
+
+Scarcity is also relevant. He should not always be available and can ignore calls or reply late to texts. A relationship simulation is what we're finally aiming for. I also want to add being able to romance him, but this comes later as a sub-mod maybe. (he has voice lines like "I have a little something for you" and "(a splash of) love" and "sweet dreams then" and more stuff like that, we can definitely reuse
+Also Jackie should move around the city in a realistic way (not just spawn and despawn in front of V's eyes, but instead change locations when she is not there and with a cool-off period, meaning if she fast travels from Lizzies to his moms house he can not be there yet, it will take him a while to arrive. He shouldn't spawn in location either, but when V is in one of his possible places there's a low chance that he spawns nearby around the corner by vehicle arrival with his bike. I know this is very difficult and involved, so we can as a tier 2 sub-project develop this mechanism of "Where is Jackie currently" that spawns him at these and more locations. For the MVP he can just despawn/spawn instantly depending on his schedule. And of course the location where Jackie is should not be loaded or rendered just because he goes there, but if the player arrives at a location where he currently is, he will be loaded with the environment. There is probably already a way how this is handled with the other NPC’s/romance chars.
+
+Voice lines
+We use all existing character assets/outfits and the 1000 or so original voicelines that are available for him. This way he will feel alive but we don’t have to add extensive plot we can't cover.
+Tier 2 task: I dug up these voice lines at https://sounddb.redmodding.org/ and we will embed them contextually with Jackie's new locations (when you call him on a mission as an ally he can mostly use his combat lines in  appropriate moments, but there should be a ton of other triggers in the other environments where you find him. Also certain behavior from V should  trigger certain voice lines. Like when she enters a bar/restaurant he greets and invites for a drink (but these lines should not get too repetitive, so a small random chance maybe? How does the game handle probabilistic voice lines of relevant NPC’s so far?) 
+We can make categories for
+
+greetings
+environmental comments
+combat reactions
+idle remarks
+emotional acknowledgements
+short banter
+Romance moments
+
+Actually many of these should already exist and be couples to triggers as Jackie uses them correctly in all previous scenes where he appears. We’ll need to use that same existing system, find out how it works and expand it/apply it to new locations and states.
+
+More details
+Important tier 2: all of the dialogue with Mama Welles, Vic, and Misty who are mourning him must be removed. Cutting out the mentions of Jackie from other NPC interactions like Takemura will be very hard, so that’s tier 3, but those main people are tier 2. I like the approach of suppressing Jackie dead flags. How well will this actually stop the other NPCs from mourning? Or do I need to go in manually and overwrite their lines/sms triggers?
+to prevent the funeral event this whole revival arc can only trigger when choosing to send him to Vic! The other 2 options will lead to his demise.
+That he's never commenting on relic events is really hard to reconcile. The only thing I can think of is that V chooses not to tell him? But no they're best friends..... Ok lets go with: V wants to protect him and knows that If he knew she's in danger he couldn't stop himself from helping her and would risk death so she will leave him in peace. (how could we implement this rationale in a lore friendly way?)
+Oh and of course he gets his bike back, we will need a small sms interaction where he requests his keys and then a way to remove them from V’s inventory (maybe by allowing to put them into a drop point, or when next meeting Jackie, or easier is that V never gets it so the whole Mama Welles sending texts about the gift and that package arriving stuff is skipped.)
+
+
+My input
+I'm willing to put in tens of hours of hand-crafted state management and quest patching.
+I see that voice cataloguing will be a big part of that. I'm ready. Maybe we can make a little web-app I can run on my phone to listen to lines on the bus and add moments when they can be used/chances, moods, etc.

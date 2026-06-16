@@ -1,0 +1,9 @@
+[
+  { "id": "jackie_greet_01", "file": null, "transcript": "¡Preem! Knew you'd come 'round, hermana.", "category": "greetings" },
+  { "id": "jackie_drink_01", "file": null, "transcript": "Let's get a drink. On me, choom.", "category": "banter" },
+  { "id": "jackie_idle_01",  "file": null, "transcript": "Stay frosty out there.", "category": "idle" },
+  { "id": "jackie_emo_01",   "file": null, "transcript": "You good? Talk to me.", "category": "emotional" },
+  { "id": "jackie_combat_01","file": null, "transcript": "Behind you — move!", "category": "combat" },
+  { "id": "jackie_env_01",   "file": null, "transcript": "This place hasn't changed a bit.", "category": "environmental" },
+  { "id": "jackie_rom_01",   "file": null, "transcript": "Got a little somethin' for you.", "category": "romance" }
+]

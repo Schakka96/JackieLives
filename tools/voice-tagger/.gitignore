@@ -1,0 +1,4 @@
+# Downloaded voice-over previews (regenerate with: python scrape_jackie.py)
+audio/
+# scratch outputs
+lines_test.json
