@@ -11,6 +11,15 @@ $src = Join-Path $PSScriptRoot ("mod\" + $modName)
 
 if (-not (Test-Path $src)) { Write-Host "ERROR: source mod not found at $src"; exit 1 }
 
+# Read the mod version from config.lua (Config.version = "x.y.z") so every deploy spells it out.
+$version = "unknown"
+$cfgPath = Join-Path $src "config.lua"
+if (Test-Path $cfgPath) {
+  $m = Select-String -Path $cfgPath -Pattern 'Config\.version\s*=\s*"([^"]+)"' | Select-Object -First 1
+  if ($m) { $version = $m.Matches[0].Groups[1].Value }
+}
+Write-Host "=== Deploying $modName v$version ===" -ForegroundColor Cyan
+
 function Find-GameDir {
   if ($GameDir -and (Test-Path $GameDir)) { return $GameDir }
 
@@ -76,5 +85,5 @@ if (Test-Path $awSrc) {
   Write-Host "(no audioware\$modName folder - skipping sound bank)"
 }
 
-Write-Host "Restart the game to load the changes."
+Write-Host "Restart the game (or reload the mod) to load JackieLives v$version." -ForegroundColor Green
 exit 0

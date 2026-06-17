@@ -3,6 +3,9 @@
 
 local Config = {}
 
+-- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
+Config.version = "0.36"
+
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
 -- [JackieLives PROBE] line whenever one fires. Open your phone + call Jackie, then read the
@@ -97,8 +100,25 @@ Config.testDialogue = {
 -- default binding in code, so bind "Jackie dialogue: next choice" in CET -> Bindings to
 -- this key (you used "-") and keep this label matching it. F selects the highlighted row.
 Config.dialogue = {
-  cycleHint = "-",
-  choiceHold = 2.5,   -- seconds V's chosen line stays on screen before Jackie's reply
+  cycleHint  = "Up/Dn",  -- label shown in the box; v0.33 the ARROW keys cycle by default (no binding).
+  choiceHold = 2.5,      -- seconds V's chosen line stays on screen before Jackie's reply
+  cycleDebug = true,     -- v0.33 DEBUG: while a choice box is open, log every input-action name pressed,
+                         --   so we can lock the exact arrow-key CNames for this game build. Turn OFF once
+                         --   the console confirms which names Up/Down fire (paste them to Claude).
+}
+
+-- ---- send Jackie off (v0.33) ---------------------------------------------
+-- A dialogue choice that is ALWAYS shown while Jackie is your COMPANION (following you).
+-- Picking it ends the talk, Jackie says a parting line, his follower role is dropped and he
+-- WALKS AWAY; once he is `despawnDistance` m from V (or `maxSeconds` pass) he despawns. This
+-- is the immersive opposite of the instant "Dismiss Jackie" hotkey.
+Config.dismiss = {
+  choiceText      = "Head home, Jackie. I got this from here.",  -- silent V line in the choice box
+  partingSfx      = "jl_1155727714874494976",   -- Jackie VO: "Time we were on our way, mamita."
+  partingText     = "Time we were on our way, mamita.",
+  despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
+  movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
+  maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
 }
 
 -- ---- branching dialogue tree (v0.23) -------------------------------------
@@ -140,6 +160,213 @@ Config.dialogueTree = {
   },
 }
 
+-- ---- location-based talk trees (v0.32) -----------------------------------
+-- When you press F on Jackie, the mod picks the tree for WHERE HE CURRENTLY IS
+-- (his idle-spawn location key). Same node format as Config.dialogueTree above.
+-- Keys must match Config.locations keys (noodle/coyote/afterlife/misty/...).
+--
+-- `everywhere` is the BACKUP: used whenever he's NOT at one of these named places
+-- (e.g. summoned/following you, or idling somewhere with no tree of its own). It is
+-- deliberately SHORT — 2 choices, short voice lines — and carries `cooldownSeconds`:
+-- once you finish it, it's marked DONE and goes on that cooldown. Press F again within
+-- the cooldown and Jackie just GRUNTS (no dialogue). After it expires, the short
+-- exchange is available again. Named-location trees have NO cooldown (repeatable).
+--
+-- jackiePool = pick one of these at random for variety (real voice + subtitle).
+-- Choices are SILENT V text, so they can say anything location-flavored for free.
+Config.locationDialogue = {
+
+  -- NOODLE BAR (daytime, casual, food) ---------------------------------------
+  noodle = {
+    start = "open",
+    nodes = {
+      open = {
+        jackiePool = {
+          { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
+          { text = "C'mon, let's go have some lunch.",                              sfx = "jl_1834500545020096512" },
+          { text = "V, how you feel? You all right?",                              sfx = "jl_1802590928224841728" },
+        },
+        choices = {
+          { text = "What's good here?",                to = "food"  },
+          { text = "How's the quiet life treatin' ya?", to = "quiet" },
+          { text = "Just grabbin' a bite. Later.",      to = "bye"   },
+        },
+      },
+      food = {
+        jackie  = { text = "Does not get any higher, choom.", sfx = "jl_1660221856871665664" },
+        choices = {
+          { text = "Heh. Save me a stool.",             to = "bye" },
+          { text = "Got a little side gig, you up for it?", to = "gig" },
+        },
+      },
+      quiet = {
+        jackie  = { text = "Eh, you know how it is, can't complain. But we ain't here to shoot the shit about me.", sfx = "jl_1861666308579323904" },
+        choices = {
+          { text = "Fair. Take it easy, hermano.", to = "bye" },
+          { text = "Could use you on a side job.", to = "gig" },
+        },
+      },
+      gig = {
+        jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
+        choices = { { text = "Let's roll.", to = nil } },
+      },
+      bye = {
+        jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
+        choices = { { text = "(Leave)", to = nil } },
+      },
+    },
+  },
+
+  -- EL COYOTE COJO (Mama Welles' bar — family, drinks, afternoon) -------------
+  coyote = {
+    start = "open",
+    nodes = {
+      open = {
+        jackiePool = {
+          { text = "Don't come here often, do ya? Heheh. Good to see you, chica.",  sfx = "jl_1661700260668284928" },
+          { text = "Mama told me things come to those who wait, and some're even good!", sfx = "jl_2008342351712284672" },
+          { text = "Talk to me, choomba.",                                           sfx = "jl_2239163066690486272" },
+        },
+        choices = {
+          { text = "Mama Welles around?", to = "mama"  },
+          { text = "Pour me one?",        to = "drink" },
+          { text = "Just passin' through.", to = "bye" },
+        },
+      },
+      mama = {
+        jackie  = { text = "She's my blood, all right. Coyote's her dive.", sfx = "jl_1834417684413870080" },
+        choices = {
+          { text = "Family's everything. Later, hermano.",  to = "bye" },
+          { text = "When you're done playin' barkeep, got a side gig.", to = "gig" },
+        },
+      },
+      drink = {
+        jackie  = { text = "Andale, let's drink.", sfx = "jl_2251854480654123008" },
+        choices = {
+          { text = "Heh. To the quiet life.",         to = "bye" },
+          { text = "One drink, then I got work. You in?", to = "gig" },
+        },
+      },
+      gig = {
+        jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
+        choices = { { text = "Let's go.", to = nil } },
+      },
+      bye = {
+        jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
+        choices = { { text = "(Leave)", to = nil } },
+      },
+    },
+  },
+
+  -- AFTERLIFE (merc legends bar, night — bittersweet, he's out of the life) ---
+  afterlife = {
+    start = "open",
+    nodes = {
+      open = {
+        jackiePool = {
+          { text = "Hey, V, you alive? How's things in the viper pit?", sfx = "jl_1691260805748551680" },
+          { text = "Legends are born here.",                            sfx = "jl_1904093608424787968" },
+          { text = "Straight to biz, eh, chica?",                       sfx = "jl_1777946122915868672" },
+        },
+        choices = {
+          { text = "You miss it? The merc life?", to = "miss"  },
+          { text = "Drink to old times?",         to = "drink" },
+          { text = "Just soakin' it in. Later.",  to = "bye"   },
+        },
+      },
+      miss = {
+        jackie  = { text = "It's the biz, V. Everyone's got blood on their hands. You deal with it, you move on.", sfx = "jl_1625819953367019520" },
+        choices = {
+          { text = "You earned the quiet. Take it easy.", to = "bye" },
+          { text = "Then do one last easy one, side gig, with me.", to = "gig" },
+        },
+      },
+      drink = {
+        jackie  = { text = "Heheh, I'll drink to that!", sfx = "jl_1806735035231395840" },
+        choices = {
+          { text = "To Jackie Welles. Later, choom.", to = "bye" },
+          { text = "Now help me run a quick side job.", to = "gig" },
+        },
+      },
+      gig = {
+        jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
+        choices = { { text = "Let's go.", to = nil } },
+      },
+      bye = {
+        jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
+        choices = { { text = "(Leave)", to = nil } },
+      },
+    },
+  },
+
+  -- MISTY'S ESOTERICA (calm, spiritual, his girl Misty) ----------------------
+  misty = {
+    start = "open",
+    nodes = {
+      open = {
+        jackiePool = {
+          { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
+          { text = "Ah, thanks, Misty. You're the best.",                          sfx = "jl_1255773314399088640" },
+        },
+        choices = {
+          { text = "Things good with Misty?", to = "her"   },
+          { text = "She read your cards yet?", to = "cards" },
+          { text = "I'll leave you to it.",    to = "bye"   },
+        },
+      },
+      her = {
+        jackie  = { text = "Now I go back, find Misty and we do somethin' to make me feel alive again.", sfx = "jl_1677043911795367936" },
+        choices = {
+          { text = "Glad you got her. Take care, hermano.", to = "bye" },
+          { text = "When you surface, got a side gig.",      to = "gig" },
+        },
+      },
+      cards = {
+        jackie  = { text = "Misty knew... Misty always knows...", sfx = "jl_2024290835469197312" },
+        choices = {
+          { text = "Spooky. Later, choom.",            to = "bye" },
+          { text = "Cards say you'll help me on a job?", to = "gig" },
+        },
+      },
+      gig = {
+        jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
+        choices = { { text = "Let's go.", to = nil } },
+      },
+      bye = {
+        jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
+        choices = { { text = "(Leave)", to = nil } },
+      },
+    },
+  },
+
+  -- EVERYWHERE (BACKUP: short 2-option exchange; DONE -> 60s grunt-only cooldown)
+  everywhere = {
+    start = "open",
+    cooldownSeconds = 60,   -- after finishing this once, F just grunts until 60s pass
+    nodes = {
+      open = {
+        jackiePool = {
+          { text = "Talk to me, choomba.",                                          sfx = "jl_2239163066690486272" },
+          { text = "V, how you feel? You all right?",                              sfx = "jl_1802590928224841728" },
+          { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
+        },
+        choices = {
+          { text = "Just checkin' in. Take it easy.", to = "care" },
+          { text = "Catch you later, hermano.",        to = "bye"  },
+        },
+      },
+      care = {
+        jackie  = { text = "Thanks, I will! V, you take it easy, OK? Rest up a bit.", sfx = "jl_1993514843414274048" },
+        choices = { { text = "(Leave)", to = nil } },
+      },
+      bye = {
+        jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
+        choices = { { text = "(Leave)", to = nil } },
+      },
+    },
+  },
+}
+
 -- ---- HOLOCALL: call Jackie onto a gig (v0.28) ----------------------------
 -- "Calling Jackie..." (ring) -> he picks up -> the SAME branching choice box runs a
 -- short CALL tree (below) -> if you ask him onto a gig, the call ends and `spawnDelay`
@@ -150,8 +377,62 @@ Config.dialogueTree = {
 Config.call = {
   ringSeconds   = 2.0,   -- native ring (IncomingCall) plays this long, then we abort + connect
   ringEvent     = "ono_jackie_phone",  -- extra WWise ring SFX layered on ("" = silent)
-  spawnDelay    = 5.0,   -- seconds after the call ends before Jackie spawns
-  spawnDistance = 18.0,  -- metres ahead of V he spawns at, then walks in as companion
+  spawnDelay    = 2.5,   -- seconds after the call ends before Jackie spawns (was 5.0; halved)
+  -- v0.34 VEHICLE ARRIVAL: when true, asking Jackie onto a gig makes him ride in on his bike
+  -- (spawn at distance behind V -> drive in -> dismount near you -> jog/walk up -> companion),
+  -- instead of the on-foot walk-in. Tuning lives in Config.vehicle below. The 6 s pre-spawn
+  -- delay below is the dramatic beat after you hang up before he appears.
+  arriveByVehicle      = true,
+  vehicleSpawnDelay    = 1.0,   -- seconds after the call ends before the bike+Jackie spawn
+  -- v0.31 SPAWN-AT-DISTANCE + WALK-IN:
+  -- He spawns this far from V, snapped onto the navmesh (NavigationSystem) so he never lands
+  -- inside a wall/object, then WALKS in. During the walk he is a PASSIVE NPC (no follower
+  -- role) so the companion catch-up TELEPORT can't skip the distance we put between you; he
+  -- becomes a real companion (combat + follow) only once he's within `handoffDistance` of V.
+  -- NOTE ON 100 m: that's near the edge of NPC render distance (~100 m) and a long city path.
+  -- At "Walk" 100 m is ~90 s, so the approach defaults to "Run" (~25-30 s). For a casual
+  -- stroll-up, drop spawnDistance to ~30-40 m and set approachMovement = "Walk".
+  -- v0.33c: hideOnSpawn CONFIRMED working (Antonia) -> back ON. The other two arrival vars
+  -- (spawnBehind, spawnDistance) + arriveDistance are now A/B-testable live from the CET window
+  -- ("Arrival test modes" buttons) so we can dial in the best feel. Values below are the
+  -- starting point; the buttons mutate them at runtime.
+  spawnDistance    = 80.0,   -- metres from V he spawns at (navmesh-snapped), then walks in
+  spawnBehind      = true,   -- spawn BEHIND V (confirmed good); button still toggles for testing
+  hideOnSpawn      = true,   -- ON (confirmed): hide through the spawn-pop + teleport, reveal at distance
+  approachMovement = "Run",  -- "Walk" | "Run" | "Sprint" -- how he covers the distance to V (a jog)
+  -- v0.33d: Sprint was too fast -> the "boost" is now a JOG (Run), same as the steady pace, so he
+  -- jogs the whole way in. (Engine has only discrete Walk/Run/Sprint tiers, no continuous speed.)
+  approachBoostSeconds  = 15.0,
+  approachBoostMovement = "Run",   -- jog (was "Sprint" - too fast over the approach)
+  arriveDistance   = 3.0,    -- metres from V the walk-in MoveTo aims to stop short of him
+  followDistance   = 1.6,    -- metres the COMPANION keeps after handoff (so he doesn't clip into V)
+  handoffDistance  = 6.0,    -- once this close, promote him to a real companion (combat + follow)
+  maxWalkSeconds   = 90.0,   -- safety: if he hasn't arrived by now, promote anyway (may teleport in)
+}
+
+-- ---- VEHICLE ARRIVAL (v0.34) ------------------------------------------------
+-- Validated in the standalone JackieVehicleTest harness, then folded in here. Jackie spawns on
+-- his Arch ~spawnDistance behind V, drives in at `cruiseSpeed` (re-targeting V's live position
+-- every `retargetInterval`s), STOPS the bike + dismounts at `dismountDistance`, SPRINTS until
+-- `sprintToWalk`, then WALKS the last stretch and becomes a companion at `arriveDistance`.
+-- NOTE: vanilla AI doesn't normally drive motorcycles, but it DOES drive Jackie's Arch on this
+-- build (confirmed in-game). If a patch breaks bike driving, swap bikeRecord for a car record.
+Config.vehicle = {
+  bikeRecord       = "Vehicle.v_sportbike2_arch_jackie_player",  -- Jackie's Arch
+  spawnDistance    = 80.0,   -- metres behind V the bike+Jackie spawn (random angle in rear arc)
+  cruiseSpeed      = 8.0,    -- drive speed (8 = careful; he was reckless at higher)
+  retargetInterval = 3.0,    -- re-issue the drive at V's latest position (longer = less re-path stutter)
+  dismountDistance = 40.0,   -- bike->V distance at which he parks the bike + gets off (was 20)
+  sprintToWalk     = 25.0,   -- Jackie->V distance where he downshifts sprint -> walk (last 25 m on foot)
+  arriveDistance   = 3.0,    -- Jackie->V distance: stop + become a companion
+  -- STUCK FAILSAFE: if the bike crawls (< stuckSpeed m/s) for stuckSustain s, after a
+  -- stuckGrace beat at the start (he's still climbing on), he parks early + sprints in on foot.
+  -- Covers dense areas where the bike can't path.
+  -- (loosened: he was ditching the bike almost always. Only TRULY stuck counts now.)
+  stuckSpeed       = 1.0,    -- m/s; below this = likely stuck (was 2.0)
+  stuckGrace       = 4.0,    -- seconds after mounting before stuck-detection starts (was 5)
+  stuckSustain     = 4.0,    -- seconds of crawling before he bails off the bike (was 2)
+  maxSeconds       = 120.0,  -- safety: force the companion handoff if the ride-in stalls
 }
 
 -- V's hang-up sign-offs. At the end of any call strand one of these is shown as V's last line
@@ -195,11 +476,20 @@ Config.callTree = {
     -- for variety. Pools seeded from the 777-line scan (tools/voice-tagger/classify_out.json);
     -- add more {text, sfx="jl_<id>"} freely — any id from audioware/JackieLives/index.json works.
     ring = {
+      -- Greeting when he picks up the call. `chance` on a line = rare independent roll for it;
+      -- the rest are picked uniformly (see pickPoolLine in init.lua). v0.34b adds the extra
+      -- call-appropriate greetings from docs/conversations.md (skipped the physical/face-to-face
+      -- ones - "Catch, chica!", "Huh?", "Leave it to me, I'm drivin'" - they don't fit a phone call).
       jackiePool = {
-        { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
         { text = "Talk to me, choomba.",                                         sfx = "jl_2239163066690486272" },
         { text = "Hey V - you alive? How's things in the viper pit?",            sfx = "jl_1691260805748551680" },
         { text = "Straight to biz, eh, chica?",                                  sfx = "jl_1777946122915868672" },
+        { text = "V, hey! Como te sientes?",                                     sfx = "jl_1867549271199477760" },
+        { text = "Que onda?",                                                    sfx = "jl_2015561179233951744" },
+        { text = "About time.",                                                  sfx = "jl_1934361222363238400" },
+        { text = "Gettin' one of my good feelings.",                             sfx = "jl_1834502468175589376" },
+        -- very rare, dark family humor (~1%):
+        { text = "Checkin' to see if I'm not rotting in some dumpster, like most o' the Welles boys?", sfx = "jl_2008332149470457856", chance = 0.01 },
       },
       choices = {
         { text = "Got a gig. You in?",       to = "gig"     },
@@ -218,9 +508,27 @@ Config.callTree = {
       },
     },
     gig = {
+      -- His "yeah, I'm in" reply. v0.34b adds the agreement pool from docs/conversations.md.
+      -- (Held back "Buen trabajo, V" = praise, and "Yeah, you too" = a reply line - both fit
+      -- elsewhere better than agreeing to a gig.)
       jackiePool = {
-        { text = "So let's do our thing.",  sfx = "jl_1762127358882361344" },
-        { text = "Hold on, V, I'm comin'.", sfx = "jl_1714251940705820672" },
+        { text = "So let's do our thing.",                sfx = "jl_1762127358882361344" },
+        { text = "Hold on, V, I'm comin'.",               sfx = "jl_1714251940705820672" },
+        { text = "Yeah, OK.",                             sfx = "jl_1883858553243889664" },
+        { text = "All right, all right, all right.",      sfx = "jl_1777953524587360256" },
+        { text = "Right on, chica.",                      sfx = "jl_1721407637774192672" },
+        { text = "You're all right.",                     sfx = "jl_1885197235896905728" },
+        { text = "Shit's finally happenin'...",           sfx = "jl_1989698661036924960" },
+        { text = "Too late to back out now. Come on, V.", sfx = "jl_1989698664946016264" },
+        { text = "And we'd best be quick.",               sfx = "jl_1616247819348959232" },
+        { text = "You comin'? Time's precious.",          sfx = "jl_1989698664979570696" },
+        { text = "So? You ready?",                        sfx = "jl_1902765821582520320" },
+        { text = "Got me right behind you.",              sfx = "jl_1679806464288055296" },
+        { text = "Si, si, me acuerdo.",                   sfx = "jl_1989559098138238976" },
+        { text = "Anyway, what's goin' on?",              sfx = "jl_1878047791342612480" },
+        { text = "We'll snap their necks before they realize.", sfx = "jl_1719792744366325760" },
+        -- rare (~5%):
+        { text = "Heh, City Hall should be fuckin' thankin' us!", sfx = "jl_1989660111004311552", chance = 0.05 },
       },
       choices = {
         { text = "Let's do it.", to = nil, action = "summon_arrival" },  -- -> farewell -> hang up -> spawn
@@ -229,33 +537,176 @@ Config.callTree = {
   },
 }
 
--- ---- locations ------------------------------------------------------------
--- Capture coords in-game with the "Capture current position" button, then paste
--- the printed line into the matching entry below. `pos = { x, y, z }`, yaw in degrees.
--- Leave pos = nil until captured (Jackie just won't idle-spawn there yet).
-Config.locations = {
-  -- captured 2026-06-16 (Antonia). sitNearest = true -> Jackie tries to sit on the nearest
-  -- chair/seat workspot once he idle-spawns here (see TODO: chair-sit feature).
-  noodle    = { name = "Noodle bar",          pos = { -1441.064, 1257.748, 23.090 }, yaw = -87.1, sitNearest = true },
-  -- Misty REPLACES Vik/Vic as a destination (Antonia). Captured 2026-06-16:
-  misty     = { name = "Misty's Esoterica",   pos = { -1541.072, 1195.238, 15.869 }, yaw = 50.9 },
-  coyote    = { name = "El Coyote Cojo",      pos = nil, yaw = 0.0 },
-  afterlife = { name = "Afterlife",           pos = nil, yaw = 0.0 },
-  -- captured 2026-06-16 for the native-box test (your standing spot in the test save):
-  test      = { name = "Test spot",           pos = { -854.737, 1833.329, 36.207 }, yaw = 44.4 },
+-- ---- free-roam wander (v0.35) ---------------------------------------------
+-- While idle-spawned at a scheduled location, Jackie walks between that location's
+-- `waypoints`: stands/sits/leans at one for a random dwell, then strolls to a RANDOM
+-- other point (never an immediate repeat, so he won't pace back-and-forth), and repeats.
+-- A location with a single waypoint just plants him there. He stays a PASSIVE NPC the
+-- whole time (no follower role) — wandering Jackie is not a companion.
+Config.wander = {
+  enabled         = true,
+  movement        = "Walk",   -- "Walk" | "Run" — how he strolls between points
+  arriveDist      = 1.5,      -- metres from a waypoint that counts as "arrived"
+  dwellMin        = 15.0,     -- seconds: shortest stand/sit at a point (per-wp override: dwell = {a,b})
+  dwellMax        = 45.0,     -- seconds: longest
+  repath          = 2.5,      -- re-issue the move every this many seconds while walking
+  arriveTimeout   = 30.0,     -- give up walking to a point after this long, dwell anyway
+  faceYawOnArrive = true,     -- snap onto the waypoint's exact spot + yaw on arrival (lean/sit framing)
 }
 
--- ---- daily schedule -------------------------------------------------------
--- One state per time-of-day block (24h game time). A block wraps past midnight
--- when endHour < startHour. state = "at_location" (needs locationKey) or "unavailable".
--- Mapping assumed from your note (daytime noodle → evening bar → nightlife → asleep);
--- swap the locationKeys if you want a different order.
-Config.schedule = {
-  { startHour = 8,  endHour = 14, state = "at_location", locationKey = "noodle"    },
-  { startHour = 14, endHour = 20, state = "at_location", locationKey = "coyote"    },
-  { startHour = 20, endHour = 2,  state = "at_location", locationKey = "afterlife" },
-  { startHour = 2,  endHour = 8,  state = "unavailable"                            },
+-- ---- locations ------------------------------------------------------------
+-- Capture coords in-game with the "Capture current position" button, then paste the
+-- printed line into the matching entry below. Each location has an ANCHOR (`pos`/`yaw` —
+-- where he first appears / falls back to) and an optional `waypoints` list he free-roams
+-- between. Per-waypoint: pos = {x,y,z}, yaw = deg, pose = "stand"|"sit"|"lean",
+-- dwell = {min,max} (optional, overrides Config.wander.dwell*).
+-- NOTE: pose "sit"/"lean" currently just plants him on the spot facing `yaw` — a real
+-- sit/lean WORKSPOT animation is a TODO, so the pose tags are forward-looking data.
+-- See docs/captured_positions.md for the human-readable tables.
+--
+-- OUTFITS (v0.36): each location carries an `appearance` — Jackie's AMM appearance name worn
+-- when he idle-spawns there. Antonia's wardrobe mapping:
+--   default              -> noodle, coyote, test, and the summon/arrival fallback
+--   default_collar_down  -> misty, afterlife, redwood
+--   Lizzies_club_no_jacket -> ginger (Ginger Panda; also Lizzie's once that spot is captured)
+--   suit                 -> reserved for a future "date" day (not used at a location yet)
+-- ⚠️ These must match the EXACT appearance strings AMM lists for Character.Jackie. If an outfit
+-- doesn't change in-game, open AMM's appearance list for Jackie and correct the name here.
+Config.defaultAppearance = "default"   -- worn on summon/arrival + any location with no `appearance`
+Config.locations = {
+  -- captured 2026-06-16 (Antonia). sitNearest kept for the future chair-sit feature.
+  noodle = {
+    name = "Noodle bar", appearance = "default", pos = { -1441.064, 1257.748, 23.090 }, yaw = -87.1, sitNearest = true,
+    waypoints = {
+      { pos = { -1441.064, 1257.748, 23.090 }, yaw = -87.1, pose = "sit" },
+    },
+  },
+
+  -- Misty REPLACES Vik/Vic as a destination (Antonia). Captured 2026-06-16.
+  misty = {
+    name = "Misty's Esoterica", appearance = "default_collar_down", pos = { -1541.072, 1195.238, 15.869 }, yaw = 50.9,
+    waypoints = {
+      { pos = { -1541.072, 1195.238, 15.869 }, yaw = 50.9, pose = "stand" },
+    },
+  },
+
+  -- El Coyote Cojo (Mama Welles' bar). Captured 2026-06-17.
+  coyote = {
+    name = "El Coyote Cojo", appearance = "default", pos = { -1262.463, -1002.345, 12.037 }, yaw = -50.9,
+    waypoints = {
+      { pos = { -1262.463, -1002.345, 12.037 }, yaw = -50.9, pose = "lean"  },  -- right of bar
+      { pos = { -1243.806,  -993.222, 12.505 }, yaw = -79.2, pose = "stand" },  -- arcade station
+      { pos = { -1257.939,  -987.950, 16.038 }, yaw =  64.1, pose = "sit"   },  -- upstairs table
+      { pos = { -1267.961,  -990.652, 16.027 }, yaw = 175.8, pose = "stand" },  -- upstairs vending
+      { pos = { -1263.294,  -996.467, 16.017 }, yaw = -80.0, pose = "lean"  },  -- upstairs railing
+      { pos = { -1262.646,  -984.029, 12.037 }, yaw =   6.5, pose = "lean"  },  -- outside door
+    },
+  },
+
+  -- Afterlife (merc legends bar, night). Captured 2026-06-17.
+  afterlife = {
+    name = "Afterlife", appearance = "default_collar_down", pos = { -1457.063, 1018.598, 16.524 }, yaw = -96.9,
+    waypoints = {
+      { pos = { -1457.063, 1018.598, 16.524 }, yaw =  -96.9, pose = "lean"  },  -- near entrance
+      { pos = { -1441.141, 1011.210, 16.532 }, yaw =  147.1, pose = "sit"   },  -- bar left
+      { pos = { -1444.870, 1034.471, 16.923 }, yaw =   54.9, pose = "stand" },  -- alcove, watching
+      { pos = { -1454.586, 1009.834, 16.500 }, yaw =   65.3, pose = "stand" },  -- watching dancers
+      { pos = { -1450.311, 1012.359, 16.522 }, yaw = -164.2, pose = "sit"   },  -- bar right
+    },
+  },
+
+  -- Ginger Panda + Redwood: in the active2/active3 day schedules. Ginger Panda waypoints 2-7
+  -- are the "Any Austin" walk-in-circles easter egg (ordered-loop mode is a TODO; random-roam now).
+  ginger = {
+    name = "Ginger Panda", appearance = "Lizzies_club_no_jacket", pos = { -485.426, 576.939, 31.302 }, yaw = -17.1,
+    waypoints = {
+      { pos = { -485.426, 576.939, 31.302 }, yaw =  -17.1, pose = "sit", dwell = { 60, 120 } },  -- bar
+      { pos = { -491.638, 592.985, 31.802 }, yaw = -113.3, pose = "stand" },
+      { pos = { -483.382, 588.253, 31.802 }, yaw = -153.4, pose = "stand" },
+      { pos = { -475.878, 581.170, 31.802 }, yaw = -174.1, pose = "stand" },
+      { pos = { -485.072, 570.963, 31.802 }, yaw =  113.3, pose = "stand" },
+      { pos = { -494.347, 576.980, 31.802 }, yaw =  -82.7, pose = "stand" },
+      { pos = { -496.151, 584.078, 31.802 }, yaw =  -36.3, pose = "stand" },
+    },
+  },
+
+  redwood = {
+    name = "Redwood Market", appearance = "default_collar_down", pos = { -402.802, 710.778, 123.000 }, yaw = 108.1,
+    waypoints = {
+      { pos = { -402.802, 710.778, 123.000 }, yaw = 108.1, pose = "lean"  },  -- upstairs view
+      { pos = { -422.418, 700.581, 114.999 }, yaw =  58.9, pose = "stand" },  -- bridge
+      { pos = { -448.024, 685.905, 115.028 }, yaw = 106.2, pose = "stand" },  -- coffee vendor
+      { pos = { -431.550, 669.948, 115.010 }, yaw = -33.5, pose = "stand" },  -- noodle place
+    },
+  },
+
+  -- captured 2026-06-16 for the native-box test (your standing spot in the test save):
+  test = { name = "Test spot", pos = { -854.737, 1833.329, 36.207 }, yaw = 44.4 },
 }
+
+-- ---- daily schedules (v0.36: 5 day-types, shuffled) -----------------------
+-- One state per time-of-day block (24h game time). A block wraps past midnight when
+-- endHour < startHour. state = "at_location" (needs locationKey) or "unavailable".
+--
+-- DESIGN: Jackie does NOT visit every location every day. There are 5 DAY-TYPES; init.lua
+-- keeps a SHUFFLE BAG of them (Config.dayBag) — each new in-game day pops the next entry, and
+-- when the bag empties it reshuffles. So over every 5-day cycle each day-type is used exactly
+-- once (none skipped) in random order, and the 3 active days come up in no fixed sequence.
+--   active1 / active2 / active3 — full days, each visiting only 2-3 DIFFERENT locations, so
+--                                 over the 3 of them all six spots get covered. Each keeps the
+--                                 6h asleep + 8h at-home (off-map) unavailability rule (= 10h out).
+--   quiet  — a low-key day: ONLY Misty's + El Coyote + lots of home (mostly unavailable).
+--   gone   — he's nowhere to be found: unavailable the entire 24h.
+Config.daySchedules = {
+  -- ACTIVE 1 — Heywood bars (afterlife / noodle / coyote)
+  active1 = {
+    { startHour = 0,  endHour = 2,  state = "at_location", locationKey = "afterlife" },
+    { startHour = 2,  endHour = 8,  state = "unavailable"                            },  -- asleep (6h)
+    { startHour = 8,  endHour = 12, state = "at_location", locationKey = "noodle"    },
+    { startHour = 12, endHour = 16, state = "unavailable"                            },  -- home (4h)
+    { startHour = 16, endHour = 20, state = "at_location", locationKey = "coyote"    },
+    { startHour = 20, endHour = 24, state = "unavailable"                            },  -- home (4h)
+  },
+  -- ACTIVE 2 — uptown (misty / redwood / ginger)
+  active2 = {
+    { startHour = 22, endHour = 2,  state = "at_location", locationKey = "misty"     },  -- wraps midnight
+    { startHour = 2,  endHour = 8,  state = "unavailable"                            },  -- asleep (6h)
+    { startHour = 8,  endHour = 12, state = "unavailable"                            },  -- home (4h)
+    { startHour = 12, endHour = 15, state = "at_location", locationKey = "redwood"   },
+    { startHour = 15, endHour = 18, state = "at_location", locationKey = "ginger"    },
+    { startHour = 18, endHour = 22, state = "unavailable"                            },  -- home (4h)
+  },
+  -- ACTIVE 3 — mix (afterlife / ginger / coyote)
+  active3 = {
+    { startHour = 0,  endHour = 2,  state = "at_location", locationKey = "afterlife" },
+    { startHour = 2,  endHour = 8,  state = "unavailable"                            },  -- asleep (6h)
+    { startHour = 8,  endHour = 11, state = "at_location", locationKey = "ginger"    },
+    { startHour = 11, endHour = 16, state = "unavailable"                            },  -- home (5h)
+    { startHour = 16, endHour = 18, state = "at_location", locationKey = "coyote"    },
+    { startHour = 18, endHour = 21, state = "at_location", locationKey = "afterlife" },
+    { startHour = 21, endHour = 24, state = "unavailable"                            },  -- home (3h)
+  },
+  -- QUIET — only Misty's + El Coyote, mostly home
+  quiet = {
+    { startHour = 0,  endHour = 2,  state = "unavailable"                            },  -- home (2h)
+    { startHour = 2,  endHour = 8,  state = "unavailable"                            },  -- asleep (6h)
+    { startHour = 8,  endHour = 15, state = "unavailable"                            },  -- home (7h)
+    { startHour = 15, endHour = 17, state = "at_location", locationKey = "misty"     },
+    { startHour = 17, endHour = 19, state = "at_location", locationKey = "coyote"    },
+    { startHour = 19, endHour = 24, state = "unavailable"                            },  -- home (5h)
+  },
+  -- GONE — out of town; never appears all day
+  gone = {
+    { startHour = 0,  endHour = 24, state = "unavailable" },
+  },
+}
+
+-- The shuffle bag. init.lua plays these in a random order, one per in-game day, each exactly
+-- once per cycle, then reshuffles. Add/remove day-types here to change the rotation.
+Config.dayBag = { "active1", "active2", "active3", "quiet", "gone" }
+
+-- Fallback day-type used if the day system can't read the game day for some reason.
+Config.fallbackDay = "active1"
 
 -- ---- main-quest ban -------------------------------------------------------
 -- When V is on a main quest, summoning is declined. MVP: detection is stubbed;

@@ -2,6 +2,244 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.36 — 5 SHUFFLED day-types + per-location OUTFITS (BUILT, awaiting test, 2026-06-17)
+Jackie no longer visits every location every day, and dresses for the venue.
+
+**Day rotation (`Config.daySchedules` + `Config.dayBag`, logic in init.lua):** 5 day-types in a SHUFFLE
+BAG — each new in-game day pops the next, reshuffling when empty, so every 5-day cycle uses each type
+exactly once (no skips) in random order.
+- `active1` (afterlife/noodle/coyote) · `active2` (misty/redwood/ginger) · `active3` (afterlife/ginger/
+  coyote) — full days, each only 2-3 DIFFERENT locations; across the three, all six spots are covered.
+  Each keeps 6h asleep + 8h home = 10h out.
+- `quiet` — only Misty's + El Coyote + lots of home (mostly unavailable).
+- `gone` — out of town, unavailable the entire 24h.
+- **Day rollover = game-hour WRAP** (`ensureDayTemplate`: current hour < last → passed midnight → pop
+  next day-type). Chosen over reading a "day" field because `getGameHour` is the confirmed-working time
+  signal on this build, and time only ever moves forward (sleeping/fast-travel included). RNG seeded at
+  `onInit`. CET window shows `Day-type: <key>` + a **"Cycle day-type"** debug button to jump days instantly.
+
+**Per-location outfits (`Config.locations[*].appearance`, threaded through `ammSpawn(flag, appearance)`):**
+Jackie idle-spawns wearing the venue's outfit — `default` (noodle/coyote), `suit` (misty = his "date"
+look), `Lizzies_club_no_jacket` (ginger), `default_collar_down` (afterlife/redwood). Summon/arrival use
+`Config.defaultAppearance` ("default").
+- ⚠️ **These appearance strings must match AMM's EXACT names for Character.Jackie.** If an outfit doesn't
+  change in-game, open AMM's appearance list for Jackie and correct the names in `Config.locations`.
+- Note: Lizzie's Bar itself isn't a captured location yet — the `Lizzies_club_no_jacket` outfit currently
+  only appears at Ginger Panda. Capture Lizzie's coords later to add it.
+
+- [ ] **TEST (Antonia):** (1) use "Cycle day-type" to walk through all 5 — confirm active days hit only
+      their 2-3 spots, `quiet` is sparse, `gone` never spawns him. (2) Sleep past midnight a few times →
+      console logs `New day -> schedule '<key>'`, and over 5 days each type appears once. (3) Check each
+      location shows the right outfit; report any that don't so I fix the appearance name.
+
+## 🆕 v0.35 — FREE-ROAM WANDER + full schedule (BUILT, awaiting test, 2026-06-17)
+Idle Jackie now **walks around** his scheduled location instead of standing on one spot, and the daily
+schedule is rebuilt around Antonia's **6h asleep + 8h "at home" (off-map)** unavailability rule.
+
+**Wander (`Config.wander` + `wanderTick` in init.lua):**
+- Each location has `waypoints` (pos/yaw/pose, optional per-wp `dwell={min,max}`). State machine per idle
+  spawn: **place** him on a random waypoint (AI-teleport, settle 0.6 s) → **dwell** a random `dwellMin..Max`
+  (15–45 s) → walk (`sendMoveToPoint`, the same passive-NPC `AIMoveToCommand` the walk-in/walk-off use) to a
+  **random OTHER** waypoint (`pickNextWaypoint` never repeats the current → no back-and-forth pacing) →
+  dwell → repeat. Re-issues the move every `repath` (2.5 s); `arriveTimeout` (30 s) failsafe. Single-waypoint
+  locations (noodle, misty) just plant him there. He stays PASSIVE throughout (not a follower).
+- **pose = sit/lean is DATA ONLY for now.** `applyIdlePose` snaps him onto the exact spot facing the captured
+  `yaw` (so a "lean" point faces the wall), but a **real sit/lean WORKSPOT animation is still a TODO** (the
+  hard part — see the chair-sit note below). "stand" and "sit"/"lean" look identical at this stage.
+- CET window shows `Wander: <phase>  wp <cur>/<tgt>` while idle for debugging.
+
+**Schedule (`Config.schedule`):** 14h unavailable (6h sleep + 8h home), 10h spread across the map so you
+bump into him at varied times:
+`00–02 Afterlife · 02–08 ASLEEP · 08–12 Noodle · 12–16 HOME · 16–18 Misty's · 18–20 El Coyote · 20–24 HOME`.
+
+**Coords:** all of session-3's captures formatted into `docs/captured_positions.md` and wired into
+`Config.locations` with waypoints — `coyote` (6 pts) + `afterlife` (5 pts) now have real coords (were nil);
+new `ginger` (Ginger Panda, 7 pts incl. the "Any Austin" circle) + `redwood` (Redwood Market, 4 pts) added
+but NOT in the daily schedule yet (swap in freely).
+
+- [ ] **TEST (Antonia):** be near a scheduled location in its time window → Jackie spawns, walks between the
+      waypoints, dwells, faces the right way at each. Watch the CET `Wander:` line. Report if he gets stuck,
+      teleports oddly, or a waypoint is off (clipping/floating).
+- [ ] **NEXT — real sit/lean workspot** in `applyIdlePose` (TODO marker in init.lua). Folds together with the
+      old `sitNearest` chair-sit task below. Needs in-game workspot-API testing, not built blind.
+- [ ] **NEXT — Ginger Panda ordered-loop** ("Any Austin" easter egg): walk waypoints 2→7 in order, loop ~3×,
+      then long dwell at the bar. Add a `mode = "loop"` branch to `pickNextWaypoint`/`wanderTick`.
+
+This closes the session-2 carryovers: **misty now has a schedule slot** (16–18), and **coyote/afterlife
+coords captured + placed**. (Chair-sit + follow/dismiss-via-dialogue still open.)
+
+## 🆕 v0.33 — dismiss-by-dialogue + centered picker + arrow-key cycling (DEPLOYED, awaiting test, 2026-06-16)
+Three follow-ups after the v0.32 location-trees test (cooldown + everywhere confirmed working in-game).
+
+1. **"Send Jackie off" dialogue option (walk away → despawn at 30 m).** New `Config.dismiss` block. While
+   Jackie is your **companion**, `withCompanionExtras()` appends a `dismiss_walkaway` choice to EVERY talk
+   node (so it's always reachable; the everywhere-tree cooldown is also bypassed while he's active). Picking
+   it ends the talk → `runCallAction("dismiss_walkaway")` → `startLeaving()`:
+   - Drops his follower role the same way AMM does (`GetAIRole():OnRoleCleared(h)` + `isPlayerCompanionCached
+     = false`) so the companion AI stops pulling him back (this was the key — a still-following NPC would never
+     reach the despawn distance).
+   - Plays a parting VO line (`jl_1155727714874494976` "Time we were on our way, mamita.").
+   - `sendMoveToPoint()` (new generic AIMoveToCommand to an arbitrary point) walks him to `awayPoint()` — a
+     spot past V→Jackie direction. `leavingTick()` re-issues every 1.5 s and **despawns at `despawnDistance`
+     (30 m) or after `maxSeconds` (30 s)**. Instant `dismissJackie`/`dismissAllJackies` hotkeys now also clear
+     the leaving state.
+   - [ ] **TEST:** summon Jackie → talk → pick "Head home, Jackie" → he says his line, walks off, vanishes ~30 m out.
+
+2. **Dialogue picker centered + lower.** `drawDialogueBox()` now reads `ImGui.GetDisplaySize()` and sets the
+   box X to screen-centre (`(sw-W)/2`) and Y to `sh*0.46` (a bit below mid-screen; was a fixed 340,360).
+   Falls back to 1920×1080 if display size can't be read.
+   - [ ] **TEST:** the choice box sits centered, slightly low.
+
+3. **Arrow-key cycling by default (no binding).** OnAction hook now moves the highlight on `CYCLE_UP_ACTIONS`
+   / `CYCLE_DOWN_ACTIONS` (candidate CNames for ↑/↓). `Config.dialogue.cycleHint` = "Up/Dn".
+   - ⚠️ **CAVEAT (honest):** CET can't read raw keys during gameplay (overlay closed), so this relies on the
+     game emitting an *input action* for the arrows — and arrows may be UNBOUND in the gameplay context. So
+     `Config.dialogue.cycleDebug = true` logs every action name pressed while the box is open (`[JackieLives]
+     CYCLE action: <name>`). The bound **"Jackie dialogue: next choice"** input (Antonia's `-`) still works as
+     the guaranteed fallback.
+   - [ ] **TEST + REPORT:** open a Jackie convo, press ↑/↓, read the CET console. If `CYCLE action:` lines
+     appear with the arrows → paste the exact names so I lock them (and turn cycleDebug off). If NOTHING logs
+     on arrows → they emit no action on this build; fallback plan = bind arrows once in CET, or switch cycle to
+     a key that fires in gameplay (mouse-wheel / a movement key).
+
+## 🆕 v0.33b — holocall-summon REVERT + walk-in speed boost (DEPLOYED, 2026-06-16)
+**Problem (Antonia's test):** holocall summon regressed — after hang-up Jackie spawned **visibly in V's face,
+then vanished**. Cause = the unfinished spawn-at-distance *polish pass* still active in `Config.call`:
+`hideOnSpawn=true` (ToggleVisuals is one-way-broken on this build → the reveal never fired → "vanished"),
+`spawnBehind=true` (couldn't see him), `spawnDistance=60` (render-edge). **Resolution = pure CONFIG revert to
+the test-3 known-working values — no change to the shared `arrivalTick` code (other session owns it):**
+- `spawnDistance` 60→**40**, `spawnBehind` true→**false**, `hideOnSpawn` true→**false**, `arriveDistance`
+  1.6→**3.0**. (`arrivalTick` already honors `== false` on those flags, so OFF = old visible-in-front walk-in.)
+- Flags KEPT in config (default off) so the polish can return once ToggleVisuals + the far navmesh point are fixed.
+- **Speed boost (new):** `Config.call.approachBoostSeconds=15` + `approachBoostMovement="Sprint"`. New
+  `arrivalMoveType()` returns the boosted tier for the first 15 s of the walk-in (timer `JL.arrival.walkStart`),
+  then settles to `approachMovement` ("Run"). NOTE: engine uses discrete Walk/Run/Sprint tiers, so this is
+  ~1.5× "Run", not a literal 1.5× multiplier (no continuous speed lever via AIMoveToCommand).
+- [ ] **TEST:** call Jackie → ask onto gig → hang up → he spawns ~40 m in FRONT, visible, sprints in ~15 s, settles.
+
+**v0.33c (DEPLOYED, 2026-06-16):** `hideOnSpawn` CONFIRMED working → back ON. Added 3 live A/B toggle
+buttons to the CET window ("Arrival test modes") that mutate `Config.call` at runtime: (1) spawnBehind
+in front/behind, (2) spawnDistance cycle 20/40/60/80/100, (3) arriveDistance ON 3.0 m / OFF (walks into V).
+Labels show current state. → Antonia dials in the best combo, reports the 3 values, then bake as defaults.
+NOTE: handoff at `handoffDistance` (6 m) promotes him to companion mid-walk, so `arriveDistance` < 6 has
+little visible effect unless we also gate the handoff behind it (offered).
+
+## 🆕 v0.33d — arrival polish: 80 m, jog, flash fix, versioned deploy (DEPLOYED, 2026-06-16)
+- `Config.version = "0.33d"` added; `deploy.ps1` greps it and prints `=== Deploying JackieLives v0.33d ===`
+  (+ closing line); `init.lua` onInit now logs `Loaded v<version>` instead of a stale hardcode.
+- `spawnDistance` 40→**80 m**; `spawnBehind` default **true** (confirmed good; button still toggles).
+- Speed: Sprint felt too fast → `approachBoostMovement` "Sprint"→**"Run" (jog)**, so he jogs the whole way
+  (discrete Walk/Run/Sprint only; no continuous multiplier).
+- **Spawn-in-face FLASH fixed.** Root cause: AMM spawns him 1 m in front of V and sets `spawn.handle` several
+  frames late (Cron poll), and the old hide fired ONCE — a `ToggleVisuals(false)` before visuals attach
+  no-ops, so he popped visible. Fix in `arrivalTick`: resolve the entity early via `spawn.entityID`
+  (`Game.FindEntityByID`), attempt an immediate same-frame hide, and **re-apply the hide every tick until
+  reveal**; placeAt delay 0.8→0.5 s. If a 1-frame blip ever remains, the bulletproof option is spawning at
+  the 80 m point directly (other session's spawn-at-distance territory).
+- [ ] **TEST:** call → gig → hang up → he spawns hidden behind V at 80 m, jogs in, no visible pop near V.
+
+## 🆕 v0.32 — LOCATION-BASED branching talk trees (DEPLOYED, awaiting test, 2026-06-16)
+Face-to-face talk (press **F** on Jackie) now picks a branching tree based on **where he currently is**,
+instead of one linear banter. New `Config.locationDialogue` with 5 trees:
+- `noodle` / `coyote` / `afterlife` / `misty` — each ~5 nodes, location-flavored (food / Mama Welles +
+  drinks / merc-legends bittersweet / Misty + spiritual). Each opener uses a random `jackiePool` line for
+  variety; choices branch to a "side gig" or a warm farewell. Repeatable (no cooldown).
+- `everywhere` — the **BACKUP**, used whenever he's NOT at a named place (summoned/following, or an
+  unscheduled/`test` spot). Deliberately short: **2 choices, short voice lines**. Carries
+  `cooldownSeconds = 60`: finishing it once marks it **DONE** and starts a 60 s cooldown; pressing F again
+  inside that window **just grunts** (no dialogue). After 60 s the short exchange is available again.
+- [x] All 20 voice-line IDs verified present in `audioware/JackieLives/index.json` (real Jackie VO).
+- [ ] **TEST in-game (Antonia):** at each location press F → correct themed tree; away from any place → the
+      short backup; finish backup, press F within 60 s → grunt only; after 60 s → backup returns.
+
+How it works (init.lua):
+- `currentTalkTree()` reads `JL.idle.locationKey` → `Config.locationDialogue[key]`, else `everywhere`.
+- `Branch.kick()` now returns a bool (started?) and enforces the DONE cooldown via `JL.talkDone[key]`.
+- F hook reordered: try `Branch.kick()` first; only grunt (`talkToJackie`) if no convo started. This also
+  fixes the old grunt+dialogue audio overlap on the first F press, and is what makes the cooldown "just
+  grunt" behavior fall out for free.
+- Conversation-end stamps `JL.talkDone[key]` when the finished tree had `cooldownSeconds`.
+
+Problem & resolution:
+- *Problem:* needed Jackie's spoken lines to match real VO but be location-specific. *Resolution:* kept
+  Jackie's spoken lines generic-but-fitting (real verified `jl_<id>` clips) and put all the location flavor
+  in the **silent V choice text** (no V audio exists, so choices are free to say anything).
+
+## 🆕 SPAWN-AT-DISTANCE WALK-IN — holocall arrival rework (DEPLOYED, awaiting test, 2026-06-16)
+Replaces the old "spawn 1 m from V → naive teleport forward" arrival (which kept dumping Jackie at V's
+face) with a navmesh-validated spawn-at-distance + walk-in. Research in `docs/spawn_at_distance_research.md`.
+New `Config.call` knobs: `spawnDistance` (60), `spawnBehind` (true), `hideOnSpawn` (true),
+`approachMovement` ("Run"), `arriveDistance`, `handoffDistance` (6), `maxWalkSeconds` (90); `spawnDelay` 5→2.5.
+Flow (in `init.lua` `arrivalTick`, all `[JackieLives] Call:` logged):
+1. **Navmesh point** — `navmeshArrivalPoint()` sweeps 12 headings × 3 distances, snapping each candidate via
+   `NavigationSystem:GetNearestNavmeshPointBelowOnlyHumanNavmesh` (returns Vector4 directly → clean CET call,
+   no out-param/enum). Falls back to the plain forward point if no navmesh hit (logged).
+2. **Passive spawn** — `ammSpawn(0)`. **KEY FIX:** `ammSpawn` now forces `amm.userSettings.spawnAsCompanion =
+   (flag == 1)`. It was only ever set TRUE and never reset, so every "passive" arrival after a companion summon
+   was still a companion → follower role → **catch-up teleport to V's face**. THAT was the teleport-to-face bug.
+3. **Place + walk** — **TELEPORT FIX (after test 2):** `GetTeleportationFacility():Teleport` was confirmed to
+   silently no-op on the fresh NPC (console: "after place, Jackie is 1.9 m from V" despite a good 40 m navmesh
+   point). Switched to `AITeleportCommand{ doNavTest=true }` via the AI controller (`aiTeleport()`), verified on
+   a LATER tick (0.7 s — reading position the same frame as Teleport returns the stale spot). Then
+   `sendMoveToPlayer()` = `AIMoveToCommand` to V's CURRENT coords, **re-issued every 2 s** (Antonia's design —
+   manual follow, no companion semantics → no teleport).
+4. **Handoff** — when within `handoffDistance` (or after `maxWalkSeconds`), `promoteToCompanion()` gives him the
+   real follower role (combat + auto-follow). Teleport powers only return when he's already next to V.
+- [x] **WORKING (test 3, 2026-06-16).** AI-command teleport fixed the placement: Jackie spawns ~40 m away and
+      a passive NPC DOES obey `AIMoveToCommand` (walks in to V). Confirmed the whole pipeline.
+- [x] **Polish pass (DEPLOYED, awaiting test):** (a) **spawn BEHIND V** — `navmeshArrivalPoint` now bases the
+      sweep on V's BACKWARD direction + a random angle within the rear 180° arc (`Config.call.spawnBehind`,
+      RNG seeded per session). (b) **60 m** (`spawnDistance` 40→60). (c) **hide the spawn pop** —
+      `Config.call.hideOnSpawn`: `setVisible()` = `entity:ToggleVisuals(false)` the instant his handle exists,
+      reveal at distance after the teleport verifies. Console logs `Call: Jackie hidden during placement.` /
+      `Call: Jackie revealed at distance.` — if those are MISSING, `ToggleVisuals` isn't the right method on this
+      build → fall back to an invisibility status effect.
+- [~] **Speed FIX (DEPLOYED, awaiting test):** he walked slowly despite `approachMovement = "Run"`. Cause =
+      assigning a raw STRING to the command's `movementType` enum field silently falls back to Walk(0). Added
+      `resolveMoveType()` (string → `moveMovementType` enum, `Enum.new` fallback, then string) and use it in
+      both `sendMoveToPlayer` (walk-in) and `sendWalkToPlayer` (companion follow). If he STILL walks, the AI is
+      clamping a passive NPC to walk → fallback: spawn companion + raise TweakDB `catchUpTeleportDistance`
+      (companions run to keep up), or set an alerted move state.
+- [~] **Stop-distance FIX (DEPLOYED, awaiting test):** he clipped INTO V. `arriveDistance` 3.0→**1.6** (walk-in
+      MoveTo stop) + new `followDistance` **1.6** applied as a companion `AIFollowTargetCommand` in
+      `promoteToCompanion` (the handoff at 6 m means the COMPANION drives the final approach, so its follow
+      spacing is the real lever for not crowding V).
+- [ ] Plan B if a passive NPC ever stops obeying moves: spawn companion + raise TweakDB
+      `IdleActions.MoveOnSplineWithCompanionParams.catchUpTeleportDistance` (default 20) to suppress the teleport.
+- [ ] Once reliable: dial `spawnDistance`/`approachMovement` to taste (40 m Run ≈ 12 s; 100 m is render-edge).
+
+## 🆕 v0.31 — LIP MOVEMENT / talk animation (Tier 1 immersion gap, started 2026-06-16)
+**Problem:** Jackie's mouth doesn't move when he speaks. Real CP2077 lipsync is JALI-baked into `.scene`
+files; we play barks/lines via raw `AudioSystem:Play` / Audioware, which carry NO facial data, so his face
+is frozen. No public JALI tool, so true phoneme lipsync for CUSTOM lines is off the table. Target = the
+ambient-NPC **generic mouth-flap loop** (reads as talking; not word-synced).
+**Staged plan (Antonia + Claude, 2026-06-16):**
+- [x] **Phase 0 — PROBE (DONE, ran in-game 2026-06-16 → `facial_methods.txt`).** `runFacialProbe()` + UI
+      button + `jl_facial` hotkey. Codeware `Reflection` dump + LIVE component dump of summoned Jackie.
+      **KEY FINDING (memory: jackie-facial-rig-runtime):** his **face rig is fully intact** — frozen mouth is
+      a *driver* problem, not a missing part. Live components include `face_rig`, `man_face_base_animations`,
+      `[35] entAnimationControllerComponent`, `[17] scnVoicesetComponent`, jaw/teeth/head/eyes. Raw
+      `AudioSystem:Play`/Audioware carries no facial data → mouth never moves. **Runtime drivers exist WITHOUT
+      WolvenKit:** `entAnimationControllerComponent` (push anim events = flap), `scnVoicesetComponent`
+      (voiceset VO with baked lipsync = Option B), plus `gameObject.ReplicateAnimEvent`/`ReplicateAnimFeature`
+      and `NPCPuppet.PlayVOOnPlayerOrPlayerCompanion`/`PlayVOOnSquadMembers`. The workspot SYSTEM class was
+      **NOT FOUND** (`gameWorkspotSystem`/`WorkspotGameSystem`) → heavy workspot+redscript route demoted to fallback.
+- [ ] **Phase 0b — ROUND-2 PROBE (BUILT, awaiting run).** `PROBE_FACIAL_CLASSES` updated with the exact class
+      names from the live dump (`entAnimationControllerComponent`, `scnVoicesetComponent`,
+      `entAnimationSetupExtensionComponent`, `entAnimatedComponent`) + real workspot-system guesses
+      (`gameWorkspotGameSystem`/`gameIWorkspotGameSystem`/…). **Antonia: reload mods, summon Jackie, click the
+      probe again, share `facial_methods.txt`.** Goal: the exact method that pushes a facial/talk anim event,
+      and the voiceset play method.
+- [ ] **Phase 1 — MVP mouth-flap (NO WolvenKit, route from Phase 0b).** Two pure-runtime candidates, try in
+      order: **(1) anim-event flap** — push a generic "talk" facial anim event via Jackie's
+      `entAnimationControllerComponent` / `ReplicateAnimEvent` on line-start, stop on line-end; wire into the
+      existing dialogue runner (`speakJackieLine`/`dialogueTick`). **(2) voiceset** — drive
+      `scnVoicesetComponent` for real lipsync on his canned lines (also = Phase 2 / Option B). Workspot+redscript
+      is the FALLBACK only if both fail. Each step needs a live "watch his mouth" test.
+- [ ] **Phase 2 — Option B real lipsync (LAYER ON TOP, later).** Where they fit, swap custom barks for
+      VANILLA Jackie scene lines, which carry baked JALI lipsync for free. Additive to Phase 1, not a replace.
+- [skip] Authoring real `.scene` lipsync by hand — no JALI tool, effort ≫ payoff.
+
 ## 🆕 v0.28 — HOLOCALL "Call Jackie onto a gig" (BUILT, awaiting in-game test, 2026-06-16)
 Reuses the working voiced dialogue engine + AMM summon AS a phone call — **not** the native phone UI,
 so **no death flag / contact unlock is needed** (see "death flag" note below). New in `config.lua`:
@@ -521,3 +759,75 @@ exact action CName) -> add it to `INTERACT_ACTIONS` in init.lua. These are the n
       Recommend (b): one module gives the moving box AND F together. Need to verify the exact 2.3 ChoiceHub
       API before shipping (no blind guess). Captured test coords saved in `config.locations.test`
       (`{-854.737, 1833.329, 36.207}`, yaw 44.4).
+
+## Vehicle arrival (Jackie on his bike)
+- [x] 2026-06-17 — **Research done** (`docs/vehicle_arrival_research.md`): verified the spawn
+      (DynamicEntitySystem), mount (`AIMountCommand` → `seat_front_left`, AMM recipe), and drive
+      (`AIVehicleDriveToPointAutonomousCommand` wrapped in `AINPCCommandEvent`, **queued to the
+      VEHICLE not the driver**). Jackie's Arch = `Vehicle.v_sportbike2_arch_jackie_player`.
+- [x] 2026-06-17 — **Built `mod/JackieVehicleTest/`** (standalone, like JackieFacialTest/WorkspotTest):
+      one button per Antonia's step plan (0 probe → 1 spawn both → 2 mount → 3 spawn-on-bike → 4 drive
+      → 5 unmount → 6 spawn-at-distance + drive). BIKE⇄CAR toggle. Deployed to the CET mods folder.
+- [ ] **IN-GAME TEST (Antonia):** open CET overlay → "Jackie Vehicle Test" panel → press PROBE,
+      paste the [JKVeh] lines to Claude. Then walk steps 1→6 ON A ROAD. Report what each does.
+- [ ] **Decision pending on the bike-AI limitation:** vanilla AI does NOT drive motorcycles (no
+      mod ever has; Jackie's prologue ride is a hand-authored cutscene). If step 4 fails on the bike
+      but a CAR drives (toggle), the pipeline is proven and the bike arrival must be **faked**
+      (spawn near/out-of-sight + scripted ride-in/dismount). Don't pre-build either path — wait on
+      the test result.
+
+### Problems & Resolutions (vehicle arrival)
+- **P:** Vehicle drive commands ignored when sent to the driver puppet's AIControllerComponent.
+  **R:** They must be `QueueEvent`'d onto the VEHICLE handle (the puppet channel only takes on-foot
+  commands). Mount the driver into `seat_front_left` first or the drive task bails (`IsDriver` check).
+
+- [x] 2026-06-17 — **IN-GAME TEST PASSED.** PROBE all OK. Spawn/mount/spawn-on-bike/drive/unmount
+      all work. **The bike DOES drive** (better than the research feared — vanilla-AI bike-riding works
+      for Jackie's Arch on this build). Refined per Antonia: bike drove too fast/recklessly. Added a
+      **ride-in state machine**: drive at a configurable cruise speed (default 12, button cycles
+      8/12/16/22) → at 20 m from V, STOP the bike + Jackie dismounts → sprint → at 10 m downshift to a
+      walk → stop ~2 m from V. Step 6 now does the full spawn-at-distance → ride → dismount → walk.
+- [ ] **Open: Jackie's Arch livery.** The bike-record cycle (`v_sportbike2_arch_jackie_player` +2
+      variants) doesn't show the iconic Arch look Antonia expects. Need to confirm the right record /
+      appearance — read the record string shown in the panel and report which index looks correct.
+- [ ] **Next:** once the ride-in feel is dialed in, fold a cleaned-up version into JackieLives as a
+      "vehicle arrival" option for the holocall summon (alongside the existing walk-in arrival).
+
+- [x] 2026-06-17 — **Test-mod refinements** (per Antonia's 5-test feedback): default cruise speed 8,
+      80 m spawn, spawn at a RANDOM ANGLE BEHIND V (rearArrivalPoint), sprint→walk threshold 15 m
+      (was 10), stop + become companion at 3 m. Deployed.
+- [x] 2026-06-17 — **INTEGRATED vehicle arrival into JackieLives (v0.34).** `Config.call.arriveByVehicle`
+      (on) routes the holocall "ask onto a gig" choice to a bike ride-in instead of the walk-in.
+      Pipeline (`vehicleArrivalTick`): 6 s after hang-up → spawn bike + Jackie at a random rear point
+      80 m out → mount → drive in at speed 8, **re-targeting V's live position every 2 s** → stop +
+      dismount at 20 m → sprint to 15 m → walk → companion at 3 m → despawn bike. Reuses
+      navmeshArrivalPoint / amm-style mount / sendMoveToPoint / promoteToCompanion. `Config.vehicle`
+      holds all tuning. Bike cleaned up in dismiss paths + onShutdown. Deployed.
+- [ ] **TEST the integrated call→ride pipeline (Antonia):** Call Jackie (or phone him) → ask him onto
+      a gig → hang up → he should ride in on the Arch and walk up. Report feel + any failure.
+- [ ] **Known intermittent bug (1/5 tests):** bike + Jackie spawned far apart. Likely the navmesh
+      snap pulled Jackie's beside-bike point somewhere else. If it recurs, spawn Jackie AT the bike's
+      resolved position post-spawn instead of a pre-computed offset.
+- [ ] **Open question:** does AMM `SetNPCAsCompanion` fully adopt a DES-spawned Jackie (combat/follow),
+      or only the follow command? Watch the post-arrival companion behaviour and report.
+
+- [x] 2026-06-17 — **Vehicle arrival refinements (v0.34a), call→ride confirmed working.** Per Antonia:
+      pre-spawn delay 6.0 → **3.6 s** (40% shorter); **park + dismount at 40 m** (was 20); **walk the
+      last 25 m** (sprint→walk threshold 25, was 15); locked the bike to the single normal Arch
+      (`v_sportbike2_arch_jackie_player`), no cycling. Added a **STUCK FAILSAFE**: after a 5 s grace
+      (climbing on), if the bike crawls < 2 m/s for 2 s he parks early + sprints in on foot (dense
+      areas). Mirrored into JackieVehicleTest. Deployed.
+
+- [x] 2026-06-17 — **Fix: vehicle-arrival Jackie now despawns reliably on dismiss (v0.34b).** Root
+      cause: he's spawned via the dynamic entity system, so `ammDespawn` deleting via
+      `handle:GetEntityID()` could miss -> he'd walk off but never vanish. Now `ammDespawn` deletes by
+      the stored `CreateEntity` id (`JL.summon.spawn.id`) first. Walk-away path (role clear + re-issued
+      move + 30 s deadline) unchanged. AMM-spawned path unaffected (no `.id`). Deployed.
+
+- [x] 2026-06-17 — **Vehicle arrival polish (v0.35a):** (1) loosened the stuck failsafe (was ditching
+      the bike almost always) — now needs < 1 m/s for 4 s after a 7 s grace, and re-issues the drive
+      every 3 s (less re-path stutter); (2) pre-spawn wait 3.6 → **1.0 s**; (3) **force re-unmount** —
+      one retry ~1.6 s into the sprint + a forced unmount on entering companion range (with a 1 s beat
+      before the bike despawns) so he can't get stuck in the mounted pose; (4) **subtitle wipe** — the
+      one-off parting line ("Time we were on our way, mamita") now hides after its duration + on
+      despawn (it had no auto-hide and stuck forever). Deployed.

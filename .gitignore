@@ -51,3 +51,7 @@ desktop.ini
 # --- Logs / temp -----------------------------------------------------
 *.log
 *.tmp
+
+# --- Tools (not source; downloaded locally) --------------------------
+WolvenKit-*/
+WolvenKit*.zip
