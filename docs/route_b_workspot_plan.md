@@ -1,7 +1,12 @@
 # Route B — workspot talk-loop (lip-movement Phase 1 fallback)
 
-Status: **staged, pending Route-A result.** If the standalone `JackieFacialTest` mod makes his
-mouth move from pure CET, Route B is unnecessary. If not, this is the plan.
+> **OUTCOME: ABANDONED (2026-06-17).** Superseded by Route C (`PlayVoiceOver` + facial flap) — see
+> `lipsync.md`. Route B was confirmed *callable* (`gameWorkspotGameSystem` reachable) but we could not
+> extract a usable conversation-workspot path: a talking ambient NPC reports `IsActorInWorkspot=true` yet
+> 0 workspot tags and no readable resource, and a body workspot wouldn't reliably carry a facial track.
+> Kept below for reference only.
+
+Status (historical): staged, pending Route-A result.
 
 ## Why this route
 Phase-0b probe confirmed `gameWorkspotGameSystem` is reachable with the needed methods:

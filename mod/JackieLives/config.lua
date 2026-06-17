@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.42"
+Config.version = "0.43"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -102,9 +102,8 @@ Config.testDialogue = {
 Config.dialogue = {
   cycleHint  = "Up/Dn",  -- label shown in the box; v0.33 the ARROW keys cycle by default (no binding).
   choiceHold = 2.5,      -- seconds V's chosen line stays on screen before Jackie's reply
-  cycleDebug = true,     -- v0.33 DEBUG: while a choice box is open, log every input-action name pressed,
-                         --   so we can lock the exact arrow-key CNames for this game build. Turn OFF once
-                         --   the console confirms which names Up/Down fire (paste them to Claude).
+  cycleDebug = false,    -- v0.42 OFF: arrow CNames locked + release-edge handling confirmed working.
+                         --   Flip true only to re-log input-action names while a choice box is open.
 }
 
 -- ---- send Jackie off (v0.33) ---------------------------------------------
@@ -130,60 +129,56 @@ Config.companion = {
   autoLeaveOnExpiry = true,  -- when the clock runs out he walks off (reuses the send-off exit)
 }
 
--- ---- ask Jackie to dinner / a date (v0.39) -------------------------------
--- While Jackie is your COMPANION, the talk menu offers a dinner invite. Accepting it RESETS his
--- companion clock to +`resetCompanionHours` game-hours (he sticks around longer that day).
--- `tree` is a normal dialogue tree (same format as Config.dialogueTree); a terminal node with
--- `action = "date_accept"` is what fires the timer reset. V can also propose via the menu entry.
+-- ---- ask Jackie to dinner / a date (v0.41 - restaurant walk) -------------
+-- While Jackie is your COMPANION, the talk menu offers a dinner invite. V then picks a specific
+-- restaurant; the mod sets a MAP WAYPOINT there (white dot) + a blue on-screen OBJECTIVE, keeps
+-- Jackie following, and when V ARRIVES (<seatTriggerRadius) Jackie walks to HIS seat, plays the
+-- sit anim, waits, says one line, and the companion clock FULLY RESETS (once per 24 in-game hours).
+-- When V walks off (>getUpRadius) Jackie gets up, says a line, and re-follows. He stays our
+-- companion (never despawns) the whole time. No quest/WolvenKit - a Lua state machine (dinnerTick).
 Config.date = {
   inviteText           = "Hey - you hungry? Let's grab a bite, just us.",  -- the menu option (V's invite)
   unlockAfterGameHours = 1.0,    -- the invite only appears after this long together...
   enforceUnlock        = false,  -- ...OFF for now (always show, for testing). Flip true to gate it.
-  resetCompanionHours  = 6.0,    -- accepting dinner -> +this many in-game hours on the companion clock
-  -- A few alternative paths for how the dinner ask plays out. Jackie's opener is random for variety.
+
+  seatTriggerRadius = 12.0,  -- metres: V this close to the spot -> Jackie peels off to his seat
+  seatReachRadius   = 2.0,   -- metres: Jackie this close to his seat -> snap + sit
+  sitWaitSeconds    = 2.0,   -- seconds seated before he says his line + the clock resets
+  getUpRadius       = 10.0,  -- metres: V this far from seated Jackie -> he gets up + re-follows
+  resetCooldownHours = 24.0, -- the dinner FULL reset can only fire once per this many in-game hours
+  objectiveText     = "Dinner with Jackie - meet him at %s",  -- blue on-screen objective (%s = place)
+
+  -- Restaurants V can pick. pos/yaw reuse coords already captured in Config.locations (his bar/stall
+  -- waypoints) so he sits facing the right way. Each entry WITH pos auto-becomes a dialogue option.
+  restaurants = {
+    { key = "noodle",    name = "the noodle bar", pos = { -1441.064, 1257.748,  23.090 }, yaw =  -87.1 },  -- noodle bar
+    { key = "redwood",   name = "Redwood Market", pos = {  -431.550,  669.948, 115.010 }, yaw =  -33.5 },  -- "noodle place" stall
+    { key = "afterlife", name = "Afterlife",      pos = { -1449.437, 1012.129,  17.357 }, yaw = -168.3 },  -- barstool, right side
+    { key = "ginger",    name = "Ginger Panda",   pos = {  -485.426,  576.939,  31.302 }, yaw =  -17.1 },  -- the bar
+    { key = "lizzies",   name = "Lizzie's Bar",   pos = { -1174.427, 1572.135,  23.115 }, yaw =  -68.5 },  -- rear bar
+  },
+
+  -- v0.43: walk/arrival BANTER fully disabled (Antonia). The only spoken beats are the three below.
+  -- Jackie's single-line beats (real-matching clips; the restaurant NAME shows via the waypoint + objective):
+  ackText   = "Right on, chica.",                  ackSfx   = "jl_1721407637774192672",  -- on accept (heading out)
+  doneText  = "Gettin' one of my good feelings.",  doneSfx  = "jl_1834502468175589376",  -- seated, 2s after sitting (reset)
+  getUpText = "Why, what's the rush?",             getUpSfx = "jl_1989527454849245184",  -- V walks off -> he gets up
+
   tree = {
     start = "open",
     nodes = {
       open = {
+        restaurantPicker = true,   -- restaurant options are auto-injected here from `restaurants`
         jackiePool = {
           { text = "Man, I'm starvin'. Let's grab a tight-bite. Whaddaya say?", sfx = "jl_1904096844380655616" },
           { text = "Now, whaddaya say we liquor up and talk life.",             sfx = "jl_1661715724513484800" },
           { text = "C'mon. I'm fuckin' starved.",                               sfx = "jl_1834512408575406080" },
         },
         choices = {
-          { text = "Somewhere we can actually talk.", to = "warm"    },
-          { text = "Your pick - you know the spots.",  to = "hispick" },
-          { text = "Then suit up, let's go.",          to = "accept"  },
-          { text = "Actually... raincheck.",           to = "decline" },
+          { text = "You pick, hermano.",     to = nil, action = "dine:random" },
+          { text = "Actually... raincheck.", to = "decline" },
         },
       },
-      -- PATH A: the warmer, "is this a date?" beat
-      warm = {
-        jackie  = { text = "'Bout us. Sense a kind of chemistry, y'know?", sfx = "jl_1834510517900603392" },
-        choices = {
-          { text = "Maybe I feel it too.",  to = "likeyou" },
-          { text = "Let's just eat, choom.", to = "accept" },
-        },
-      },
-      likeyou = {
-        jackie  = { text = "Well, uh, maybe a little.", sfx = "jl_1730327816763797504" },
-        choices = {
-          { text = "C'mon then. I'm buyin'.", to = "accept" },
-        },
-      },
-      -- PATH B: let him choose the place
-      hispick = {
-        jackie  = { text = "Just don't forget to suit up.", sfx = "jl_1902710645647618048" },
-        choices = {
-          { text = "Lead the way, hermano.", to = "accept" },
-        },
-      },
-      -- ACCEPT (terminal): no choices -> auto-ends + fires the timer reset
-      accept = {
-        jackie = { text = "Right on, chica.", sfx = "jl_1721407637774192672" },
-        action = "date_accept",
-      },
-      -- DECLINE: back out, no reset
       decline = {
         jackie  = { text = "Why, what's the rush?", sfx = "jl_1989527454849245184" },
         choices = { { text = "(Maybe next time.)", to = nil } },
@@ -656,7 +651,20 @@ Config.poses = {
   sit     = "sit_barstool__2h_on_lap__01",          -- DEFAULT = barstool (most of his chairs)
   sitChair= "sit_chair__2h_on_lap__01",             -- low/deep chair (Misty's) — used via poseAnim
   lean    = "stand_wall_lean180__2h_on_wall__01",
+  -- v0.43: drop his collision the instant before a SIT workspot plays, so the chair geometry
+  -- can't shove/clip him out of the seat; re-enable it once he's planted. Same puppet trick
+  -- (NPCPuppet:DisableCollision/EnableCollision) noted in docs/spawn_at_distance_research.md.
+  -- NOTE: this is the NARROW fallback used only when idleNoCollision (below) is OFF.
+  sitNoCollision       = true,
+  collisionRestoreDelay = 2.0,   -- seconds after the sit anim fires before collision is turned back on
 }
+
+-- v0.43b: MASTER switch — keep idle Jackie's collision OFF for his whole stay at a location. The
+-- sit-time drop alone is too late: the chair/stall geometry can block him from even reaching the
+-- seat coordinate. With this ON he's collision-free from the moment he's placed, so he slides onto
+-- any seat cleanly and never gets shoved out. Trade-off: V can walk through idle Jackie. Flip it
+-- live from the mod window ("Idle Jackie: collisions OFF"). Companion Jackie is unaffected.
+Config.idleNoCollision = true
 
 -- ---- locations ------------------------------------------------------------
 -- Capture coords in-game with the "Capture current position" button, then paste the

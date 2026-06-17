@@ -2,6 +2,58 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+> **v0.44 "Go Home Jackie" (Esc-menu settings panel) is being developed in an ISOLATED COPY**, not in
+> these live files — see `../Cyberpunk_modding-nativesettings/`. Low priority; kept out of `main` so it
+> doesn't collide with concurrent edits here. Merge it back when ready.
+
+## 🆕 v0.43 — in-game SEAT TUNER + sit-time collision drop (DEPLOYED, awaiting test, 2026-06-17)
+- **SEAT POSITION TUNER (debug window).** New collapsing panel "Seat position tuner (Noodle bar)" with
+  live **X / Z** sliders (+ Y and yaw for free) as **offsets** from the captured noodle seat. "Live"
+  re-seats Jackie ~0.25 s after you stop sliding (debounced full stop→teleport→deferred-sit, so it
+  goes through the same path as the schedule). Fine ±0.02 nudge buttons for X and Z. "Print coords ->
+  config.lua" logs the config-ready line + live-patches the in-memory `noodle` anchor AND its sit
+  waypoint so he keeps sitting right for the rest of the session. (`tunerInit/Coords/Apply/Print` +
+  `JL.tuner` in init.lua; targets `Config.locations[JL.tuner.key]`, key = "noodle".)
+  - **Workflow:** Force venue -> Noodle bar → walk to him → open the tuner → slide X/Z live → "Print
+    coords" → paste the numbers to Claude to bake into config.lua permanently.
+- **MASTER COLLISION SWITCH (v0.43b) — `Config.idleNoCollision = true` (default ON).** Idle Jackie's
+  collision is dropped the moment he's PLACED at a location (`applyIdleCollision()` in `wanderTick`
+  step 0, before the snap-teleport) and stays off his whole stay — so chair/stall geometry can't block
+  him from reaching a seat coordinate OR shove him out of it. **Flip switch in the mod window**:
+  "Idle Jackie: collisions OFF" (applies live to the spawned entity). Also applied in `returnToPost`.
+  Trade-off: V can walk through idle Jackie while it's on. Companion Jackie unaffected.
+- **Sit-time drop (v0.43, narrow fallback).** `Config.poses.sitNoCollision` still drops collision just
+  before a SIT anim and restores it after `collisionRestoreDelay` (2 s) — but ONLY when the master
+  switch is OFF (guarded in `tryWorkspotPose`/`stopWorkspotPose`/`wanderTick` so the two never fight).
+  Same `NPCPuppet:DisableCollision/EnableCollision` trick (`docs/spawn_at_distance_research.md`).
+- [ ] **TEST:** at the noodle bar with the switch ON, confirm Jackie reaches + sits the stool cleanly
+      (no chair-block, no shove-out). Then slide X/Z in the tuner and send me the printed coords.
+- ⚠️ **Note:** `DisableCollision`/`EnableCollision` are `pcall`-guarded — if the method isn't on the
+      puppet in this build it silently no-ops. The window shows live "collision: OFF/on" next to the
+      Wander line so you can confirm the toggle is actually taking.
+
+## 🆕 v0.43 — DINNER OUTING rework (take Jackie out to eat) (DEPLOYED, awaiting test, 2026-06-17)
+Concurrent-session (dialogue) work; touches `Config.date` + the dinner state machine only. While Jackie
+is your companion the talk menu offers a dinner invite → V picks a **specific restaurant** → he walks
+there with you, takes his seat, and his companion clock resets. He STAYS your companion the whole time.
+- **5 restaurants**, each pointed at the real bar/stall coords+yaw reused from `Config.locations`:
+  noodle bar, **Redwood Market** (the "noodle place" stall), **Afterlife** (barstool), **Ginger Panda**
+  (bar), **Lizzie's** (rear bar). Options are auto-injected from `Config.date.restaurants` (any with `pos`).
+- **Map waypoint** (white dot) via `Game.GetMappinSystem():RegisterMappin` (CustomPositionVariant) + a
+  **blue on-screen OBJECTIVE** ("Dinner with Jackie - meet him at X") shown until V reaches the spot.
+- **Arrival → seat:** V within `seatTriggerRadius` (12 m) → Jackie drops follow, walks to `seatReachRadius`
+  (2 m), snaps onto his coord+yaw, plays the **sit anim** (`tryWorkspotPose`), waits `sitWaitSeconds` (2 s),
+  says ONE line — that's the **full companion-clock reset**, rate-limited to **once / 24 in-game hours**.
+- **Walk away → re-follow:** V > `getUpRadius` (10 m) from seated Jackie → he stands, says "Why, what's the
+  rush?", and `promoteToCompanion` re-adds the follower role. `JL.summon.active` stays true throughout; the
+  auto-leave is paused for the whole outing. Banter on the walk/arrival is **fully disabled** (Antonia).
+- Phases `walking→seating→seated` in `dinnerTick` (moved below the pose/move helpers it needs); HUD in
+  `drawDinnerObjective`; entry from the `dine:<key>` action in `runCallAction`.
+- [ ] **TEST:** pick each restaurant → blue objective + white dot → he peels off and sits at the bar →
+      2 s → line + reset → walk off → he gets up + follows. Confirm he never despawns.
+- [ ] Verify the **mappin** draws (console `Dinner: waypoint set (mappin id=…)`; if `id=nil`, tweak the
+      create call) and whether a **route line** shows or just the dot.
+
 ## 🆕 v0.41 — dismiss→return-to-post, dwell tune, sit-float fixes (DEPLOYED, awaiting test, 2026-06-17)
 - **Dwell middle ground:** 45-150s → **30-90s**.
 - **RETURN-TO-POST on dismiss (`Config.transitions.returnRadius = 100`).** Dismissing companion Jackie
@@ -42,14 +94,20 @@ only; after V speaks → Jackie replies (layer 2+) the arrows die and she falls 
   several matching names in one frame, so a **0.12 s debounce** (`JL.lastCycle`) collapses the burst to one
   move. Confirmed deeper-layer names added to `CYCLE_UP/DOWN_ACTIONS`. SELECT (F) stays on the press edge
   (already worked on every layer). `cycleDebug` LEFT ON for this verification round.
-- [ ] **TEST (Antonia):** deploy v0.41, open a Jackie convo, navigate layer 1 with ↑/↓, pick → after his
-  reply navigate layer 2+ with ↑/↓. Should now work on every layer. (Note: highlight moves on key *release*.)
-- [ ] **THEN (once confirmed):** drop the `-` cycle key (`jl_cycle_choice`) entirely + turn `cycleDebug` off.
+- [x] **CONFIRMED WORKING (Antonia, v0.41).** Arrows navigate every layer.
+- [x] **v0.42 cleanup:** arrows were INVERTED → flipped (UP=`move(-1)`, DOWN=`move(1)`). Dropped the `-`
+  cycle key (`jl_cycle_choice` removed) + turned `cycleDebug` off. Box hint now "↑/↓ move, F confirms".
 
-**QUEUED (after arrow fix):**
-- [ ] **Proximity greeting bark.** Idle (non-companion) Jackie at one of his locations: V approaches within
-  **6 m** → he barks a random greeting ONCE, then 2-min cooldown. (Reuse `ono_jackie_greet`-style pool.)
-- [ ] **Bump grunt.** When V gets within **<1.2 m** of idle Jackie → he barks a grunt (`ono_jackie_bump`).
+## 🆕 v0.42 — arrow polish + PROXIMITY BARKS (DEPLOYED, awaiting test, 2026-06-17)
+- [x] **Arrow direction flipped** + `-` key dropped + `cycleDebug` off (see above).
+- [x] **Proximity greeting bark.** Idle (non-companion) Jackie at a location: V within **greetRange** (6 m
+  default) → ONE random greeting (`ono_jackie_greet`/`curious`/`additional`), then `greetCooldown` (120 s).
+- [x] **Bump grunt.** V within **bumpRange** (1.2 m default) → grunt (`ono_jackie_bump`), `bumpCooldown` (8 s).
+- [x] **All-in-init.lua** (`proximityBarkTick`, lazy `JL.bark` state) to avoid colliding with the other
+  session's config edits. **Live tuning sliders** in the CET window (greet/bump range + cooldowns, a
+  V-distance readout, and Test buttons). Promote `JL.bark` → `Config.bark` once distances are locked.
+- [ ] **TEST (Antonia):** stand near idle Jackie → greet fires once on approach; walk into him → grunt.
+  Tune the 4 sliders until the feel is right, then tell me the values to bake in.
 - [ ] **Recruitment limits (CORRECTED SPEC 2026-06-17).** Builds on existing `Config.companion`
   (`maxGameHours`) + `Config.date` (dinner reset). Rules:
   - **Daily budget: 6 in-game h total** as companion per day (NEW — track a per-day accumulator, reset at
@@ -58,9 +116,10 @@ only; after V speaks → Jackie replies (layer 2+) the arrows die and she falls 
   - **Timer expiry → he leaves**, EXCEPT **in combat**: prolong the timer, he stays till combat ends; **20 s
     after combat ends** he then leaves. (Need a combat-state check — `GetPlayer():IsInCombat()` or NPC combat.)
   - On leaving: say a **departure line**, then **walk away** (reuse the send-off walk-away exit path).
-  - **Dinner intercept while walking away:** V can talk to him mid-walk-away to ask him to dinner → **fully
-    resets his timers for the day (until midnight)**, i.e. clears the spent daily budget, not just +hours.
-    (`Config.date` currently does +`resetCompanionHours`; this case = full reset to the 6h budget.)
+  - **Dinner ALWAYS fully resets the daily budget** (until midnight) — clears the spent daily total, not
+    just +hours (`Config.date` currently does +`resetCompanionHours`; change to a full reset of the 6 h
+    budget). This applies WHENEVER dinner is accepted; the **walk-away intercept** (V catches him as he's
+    leaving on timer-expiry and asks him out) is just one notable moment where it matters.
   - **15% chance** he says the hunger HINT line on timer-expiry departure (drop a dinner hint):
     `jl_1834512408575406080` "C'mon. I'm fuckin' starved." (alt `jl_1904096844380655616` "Man, I'm starvin'…").
   - Dinner ("ask him out") **always** allowed. <3
@@ -330,37 +389,24 @@ Flow (in `init.lua` `arrivalTick`, all `[JackieLives] Call:` logged):
       `IdleActions.MoveOnSplineWithCompanionParams.catchUpTeleportDistance` (default 20) to suppress the teleport.
 - [ ] Once reliable: dial `spawnDistance`/`approachMovement` to taste (40 m Run ≈ 12 s; 100 m is render-edge).
 
-## 🆕 v0.31 — LIP MOVEMENT / talk animation (Tier 1 immersion gap, started 2026-06-16)
-**Problem:** Jackie's mouth doesn't move when he speaks. Real CP2077 lipsync is JALI-baked into `.scene`
-files; we play barks/lines via raw `AudioSystem:Play` / Audioware, which carry NO facial data, so his face
-is frozen. No public JALI tool, so true phoneme lipsync for CUSTOM lines is off the table. Target = the
-ambient-NPC **generic mouth-flap loop** (reads as talking; not word-synced).
-**Staged plan (Antonia + Claude, 2026-06-16):**
-- [x] **Phase 0 — PROBE (DONE, ran in-game 2026-06-16 → `facial_methods.txt`).** `runFacialProbe()` + UI
-      button + `jl_facial` hotkey. Codeware `Reflection` dump + LIVE component dump of summoned Jackie.
-      **KEY FINDING (memory: jackie-facial-rig-runtime):** his **face rig is fully intact** — frozen mouth is
-      a *driver* problem, not a missing part. Live components include `face_rig`, `man_face_base_animations`,
-      `[35] entAnimationControllerComponent`, `[17] scnVoicesetComponent`, jaw/teeth/head/eyes. Raw
-      `AudioSystem:Play`/Audioware carries no facial data → mouth never moves. **Runtime drivers exist WITHOUT
-      WolvenKit:** `entAnimationControllerComponent` (push anim events = flap), `scnVoicesetComponent`
-      (voiceset VO with baked lipsync = Option B), plus `gameObject.ReplicateAnimEvent`/`ReplicateAnimFeature`
-      and `NPCPuppet.PlayVOOnPlayerOrPlayerCompanion`/`PlayVOOnSquadMembers`. The workspot SYSTEM class was
-      **NOT FOUND** (`gameWorkspotSystem`/`WorkspotGameSystem`) → heavy workspot+redscript route demoted to fallback.
-- [ ] **Phase 0b — ROUND-2 PROBE (BUILT, awaiting run).** `PROBE_FACIAL_CLASSES` updated with the exact class
-      names from the live dump (`entAnimationControllerComponent`, `scnVoicesetComponent`,
-      `entAnimationSetupExtensionComponent`, `entAnimatedComponent`) + real workspot-system guesses
-      (`gameWorkspotGameSystem`/`gameIWorkspotGameSystem`/…). **Antonia: reload mods, summon Jackie, click the
-      probe again, share `facial_methods.txt`.** Goal: the exact method that pushes a facial/talk anim event,
-      and the voiceset play method.
-- [ ] **Phase 1 — MVP mouth-flap (NO WolvenKit, route from Phase 0b).** Two pure-runtime candidates, try in
-      order: **(1) anim-event flap** — push a generic "talk" facial anim event via Jackie's
-      `entAnimationControllerComponent` / `ReplicateAnimEvent` on line-start, stop on line-end; wire into the
-      existing dialogue runner (`speakJackieLine`/`dialogueTick`). **(2) voiceset** — drive
-      `scnVoicesetComponent` for real lipsync on his canned lines (also = Phase 2 / Option B). Workspot+redscript
-      is the FALLBACK only if both fail. Each step needs a live "watch his mouth" test.
-- [ ] **Phase 2 — Option B real lipsync (LAYER ON TOP, later).** Where they fit, swap custom barks for
-      VANILLA Jackie scene lines, which carry baked JALI lipsync for free. Additive to Phase 1, not a replace.
-- [skip] Authoring real `.scene` lipsync by hand — no JALI tool, effort ≫ payoff.
+## ✅ v0.34a — LIP MOVEMENT / talk animation (DONE, shipped 2026-06-17). Full writeup: `docs/lipsync.md`.
+**Problem:** mouth frozen while speaking — our `AudioSystem:Play` / Audioware audio carries no facial data,
+so the engine's viseme system never animated his face. (Real CP2077 lipsync is JALI-baked per line; no
+public tool.) **Outcome:** his face rig is intact (probe proved it), so it was a *driver* problem.
+- [x] **Probe (CET reflection + live components)** → `facial_methods.txt`. Confirmed face_rig /
+      man_face_base_animations / entAnimationControllerComponent / scnVoicesetComponent all present.
+- [x] **Route A (push facial anim events) — FAILED;** **Route B (workspot) — ABANDONED** (callable but no
+      usable conversation-workspot path; see `docs/route_b_workspot_plan.md`).
+- [x] **Route C — `PlayVoiceOver` is THE driver (= AMM "NPC Talk").** A voiceset **context** token (e.g.
+      `"greeting"`, NOT raw event names) plays real voice + real lipsync. Preferred path for greetings/reactions.
+- [x] **SHIPPED: talking-face flap** for our Audioware lines (no VO event → can't drive visemes). While a
+      Jackie line plays, shuffle AMM Expressions Overhaul "Talking" faces (`AnimFeature_FacialReaction`,
+      **category 7, idle 231..266**, 242 skipped) every ~0.9s, then `ResetFacial`. Engine in `init.lua`
+      (`flap`/`startFlap`/`flapTick`), hooked into `speakJackieLine` + `dialogueTick`; `flapTick` in onUpdate.
+      **New dependency: AMM Expressions Overhaul (Nexus 20108).** Test bench: standalone `mod/JackieLipsync/`.
+- [ ] **Next (chosen direction):** map dialogue beats → real VO voiceset contexts where they exist (true
+      lipsync + voice, game assets); keep the cat-7 flap only for bespoke lines with no matching context.
+- [skip] amplitude/volume→jaw (engine viseme pipe only runs inside VO playback) · hand-authored `.scene` lipsync.
 
 ## 🆕 v0.28 — HOLOCALL "Call Jackie onto a gig" (BUILT, awaiting in-game test, 2026-06-16)
 Reuses the working voiced dialogue engine + AMM summon AS a phone call — **not** the native phone UI,

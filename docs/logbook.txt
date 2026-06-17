@@ -393,3 +393,67 @@ a SEPARATE concurrent session (see docs/spawn_at_distance_research.md, untracked
 it). My basic arrivalTick (spawn companion -> teleport to a point ahead of V after 0.8s) is a
 placeholder the other session is replacing with navmesh-validated placement.
 ================================================================================
+
+================================================================================
+VEHICLE ARRIVAL — Jackie rides in on his Arch (v0.34 -> v0.35a, 2026-06-17)
+================================================================================
+GOAL: after calling Jackie onto a gig (the existing holocall flow), he arrives BY BIKE instead of
+the on-foot walk-in: spawn behind V on his Arch, drive in, dismount, jog/walk up, become companion.
+
+RESEARCH (docs/vehicle_arrival_research.md): three verified mechanisms on patch 2.x —
+- Spawn: Game.GetDynamicEntitySystem():CreateEntity(DynamicEntitySpec); recordID takes the path
+  string; handle resolves a few frames later (poll Game.FindEntityByID).
+- Mount driver: AIMountCommand + MountEventData, slotName "seat_front_left", sent to the NPC's
+  GetAIControllerComponent():SendCommand (AMM Modules/scan.lua recipe).
+- Drive: AIVehicleDriveToPointAutonomousCommand (targetPosition is a Vector3) wrapped in
+  AINPCCommandEvent, QueueEvent'd onto the VEHICLE (NOT the driver). Base game preventionSystem
+  drives cars this way. Stop via vehicle:StopExecutingCommand(cmd, true).
+SURPRISE: the common wisdom "vanilla AI can't drive motorcycles" did NOT hold — Jackie's Arch
+(Vehicle.v_sportbike2_arch_jackie_player) drives autonomously fine on this build (confirmed in-game).
+
+HARNESS FIRST: built mod/JackieVehicleTest/ (standalone, like JackieFacialTest/WorkspotTest) with one
+button per step (probe -> spawn both -> mount -> spawn-on-bike -> drive -> unmount -> arrive-at-distance),
+BIKE<->CAR toggle as a patch-safety fallback. Antonia validated each step in 5 tests, then we folded a
+clean version into JackieLives.
+
+INTEGRATION (v0.34, vehicleArrivalTick, gated by Config.call.arriveByVehicle): the call's "ask onto a
+gig" choice schedules a vehicle arrival. Spawn the bike + Jackie TOGETHER at a random rear point
+~80 m out (both via the dynamic entity system, so the mount is LOCAL — spawning Jackie at V and
+teleporting him 80 m to the bike breaks the mount). Jackie is tracked on JL.summon.spawn = {id, handle}
+so the rest of JackieLives (talk/dialogue/dismiss) still treats him as the summoned Jackie. Phases:
+placing -> mount -> driving (re-issue drive at V's live pos) -> park+dismount -> sprint -> walk ->
+companion handoff -> despawn bike. All tuning in Config.vehicle.
+
+TUNING + FIXES (Antonia feedback):
+- Speed 8 (was reckless higher); spawn 80 m; random angle BEHIND V (more immersive).
+- v0.34a: park/dismount at 40 m, walk the last 25 m; locked the bike to the one normal Arch (no cycling).
+- STUCK FAILSAFE: if the bike crawls he bails off and sprints (dense areas). First pass (2 m/s / 2 s /
+  5 s grace) was far too eager — he ditched almost always. v0.35a loosened to < 1 m/s for 4 s after a
+  7 s grace, and the drive re-issues every 3 s (less re-path stutter that read as "stuck").
+- v0.35a: pre-spawn wait 3.6 -> 1.0 s.
+- MOUNTED-POSE FIX: he sometimes stuck in the seated pose. Now one unmount retry ~1.6 s into the sprint
+  + a forced unmount on entering companion range, with a 1 s beat before the parked bike despawns.
+- DESPAWN FIX (v0.34b): dismissed bike-Jackie walked off but never vanished — ammDespawn deleted via
+  handle:GetEntityID(), which MISSES for dynamic-entity NPCs. Now deletes by the stored CreateEntity id
+  (JL.summon.spawn.id) first; AMM-spawned path (no .id) unaffected.
+- SUBTITLE FIX (v0.35a): the one-off parting line ("Time we were on our way, mamita") had no auto-hide
+  and stuck on screen forever -> now wiped after its spoken duration and again on despawn.
+
+STILL OPEN: does AMM SetNPCAsCompanion fully adopt a dynamic-entity-spawned Jackie (combat) or only the
+follow command? Intermittent (1/5) far-apart bike+Jackie spawn — fix ready if it recurs (spawn Jackie at
+the bike's resolved position instead of a fixed offset). NOTE: a concurrent session owns DIALOGUE work —
+vehicle-arrival edits were kept isolated to Config.vehicle + vehicleArrivalTick + ammDespawn.
+================================================================================
+
+================================================================================
+v0.43 — DINNER OUTING (dialogue session, 2026-06-17)
+Take companion Jackie out to eat. Talk menu (while he's a companion) -> dinner invite -> V picks a
+specific restaurant (5: noodle bar, Redwood "noodle place" stall, Afterlife barstool, Ginger Panda
+bar, Lizzie's rear bar; coords+yaw reused from Config.locations). Drops a map waypoint (mappin,
+CustomPositionVariant) + a BLUE on-screen objective shown until V arrives. V within 12 m -> Jackie
+drops follow, walks to his seat (<2 m), snaps + plays the sit anim, waits 2 s, says one line ->
+companion clock FULL reset (once / 24 in-game h). V walks >10 m off -> he stands, "Why, what's the
+rush?", re-promoted to companion. JL.summon.active stays true the whole time; auto-leave paused;
+walk/arrival banter fully disabled. dinnerTick moved below the pose/move helpers it calls. Entry =
+the dine:<key> action in runCallAction. Touched Config.date + the dinner state machine only.
+OPEN: confirm the mappin draws a route line vs just the dot; confirm the sit lands at each bar stool.

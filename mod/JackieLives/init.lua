@@ -26,7 +26,14 @@ local JL = {
   -- v0.38 walk-away: leaving=true while he's strolling to a venue exit before despawning.
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
              spawnedAt = 0, dwellUntil = 0, arriveBy = 0, lastReissue = 0,
-             leaving = false, leaveTarget = nil, leaveDeadline = 0, leaveReissue = 0 },
+             leaving = false, leaveTarget = nil, leaveDeadline = 0, leaveReissue = 0,
+             collisionOff = false, collisionRestoreAt = nil },   -- v0.43: sit-time collision toggle
+  -- v0.43 seat tuner: live X/Y/Z/yaw OFFSETS from a location's captured seat, so a sit spot can be
+  -- nudged in-game until perfect, then printed for config.lua. Targets Config.locations[key].
+  tuner  = { init = false, key = "noodle", live = true, pendingApplyAt = nil,
+             baseX = 0, baseY = 0, baseZ = 0, baseYaw = 0,
+             dx = 0, dy = 0, dz = 0, dyaw = 0,
+             prevX = 0, prevY = 0, prevZ = 0, prevYaw = 0 },
   -- v0.36 day rotation: a shuffle bag of Config.dayBag; one day-type per in-game day. Rollover
   -- is detected by the game hour WRAPPING (current < last), since time only ever moves forward.
   day    = { lastHour = nil, count = 0, template = nil, bag = {}, bagPos = 0 },
@@ -40,6 +47,8 @@ local JL = {
   varrival = { at = nil, phase = nil, pt = nil, bikeId = nil, bikeHandle = nil,
                placeAt = nil, driveAt = nil, sprintAt = nil, lastReissue = 0, deadline = nil, driveCmd = nil },
   call    = { ringingAt = nil },  -- holocall: clock time he "picks up" after the ring
+  -- v0.41 dinner outing: walk to a chosen restaurant -> linger -> full companion-clock reset.
+  dinner  = { phase = nil, dest = nil, destName = nil, destYaw = nil, mappinId = nil, satAt = nil, lastResetGame = nil },
   timer  = 0,
   clock  = 0,        -- accumulated game seconds (for talk cooldowns)
   lastTalk = -999,
@@ -704,8 +713,8 @@ local function setupInteractHook()
           local now = JL.clock or 0
           if (now - (JL.lastCycle or -999)) >= 0.12 then
             JL.lastCycle = now
-            if CYCLE_UP_ACTIONS[name] then pcall(function() Branch.move(1) end)
-            else                           pcall(function() Branch.move(-1) end) end
+            if CYCLE_UP_ACTIONS[name] then pcall(function() Branch.move(-1) end)  -- v0.42: UP = toward top row
+            else                           pcall(function() Branch.move(1)  end) end  -- DOWN = toward bottom row
           end
           return
         end
@@ -1133,6 +1142,76 @@ local function speakJackieLine(text, sfx)
   return secs
 end
 
+-- ===========================================================================
+-- DINNER OUTING (v0.41): pick a restaurant -> map waypoint + follow -> walk banter ->
+-- arrive + linger -> FULL companion-clock reset. Pure Lua state machine (no quest/WolvenKit).
+-- ===========================================================================
+
+-- Drop the dinner map pin (if any).
+local function clearDinnerWaypoint()
+  if JL.dinner.mappinId then
+    pcall(function() Game.GetMappinSystem():UnregisterMappin(JL.dinner.mappinId) end)
+    JL.dinner.mappinId = nil
+  end
+end
+
+-- Register a custom map pin at `pos` (Vector4) so the minimap shows it (and, where the variant
+-- supports it, a route line). Stores the id for later removal.
+local function setDinnerWaypoint(pos)
+  clearDinnerWaypoint()
+  if not pos then return end
+  pcall(function()
+    local data = NewObject("gamemappinsMappinData")
+    data.mappinType = TweakDBID.new("Mappins.DefaultStaticMappin")
+    data.variant    = gamedataMappinVariant.CustomPositionVariant
+    data.visibleThroughWalls = true
+    JL.dinner.mappinId = Game.GetMappinSystem():RegisterMappin(data, pos)
+  end)
+  log("Dinner: waypoint set (mappin id=" .. tostring(JL.dinner.mappinId) .. ").")
+end
+
+-- Resolve a restaurant by key ("random" -> any with coords). Returns the entry or nil.
+local function findRestaurant(key)
+  local list = (Config.date and Config.date.restaurants) or {}
+  if key == "random" then
+    local avail = {}
+    for _, r in ipairs(list) do if r.pos then avail[#avail + 1] = r end end
+    if #avail == 0 then return nil end
+    local i = 1; pcall(function() i = math.random(1, #avail) end)
+    return avail[i]
+  end
+  for _, r in ipairs(list) do if r.key == key then return r end end
+  return nil
+end
+
+-- Throw out one random multi-line banter section (skips if a conversation is already running).
+-- Begin the outing to restaurant `key`. Sets the map waypoint + objective, says an ack line. The
+-- auto-leave is paused for the whole outing (see onUpdate); dinnerTick (defined LATER, after the
+-- pose/move helpers) handles arrive -> seat -> sit -> line -> reset -> walk-away -> re-follow.
+local function startDinnerWalk(key)
+  if not JL.summon.active then return end
+  local r = findRestaurant(key)
+  local D = Config.date or {}
+  if not r or not r.pos then
+    armCompanionTimer((Config.companion and Config.companion.maxGameHours) or 6.0)
+    JL.ui.status = "No coords for that spot yet - reset Jackie's clock instead."
+    log("Dinner: no restaurant coords for key='" .. tostring(key) .. "'; did a plain reset.")
+    return
+  end
+  local pos = Vector4.new(r.pos[1], r.pos[2], r.pos[3], 1.0)
+  setDinnerWaypoint(pos)
+  JL.dinner.phase    = "walking"
+  JL.dinner.dest     = pos
+  JL.dinner.destName = r.name
+  JL.dinner.destYaw  = r.yaw or 0.0
+  JL.dinner.satAt    = nil
+  pcall(function() speakJackieLine(D.ackText, D.ackSfx) end)
+  JL.ui.status = "Headin' to " .. tostring(r.name) .. " with Jackie."
+  log("Dinner: walk to '" .. tostring(r.name) .. "' started.")
+end
+-- dinnerTick + drawDinnerObjective are defined further down (they need sendMoveToPoint / aiTeleport
+-- / tryWorkspotPose / promoteToCompanion, all declared below this point).
+
 -- v0.24: the choice menu is a CUSTOM ImGui box drawn during gameplay (overlay closed),
 -- styled like the game's dialogue picker (docs/dialogue_picker_design.png): speaker name
 -- on top, choices in a vertical column, the HIGHLIGHTED row in yellow. Navigation is OUR
@@ -1283,6 +1362,18 @@ local function withCompanionExtras(choices)
     to     = nil,
     action = "dismiss_walkaway",
   }
+  return out
+end
+
+-- v0.41: on the date tree's restaurant-picker node, auto-build one choice per restaurant that has
+-- coords (action "dine:<key>"), shown BEFORE the node's static choices ("You pick" / raincheck).
+local function withDateChoices(node, choices)
+  if not (node and node.restaurantPicker and Config.date and Config.date.restaurants) then return choices end
+  local out = {}
+  for _, r in ipairs(Config.date.restaurants) do
+    if r.pos then out[#out + 1] = { text = r.name .. ".", to = nil, action = "dine:" .. r.key } end
+  end
+  for _, c in ipairs(choices or {}) do out[#out + 1] = c end
   return out
 end
 
@@ -1535,7 +1626,11 @@ local function runCallAction(name)
     if Config.date and Config.date.tree then pcall(function() Branch.start(nil, Config.date.tree) end) end
     return
   end
-  if name == "date_accept" then
+  if type(name) == "string" and name:sub(1, 5) == "dine:" then   -- v0.41: V picked a restaurant
+    pcall(function() startDinnerWalk(name:sub(6)) end)
+    return
+  end
+  if name == "date_accept" then   -- legacy (pre-v0.41 date tree); harmless
     local ext = (Config.date and Config.date.resetCompanionHours) or 6.0
     armCompanionTimer(ext)
     JL.ui.status = ("Dinner's on - Jackie's stickin' around (+%.0f h)."):format(ext)
@@ -2395,7 +2490,7 @@ local function branchTick()
   if bstate.openAt and (JL.clock or 0) >= bstate.openAt then
     bstate.openAt = nil
     if bstate.node and bstate.node.choices then
-      openChoiceMenu(withCompanionExtras(bstate.node.choices), "Jackie")
+      openChoiceMenu(withCompanionExtras(withDateChoices(bstate.node, bstate.node.choices)), "Jackie")
     elseif bstate.node then
       -- v0.34c: terminal node with NO choices -> after Jackie's line, auto-end the convo and run
       -- its node-level `action` (e.g. gig accept -> summon). No redundant "Let's do it" V click.
@@ -2496,11 +2591,41 @@ local function pickNextWaypoint(wps, cur)
   return (cur % n) + 1
 end
 
+-- v0.43: toggle a spawned NPC's collision. NPCPuppet:DisableCollision()/EnableCollision() drop the
+-- AI collider + obstacle trace, so chair/world geometry can't shove him out of a sit workspot.
+-- Guarded — does nothing (silently) if the method isn't available on this puppet/build.
+local function setNpcCollision(handle, enabled)
+  if not handle then return end
+  pcall(function()
+    if enabled then handle:EnableCollision() else handle:DisableCollision() end
+  end)
+end
+
+-- v0.43b: apply the MASTER idle-collision switch (Config.idleNoCollision) to the live idle Jackie.
+-- ON  -> collision OFF for his whole stay (no chair/stall blocking, no auto-restore).
+-- OFF -> collision ON; the narrow sit-time drop (sitNoCollision) handles seating instead.
+-- Safe to call repeatedly (at placement and whenever the switch is flipped in the window).
+local function applyIdleCollision()
+  local h = JL.idle.spawn and JL.idle.spawn.handle
+  if not h then return end
+  if Config.idleNoCollision then
+    setNpcCollision(h, false)
+    JL.idle.collisionOff, JL.idle.collisionRestoreAt = true, nil   -- never auto-restore while master is on
+  else
+    setNpcCollision(h, true)
+    JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
+  end
+end
+
 -- v0.39 SIT/LEAN via AMM workspots. Stop any workspot pose on a handle (gets him out of the chair
 -- / off the wall) before he walks again.
 local function stopWorkspotPose(handle)
   if not handle then return end
   pcall(function() Game.GetWorkspotSystem():StopInDevice(handle) end)
+  if JL.idle.collisionOff and not Config.idleNoCollision then   -- v0.43: getting up -> restore
+    setNpcCollision(handle, true)                              -- (but stay off while master is on)
+    JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
+  end
   JL.idle.posed = false
   JL.idle.pendingPose = nil   -- cancel any not-yet-fired pose
 end
@@ -2514,6 +2639,13 @@ local function tryWorkspotPose(handle, pose, nameOverride)
   local name = nameOverride or P[pose]; if not name then return false end  -- per-waypoint poseAnim wins
   local amm = getAMM()
   if not amm or not amm.Poses or not amm.NewTarget or not amm.GetScanID then return false end
+  -- v0.43: narrow sit-time collision drop — ONLY when the master idle switch is OFF (else it's
+  -- already off for his whole stay and we must not schedule a restore that turns it back on).
+  if pose == "sit" and P.sitNoCollision and not Config.idleNoCollision then
+    setNpcCollision(handle, false)
+    JL.idle.collisionOff = true
+    JL.idle.collisionRestoreAt = (JL.clock or 0) + (P.collisionRestoreDelay or 2.0)
+  end
   local ok = pcall(function()
     local t = amm:NewTarget(handle, "NPCPuppet", amm:GetScanID(handle), "Jackie", nil, nil)
     local anim = { name = name, rig = P.rig or "Man Average", comp = P.comp or "amm_workspot_base",
@@ -2546,6 +2678,106 @@ local function applyIdlePose(handle, wp, forceSnap)
   end
 end
 
+-- ===========================================================================
+-- DINNER state machine (v0.43). Defined here (not with startDinnerWalk) because it needs the
+-- pose/move helpers above. Phases: walking -> seating -> seated. Jackie stays our companion
+-- (JL.summon.active) the whole time; we only swap his AI ROLE (follow <-> sit) under the hood.
+-- ===========================================================================
+local function dinnerTick()
+  local D = JL.dinner
+  if not D.phase then return end
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  if not JL.summon.active or not h then               -- dismissed / gone -> abort cleanly
+    pcall(clearDinnerWaypoint)
+    if h then pcall(function() stopWorkspotPose(h) end) end
+    D.phase = nil; return
+  end
+  local C   = Config.date or {}
+  local now = JL.clock or 0
+  local pp  = playerPos()
+
+  if D.phase == "walking" then
+    -- arrived = V within seatTriggerRadius of the seat. Then Jackie drops follow + heads to his seat.
+    if pp and D.dest and dist3(pp, D.dest) <= (C.seatTriggerRadius or 12.0) then
+      pcall(clearDinnerWaypoint)                       -- reached -> drop pin + objective
+      pcall(function()                                 -- drop follower role so he obeys move+sit
+        local role = h:GetAIControllerComponent():GetAIRole()
+        if role then role:OnRoleCleared(h) end
+        h.isPlayerCompanionCached = false
+      end)
+      pcall(function() sendMoveToPoint(h, D.dest, "Walk", 0.5) end)
+      D.phase = "seating"
+      JL.ui.status = "Jackie's grabbin' his seat."
+      log("Dinner: V arrived; Jackie heading to his seat.")
+    end
+    return
+  end
+
+  if D.phase == "seating" then
+    if not D.satAt then
+      local jp; pcall(function() jp = h:GetWorldPosition() end)
+      if jp and dist3(jp, D.dest) <= (C.seatReachRadius or 2.0) then
+        pcall(function() aiTeleport(h, D.dest, D.destYaw or 0.0) end)   -- align exactly on the seat
+        pcall(function() tryWorkspotPose(h, "sit") end)                 -- the (already-programmed) sit anim
+        D.satAt = now
+        log("Dinner: Jackie reached seat + sitting.")
+      end
+      return
+    end
+    -- `sitWaitSeconds` after sitting -> one final line + the (once/24h) full reset
+    if now - D.satAt >= (C.sitWaitSeconds or 2.0) then
+      pcall(function() speakJackieLine(C.doneText, C.doneSfx) end)
+      local g  = getGameSeconds()
+      local cd = (C.resetCooldownHours or 24.0) * 3600
+      if (not D.lastResetGame) or (g and (g - D.lastResetGame) >= cd) then
+        armCompanionTimer((Config.companion and Config.companion.maxGameHours) or 6.0)
+        D.lastResetGame = g
+        JL.ui.status = "Good dinner - Jackie's clock is reset."
+        log("Dinner: companion clock fully reset (once/24h).")
+      else
+        JL.ui.status = "Good dinner (already reset in the last 24h)."
+        log("Dinner: reset skipped (within 24h cooldown).")
+      end
+      D.phase = "seated"
+    end
+    return
+  end
+
+  if D.phase == "seated" then
+    -- V walks off -> Jackie gets up, says a line, and re-joins as companion (stays JL.summon.active).
+    local jp; pcall(function() jp = h:GetWorldPosition() end)
+    if pp and jp and dist3(pp, jp) >= (C.getUpRadius or 10.0) then
+      pcall(function() stopWorkspotPose(h) end)
+      pcall(function() speakJackieLine(C.getUpText, C.getUpSfx) end)
+      pcall(promoteToCompanion)                        -- re-add follower role + follow
+      D.phase, D.dest, D.satAt = nil, nil, nil
+      JL.ui.status = "Jackie's back with you."
+      log("Dinner: V left; Jackie up + following again.")
+    end
+    return
+  end
+end
+
+-- Blue objective text shown (during gameplay) while heading to dinner, until V reaches the spot.
+local function drawDinnerObjective()
+  if JL.dinner.phase ~= "walking" then return end
+  pcall(function()
+    local W, H = 520, 64
+    local sw = 1920
+    pcall(function() local x = ImGui.GetDisplaySize(); if x and x > 0 then sw = x end end)
+    ImGui.SetNextWindowPos((sw - W) * 0.5, 90, ImGuiCond.Always)
+    ImGui.SetNextWindowSize(W, H, ImGuiCond.Always)
+    ImGui.Begin("##jkdinnerobj", pickerWindowFlags())
+    ImGui.SetWindowFontScale(1.25)
+    ImGui.PushStyleColor(ImGuiCol.Text, 0.30, 0.62, 1.0, 1.0)   -- blue
+    local fmt = (Config.date and Config.date.objectiveText) or "Dinner with Jackie - meet him at %s"
+    ImGui.Text("  " .. fmt:format(tostring(JL.dinner.destName or "the spot")))
+    ImGui.PopStyleColor(1)
+    ImGui.SetWindowFontScale(1.0)
+    ImGui.End()
+  end)
+end
+
 local function wanderTick()
   if not (Config.wander and Config.wander.enabled) then return end
   if JL.summon.active then return end                  -- following V -> not idle-wandering
@@ -2565,9 +2797,17 @@ local function wanderTick()
     pcall(function() tryWorkspotPose(h, pend.pose, pend.name) end)
   end
 
+  -- v0.43: restore collision a beat after he's planted (narrow sit-time path only; master keeps it off)
+  if JL.idle.collisionOff and JL.idle.collisionRestoreAt and not Config.idleNoCollision
+     and now >= JL.idle.collisionRestoreAt then
+    setNpcCollision(h, true)
+    JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
+  end
+
   -- (0) PLACE him on a starting waypoint shortly after spawn (let the entity settle first).
   if not JL.idle.placed then
     if (now - (JL.idle.spawnedAt or 0)) < 0.6 then return end
+    applyIdleCollision()                               -- v0.43b: kill collision BEFORE the snap so the chair can't block him
     local startIdx = math.random(1, #wps)
     JL.idle.curIdx     = startIdx
     applyIdlePose(h, wps[startIdx], true)              -- force-teleport him onto the spot
@@ -2693,6 +2933,7 @@ returnToPost = function()
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
   JL.idle.spawn, JL.idle.locationKey = sp, block.locationKey
   JL.idle.leaving, JL.idle.posed = false, false
+  applyIdleCollision()   -- v0.43b: re-joining idle -> apply the master collision switch to this entity
   -- walk to the NEAREST waypoint, then wanderTick takes over (dwell -> cycle)
   local wps = locWaypoints(loc) or {}
   local ti, best = 1, 1e9
@@ -2880,6 +3121,61 @@ end)
 registerForEvent("onOverlayOpen",  function() JL.ui.overlayOpen = true end)
 registerForEvent("onOverlayClose", function() JL.ui.overlayOpen = false end)
 
+-- ---------------------------------------------------------------------------
+-- v0.42: PROXIMITY BARKS. While Jackie is idle at a location (NOT your companion), V walking up
+-- triggers a ONE-SHOT greeting bark; getting right in his face triggers a grunt. Both are WWise voice
+-- barks on his entity, each on its own cooldown. Distances + cooldowns are live-tunable from the CET
+-- window (sliders) until the feel is dialed in. State lazily inits (JL.bark) so it never collides with
+-- a concurrent edit to the JL table or config; promote to Config.bark once the values are locked.
+-- ---------------------------------------------------------------------------
+local function barkCfg()
+  if not JL.bark then
+    JL.bark = {
+      enabled       = true,
+      greetRange    = 6.0,    -- m: within this (and outside bumpRange) -> one greeting bark
+      bumpRange     = 1.2,    -- m: within this -> a grunt
+      greetCooldown = 120.0,  -- s: after a greeting, stay quiet this long
+      bumpCooldown  = 8.0,    -- s: anti-spam on the grunt
+      greetEvents   = { "ono_jackie_greet", "ono_jackie_curious", "ono_jackie_additional" },
+      bumpEvent     = "ono_jackie_bump",
+      lastGreet = -999, lastBump = -999, checkT = 0, lastDist = nil,
+    }
+  end
+  return JL.bark
+end
+
+local function proximityBarkTick(dt)
+  local b = barkCfg()
+  if not b.enabled then return end
+  if JL.summon.active then return end                         -- only when he's NOT your companion
+  local sp = JL.idle.spawn
+  if not sp or not sp.handle or JL.idle.leaving then return end
+  if Branch.open or Branch.busy or (dlg and dlg.active) then return end  -- don't bark over a convo
+  b.checkT = (b.checkT or 0) + dt                             -- throttle distance math to ~5x/s
+  if b.checkT < 0.2 then return end
+  b.checkT = 0
+  local pp = playerPos(); if not pp then return end
+  local jp; pcall(function() jp = sp.handle:GetWorldPosition() end)
+  if not jp then return end
+  local d = dist3(pp, jp); b.lastDist = d
+  local now = JL.clock or 0
+  if d <= (b.bumpRange or 1.2) then
+    if (now - (b.lastBump or -999)) >= (b.bumpCooldown or 8.0) then
+      b.lastBump = now
+      pcall(function() playEventOn(sp.handle, b.bumpEvent or "ono_jackie_bump", "") end)
+      log(string.format("Bark: BUMP grunt (d=%.2f m)", d))
+    end
+  elseif d <= (b.greetRange or 6.0) then
+    if (now - (b.lastGreet or -999)) >= (b.greetCooldown or 120.0) then
+      b.lastGreet = now
+      local list = (b.greetEvents and #b.greetEvents > 0) and b.greetEvents or { "ono_jackie_greet" }
+      local ev = list[math.random(1, #list)]
+      pcall(function() playEventOn(sp.handle, ev, "") end)
+      log(string.format("Bark: GREET '%s' (d=%.2f m)", tostring(ev), d))
+    end
+  end
+end
+
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
   pcall(updateTalkPrompt, dt)
@@ -2911,7 +3207,10 @@ registerForEvent("onUpdate", function(dt)
   if JL.summon.active and JL.summon.companionSet and not JL.summon.companionExpiresGame then
     armCompanionTimer()
   end
+  -- v0.41: the auto-leave is PAUSED for the whole dinner outing (JL.dinner.phase) so he never
+  -- bails mid-walk; dinnerTick does a full clock reset when the meal finishes.
   if JL.summon.active and Config.companion and Config.companion.autoLeaveOnExpiry
+     and not JL.dinner.phase
      and JL.summon.companionExpiresGame and JL.leaving.phase ~= "walking" then
     local g = getGameSeconds()
     if g and g >= JL.summon.companionExpiresGame and startLeaving then
@@ -2919,9 +3218,11 @@ registerForEvent("onUpdate", function(dt)
       pcall(startLeaving)
     end
   end
+  pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
 
   pcall(wanderTick)       -- v0.35: idle Jackie free-roams between his location's waypoints
   pcall(idleLeavingTick)  -- v0.38: idle Jackie walking off to a venue exit before despawning
+  pcall(function() proximityBarkTick(dt) end)  -- v0.42: greet on approach (6 m) + grunt on bump (1.2 m)
 
   JL.timer = JL.timer + dt
   if JL.timer >= Config.scheduleCheckInterval then
@@ -2930,8 +3231,75 @@ registerForEvent("onUpdate", function(dt)
   end
 end)
 
+-- ---------------------------------------------------------------------------
+-- v0.43 SEAT POSITION TUNER. Live X/Y/Z/yaw OFFSETS from a location's captured seat. Slide in-game
+-- (with idle Jackie present at that venue) until he sits perfectly, then print the config-ready
+-- line. Re-seating goes through the normal stop-workspot -> teleport -> deferred sit path, so the
+-- v0.43 sit-time collision drop applies and he won't clip the chair.
+-- ---------------------------------------------------------------------------
+local function tunerSeatWaypoint(loc)   -- the location's sit waypoint (else its anchor)
+  if loc and loc.waypoints then
+    for _, wp in ipairs(loc.waypoints) do if wp.pose == "sit" then return wp end end
+    if loc.waypoints[1] then return loc.waypoints[1] end
+  end
+  return nil
+end
+
+local function tunerInit()
+  local t   = JL.tuner
+  local loc = Config.locations[t.key]
+  local wp  = tunerSeatWaypoint(loc)
+  local p   = (wp and wp.pos) or (loc and loc.pos) or { 0, 0, 0 }
+  local y   = (wp and wp.yaw) or (loc and loc.yaw) or 0.0
+  t.baseX, t.baseY, t.baseZ, t.baseYaw = p[1], p[2], p[3], y
+  t.dx, t.dy, t.dz, t.dyaw = 0, 0, 0, 0
+  t.prevX, t.prevY, t.prevZ, t.prevYaw = 0, 0, 0, 0
+  t.pendingApplyAt = nil
+  t.init = true
+end
+
+local function tunerCoords()
+  local t = JL.tuner
+  return t.baseX + t.dx, t.baseY + t.dy, t.baseZ + t.dz, t.baseYaw + t.dyaw
+end
+
+local function tunerHere()   -- is idle Jackie present at the tuned venue?
+  return JL.idle.spawn and JL.idle.spawn.handle and JL.idle.locationKey == JL.tuner.key
+end
+
+-- Re-seat Jackie at the current working coords (stop pose -> teleport -> deferred sit).
+local function tunerApply()
+  if not tunerHere() then
+    JL.ui.status = "Tuner: Force venue -> " .. JL.tuner.key .. ", go stand near him first."
+    return false
+  end
+  local h = JL.idle.spawn.handle
+  local x, y, z, yaw = tunerCoords()
+  stopWorkspotPose(h)
+  pcall(function() aiTeleport(h, Vector4.new(x, y, z, 1.0), yaw) end)
+  JL.idle.pendingPose = { pose = "sit",
+                          at = (JL.clock or 0) + ((Config.poses and Config.poses.delay) or 0.5) }
+  return true
+end
+
+-- Print the config-ready line AND live-patch the in-memory config so he keeps sitting right this
+-- session (anchor + the sit waypoint both move, mirroring how config.lua stores noodle).
+local function tunerPrint()
+  local x, y, z, yaw = tunerCoords()
+  local line = string.format("pos = { %.3f, %.3f, %.3f }, yaw = %.1f", x, y, z, yaw)
+  JL.ui.lastCapture = line
+  log(JL.tuner.key .. " seat tuned -> " .. line)
+  local loc = Config.locations[JL.tuner.key]
+  if loc then
+    loc.pos = { x, y, z }; loc.yaw = yaw
+    local wp = tunerSeatWaypoint(loc)
+    if wp then wp.pos = { x, y, z }; wp.yaw = yaw end
+  end
+end
+
 registerForEvent("onDraw", function()
   pcall(drawDialogueBox)                      -- v0.24: the styled choice box draws DURING gameplay
+  pcall(drawDinnerObjective)                  -- v0.43: blue "head to dinner" objective while walking
   if not JL.ui.overlayOpen then return end   -- the debug window only draws while the overlay is open
   if not JL.ui.open then return end
   ImGui.Begin("Jackie Lives")
@@ -2959,10 +3327,22 @@ registerForEvent("onDraw", function()
   ImGui.Text("Companion: " .. tostring(JL.summon.active) ..
              "   Idle-spawned: " .. tostring(JL.idle.spawn ~= nil))
   if JL.idle.spawn then
-    ImGui.Text(("Wander: %s  wp %s/%s"):format(
+    ImGui.Text(("Wander: %s  wp %s/%s   collision: %s"):format(
       tostring(JL.idle.phase or "-"),
       tostring(JL.idle.curIdx or "?"),
-      tostring(JL.idle.tgtIdx or "-")))
+      tostring(JL.idle.tgtIdx or "-"),
+      JL.idle.collisionOff and "OFF" or "on"))
+  end
+
+  -- v0.43b: MASTER flip switch — collision off for idle Jackie's whole stay (so chairs/stalls can't
+  -- block or shove him). Flipping it applies immediately to the live idle Jackie.
+  do
+    local prev = Config.idleNoCollision
+    Config.idleNoCollision = ImGui.Checkbox("Idle Jackie: collisions OFF (no chair-blocking)", Config.idleNoCollision and true or false)
+    if Config.idleNoCollision ~= prev then
+      applyIdleCollision()
+      log("Idle collision master -> " .. (Config.idleNoCollision and "OFF (no collision)" or "ON (normal collision)"))
+    end
   end
   ImGui.Separator()
 
@@ -3034,6 +3414,50 @@ registerForEvent("onDraw", function()
     ImGui.TextWrapped(JL.ui.lastCapture)
   end
 
+  -- v0.43 SEAT TUNER: slide Jackie's seat until perfect, then print the coords for config.lua.
+  ImGui.Separator()
+  if ImGui.CollapsingHeader("Seat position tuner (Noodle bar)") then
+    if not JL.tuner.init then tunerInit() end
+    local t = JL.tuner
+    local here = tunerHere()
+    ImGui.TextWrapped(here
+      and "Jackie is here — slide and he re-seats live."
+      or  ("Jackie NOT at " .. t.key .. ". Use Force venue -> Noodle bar above, then walk over to him."))
+    ImGui.TextWrapped("Offsets from the captured seat (metres). X & Z are what you asked for; " ..
+                      "Y (the other floor axis) and yaw are here too in case they help.")
+    t.dx   = ImGui.SliderFloat("X offset (m)",          t.dx,   -3.0, 3.0)
+    t.dz   = ImGui.SliderFloat("Z offset — up/down (m)", t.dz,   -2.0, 2.0)
+    t.dy   = ImGui.SliderFloat("Y offset (m)",          t.dy,   -3.0, 3.0)
+    t.dyaw = ImGui.SliderFloat("Yaw offset (deg)",      t.dyaw, -45.0, 45.0)
+    -- fine nudges for the two axes you care about
+    if ImGui.Button("X -0.02") then t.dx = t.dx - 0.02 end ImGui.SameLine()
+    if ImGui.Button("X +0.02") then t.dx = t.dx + 0.02 end ImGui.SameLine()
+    if ImGui.Button("Z -0.02") then t.dz = t.dz - 0.02 end ImGui.SameLine()
+    if ImGui.Button("Z +0.02") then t.dz = t.dz + 0.02 end
+    local x, y, z, yaw = tunerCoords()
+    ImGui.Text(string.format("Working coords: { %.3f, %.3f, %.3f }  yaw %.1f", x, y, z, yaw))
+
+    t.live = ImGui.Checkbox("Live: re-seat him as I slide", t.live)
+    -- debounced live apply: only fire ~0.25 s after the last slider movement (avoids per-frame re-sit)
+    if t.live and here then
+      local moved = math.abs(t.dx - t.prevX) > 1e-4 or math.abs(t.dy - t.prevY) > 1e-4
+                 or math.abs(t.dz - t.prevZ) > 1e-4 or math.abs(t.dyaw - t.prevYaw) > 1e-4
+      if moved then t.pendingApplyAt = (JL.clock or 0) + 0.25 end
+    end
+    t.prevX, t.prevY, t.prevZ, t.prevYaw = t.dx, t.dy, t.dz, t.dyaw
+    if t.pendingApplyAt and (JL.clock or 0) >= t.pendingApplyAt then
+      t.pendingApplyAt = nil; tunerApply()
+    end
+
+    if ImGui.Button("Move Jackie here (re-sit)") then tunerApply() end
+    ImGui.SameLine()
+    if ImGui.Button("Reset offsets") then t.dx, t.dy, t.dz, t.dyaw = 0, 0, 0, 0 end
+    ImGui.SameLine()
+    if ImGui.Button("Print coords -> config.lua") then tunerPrint() end
+    ImGui.TextWrapped("Printed line goes to the console + the 'Last capture' box above. Tell me the " ..
+                      "numbers and I'll bake them into config.lua permanently.")
+  end
+
   ImGui.Separator()
   ImGui.Text("ISOLATED UI TESTS (no Jackie / no audio - debug the two UI mechanisms):")
   if ImGui.Button("TEST: push subtitle (look at BOTTOM of screen)") then
@@ -3061,7 +3485,32 @@ registerForEvent("onDraw", function()
   ImGui.Separator()
   ImGui.Text("Dialogue (summon Jackie first so his voice plays on him):")
   if ImGui.Button("Play branching dialogue") then pcall(function() Branch.start(nil, Config.dialogueTree) end) end
-  ImGui.TextWrapped("Branch: F=confirm highlighted choice; bind 'Jackie dialogue: next choice' to move highlight.")
+  ImGui.TextWrapped("Branch: ↑/↓ move the highlight (every layer), F confirms.")
+
+  ImGui.Separator()
+  do  -- v0.42: PROXIMITY BARK tuning (idle, non-companion Jackie). Sliders are live until distances feel right.
+    local b = barkCfg()
+    b.enabled = ImGui.Checkbox("Proximity barks (greet on approach + bump grunt)", b.enabled)
+    b.greetRange    = ImGui.SliderFloat("Greet range (m)",    b.greetRange,    0.0, 15.0)
+    b.bumpRange     = ImGui.SliderFloat("Bump range (m)",     b.bumpRange,     0.0,  5.0)
+    b.greetCooldown = ImGui.SliderFloat("Greet cooldown (s)", b.greetCooldown, 0.0, 300.0)
+    b.bumpCooldown  = ImGui.SliderFloat("Bump cooldown (s)",  b.bumpCooldown,  0.0,  30.0)
+    local dtxt = b.lastDist and string.format("%.2f m", b.lastDist) or "—"
+    ImGui.Text("Idle Jackie here: " .. ((JL.idle.spawn and not JL.summon.active) and "yes" or "no") ..
+               "   V distance: " .. dtxt)
+    if ImGui.Button("Test greet now") then
+      if JL.idle.spawn and JL.idle.spawn.handle then
+        local list = (b.greetEvents and #b.greetEvents > 0) and b.greetEvents or { "ono_jackie_greet" }
+        pcall(function() playEventOn(JL.idle.spawn.handle, list[math.random(1, #list)], "") end)
+      end
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Test bump grunt") then
+      if JL.idle.spawn and JL.idle.spawn.handle then
+        pcall(function() playEventOn(JL.idle.spawn.handle, b.bumpEvent or "ono_jackie_bump", "") end)
+      end
+    end
+  end
 
   ImGui.Separator()
   Config.enableSchedule = ImGui.Checkbox("Enable schedule", Config.enableSchedule)
@@ -3076,6 +3525,7 @@ registerForEvent("onShutdown", function()
   pcall(hideSubtitle)
   pcall(clearIdle)
   pcall(clearVehicleArrival)     -- v0.34: never orphan the arrival bike
+  pcall(clearDinnerWaypoint)     -- v0.41: never leave a dinner map pin stuck
   pcall(dismissJackie)
 end)
 
@@ -3092,8 +3542,6 @@ registerHotkey("jl_votest",  "Jackie: play random voice", function() playRandomJ
 --  gives the real in-game Interact key (F) for free - see setupInteractHook.)
 registerInput("jl_talk", "Talk to Jackie (look at him)", function(isDown) if isDown then talkToJackie() end end)
 
--- Branch dialogue: move the highlighted choice down (wraps). Bind in CET -> Bindings to
--- a convenient key (e.g. mouse wheel down, or Tab). F confirms the highlighted option.
-registerInput("jl_cycle_choice", "Jackie dialogue: next choice", function(isDown)
-  if isDown then pcall(function() Branch.move(1) end) end
-end)
+-- v0.42: the "-" cycle-choice fallback (jl_cycle_choice) is REMOVED. Arrow ↑/↓ now navigate the
+-- choice box on every layer (release-edge handling in setupInteractHook), so the manual binding is
+-- no longer needed. F still confirms the highlighted option.
