@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.45"
+Config.version = "0.46"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -448,21 +448,21 @@ Config.call = {
   ringSeconds   = 2.3,   -- native ring (IncomingCall) plays this long, then we abort + connect
   ringEvent     = "ono_jackie_phone",  -- extra WWise ring SFX layered on ("" = silent)
   spawnDelay    = 2.5,   -- seconds after the call ends before Jackie spawns (was 5.0; halved)
-  -- ARRIVAL METHOD (two paths, A/B-testable live from the CET window "Arrival method" toggle):
-  --   false = SAFE WALK-IN (arrivalTick): AMM-spawn near V, HIDE through the pop, AI-teleport to
-  --           `spawnDistance`, reveal, jog in -> companion. Rock-solid; the default since v0.44.
-  --   true  = SPRINT-IN (vehicleArrivalTick, v0.45): the refined details salvaged from the shelved
-  --           bike arrival, minus the bike. Spawns Jackie DIRECTLY at the far navmesh point (clean
-  --           dynamic-entity spawn — he never pops near V, no hide hack), then he SPRINTS in and
-  --           WALKS the last `Config.vehicle.sprintToWalk` m before becoming a companion.
-  -- The bike spawn + mount + drive AI are SKIPPED (shelved since v0.44 — never appeared reliably).
-  arriveByVehicle      = false,
-  vehicleSpawnDelay    = 1.0,   -- seconds after the call ends before the sprint-in Jackie spawns
+  -- ARRIVAL METHOD — 3 paths, cycled live from the CET window "Arrival method" button:
+  --   "safe"   = SAFE WALK-IN (arrivalTick): AMM-spawn near V, HIDE through the pop, AI-teleport to
+  --              `spawnDistance`, reveal, jog in -> companion. Rock-solid; the default since v0.44.
+  --   "sprint" = SPRINT-IN (vehicleArrivalTick, bikeless): spawn DIRECTLY at the far navmesh point
+  --              (clean dynamic-entity spawn — no pop near V, no hide hack), SPRINT in, then WALK the
+  --              last `Config.vehicle.sprintToWalk` m before companion.
+  --   "bike"   = VEHICLE ARRIVAL (vehicleArrivalTick + bike): spawn his Arch + Jackie behind V, mount,
+  --              ride in, dismount near you, sprint -> walk -> companion. Being nursed back to health.
+  arrivalMethod        = "safe",
+  vehicleSpawnDelay    = 1.0,   -- seconds after the call ends before the sprint-in / bike Jackie spawns
   -- v0.31 SPAWN-AT-DISTANCE + WALK-IN:
   -- He spawns this far from V, snapped onto the navmesh (NavigationSystem) so he never lands
   -- inside a wall/object, then WALKS in. During the walk he is a PASSIVE NPC (no follower
   -- role) so the companion catch-up TELEPORT can't skip the distance we put between you; he
-  -- becomes a real companion (combat + follow) only once he's within `handoffDistance` of V.
+  -- becomes a real companion (combat + follow) only once he's within `companionDistance` of V.
   -- NOTE ON 100 m: that's near the edge of NPC render distance (~100 m) and a long city path.
   -- At "Walk" 100 m is ~90 s, so the approach defaults to "Run" (~25-30 s). For a casual
   -- stroll-up, drop spawnDistance to ~30-40 m and set approachMovement = "Walk".
@@ -480,22 +480,27 @@ Config.call = {
   approachBoostMovement = "Run",   -- jog (was "Sprint" - too fast over the approach)
   arriveDistance   = 3.0,    -- metres from V the walk-in MoveTo aims to stop short of him
   followDistance   = 1.6,    -- metres the COMPANION keeps after handoff (so he doesn't clip into V)
-  handoffDistance  = 6.0,    -- once this close, promote him to a real companion (combat + follow)
+  -- v0.46: ONE handoff knob for ALL THREE arrival types. He promotes to a real companion (combat +
+  -- follow) once he's within this — earlier than before (was 6) so he stops the long solo walk-in
+  -- sooner and just follows you. Then, once companion + within `arrivalGruntDistance`, he barks a grunt.
+  companionDistance    = 18.0,   -- m: promote to companion at this range (safe / sprint / bike)
+  arrivalGruntDistance = 4.0,    -- m: once companion + this close, Jackie barks a "made it" grunt
   maxWalkSeconds   = 90.0,   -- safety: if he hasn't arrived by now, promote anyway (may teleport in)
 }
 
--- ---- SPRINT-IN ARRIVAL (v0.45; ex-"vehicle arrival") ------------------------
--- The good bits salvaged from the shelved bike arrival (v0.34), with the bike REMOVED. Jackie
--- spawns DIRECTLY at the far navmesh point (clean dynamic-entity spawn — no spawn-pop near V to
--- hide), SPRINTS toward V, then downshifts to a WALK for the last `sprintToWalk` m and becomes a
--- companion at `arriveDistance`. Routed in when Config.call.arriveByVehicle = true.
--- The bike knobs below (bikeRecord/cruiseSpeed/retargetInterval/dismountDistance/stuck*) are kept
--- ONLY so the bike ride can be revived later; they're unused while the path is bikeless.
+-- ---- SPRINT-IN / VEHICLE ARRIVAL (v0.34, revived v0.46) ---------------------
+-- Both non-safe arrivals share this tuning (see Config.call.arrivalMethod):
+--   "sprint" — Jackie spawns DIRECTLY at the far navmesh point (clean dynamic-entity spawn, no pop
+--              near V), SPRINTS toward V, downshifts to a WALK for the last `sprintToWalk` m.
+--   "bike"   — his Arch + Jackie spawn behind V, he mounts, rides in at `cruiseSpeed` (re-targeting
+--              V every `retargetInterval`), parks + dismounts at `dismountDistance`, then the SAME
+--              sprint -> walk finish. STUCK FAILSAFE + fresh-respawn FOOT FALLBACK cover a broken ride.
+-- Both promote to companion at `Config.call.companionDistance` (18 m), not `arriveDistance`.
 Config.vehicle = {
-  spawnDistance    = 80.0,   -- metres from V Jackie spawns at (navmesh-snapped, in the rear arc)
+  spawnDistance    = 80.0,   -- metres from V Jackie (and the bike) spawn at (navmesh-snapped, rear arc)
   sprintToWalk     = 25.0,   -- Jackie->V distance where he downshifts sprint -> walk (last 25 m on foot)
-  arriveDistance   = 3.0,    -- Jackie->V distance: stop + become a companion
-  -- --- BIKE KNOBS (unused while bikeless; kept for a future bike-ride revival) ---
+  arriveDistance   = 3.0,    -- Jackie->V distance the foot MoveTo aims to stop short of him
+  -- --- BIKE KNOBS (used by "bike" arrival) ---
   bikeRecord       = "Vehicle.v_sportbike2_arch_jackie_player",  -- Jackie's Arch
   cruiseSpeed      = 8.0,    -- drive speed (8 = careful; he was reckless at higher)
   retargetInterval = 3.0,    -- re-issue the drive at V's latest position (longer = less re-path stutter)

@@ -577,3 +577,30 @@ OWNERSHIP map. config.lua collision section rewritten to match. Bumped Config.ve
 
 NEXT: decide vehicle arrival = revive vs remove. If revived, it must restore collision on handoff too.
 ================================================================================
+
+================================================================================
+v0.45 — SEAT TUNER FIX + SEAT-ANGLE LOCK + COLLISION STATUS (seat/pose session, 2026-06-18)
+(Separate from the v0.45 bikeless-arrival work — touches the pose/placement path + the CET window.)
+
+TUNER WAS A NO-OP. Root cause: aiTeleport hardcodes AITeleportCommand.doNavTest=true, which snaps the
+target to the nearest navmesh point. The noodle seat is on/near a stool, so every slide/re-seat snapped
+back to the same fixed point -> his position never changed. Same reason the seat ANGLE was wrong: the AMM
+workspot inherited his walk-in facing instead of the waypoint yaw.
+
+FIX: new placeAtExact(handle, pos, yawDeg) = Game.GetTeleportationFacility():Teleport(handle, pos,
+EulerAngles.new(0,0,yaw)). Immediate, sets EXACT pos + yaw, NO navmesh snap. Deliberately does NOT also
+queue an AITeleportCommand (that applies a frame later and can eject him from the seat). Works on a
+SETTLED npc (the "facility no-ops on a FRESH npc" caveat is arrival-only; idle Jackie is settled).
+
+WIRING: applyIdlePose now stores the exact seat vec + yaw in JL.idle.pendingPose {pose,name,vec,yaw,at};
+when wanderTick fires the deferred pose it calls placeAtExact(vec,yaw) right before tryWorkspotPose, so
+position AND facing are locked the instant the workspot spawns. tunerApply uses placeAtExact for an
+immediate exact move + re-locks on the deferred fire. dinnerTick's sit-fire (b) does the same. Net: seat
+angle is now deterministic from the waypoint yaw regardless of approach; the tuner yaw slider (widened to
++/-180) actually spins him.
+
+COLLISION STATUS: added a line to the CET window — "Collision  setting: ON/OFF | live on Jackie: ..."
+(idle "OFF - deactivated", dinner-seat, or "no idle Jackie") so Antonia can confirm collision is off.
+
+aiTeleport signature left UNCHANGED (the doNavTest path is only ever true now). Config.version -> 0.45.
+================================================================================

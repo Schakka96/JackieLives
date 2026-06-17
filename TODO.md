@@ -2,6 +2,41 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.46 — 3-way arrival selector (safe/sprint/bike), earlier handoff + arrival grunt (DEPLOYED, awaiting test, 2026-06-18)
+- **`Config.call.arrivalMethod`** (`"safe" | "sprint" | "bike"`) replaces the `arriveByVehicle` boolean.
+  CET-window button now CYCLES safe → sprint → bike; "Test arrival now" fires the selected one.
+  - **bike** = the OLD vehicle arrival, restored: `vehicleArrivalTick` phase (0) branches on `va.useBike`
+    — bike+Jackie spawn behind V, mount, ride in (placing/driving phases + stuck failsafe + foot
+    fallback), then sprint → walk → companion. "We'll nurse it back to health" (Antonia).
+  - **sprint** = bikeless (v0.45): spawn directly at distance, sprint → walk → companion.
+- **Earlier companion handoff for ALL THREE:** new `Config.call.companionDistance = 18.0` (was 6 for
+  safe / 3 for sprint+bike). He stops the long solo walk-in at 18 m and just follows you.
+- **Arrival grunt (ALL THREE):** `promoteToCompanion` arms `JL.summon.arrivalGruntPending`;
+  `arrivalGruntTick` fires a one-shot `ono_jackie_bump` grunt once he closes to
+  `Config.call.arrivalGruntDistance = 4.0` m. Cleared on dismiss.
+- [ ] **TEST:** CET window → cycle method → "Test arrival now" for each. Confirm: companion at ~18 m,
+      grunt at ~4 m, bike actually appears + rides in (the open question), no second Jackie.
+- ⚠️ **CLEANUP DEBT (do soon):** the arrival section is now MESSY — two near-duplicate state machines
+  (`arrivalTick` for safe vs `vehicleArrivalTick` for sprint+bike) with copy-pasted sprint/walk/handoff
+  logic, plus ~6 bike helpers + a foot-fallback. Plan: unify the sprint/walk/handoff tail into ONE
+  shared helper both ticks call, behind small distance accessors.
+
+## 🆕 v0.45 — seat tuner FIX + seat-angle lock + collision status line (DEPLOYED, awaiting test, 2026-06-18)
+- **Seat tuner was doing nothing — ROOT CAUSE: `aiTeleport`'s `doNavTest=true` navmesh-snap.** Every
+  re-seat/slide snapped the target to the nearest navmesh point, so small nudges (and the requested yaw)
+  were discarded → he never moved. **FIX:** new `placeAtExact(handle, pos, yaw)` = TeleportationFacility
+  teleport (immediate, EXACT pos + yaw, NO navmesh snap; no async AI command that could eject him from
+  the seat). Tuner + the deferred idle sit + the dinner sit all use it now.
+- **Wrong seat ANGLE depending on arrival direction — FIXED.** The AMM workspot inherited his walk-in
+  facing. Now the deferred sit carries the EXACT pos + yaw (`pendingPose.vec/.yaw`) and `placeAtExact`
+  locks his facing the instant before the workspot plays → seat angle is deterministic from the waypoint
+  yaw, same no matter where he came from. Tuner yaw slider widened to ±180° so you can spin him fully.
+- **Collision STATUS line in the CET window:** `Collision  setting: ON/OFF  |  live on Jackie: …` shows
+  the master-switch setting AND the live state on the entity (idle "OFF — deactivated ✓", dinner-seat, or
+  "no idle Jackie spawned yet"), so you can confirm collision is actually deactivated.
+- [ ] **TEST:** Force venue → Noodle bar → seat tuner → sliding X/Z now moves him; yaw spins him; "Print
+      coords" → send me the numbers. Confirm the status line reads "live on Jackie: OFF — deactivated ✓".
+
 ## 🆕 v0.45 — bikeless "SPRINT-IN" arrival + live method toggle (DEPLOYED, awaiting test, 2026-06-18)
 **Goal (Antonia):** salvage the good details from the shelved vehicle arrival — sprint-first-then-walk
 (`Config.vehicle.sprintToWalk = 25`) + the clean direct-at-distance spawn — into a usable arrival,
