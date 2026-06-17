@@ -2,6 +2,25 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.45 — bikeless "SPRINT-IN" arrival + live method toggle (DEPLOYED, awaiting test, 2026-06-18)
+**Goal (Antonia):** salvage the good details from the shelved vehicle arrival — sprint-first-then-walk
+(`Config.vehicle.sprintToWalk = 25`) + the clean direct-at-distance spawn — into a usable arrival,
+**skipping the bike spawn + mount**. Then expose an in-game toggle to A/B it against the safe walk-in.
+- **`vehicleArrivalTick` is now BIKELESS** (`init.lua`): phase (0) skips `spawnDynEntity(bike)` + mount +
+  drive entirely. It spawns Jackie DIRECTLY at the far navmesh point (clean dynamic-entity spawn — no
+  spawn-pop near V, so none of the hide/teleport hack the safe walk-in needs), then drops straight into
+  the existing refined `sprinting → walking → handoff` phases (sprint in, walk the last `sprintToWalk` m,
+  promote to companion). The bike helpers (`mountAsDriver`/`driveBikeTo`/stuck failsafe/foot fallback)
+  are LEFT IN but unreferenced — kept only for a future bike-ride revival.
+- **`Config.call.arriveByVehicle`** now selects SPRINT-IN (true) vs SAFE WALK-IN (false); still defaults
+  false. `Config.vehicle` trimmed: live knobs first (`spawnDistance`/`sprintToWalk`/`arriveDistance`),
+  bike knobs flagged unused.
+- **In-game toggle (CET window):** "Arrival method: SPRINT-IN / SAFE WALK-IN" button flips it live, plus a
+  **"Test arrival now"** button that fires the selected arrival immediately (no holocall needed).
+- [ ] **TEST:** open the CET window → toggle method → "Test arrival now" for each. SPRINT-IN: Jackie
+      should appear ~80 m out, run in, downshift to a walk ~25 m out, become companion. SAFE WALK-IN:
+      hidden spawn → teleport → jog in (unchanged). Confirm no second Jackie, no spawn-on-top-of-V.
+
 ## 🆕 v0.44 — Esc-menu "Go Home Jackie" recovery panel (MERGED to main, awaiting test, 2026-06-18)
 - **NEW DEPENDENCY: Native Settings UI (`nativeSettings`)**, CET 1.18.1+. Adds an in-game
   **Esc → Settings → Jackie Lives → Recovery** page (see README requirements for the folder-name +

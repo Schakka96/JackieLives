@@ -482,6 +482,70 @@ flap only for bespoke lines. SKIP: volume->jaw (viseme pipe is VO-only) and hand
 ================================================================================
 
 ================================================================================
+SCHEDULE V2 + LIVING-NPC LIFE LOOP (v0.36 -> v0.42, 2026-06-17)
+The "scheduled-presence NPC" half of the framework. Built in a session that OWNED the schedule/idle
+subsystem (JL.idle / JL.day / JL.secret); concurrent sessions owned vehicle-arrival, lipsync, and
+dialogue/dinner — hence the v0.43 3-way init.lua merge the v0.44 entry below cleans up.
+
+DAY ROTATION (v0.36). 5 day-types (active1/2/3 + quiet + gone) in a Fisher-Yates SHUFFLE BAG
+(Config.dayBag): pop one per in-game day, reshuffle when empty -> every 5-day cycle uses each type
+once, no skips, random order. KEY DECISION: detect the day rollover by the game HOUR WRAPPING
+(getGameHour now < last), NOT a "day" field -- getGameHour is the only confirmed-reliable time signal
+on this build, and time only ever moves forward (sleep/fast-travel included), so a decrease == new day.
+RNG seeded at onInit (the first bag shuffle happens ~2 s in, before any holocall would seed it).
+
+SCHEDULE SHAPE (v0.37 -> v0.38). BEDTIME = MIDNIGHT (sleep 00:00-06:00) so the day-type boundary lands
+while he's asleep -- no activity block straddles the rollover (killed a whole class of edge cases the
+old past-midnight blocks had). Half-hour blocks needed for the 23:30-00:00 Coyote wind-down -> getGameHour
+returns FRACTIONAL hours (adds GetMinute; HH.mm). Each active day = 3-4 stops (~3-6 h) ~= 14 h present
+(4 h home + 6 h sleep); he ALWAYS returns to El Coyote before bed (his home is "upstairs" there). All 7
+venues covered across the active days; quiet = mostly home, gone = out of town. UI shows HH:MM + day-type.
+
+OUTFITS (v0.36/0.39). Per-location `appearance` threaded through ammSpawn(flag, appearance). Real AMM
+names: jackie_welles_default / _default_collar_down / __q005_suit / __q000_lizzies_club_no_jacket.
+
+FREE-ROAM WANDER (v0.35/0.39). Per-location `waypoints`; dwell (tuned to 30-90 s) then MoveTo a RANDOM
+non-repeating waypoint (no back-and-forth pacing). Confirmed: a PASSIVE AMM-spawned NPC obeys
+AIMoveToCommand (the same path the holocall walk-in / dismiss walk-off use), so no companion role needed.
+
+WALK-AWAY (v0.38). On a block change, if you're nearby, idle Jackie strolls to the venue `exitWaypoint`
+(Coyote = his upstairs "go home" spot, Lizzie's = outside) or, where none is captured, just away from V
+(awayPoint), then despawns on reach / leaving range / 20 s timeout (idleLeavingTick). Not watched -> instant
+clear. NOTE: some exits are OUTSIDE the venue -> open question whether streaming/navmesh lets him reach them.
+
+RECRUIT-IN-PLACE (v0.39) -- fixed "dialogue runs but he won't follow". The gig choices carry
+action="recruit_here"; recruitIdleJackie() hands the SAME live entity from JL.idle to JL.summon +
+promoteToCompanion, releasing the schedule/wander grip WITHOUT despawning. There is only ever ONE Jackie
+entity -- idle and companion are two SYSTEMS passing it back and forth, not two Jackies.
+
+DISMISS RETURN-TO-POST (v0.40). Dismissing while within Config.transitions.returnRadius (100 m) of the
+venue the schedule currently wants him at -> drop the follower role, hand the entity BACK to JL.idle,
+walk him to the nearest waypoint, re-join the cycle (no despawn/respawn). Farther/off-schedule -> the
+normal walk-away-and-despawn (startLeaving).
+
+TRANSITIONS -- THE LESSON. A real cross-map walk is IMPOSSIBLE: NPC navmesh is local + he's unloaded once
+out of streaming range, so nothing is simulated. Transitions are FAKED: depart-on-foot theater at one end,
+pure bookkeeping in the middle (Config.transitions.transitRealSeconds = 50 s "en route"), arrive theater at
+the other end (reuse the holocall navmesh walk-in, re-anchored to the venue). Config in place; the transit
+gate + venue-anchored walk-IN arrival were left as the remaining V1.0 build.
+
+SIT/LEAN SHIPPED (v0.39/0.41) via AMM's workspot pipeline (see memory jackie-sit-lean-workspots). Two real
+bugs fixed: (1) the FLOAT race -- the pose was played the same frame as the align-teleport, so AMM spawned
+the sit prop where he WAS -> DEFER the play by Config.poses.delay (0.5 s). (2) wrong chair height -- AMM sit
+is FREESTANDING (invisible chair); default = barstool (sit_barstool__2h_on_lap__01), per-waypoint `poseAnim`
+override for Misty's deep chair, and `poseOffset` to nudge him onto the real seat. (The v0.44 dinner entry
+re-hit bug (1) for the COMPANION sit, which didn't inherit this fix.)
+
+SECRET NAP CAMEO (v0.41). 20%/night, once-per-night roll (secretWantKey), he's leaning at a hidden spot
+during the sleep window instead of being absent. Pure easter egg.
+
+TOOLS. CET "Cycle day-type" + "Force venue" buttons (JL.ui.forceVenue overrides time + secret) so you can
+go observe him on demand. Vehicle-arrival 40 s fresh-respawn fallback added here (later SHELVED in v0.44).
+
+REPO. *.archive gitignored (keep source-only); all source pushed (commit c5b570a, v0.37->v0.42).
+================================================================================
+
+================================================================================
 v0.44 — REGRESSION FIXES + COLLISION CLEANUP + ARCH DOCS (2026-06-17)
 Two problems surfaced from the 3-concurrent-session v0.43 commit (vehicle-arrival + lipsync +
 dialogue/dinner all edited init.lua at once; each entry above notes "a concurrent session owns X").

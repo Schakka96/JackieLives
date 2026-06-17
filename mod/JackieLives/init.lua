@@ -23,11 +23,13 @@
      (dwell → walk → sit/lean pose). returnToPost hands a dismissed companion back here.
    • COMPANION        (state: JL.summon) — summonJackie (instant) / promoteToCompanion
      (after an arrival). Follower role = AMM SetNPCAsCompanion. dismissJackie removes him.
-   • ON-FOOT ARRIVAL  (state: JL.arrival) — arrivalTick: spawn hidden, teleport to
-     `spawnDistance`, reveal, walk in, hand off to COMPANION. (Holocall uses THIS when
-     Config.call.arriveByVehicle = false — the default since v0.44.)
-   • VEHICLE ARRIVAL  (state: JL.varrival) — vehicleArrivalTick: ride in on the bike.
-     ⚠️ SHELVED/BROKEN since ~v0.38 (no bike). Not used while arriveByVehicle = false.
+   • SAFE WALK-IN     (state: JL.arrival) — arrivalTick: AMM-spawn near V, hide through the pop,
+     teleport to `spawnDistance`, reveal, jog in, hand off to COMPANION. Holocall uses THIS when
+     Config.call.arriveByVehicle = false (the default since v0.44).
+   • SPRINT-IN        (state: JL.varrival) — vehicleArrivalTick: v0.45 BIKELESS. Spawn Jackie
+     directly at `spawnDistance` (clean dynamic-entity spawn), SPRINT in, WALK the last
+     `Config.vehicle.sprintToWalk` m, hand off to COMPANION. Holocall uses THIS when
+     arriveByVehicle = true. (Bike spawn + mount + drive AI are skipped/shelved since v0.44.)
    • DINNER OUTING    (state: JL.dinner)  — dinnerTick: companion Jackie walks to a
      restaurant, sits, resets his companion clock, re-follows. Owns its own collision.
    • DIALOGUE/CALL    (Branch.*, dlg, callTick) — the voiced choice-box + holocall convo.
@@ -1683,12 +1685,12 @@ local function runCallAction(name)
   if name ~= "summon_arrival" then return end
   if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
-  -- v0.34: ride in on the bike, or fall back to the on-foot walk-in.
+  -- v0.45: SPRINT-IN arrival (ex-vehicle, now bikeless), or the SAFE on-foot walk-in.
   if Config.call and Config.call.arriveByVehicle then
     local delay = (Config.call and Config.call.vehicleSpawnDelay) or 6.0
     JL.varrival.at = (JL.clock or 0) + delay
-    JL.ui.status = ("Jackie's grabbin' his bike (%.0fs)..."):format(delay)
-    log("Call: VEHICLE arrival scheduled in " .. tostring(delay) .. "s.")
+    JL.ui.status = ("Jackie's headin' over (%.0fs)..."):format(delay)
+    log("Call: SPRINT-IN arrival scheduled in " .. tostring(delay) .. "s.")
     return
   end
   local delay = (Config.call and Config.call.spawnDelay) or 5.0
@@ -2369,33 +2371,35 @@ end
 
 local function vehicleArrivalTick()
   local va, c = JL.varrival, vehCfg()
-  -- (0) scheduled -> spawn the bike + Jackie TOGETHER behind V (same as the test harness, so the
-  -- mount is local; no 80 m teleport-then-mount). Jackie is tracked on JL.summon.spawn = {id,handle}
-  -- so the rest of JackieLives (talk / dialogue / dismiss) treats him as the summoned Jackie.
+  -- (0) scheduled -> BIKELESS (v0.45). The bike spawn + mount + drive AI are SKIPPED (shelved since
+  -- v0.44 — the Arch never appeared reliably). We keep the GOOD bits of this path: spawn Jackie
+  -- DIRECTLY at the far navmesh point via the dynamic-entity system (the clean spawn — he never pops
+  -- near V, so no hide/teleport hack the safe walk-in needs), then drop straight into the refined
+  -- SPRINT -> WALK -> companion handoff below. Jackie is tracked on JL.summon.spawn = {id,handle} so
+  -- the rest of JackieLives (talk / dialogue / dismiss) treats him as the summoned Jackie.
   if va.at and (JL.clock or 0) >= va.at then
     va.at = nil
     local pp = playerPos()
     va.pt = navmeshArrivalPoint(c.spawnDistance or 80.0) or arrivalPoint()
-    if not va.pt then JL.ui.status = "Vehicle arrival: no spawn point."; return end
-    local yaw  = yawToward(va.pt, pp)
-    va.bikeId  = spawnDynEntity(c.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", va.pt, yaw, "JackieLives_bike")
-    local jpos = snapToNavmesh(Vector4.new(va.pt.x + 1.5, va.pt.y, va.pt.z, 1.0)) or va.pt
-    local jid  = spawnDynEntity(Config.jackieRecord or "Character.Jackie", jpos, yaw, "JackieLives_jackie")
-    if not va.bikeId or not jid then
-      JL.ui.status = "Vehicle arrival spawn failed (see console)."
-      log("VehArrival: spawn failed (bike=" .. tostring(va.bikeId ~= nil) .. ", jackie=" .. tostring(jid ~= nil) .. ")")
-      despawnArrivalBike(); if jid then deleteEntityById(jid) end; return
+    if not va.pt then JL.ui.status = "Sprint-in arrival: no spawn point."; return end
+    local yaw = yawToward(va.pt, pp)                                    -- face V (the way he'll run)
+    local jid = spawnDynEntity(Config.jackieRecord or "Character.Jackie", va.pt, yaw, "JackieLives_jackie")
+    if not jid then
+      JL.ui.status = "Sprint-in arrival spawn failed (see console)."
+      log("SprintArrival: spawn failed.")
+      return
     end
     JL.summon.spawn = { id = jid, handle = nil }
     JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
-    va.bikeHandle = nil
-    va.placeAt  = (JL.clock or 0) + 1.0
-    va.phase    = "placing"
-    va.deadline = (JL.clock or 0) + (c.maxSeconds or 120.0)
-    va.footFallbackAt = (JL.clock or 0) + (c.fallbackSeconds or 40.0)   -- v0.38 fresh-respawn deadline
-    va.footTried = false
-    JL.ui.status = "Jackie's on his way (bike)..."
-    log("VehArrival: bike + Jackie spawned at distance; mount in 1.0s.")
+    va.bikeId, va.bikeHandle = nil, nil                                 -- bikeless: the bike phases never run
+    va.phase          = "sprinting"                                    -- straight to the sprint -> walk handoff
+    va.sprintAt       = (JL.clock or 0) + 0.8                          -- let the spawn settle, then run in
+    va.unmountAgainAt = nil
+    va.lastReissue    = -999
+    va.deadline       = (JL.clock or 0) + (c.maxSeconds or 120.0)       -- safety: force handoff if it stalls
+    va.footTried      = true                                           -- already on foot; no bike fallback
+    JL.ui.status = "Jackie's on his way (sprinting in)..."
+    log("SprintArrival: Jackie spawned at distance; sprinting in.")
     return
   end
 
@@ -3499,9 +3503,31 @@ registerForEvent("onDraw", function()
   ImGui.SameLine()
   ImGui.TextWrapped("ring -> choices -> ask onto a gig -> he spawns at distance + walks in")
 
-  -- v0.33c: live A/B toggles for the three arrival variables. Tweak, then Call Jackie to test.
-  ImGui.Text("Arrival test modes (live; then Call Jackie):")
+  -- v0.45: pick which arrival the holocall uses, live. Toggle, then Call Jackie (or hit the
+  -- "Test arrival now" button below) to watch that method.
   local cc = Config.call
+  ImGui.Separator()
+  local byV = cc.arriveByVehicle and true or false
+  if ImGui.Button("Arrival method: " .. (byV and "SPRINT-IN (spawn far -> run -> walk)" or "SAFE WALK-IN (hidden -> teleport -> jog)")) then
+    cc.arriveByVehicle = not byV
+    log("Arrival method -> " .. (cc.arriveByVehicle and "SPRINT-IN" or "SAFE WALK-IN"))
+  end
+  ImGui.SameLine()
+  if ImGui.Button("Test arrival now") then
+    -- fire the selected arrival immediately, no call needed (mirrors runCallAction's summon_arrival)
+    if isMainQuestActive() then JL.ui.status = Config.declineLine
+    elseif JL.summon.active then JL.ui.status = "Jackie's already with you."
+    elseif cc.arriveByVehicle then
+      JL.varrival.at = (JL.clock or 0) + 0.2; JL.ui.status = "Testing SPRINT-IN arrival..."
+      log("TEST: SPRINT-IN arrival armed.")
+    else
+      JL.arrival.at = (JL.clock or 0) + 0.2; JL.ui.status = "Testing SAFE walk-in arrival..."
+      log("TEST: SAFE walk-in arrival armed.")
+    end
+  end
+
+  -- v0.33c: live A/B toggles for the three (safe-walk-in) arrival variables. Tweak, then test.
+  ImGui.Text("Arrival test modes (live; then Call Jackie):")
   if ImGui.Button("1) Spawn: " .. (cc.spawnBehind and "BEHIND V" or "IN FRONT")) then
     cc.spawnBehind = not cc.spawnBehind
   end
