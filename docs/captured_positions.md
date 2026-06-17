@@ -19,13 +19,17 @@ first appears / falls back to) plus a list of **waypoints** he free-roams betwee
 
 | # | pos                                | yaw   | pose | Notes |
 |---|------------------------------------|-------|------|-------|
-| 1 | `{ -1441.064, 1257.748, 23.090 }`  | -87.1 | sit  | There's a **chair** here → sit once the workspot feature lands. Anchor. |
+| 1 | `{ -1441.064, 1257.748, 23.090 }`  | -87.1 | sit  | Barstool. Anchor. |
+| exit | `{ -1440.553, 1258.332, 23.099 }` | -108.3 | — | Outside the stall (may not reach if unloaded). `exitWaypoint`. |
 
 ## Misty's Esoterica  (`misty`)
 
 | # | pos                                | yaw  | pose  | Notes |
 |---|------------------------------------|------|-------|-------|
-| 1 | `{ -1541.072, 1195.238, 15.869 }`  | 50.9 | stand | **Replaces Vik/Vic** as a destination. Anchor. |
+| 1 | `{ -1541.777, 1196.792, 15.905 }`  | 86.6 | stand | Anchor. |
+| 2 | `{ -1547.493, 1196.449, 16.260 }`  | 61.7 | stand | Near small cats. |
+| 3 | `{ -1541.289, 1194.016, 16.600 }`  | 46.1 | sit   | **Deep/low chair** (not a stool → uses the low-chair sit anim). |
+| exit | `{ -1547.112, 1185.049, 16.493 }` | -159.8 | — | Outside (may not reach if unloaded). `exitWaypoint`. |
 
 ## El Coyote Cojo  (`coyote`)  — Mama Welles' bar
 
@@ -37,16 +41,17 @@ first appears / falls back to) plus a list of **waypoints** he free-roams betwee
 | 4 | `{ -1267.961,  -990.652, 16.027 }`  | 175.8 | stand | Upstairs at vending machine. |
 | 5 | `{ -1263.294,  -996.467, 16.017 }`  | -80.0 | lean  | Upstairs, looking over railing. |
 | 6 | `{ -1262.646,  -984.029, 12.037 }`  |   6.5 | lean  | Outside door, leaning. |
+| exit | `{ -1247.138, -985.136, 16.027 }` | -77.3 | — | **Final despawn spot** (`exitWaypoint`) → goes home/to bed. Also the home/asleep exit. |
 
 ## Afterlife  (`afterlife`)  — merc legends bar (night)
 
 | # | pos                                | yaw    | pose  | Notes |
 |---|------------------------------------|--------|-------|-------|
 | 1 | `{ -1457.063, 1018.598, 16.524 }`  |  -96.9 | lean  | Near entrance, leaning. Anchor. |
-| 2 | `{ -1441.141, 1011.210, 16.532 }`  |  147.1 | sit   | At bar, left. |
-| 3 | `{ -1444.870, 1034.471, 16.923 }`  |   54.9 | stand | Alcove left, watching a dance. |
-| 4 | `{ -1454.586, 1009.834, 16.500 }`  |   65.3 | stand | Watching 2 dancers. |
-| 5 | `{ -1450.311, 1012.359, 16.522 }`  | -164.2 | sit   | At bar, right. |
+| 2 | `{ -1444.870, 1034.471, 16.923 }`  |   54.9 | stand | Alcove left, watching a dance. |
+| 3 | `{ -1454.586, 1009.834, 16.500 }`  |   65.3 | stand | Watching 2 dancers. |
+| 4 | `{ -1449.437, 1012.129, 17.357 }`  | -168.3 | sit   | Bar, **right** side (barstool). Left-bar entry removed. |
+| exit | `{ -1471.229, 1038.869, 22.661 }` | 167.6 | — | Toward the exit (end of shift). `exitWaypoint`. |
 
 ## Ginger Panda  (`ginger`)  — restaurant
 
@@ -81,6 +86,25 @@ Captured + wired, **not in the daily schedule yet**.
 | # | pos                                | yaw  | pose  | Notes |
 |---|------------------------------------|------|-------|-------|
 | 1 | `{ -854.737, 1833.329, 36.207 }`   | 44.4 | stand | Native-box test save standing spot. |
+
+## Secret nap spot  (`secret`)  — easter egg
+
+20% chance per night to appear here (leaning) during the 00:00–06:00 sleep window. `Config.secret`.
+
+| # | pos                                | yaw   | pose | Notes |
+|---|------------------------------------|-------|------|-------|
+| 1 | `{ -1470.154, 1201.503, 19.084 }`  | -41.9 | lean | Hidden sleeping-hours cameo. |
+
+## Lizzie's Bar  (`lizzies`)  — Mox club
+
+⚠️ **Closed before 21:00** → only scheduled in active1's 21:00–23:30 slot. Row "exit" is the outside
+**departure** point (his `exitWaypoint`, not a wander spot).
+
+| #    | pos                                 | yaw   | pose  | Notes |
+|------|-------------------------------------|-------|-------|-------|
+| 1    | `{ -1194.874, 1561.692, 22.915 }`   | -85.6 | stand | At entrance. Anchor. |
+| 2    | `{ -1174.427, 1572.135, 23.115 }`   | -68.5 | sit   | Rear bar. |
+| exit | `{ -1204.007, 1565.463, 22.920 }`   |  10.1 | —     | Outside — departure point (`exitWaypoint`). |
 
 ---
 

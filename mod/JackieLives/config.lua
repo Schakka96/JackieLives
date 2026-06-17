@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.36"
+Config.version = "0.42"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -58,7 +58,7 @@ Config.talkTest = {
 -- matches the on-screen "[F]" prompt. Then, overlay CLOSED, look at Jackie nearby: a dialogue-box
 -- prompt appears; tap F -> he grunts. (v0.13 adds the native-style prompt; see init.lua.)
 Config.talk = {
-  range      = 4.0,    -- metres; must be looking at Jackie within this distance
+  range      = 6.0,    -- metres; must be looking at Jackie within this distance (v0.39: 4->6, easier on a moving NPC)
   cooldown   = 1.5,    -- seconds between lines (anti-spam)
   rareChance = 0.05,   -- 5% chance to pull from the 'rare' pool instead of 'common'
   keyLabel   = "F",    -- prompt text; v0.15 hooks the game's native Interact key, so F works now
@@ -119,6 +119,77 @@ Config.dismiss = {
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
+}
+
+-- ---- companion duration (v0.39) ------------------------------------------
+-- Jackie won't stay a merc forever - he heads home on his own after `maxGameHours` IN-GAME
+-- hours as your companion (timer measured in game time, not real time). Asking him to dinner
+-- (Config.date) RESETS that clock. Set autoLeaveOnExpiry=false to disable the auto-departure.
+Config.companion = {
+  maxGameHours      = 6.0,   -- in-game hours he'll tag along before heading home on his own
+  autoLeaveOnExpiry = true,  -- when the clock runs out he walks off (reuses the send-off exit)
+}
+
+-- ---- ask Jackie to dinner / a date (v0.39) -------------------------------
+-- While Jackie is your COMPANION, the talk menu offers a dinner invite. Accepting it RESETS his
+-- companion clock to +`resetCompanionHours` game-hours (he sticks around longer that day).
+-- `tree` is a normal dialogue tree (same format as Config.dialogueTree); a terminal node with
+-- `action = "date_accept"` is what fires the timer reset. V can also propose via the menu entry.
+Config.date = {
+  inviteText           = "Hey - you hungry? Let's grab a bite, just us.",  -- the menu option (V's invite)
+  unlockAfterGameHours = 1.0,    -- the invite only appears after this long together...
+  enforceUnlock        = false,  -- ...OFF for now (always show, for testing). Flip true to gate it.
+  resetCompanionHours  = 6.0,    -- accepting dinner -> +this many in-game hours on the companion clock
+  -- A few alternative paths for how the dinner ask plays out. Jackie's opener is random for variety.
+  tree = {
+    start = "open",
+    nodes = {
+      open = {
+        jackiePool = {
+          { text = "Man, I'm starvin'. Let's grab a tight-bite. Whaddaya say?", sfx = "jl_1904096844380655616" },
+          { text = "Now, whaddaya say we liquor up and talk life.",             sfx = "jl_1661715724513484800" },
+          { text = "C'mon. I'm fuckin' starved.",                               sfx = "jl_1834512408575406080" },
+        },
+        choices = {
+          { text = "Somewhere we can actually talk.", to = "warm"    },
+          { text = "Your pick - you know the spots.",  to = "hispick" },
+          { text = "Then suit up, let's go.",          to = "accept"  },
+          { text = "Actually... raincheck.",           to = "decline" },
+        },
+      },
+      -- PATH A: the warmer, "is this a date?" beat
+      warm = {
+        jackie  = { text = "'Bout us. Sense a kind of chemistry, y'know?", sfx = "jl_1834510517900603392" },
+        choices = {
+          { text = "Maybe I feel it too.",  to = "likeyou" },
+          { text = "Let's just eat, choom.", to = "accept" },
+        },
+      },
+      likeyou = {
+        jackie  = { text = "Well, uh, maybe a little.", sfx = "jl_1730327816763797504" },
+        choices = {
+          { text = "C'mon then. I'm buyin'.", to = "accept" },
+        },
+      },
+      -- PATH B: let him choose the place
+      hispick = {
+        jackie  = { text = "Just don't forget to suit up.", sfx = "jl_1902710645647618048" },
+        choices = {
+          { text = "Lead the way, hermano.", to = "accept" },
+        },
+      },
+      -- ACCEPT (terminal): no choices -> auto-ends + fires the timer reset
+      accept = {
+        jackie = { text = "Right on, chica.", sfx = "jl_1721407637774192672" },
+        action = "date_accept",
+      },
+      -- DECLINE: back out, no reset
+      decline = {
+        jackie  = { text = "Why, what's the rush?", sfx = "jl_1989527454849245184" },
+        choices = { { text = "(Maybe next time.)", to = nil } },
+      },
+    },
+  },
 }
 
 -- ---- branching dialogue tree (v0.23) -------------------------------------
@@ -208,7 +279,7 @@ Config.locationDialogue = {
       },
       gig = {
         jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
-        choices = { { text = "Let's roll.", to = nil } },
+        choices = { { text = "Let's roll.", to = nil, action = "recruit_here" } },
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
@@ -249,7 +320,7 @@ Config.locationDialogue = {
       },
       gig = {
         jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
-        choices = { { text = "Let's go.", to = nil } },
+        choices = { { text = "Let's go.", to = nil, action = "recruit_here" } },
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
@@ -290,7 +361,7 @@ Config.locationDialogue = {
       },
       gig = {
         jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
-        choices = { { text = "Let's go.", to = nil } },
+        choices = { { text = "Let's go.", to = nil, action = "recruit_here" } },
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
@@ -330,7 +401,7 @@ Config.locationDialogue = {
       },
       gig = {
         jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
-        choices = { { text = "Let's go.", to = nil } },
+        choices = { { text = "Let's go.", to = nil, action = "recruit_here" } },
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
@@ -433,6 +504,12 @@ Config.vehicle = {
   stuckGrace       = 4.0,    -- seconds after mounting before stuck-detection starts (was 5)
   stuckSustain     = 4.0,    -- seconds of crawling before he bails off the bike (was 2)
   maxSeconds       = 120.0,  -- safety: force the companion handoff if the ride-in stalls
+  -- FRESH-RESPAWN FALLBACK (v0.38): the bike ride often breaks. If the arrival hasn't handed off
+  -- to a companion within `fallbackSeconds`, give up on the bike entirely: despawn the bike AND
+  -- Jackie, respawn him FRESH ~`fallbackDistance` m away on the navmesh, and switch to the plain
+  -- on-foot sprint/walk arrival. Fires once per arrival; the maxSeconds teleport is the last resort.
+  fallbackSeconds  = 40.0,   -- no companion handoff by now -> fresh on-foot respawn
+  fallbackDistance = 40.0,   -- metres from V the fresh Jackie spawns at, then sprints/walks in
 }
 
 -- V's hang-up sign-offs. At the end of any call strand one of these is shown as V's last line
@@ -530,9 +607,10 @@ Config.callTree = {
         -- rare (~5%):
         { text = "Heh, City Hall should be fuckin' thankin' us!", sfx = "jl_1989660111004311552", chance = 0.05 },
       },
-      choices = {
-        { text = "Let's do it.", to = nil, action = "summon_arrival" },  -- -> farewell -> hang up -> spawn
-      },
+      -- v0.34c: TERMINAL node (no `choices`). Once Jackie gives his "I'm in" line the call just
+      -- ends and the summon fires - no redundant "Let's do it" click for V. The node-level
+      -- `action` is what a choice used to carry. (See branchTick: no-choices node -> auto-end.)
+      action = "summon_arrival",
     },
   },
 }
@@ -547,11 +625,37 @@ Config.wander = {
   enabled         = true,
   movement        = "Walk",   -- "Walk" | "Run" — how he strolls between points
   arriveDist      = 1.5,      -- metres from a waypoint that counts as "arrived"
-  dwellMin        = 15.0,     -- seconds: shortest stand/sit at a point (per-wp override: dwell = {a,b})
-  dwellMax        = 45.0,     -- seconds: longest
+  dwellMin        = 30.0,     -- seconds: shortest stand/sit at a point (per-wp override: dwell = {a,b})
+  dwellMax        = 90.0,     -- seconds: longest (v0.40: middle ground between 15/45 and 45/150)
   repath          = 2.5,      -- re-issue the move every this many seconds while walking
   arriveTimeout   = 30.0,     -- give up walking to a point after this long, dwell anyway
   faceYawOnArrive = true,     -- snap onto the waypoint's exact spot + yaw on arrival (lean/sit framing)
+}
+
+-- ---- sit / lean poses (v0.39) ---------------------------------------------
+-- Real sit/lean ANIMATIONS, via AMM's own workspot system (the exact path AMM's Poses tab uses:
+-- Game.GetWorkspotSystem():PlayInDeviceSimple + SendJumpToAnimEnt). When Jackie dwells at a
+-- waypoint whose pose is "sit" or "lean", we call AMM.Poses:PlayAnimationOnTarget(target, anim)
+-- with the records below; when he leaves the spot we StopInDevice so he gets up. All guarded —
+-- if AMM's Poses module isn't reachable it silently falls back to just standing on the spot.
+-- anim names are AMM `workspots` rows (rig "Man Average", comp "amm_workspot_base"). Swap the
+-- `name` for any other from AMM's Poses tab to change the look (e.g. sit_chair_table__2h_cup__02).
+-- IMPORTANT: AMM's sit/lean are FREESTANDING anims (invisible chair) rooted at the waypoint spot —
+-- they do NOT snap onto a real chair. So (a) we DEFER the play by `delay` s so the snap-teleport
+-- lands first (else the pose spawns where he WAS = floating), and (b) you align him to a real chair
+-- by tuning the waypoint: re-capture standing where his SEATED body goes, and/or set a per-waypoint
+-- `poseOffset = { x=, y=, z= }` (world-space metres) to nudge him onto the seat (z down = lower him).
+-- A waypoint can override the anim with `poseAnim = "<name>"` — e.g. most of Jackie's chairs are
+-- BARSTOOLS (default below), but Misty's is a deep low chair, so that waypoint sets the low-chair anim.
+Config.poses = {
+  enabled = true,
+  delay   = 0.5,    -- seconds after the snap-teleport before playing the pose (fixes the float race)
+  ent     = "base\\amm_workspots\\entity\\workspot_anim.ent",
+  comp    = "amm_workspot_base",
+  rig     = "Man Average",
+  sit     = "sit_barstool__2h_on_lap__01",          -- DEFAULT = barstool (most of his chairs)
+  sitChair= "sit_chair__2h_on_lap__01",             -- low/deep chair (Misty's) — used via poseAnim
+  lean    = "stand_wall_lean180__2h_on_wall__01",
 }
 
 -- ---- locations ------------------------------------------------------------
@@ -564,35 +668,41 @@ Config.wander = {
 -- sit/lean WORKSPOT animation is a TODO, so the pose tags are forward-looking data.
 -- See docs/captured_positions.md for the human-readable tables.
 --
--- OUTFITS (v0.36): each location carries an `appearance` — Jackie's AMM appearance name worn
--- when he idle-spawns there. Antonia's wardrobe mapping:
---   default              -> noodle, coyote, test, and the summon/arrival fallback
---   default_collar_down  -> misty, afterlife, redwood
---   Lizzies_club_no_jacket -> ginger (Ginger Panda; also Lizzie's once that spot is captured)
---   suit                 -> reserved for a future "date" day (not used at a location yet)
--- ⚠️ These must match the EXACT appearance strings AMM lists for Character.Jackie. If an outfit
--- doesn't change in-game, open AMM's appearance list for Jackie and correct the name here.
-Config.defaultAppearance = "default"   -- worn on summon/arrival + any location with no `appearance`
+-- OUTFITS (v0.39): each location carries an `appearance` — Jackie's REAL AMM appearance name
+-- (confirmed in-game by Antonia). Wardrobe mapping:
+--   jackie_welles_default               -> noodle, coyote, test, and the summon/arrival fallback
+--   jackie_welles_default_collar_down   -> misty, afterlife, redwood
+--   jackie_welles__q000_lizzies_club_no_jacket -> ginger (Ginger Panda) + lizzies (Lizzie's Bar)
+--   jackie_welles__q005_suit            -> reserved for a future "date" day (not used at a location yet)
+Config.defaultAppearance = "jackie_welles_default"   -- summon/arrival + any location with no `appearance`
 Config.locations = {
   -- captured 2026-06-16 (Antonia). sitNearest kept for the future chair-sit feature.
   noodle = {
-    name = "Noodle bar", appearance = "default", pos = { -1441.064, 1257.748, 23.090 }, yaw = -87.1, sitNearest = true,
+    name = "Noodle bar", appearance = "jackie_welles_default", pos = { -1441.064, 1257.748, 23.090 }, yaw = -87.1, sitNearest = true,
+    exitWaypoint = { pos = { -1440.553, 1258.332, 23.099 }, yaw = -108.3 },   -- outside the stall (may not reach if unloaded)
     waypoints = {
-      { pos = { -1441.064, 1257.748, 23.090 }, yaw = -87.1, pose = "sit" },
+      { pos = { -1441.064, 1257.748, 23.090 }, yaw = -87.1, pose = "sit" },   -- barstool
     },
   },
 
-  -- Misty REPLACES Vik/Vic as a destination (Antonia). Captured 2026-06-16.
+  -- Misty REPLACES Vik/Vic as a destination (Antonia). Re-captured 2026-06-17.
+  -- Her chair is a DEEP/low chair (not a stool) -> that sit waypoint overrides the barstool anim.
   misty = {
-    name = "Misty's Esoterica", appearance = "default_collar_down", pos = { -1541.072, 1195.238, 15.869 }, yaw = 50.9,
+    name = "Misty's Esoterica", appearance = "jackie_welles_default_collar_down", pos = { -1541.777, 1196.792, 15.905 }, yaw = 86.6,
+    exitWaypoint = { pos = { -1547.112, 1185.049, 16.493 }, yaw = -159.8 },   -- outside (may not reach if unloaded)
     waypoints = {
-      { pos = { -1541.072, 1195.238, 15.869 }, yaw = 50.9, pose = "stand" },
+      { pos = { -1541.777, 1196.792, 15.905 }, yaw = 86.6, pose = "stand" },  -- anchor
+      { pos = { -1547.493, 1196.449, 16.260 }, yaw = 61.7, pose = "stand" },  -- near small cats
+      { pos = { -1541.289, 1194.016, 16.600 }, yaw = 46.1, pose = "sit", poseAnim = "sit_chair__2h_on_lap__01" },  -- deep chair
     },
   },
 
   -- El Coyote Cojo (Mama Welles' bar). Captured 2026-06-17.
+  -- exitWaypoint: the spot inside Coyote where he heads to "go home / to bed" before despawning
+  -- (Antonia's chosen final despawn point). Also Jackie's canonical home-exit for asleep/home blocks.
   coyote = {
-    name = "El Coyote Cojo", appearance = "default", pos = { -1262.463, -1002.345, 12.037 }, yaw = -50.9,
+    name = "El Coyote Cojo", appearance = "jackie_welles_default", pos = { -1262.463, -1002.345, 12.037 }, yaw = -50.9,
+    exitWaypoint = { pos = { -1247.138, -985.136, 16.027 }, yaw = -77.3 },   -- final despawn spot -> home/bed
     waypoints = {
       { pos = { -1262.463, -1002.345, 12.037 }, yaw = -50.9, pose = "lean"  },  -- right of bar
       { pos = { -1243.806,  -993.222, 12.505 }, yaw = -79.2, pose = "stand" },  -- arcade station
@@ -605,20 +715,20 @@ Config.locations = {
 
   -- Afterlife (merc legends bar, night). Captured 2026-06-17.
   afterlife = {
-    name = "Afterlife", appearance = "default_collar_down", pos = { -1457.063, 1018.598, 16.524 }, yaw = -96.9,
+    name = "Afterlife", appearance = "jackie_welles_default_collar_down", pos = { -1457.063, 1018.598, 16.524 }, yaw = -96.9,
+    exitWaypoint = { pos = { -1471.229, 1038.869, 22.661 }, yaw = 167.6 },   -- toward the exit (end of shift)
     waypoints = {
       { pos = { -1457.063, 1018.598, 16.524 }, yaw =  -96.9, pose = "lean"  },  -- near entrance
-      { pos = { -1441.141, 1011.210, 16.532 }, yaw =  147.1, pose = "sit"   },  -- bar left
       { pos = { -1444.870, 1034.471, 16.923 }, yaw =   54.9, pose = "stand" },  -- alcove, watching
       { pos = { -1454.586, 1009.834, 16.500 }, yaw =   65.3, pose = "stand" },  -- watching dancers
-      { pos = { -1450.311, 1012.359, 16.522 }, yaw = -164.2, pose = "sit"   },  -- bar right
+      { pos = { -1449.437, 1012.129, 17.357 }, yaw = -168.3, pose = "sit"   },  -- bar (right side, barstool)
     },
   },
 
   -- Ginger Panda + Redwood: in the active2/active3 day schedules. Ginger Panda waypoints 2-7
   -- are the "Any Austin" walk-in-circles easter egg (ordered-loop mode is a TODO; random-roam now).
   ginger = {
-    name = "Ginger Panda", appearance = "Lizzies_club_no_jacket", pos = { -485.426, 576.939, 31.302 }, yaw = -17.1,
+    name = "Ginger Panda", appearance = "jackie_welles__q000_lizzies_club_no_jacket", pos = { -485.426, 576.939, 31.302 }, yaw = -17.1,
     waypoints = {
       { pos = { -485.426, 576.939, 31.302 }, yaw =  -17.1, pose = "sit", dwell = { 60, 120 } },  -- bar
       { pos = { -491.638, 592.985, 31.802 }, yaw = -113.3, pose = "stand" },
@@ -631,7 +741,7 @@ Config.locations = {
   },
 
   redwood = {
-    name = "Redwood Market", appearance = "default_collar_down", pos = { -402.802, 710.778, 123.000 }, yaw = 108.1,
+    name = "Redwood Market", appearance = "jackie_welles_default_collar_down", pos = { -402.802, 710.778, 123.000 }, yaw = 108.1,
     waypoints = {
       { pos = { -402.802, 710.778, 123.000 }, yaw = 108.1, pose = "lean"  },  -- upstairs view
       { pos = { -422.418, 700.581, 114.999 }, yaw =  58.9, pose = "stand" },  -- bridge
@@ -640,64 +750,100 @@ Config.locations = {
     },
   },
 
+  -- Lizzie's Bar (Mox club). Captured 2026-06-17. NOTE: closed before 21:00 -> only scheduled
+  -- in active1's 21:00-23:30 slot. exitWaypoint = the outside spot (his departure point).
+  lizzies = {
+    name = "Lizzie's Bar", appearance = "jackie_welles__q000_lizzies_club_no_jacket", pos = { -1194.874, 1561.692, 22.915 }, yaw = -85.6,
+    exitWaypoint = { pos = { -1204.007, 1565.463, 22.920 }, yaw = 10.1 },   -- outside -> departure
+    waypoints = {
+      { pos = { -1194.874, 1561.692, 22.915 }, yaw = -85.6, pose = "stand" },  -- at entrance
+      { pos = { -1174.427, 1572.135, 23.115 }, yaw = -68.5, pose = "sit"   },  -- rear bar
+    },
+  },
+
   -- captured 2026-06-16 for the native-box test (your standing spot in the test save):
   test = { name = "Test spot", pos = { -854.737, 1833.329, 36.207 }, yaw = 44.4 },
+
+  -- SECRET nap spot (v0.41 easter egg): during his sleep window he has a small chance to be here
+  -- instead, leaning. Wired by Config.secret below. appearance = default (he's "off duty").
+  secret = {
+    name = "(secret nap spot)", appearance = "jackie_welles_default", pos = { -1470.154, 1201.503, 19.084 }, yaw = -41.9,
+    waypoints = {
+      { pos = { -1470.154, 1201.503, 19.084 }, yaw = -41.9, pose = "lean" },
+    },
+  },
 }
 
--- ---- daily schedules (v0.36: 5 day-types, shuffled) -----------------------
--- One state per time-of-day block (24h game time). A block wraps past midnight when
--- endHour < startHour. state = "at_location" (needs locationKey) or "unavailable".
+-- ---- secret sleeping-hours cameo (v0.41) ----------------------------------
+-- While the schedule says he's ASLEEP (startHour..endHour, the unavailable sleep window), roll ONCE
+-- per night: with `chance` he instead shows up at Config.locations[locationKey] (leaning). If the
+-- roll misses, he's truly gone that night. Re-rolls each new night.
+Config.secret = {
+  locationKey = "secret",
+  chance      = 0.20,    -- 20% per night
+  startHour   = 0,       -- sleep window (matches the daySchedules 00:00-06:00 asleep block)
+  endHour     = 6,
+}
+
+-- ---- daily schedules (v0.37a: 5 day-types, shuffled, 3 stops/day) ----------
+-- One state per time-of-day block. startHour/endHour are FRACTIONAL hours (e.g. 23.5 = 23:30),
+-- so half-hour blocks work. state = "at_location" (needs locationKey) or "unavailable".
 --
--- DESIGN: Jackie does NOT visit every location every day. There are 5 DAY-TYPES; init.lua
--- keeps a SHUFFLE BAG of them (Config.dayBag) — each new in-game day pops the next entry, and
--- when the bag empties it reshuffles. So over every 5-day cycle each day-type is used exactly
--- once (none skipped) in random order, and the 3 active days come up in no fixed sequence.
---   active1 / active2 / active3 — full days, each visiting only 2-3 DIFFERENT locations, so
---                                 over the 3 of them all six spots get covered. Each keeps the
---                                 6h asleep + 8h at-home (off-map) unavailability rule (= 10h out).
---   quiet  — a low-key day: ONLY Misty's + El Coyote + lots of home (mostly unavailable).
---   gone   — he's nowhere to be found: unavailable the entire 24h.
+-- DESIGN:
+--   * BEDTIME = MIDNIGHT. Sleep is 00:00-06:00, so the day-type boundary (midnight) lands while
+--     he's asleep — no activity block ever straddles the rollover. Activities run 06:00-00:00.
+--   * Each active day = 3-4 MAIN stops (long, ~3-6h each) totalling ~14h PRESENT (only 4h home +
+--     6h sleep). Long settled stays, varied across the day. (quiet/gone are the exceptions.)
+--   * HE ALWAYS RETURNS TO EL COYOTE before bed, then heads "upstairs" to sleep (that upstairs
+--     spot is his despawn/home point — V1.0 transitions). On most days this is the 23:30-00:00
+--     wind-down; on active3/quiet his evening IS Coyote, so it runs straight to midnight.
+--     EXCEPTION: the `gone` day (he's out of town).
+--   * 5 DAY-TYPES in a SHUFFLE BAG (Config.dayBag): each in-game day pops the next, reshuffling
+--     when empty — every 5-day cycle uses each type once (no skips) in random order. All seven
+--     venues appear across the active days: noodle/misty/lizzies (A1), redwood/ginger/afterlife
+--     (A2), noodle/misty/afterlife/coyote (A3). (Lizzie's opens 21:00 -> only its late A1 slot.)
 Config.daySchedules = {
-  -- ACTIVE 1 — Heywood bars (afterlife / noodle / coyote)
+  -- ACTIVE 1 — Noodle (5h) + Misty's (6h) + Lizzie's (2.5h, opens 21:00) + Coyote wind-down
   active1 = {
-    { startHour = 0,  endHour = 2,  state = "at_location", locationKey = "afterlife" },
-    { startHour = 2,  endHour = 8,  state = "unavailable"                            },  -- asleep (6h)
-    { startHour = 8,  endHour = 12, state = "at_location", locationKey = "noodle"    },
-    { startHour = 12, endHour = 16, state = "unavailable"                            },  -- home (4h)
-    { startHour = 16, endHour = 20, state = "at_location", locationKey = "coyote"    },
-    { startHour = 20, endHour = 24, state = "unavailable"                            },  -- home (4h)
+    { startHour = 0,    endHour = 6,    state = "unavailable"                            },  -- asleep (6h)
+    { startHour = 6,    endHour = 8,    state = "unavailable"                            },  -- home (2h)
+    { startHour = 8,    endHour = 13,   state = "at_location", locationKey = "noodle"    },  -- 5h
+    { startHour = 13,   endHour = 15,   state = "unavailable"                            },  -- home (2h)
+    { startHour = 15,   endHour = 21,   state = "at_location", locationKey = "misty"     },  -- 6h
+    { startHour = 21,   endHour = 23.5, state = "at_location", locationKey = "lizzies"   },  -- 2.5h (Lizzie's opens 21:00)
+    { startHour = 23.5, endHour = 24,   state = "at_location", locationKey = "coyote"    },  -- wind-down 0.5h
   },
-  -- ACTIVE 2 — uptown (misty / redwood / ginger)
+  -- ACTIVE 2 — Redwood (5h) + Ginger Panda (4h) + Afterlife evening (4.5h) + Coyote wind-down
   active2 = {
-    { startHour = 22, endHour = 2,  state = "at_location", locationKey = "misty"     },  -- wraps midnight
-    { startHour = 2,  endHour = 8,  state = "unavailable"                            },  -- asleep (6h)
-    { startHour = 8,  endHour = 12, state = "unavailable"                            },  -- home (4h)
-    { startHour = 12, endHour = 15, state = "at_location", locationKey = "redwood"   },
-    { startHour = 15, endHour = 18, state = "at_location", locationKey = "ginger"    },
-    { startHour = 18, endHour = 22, state = "unavailable"                            },  -- home (4h)
+    { startHour = 0,    endHour = 6,    state = "unavailable"                            },  -- asleep (6h)
+    { startHour = 6,    endHour = 8,    state = "unavailable"                            },  -- home (2h)
+    { startHour = 8,    endHour = 13,   state = "at_location", locationKey = "redwood"   },  -- 5h
+    { startHour = 13,   endHour = 17,   state = "at_location", locationKey = "ginger"    },  -- 4h
+    { startHour = 17,   endHour = 19,   state = "unavailable"                            },  -- home (2h)
+    { startHour = 19,   endHour = 23.5, state = "at_location", locationKey = "afterlife" },  -- 4.5h (evening)
+    { startHour = 23.5, endHour = 24,   state = "at_location", locationKey = "coyote"    },  -- wind-down 0.5h
   },
-  -- ACTIVE 3 — mix (afterlife / ginger / coyote)
+  -- ACTIVE 3 — busy: Noodle (4h) + Misty's (3h) + Afterlife (3h) + El Coyote evening -> bed (4h)
   active3 = {
-    { startHour = 0,  endHour = 2,  state = "at_location", locationKey = "afterlife" },
-    { startHour = 2,  endHour = 8,  state = "unavailable"                            },  -- asleep (6h)
-    { startHour = 8,  endHour = 11, state = "at_location", locationKey = "ginger"    },
-    { startHour = 11, endHour = 16, state = "unavailable"                            },  -- home (5h)
-    { startHour = 16, endHour = 18, state = "at_location", locationKey = "coyote"    },
-    { startHour = 18, endHour = 21, state = "at_location", locationKey = "afterlife" },
-    { startHour = 21, endHour = 24, state = "unavailable"                            },  -- home (3h)
+    { startHour = 0,  endHour = 6,  state = "unavailable"                            },  -- asleep (6h)
+    { startHour = 6,  endHour = 8,  state = "unavailable"                            },  -- home (2h)
+    { startHour = 8,  endHour = 12, state = "at_location", locationKey = "noodle"    },  -- 4h
+    { startHour = 12, endHour = 15, state = "at_location", locationKey = "misty"     },  -- 3h
+    { startHour = 15, endHour = 17, state = "unavailable"                            },  -- home (2h)
+    { startHour = 17, endHour = 20, state = "at_location", locationKey = "afterlife" },  -- 3h
+    { startHour = 20, endHour = 24, state = "at_location", locationKey = "coyote"    },  -- 4h -> bed
   },
-  -- QUIET — only Misty's + El Coyote, mostly home
+  -- QUIET — low-key: Misty's (4h) + El Coyote (3h), otherwise home
   quiet = {
-    { startHour = 0,  endHour = 2,  state = "unavailable"                            },  -- home (2h)
-    { startHour = 2,  endHour = 8,  state = "unavailable"                            },  -- asleep (6h)
-    { startHour = 8,  endHour = 15, state = "unavailable"                            },  -- home (7h)
-    { startHour = 15, endHour = 17, state = "at_location", locationKey = "misty"     },
-    { startHour = 17, endHour = 19, state = "at_location", locationKey = "coyote"    },
-    { startHour = 19, endHour = 24, state = "unavailable"                            },  -- home (5h)
+    { startHour = 0,  endHour = 6,  state = "unavailable"                            },  -- asleep (6h)
+    { startHour = 6,  endHour = 14, state = "unavailable"                            },  -- home (8h)
+    { startHour = 14, endHour = 18, state = "at_location", locationKey = "misty"     },  -- 4h
+    { startHour = 18, endHour = 21, state = "unavailable"                            },  -- home (3h)
+    { startHour = 21, endHour = 24, state = "at_location", locationKey = "coyote"    },  -- 3h -> bed
   },
-  -- GONE — out of town; never appears all day
+  -- GONE — out of town; never appears all day (the one day with no Coyote return)
   gone = {
-    { startHour = 0,  endHour = 24, state = "unavailable" },
+    { startHour = 0, endHour = 24, state = "unavailable" },
   },
 }
 
@@ -707,6 +853,30 @@ Config.dayBag = { "active1", "active2", "active3", "quiet", "gone" }
 
 -- Fallback day-type used if the day system can't read the game day for some reason.
 Config.fallbackDay = "active1"
+
+-- ---- location transitions (V1.0 — config in place; state machine NOT wired yet) ----------
+-- A real cross-map walk is impossible (NPC navmesh is local + he's unloaded out of streaming
+-- range), so transitions are faked: when his block changes he DEPARTS on foot to a venue exit
+-- and despawns once out of range; after `transitRealSeconds` he is "in transit" and won't
+-- spawn; then he ARRIVES at the new venue either on foot from ~`arriveDistanceM` out (reusing
+-- the holocall walk-in) or by teleport-to-spot. Going home/asleep, he heads to El Coyote's
+-- upstairs exit and despawns there. These knobs are READ by the V1.0 machine (to be built).
+Config.transitions = {
+  transitRealSeconds = 50,    -- REAL seconds he's "en route" after a block change (won't spawn)
+  arriveOnFoot       = true,  -- true = spawn ~arriveDistanceM from the venue + walk in; false = teleport to spot
+  arriveDistanceM    = 60.0,  -- metres from the venue anchor he spawns at for the walk-in
+  -- WALK-AWAY (v0.38, BUILT): when his block ends and he's spawned + you're nearby, he walks to the
+  -- venue's exit (loc.exitWaypoint -> e.g. Coyote upstairs / Lizzie's outside; else just away from V)
+  -- and despawns once he reaches it, leaves your range, or `leaveTimeout` passes.
+  departOnFoot       = true,
+  leaveTimeout       = 20.0,  -- seconds: despawn anyway if he can't reach the exit
+  leaveReachDist     = 2.5,   -- metres from the exit point that counts as "left"
+  exitReach          = 18.0,  -- metres he walks away from V at venues with no exitWaypoint
+  -- RETURN-TO-POST (v0.40): when you DISMISS companion Jackie and the schedule currently wants him
+  -- at a venue within this many metres, he walks BACK to it and re-joins the idle cycle instead of
+  -- despawning. Farther away (or not scheduled anywhere) -> the normal walk-away-and-despawn.
+  returnRadius       = 100.0,
+}
 
 -- ---- main-quest ban -------------------------------------------------------
 -- When V is on a main quest, summoning is declined. MVP: detection is stubbed;

@@ -2,6 +2,128 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.41 — dismiss→return-to-post, dwell tune, sit-float fixes (DEPLOYED, awaiting test, 2026-06-17)
+- **Dwell middle ground:** 45-150s → **30-90s**.
+- **RETURN-TO-POST on dismiss (`Config.transitions.returnRadius = 100`).** Dismissing companion Jackie
+  while he's within 100 m of the venue the schedule currently wants him at → he drops the follower role,
+  the SAME entity is handed back to the idle system, and he walks to the nearest waypoint and re-joins
+  the cycle (no despawn/respawn). Farther/off-schedule → normal walk-away-and-despawn. (`returnToPost`
+  in init.lua, wired into the "dismiss_walkaway" dialogue action.) NOTE: there's only ever ONE Jackie
+  entity — idle and companion are two SYSTEMS that hand the same entity back and forth, not two Jackies.
+- **Sit "in the air" fixes:** (a) the pose was played the same frame as the snap-teleport, so AMM spawned
+  the sit prop at his OLD spot → now DEFERRED `Config.poses.delay` (0.5s) via `JL.idle.pendingPose`.
+  (b) added per-waypoint `poseOffset = {x,y,z}` to nudge him onto the real seat (AMM sit is freestanding).
+- **BARSTOOL sit:** default sit anim → `sit_barstool__2h_on_lap__01` (most of his chairs are stools).
+  Per-waypoint `poseAnim` override added; **Misty's deep chair** uses `sit_chair__2h_on_lap__01`.
+- **Exact sit coords:** Afterlife bar-RIGHT `{ -1449.437, 1012.129, 17.357 }` (left-bar sit removed);
+  Misty deep chair `{ -1541.289, 1194.016, 16.600 }`.
+- **Exit waypoints added:** Afterlife `{ -1471.229, 1038.869, 22.661 }`, Misty `{ -1547.112, 1185.049, 16.493 }`,
+  Noodle `{ -1440.553, 1258.332, 23.099 }`. ⚠️ Misty/Noodle exits are OUTSIDE the venue — TEST whether he
+  actually walks there or the world-streaming/navmesh blocks it (timeout despawn is the fallback).
+- **SECRET NAP CAMEO (easter egg):** `Config.secret` — 20% chance per night he's leaning at
+  `{ -1470.154, 1201.503, 19.084 }` during the 00:00-06:00 sleep window (`secretWantKey`, re-rolls nightly).
+- [ ] **TEST:** dismiss near a venue → he walks back + goes idle (cycles); dwell feels right; sit no longer
+      floats (deferred). If still off the chair, tune that waypoint's `poseOffset` (z down to lower him).
+- [ ] **FOLLOW-UP (real chair sit):** AMM sit is freestanding (invisible chair). For him to use the ACTUAL
+      chair (like the scripted bar scene) we'd find the chair DEVICE at runtime + play ITS workspot — the old
+      `sitNearest` idea. Bigger task; tune `poseOffset` first and see if freestanding-aligned is good enough.
+
+## 🆕 v0.41 — arrow-key fix (RELEASED edge) (DEPLOYED, awaiting test, 2026-06-17)
+
+**ARROW NAV BUG — ROOT CAUSE FOUND + FIXED.** Antonia: ↑/↓ navigate the choice picker on the FIRST layer
+only; after V speaks → Jackie replies (layer 2+) the arrows die and she falls back to the `-` key.
+- **Cause (from the v0.40 console capture):** on the first layer the arrows arrive as BUTTON_PRESSED, so the
+  `OnAction` handler's just-pressed gate caught them. On DEEPER layers the game's dialog/popup input context
+  delivers the SAME actions (`up_button`, `UI_MoveUp`, `popup_moveUp`, `popup_navigate_up`, `navigate_up`)
+  ONLY as **BUTTON_RELEASED** (pressed=false) — so the just-pressed gate threw them all away. (The `-` key
+  kept working because it's a hard CET binding, context-independent.)
+- [x] **FIX (v0.41):** navigation now fires on the **RELEASED edge** (`actionReleased` helper = IsButtonJust-
+  Released + typed-RELEASED fallback) — the one edge present in every input context. A single press emits
+  several matching names in one frame, so a **0.12 s debounce** (`JL.lastCycle`) collapses the burst to one
+  move. Confirmed deeper-layer names added to `CYCLE_UP/DOWN_ACTIONS`. SELECT (F) stays on the press edge
+  (already worked on every layer). `cycleDebug` LEFT ON for this verification round.
+- [ ] **TEST (Antonia):** deploy v0.41, open a Jackie convo, navigate layer 1 with ↑/↓, pick → after his
+  reply navigate layer 2+ with ↑/↓. Should now work on every layer. (Note: highlight moves on key *release*.)
+- [ ] **THEN (once confirmed):** drop the `-` cycle key (`jl_cycle_choice`) entirely + turn `cycleDebug` off.
+
+**QUEUED (after arrow fix):**
+- [ ] **Proximity greeting bark.** Idle (non-companion) Jackie at one of his locations: V approaches within
+  **6 m** → he barks a random greeting ONCE, then 2-min cooldown. (Reuse `ono_jackie_greet`-style pool.)
+- [ ] **Bump grunt.** When V gets within **<1.2 m** of idle Jackie → he barks a grunt (`ono_jackie_bump`).
+- [ ] **Recruitment limits (CORRECTED SPEC 2026-06-17).** Builds on existing `Config.companion`
+  (`maxGameHours`) + `Config.date` (dinner reset). Rules:
+  - **Daily budget: 6 in-game h total** as companion per day (NEW — track a per-day accumulator, reset at
+    midnight). **Per-call cap: 3 in-game h** max per single "come on the job" recruitment (replaces the flat
+    6h single-stint timer). Refuse the gig in the recruit convo once the daily budget is spent.
+  - **Timer expiry → he leaves**, EXCEPT **in combat**: prolong the timer, he stays till combat ends; **20 s
+    after combat ends** he then leaves. (Need a combat-state check — `GetPlayer():IsInCombat()` or NPC combat.)
+  - On leaving: say a **departure line**, then **walk away** (reuse the send-off walk-away exit path).
+  - **Dinner intercept while walking away:** V can talk to him mid-walk-away to ask him to dinner → **fully
+    resets his timers for the day (until midnight)**, i.e. clears the spent daily budget, not just +hours.
+    (`Config.date` currently does +`resetCompanionHours`; this case = full reset to the 6h budget.)
+  - **15% chance** he says the hunger HINT line on timer-expiry departure (drop a dinner hint):
+    `jl_1834512408575406080` "C'mon. I'm fuckin' starved." (alt `jl_1904096844380655616` "Man, I'm starvin'…").
+  - Dinner ("ask him out") **always** allowed. <3
+  - **Departure-line pool (what we have — bank is thin on V-facing goodbyes; he barely says bye in canon):**
+    `jl_1155727714874494976` "Time we were on our way, mamita." · `jl_1967553783536623616` "Better get goin'." ·
+    `jl_1993514843414274048` "Thanks, I will! V, you take it easy, OK? Rest up a bit." (+ the 2 hunger hints above).
+
+## 🆕 v0.39 — recruit-in-place fix + REAL sit/lean + tuning (DEPLOYED, awaiting test, 2026-06-17)
+Fixes from Antonia's v0.38 in-game test, plus sit/lean cracked.
+- **RECRUIT-IN-LOCATION FIXED (the big one).** The gig dialogue ended but nothing flipped idle Jackie
+  to a companion — scheduleTick/wander kept owning him. Added `recruitIdleJackie()`: the location gig
+  choices now carry `action = "recruit_here"` → hands his LIVE entity from the idle system to the summon
+  system, `promoteToCompanion()`, and releases the schedule/wander grip WITHOUT despawning (same entity,
+  no pop). So "Let's go/roll" at a venue now actually makes him follow.
+- **REAL SIT/LEAN (`Config.poses`).** Cracked via AMM's own workspot pipeline (read AMM
+  `Modules/anims.lua`): `AMM.Poses:PlayAnimationOnTarget(target, anim)` → `Game.GetWorkspotSystem():
+  PlayInDeviceSimple + SendJumpToAnimEnt`. On a sit/lean waypoint he now plays `sit_chair__2h_on_lap__01`
+  / `stand_wall_lean180__2h_on_wall__01` (Man Average, amm_workspot_base); `StopInDevice` gets him up
+  before he walks / is recruited / despawns. Fully guarded → falls back to standing if AMM Poses is
+  unreachable. Swap anim names in `Config.poses` for a different look.
+- **Wander wait longer:** dwell 15-45s → **45-150s** (he was moving too often).
+- **F-talk range 4 → 6 m** (easier to catch a moving NPC; longer dwell helps too).
+- **Real appearance names wired:** `jackie_welles_default` / `_default_collar_down` /
+  `__q005_suit` / `__q000_lizzies_club_no_jacket`.
+- **Coyote exit moved** to Antonia's final despawn spot `{ -1247.138, -985.136, 16.027 }` yaw -77.3.
+- **Misty re-captured** (2 waypoints: anchor + near the small cats).
+- [ ] **TEST:** (1) Talk to him at a venue → "Let's go" → he should become a follower (no 2nd Jackie).
+      (2) Sit/lean waypoints (noodle chair, Coyote lean spots, bar sits) → he actually sits/leans, and
+      gets up when he moves. (3) Longer dwells; outfits correct per venue; he despawns at the new Coyote spot.
+
+
+## 🆕 v0.38 — 14h schedules + WALK-AWAY built + vehicle-arrival fresh-respawn fallback (DEPLOYED, awaiting test, 2026-06-17)
+
+**Schedules (`Config.daySchedules`):** longer stays — active days now ~**14h present** (4h home + 6h sleep);
+3-4 stops/day. Swapped Afterlife (was A1) and Misty (was A2) so **Afterlife is an EVENING stop** (A2
+19:00-23:30). **active3 is busy** (Noodle 4 + Misty 3 + **Afterlife 3** + Coyote 4 -> bed). Lizzie's still
+only active1's 21:00-23:30 (closed before 21:00). Verified 00-24 coverage, no gaps:
+
+  | Day-type | Stops (hours) | Home | Asleep | Present |
+  |----------|---------------|------|--------|---------|
+  | active1  | Noodle 5 · Misty 6 · Lizzie's 2.5 · Coyote 0.5 | 4 | 6 | 14 |
+  | active2  | Redwood 5 · Ginger 4 · Afterlife 4.5 · Coyote 0.5 | 4 | 6 | 14 |
+  | active3  | Noodle 4 · Misty 3 · Afterlife 3 · Coyote 4 | 4 | 6 | 14 |
+  | quiet    | Misty 4 · Coyote 3 | 11 | 6 | 7 |
+  | gone     | — (out of town) | — | — | 0 |
+
+**WALK-AWAY (BUILT, `Config.transitions.departOnFoot`):** when his block ends and you're nearby, idle
+Jackie no longer pops out — he walks to the venue's **exitWaypoint** (Coyote = upstairs / his way home;
+Lizzie's = outside) or, at venues with no exit captured, just **away from you** (`awayPoint`), and despawns
+when he reaches it, leaves your range (+5 m), or `leaveTimeout` (20 s) passes. `idleLeavingTick` drives it;
+wander + scheduleTick yield while `JL.idle.leaving`. (The 50 s transit gate + walk-IN arrival are still the
+remaining V1.0 pieces — arrival is currently instant-spawn when you're near the new venue.)
+
+**VEHICLE-ARRIVAL FRESH-RESPAWN FALLBACK (BUILT, `Config.vehicle.fallbackSeconds = 40`):** the bike ride-in
+often breaks. If no companion handoff within **40 s** while still on the bike (placing/driving),
+`vehicleArrivalFootFallback` **despawns the bike AND Jackie**, respawns him **FRESH ~40 m out** on the
+navmesh, and drops into the existing on-foot **sprint -> walk -> companion** phases. Fires once; the 120 s
+maxSeconds teleport remains the last resort.
+
+- [ ] **TEST:** (1) Stand near a venue, "Cycle day-type" / fast-forward past his block end -> he walks off
+      to the exit (Coyote upstairs) and vanishes, not a pop-out. (2) Call Jackie (vehicle arrival) and if the
+      bike stalls, ~40 s in he should despawn + reappear ~40 m out and jog in. (3) active days feel ~14h present.
+
 ## 🆕 v0.36 — 5 SHUFFLED day-types + per-location OUTFITS (BUILT, awaiting test, 2026-06-17)
 Jackie no longer visits every location every day, and dresses for the venue.
 

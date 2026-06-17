@@ -55,3 +55,6 @@ desktop.ini
 # --- Tools (not source; downloaded locally) --------------------------
 WolvenKit-*/
 WolvenKit*.zip
+
+# --- Built game archives (binary assets; keep repo source-only) ------
+*.archive

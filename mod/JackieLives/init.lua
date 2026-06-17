@@ -20,14 +20,18 @@ local JL = {
   amm    = nil,
   jackie = { record = nil, name = nil },
   ui     = { open = true, overlayOpen = false, lastCapture = nil, forceMainQuest = false, status = "",
-             voIndex = 0, voText = "" },
+             voIndex = 0, voText = "", forceVenue = nil },
   summon = { spawn = nil, active = false, companionSet = false, walkIn = false },
   -- v0.35 free-roam wander: placed=on a waypoint yet; phase=dwelling|walking; cur/tgtIdx=waypoints.
+  -- v0.38 walk-away: leaving=true while he's strolling to a venue exit before despawning.
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
-             spawnedAt = 0, dwellUntil = 0, arriveBy = 0, lastReissue = 0 },
+             spawnedAt = 0, dwellUntil = 0, arriveBy = 0, lastReissue = 0,
+             leaving = false, leaveTarget = nil, leaveDeadline = 0, leaveReissue = 0 },
   -- v0.36 day rotation: a shuffle bag of Config.dayBag; one day-type per in-game day. Rollover
   -- is detected by the game hour WRAPPING (current < last), since time only ever moves forward.
   day    = { lastHour = nil, count = 0, template = nil, bag = {}, bagPos = 0 },
+  -- v0.41 secret sleeping-hours cameo: decided=rolled this night yet; active=he shows at the spot.
+  secret = { decided = false, active = false },
   -- holocall arrival state machine: spawn far (passive) -> walk in -> hand off to companion.
   arrival = { at = nil, phase = nil, pt = nil, placeAt = nil, moveAt = nil, deadline = nil, lastReissue = 0 },
   -- v0.33 "send Jackie off": drop follower role -> walk away -> despawn once far enough.
@@ -282,11 +286,13 @@ local function clearVehicleArrival()
   end
   JL.varrival.at, JL.varrival.phase, JL.varrival.bikeId, JL.varrival.bikeHandle = nil, nil, nil, nil
   JL.varrival.placeAt, JL.varrival.driveAt, JL.varrival.sprintAt, JL.varrival.deadline, JL.varrival.driveCmd = nil, nil, nil, nil, nil
+  JL.varrival.footFallbackAt, JL.varrival.footTried = nil, nil   -- v0.38 fresh-respawn fallback
 end
 
 local function dismissJackie()
   if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
+  JL.summon.companionSinceGame, JL.summon.companionExpiresGame = nil, nil   -- v0.39: reset duration clock
   JL.arrival.at, JL.arrival.phase, JL.arrival.placeAt, JL.arrival.moveAt, JL.arrival.deadline = nil, nil, nil, nil, nil
   JL.leaving.phase, JL.leaving.deadline = nil, nil   -- v0.33: cancel any in-progress walk-off
   clearVehicleArrival()
@@ -310,6 +316,7 @@ local function dismissAllJackies()
   if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
   if JL.idle.spawn then ammDespawn(JL.idle.spawn) end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
+  JL.summon.companionSinceGame, JL.summon.companionExpiresGame = nil, nil   -- v0.39: reset duration clock
   JL.idle.spawn, JL.idle.locationKey = nil, nil
   JL.arrival.at, JL.arrival.phase, JL.arrival.placeAt, JL.arrival.moveAt, JL.arrival.deadline = nil, nil, nil, nil, nil
   JL.leaving.phase, JL.leaving.deadline = nil, nil   -- v0.33
@@ -387,21 +394,61 @@ local function callMethod(obj, name)
   return r
 end
 
+-- Returns a FRACTIONAL hour (e.g. 23.5 = 23:30) so the schedule supports half-hour blocks
+-- (the Coyote wind-down). Hour from GetHour + minutes/60; falls back to seconds-of-day.
 local function getGameHour()
   local ts = Game.GetTimeSystem(); if not ts then return nil end
   local gt; pcall(function() gt = ts:GetGameTime() end)
   if gt == nil then return nil end
-  -- direct hour methods
+  -- direct hour methods (+ minutes for sub-hour resolution)
   for _, m in ipairs({ "GetHour", "GetHours" }) do
     local r = callMethod(gt, m)
-    if type(r) == "number" then return r % 24 end
+    if type(r) == "number" then
+      local minute = 0
+      for _, mm in ipairs({ "GetMinute", "GetMinutes" }) do
+        local rm = callMethod(gt, mm)
+        if type(rm) == "number" then minute = rm % 60; break end
+      end
+      return (r % 24) + minute / 60
+    end
   end
-  -- seconds-of-day methods
+  -- seconds-of-day methods (already sub-hour precise)
   for _, m in ipairs({ "ToSeconds", "GetSeconds", "GetTotalSeconds" }) do
     local r = callMethod(gt, m)
-    if type(r) == "number" then return math.floor((r % 86400) / 3600) end
+    if type(r) == "number" then return (r % 86400) / 3600 end
   end
   return nil
+end
+
+-- v0.39: MONOTONIC total in-game time in SECONDS (across days), for measuring companion duration.
+-- GetGameTime():ToSeconds() returns total game seconds (getGameHour mods it by a day for the clock).
+local function getGameSeconds()
+  local ts = Game.GetTimeSystem(); if not ts then return nil end
+  local gt; pcall(function() gt = ts:GetGameTime() end)
+  if gt == nil then return nil end
+  for _, m in ipairs({ "ToSeconds", "GetTotalSeconds", "GetSeconds" }) do
+    local r = callMethod(gt, m)
+    if type(r) == "number" then return r end
+  end
+  return nil
+end
+
+-- v0.39: start (or restart) Jackie's companion-duration clock. Called when he becomes a companion
+-- and again when a dinner resets it. Stores when he joined + when he'll head home (game seconds).
+local function armCompanionTimer(extendHours)
+  local g = getGameSeconds()
+  local hrs = extendHours or (Config.companion and Config.companion.maxGameHours) or 6.0
+  if not JL.summon.companionSinceGame then JL.summon.companionSinceGame = g end
+  JL.summon.companionExpiresGame = g and (g + hrs * 3600) or nil
+end
+
+-- v0.39: is the dinner invite available yet? Gated by `unlockAfterGameHours` once enforceUnlock
+-- is turned on; for now (enforceUnlock=false) it's always available.
+local function dateUnlocked()
+  local d = Config.date; if not d then return false end
+  if not d.enforceUnlock then return true end
+  local since, now = JL.summon.companionSinceGame, getGameSeconds()
+  return (since and now and (now - since) >= (d.unlockAfterGameHours or 1.0) * 3600) or false
 end
 
 -- Fisher-Yates shuffle of the Config.dayBag keys into JL.day.bag, reset the read position.
@@ -563,6 +610,7 @@ local interactHook = { registered = false }
 -- are filled in later - so the hook can call Branch.start()/Branch.confirm() safely.
 local startLinearDialogue
 local startLeaving                 -- v0.33: "send Jackie off"; defined after the move helpers below
+local returnToPost                 -- v0.40: dismiss near his venue -> walk back + go idle (defined late)
 local Branch = { open = false }
 
 -- Action names the interact / choice-confirm key (F by default) fires under. We accept
@@ -577,12 +625,18 @@ local INTERACT_ACTIONS = {
 -- log unknown names while the box is open (Config.dialogue.cycleDebug) to confirm/extend these.
 -- NOTE: arrow keys must emit a game input action on this build for this to fire; the bound
 -- "Jackie dialogue: next choice" input remains as a guaranteed fallback either way.
+-- v0.41: names CONFIRMED in-game on this build (deeper-layer release burst): up_button, popup_moveUp,
+-- popup_navigate_up, navigate_up (+ UI_MoveUp). Kept the older speculative candidates too — harmless.
 local CYCLE_UP_ACTIONS = {
-  ["UI_MoveUp"] = true, ["MoveUp"] = true, ["up"] = true, ["UI_Up"] = true,
+  ["UI_MoveUp"] = true, ["up_button"] = true, ["popup_moveUp"] = true,
+  ["popup_navigate_up"] = true, ["navigate_up"] = true,
+  ["MoveUp"] = true, ["up"] = true, ["UI_Up"] = true,
   ["menu_up"] = true, ["ChoiceScrollUp"] = true, ["NavigateUp"] = true, ["IK_Up"] = true,
 }
 local CYCLE_DOWN_ACTIONS = {
-  ["UI_MoveDown"] = true, ["MoveDown"] = true, ["down"] = true, ["UI_Down"] = true,
+  ["UI_MoveDown"] = true, ["down_button"] = true, ["popup_moveDown"] = true,
+  ["popup_navigate_down"] = true, ["navigate_down"] = true,
+  ["MoveDown"] = true, ["down"] = true, ["UI_Down"] = true,
   ["menu_down"] = true, ["ChoiceScrollDown"] = true, ["NavigateDown"] = true, ["IK_Down"] = true,
 }
 
@@ -599,22 +653,67 @@ local function actionJustPressed(action)
   return pressed
 end
 
+-- v0.40: the action's TYPE (BUTTON_PRESSED / AXIS_CHANGE / ...) and analog VALUE. Used only by the
+-- cycle-debug log so we can see whether deeper dialogue layers deliver the arrows as a button or an
+-- axis (a button name we add to CYCLE_*; an axis needs different handling).
+local function actionType(action)
+  local t = "?"
+  pcall(function() t = tostring(ListenerAction.GetType(action).value) end)
+  if t == "?" then pcall(function() t = tostring(ListenerAction.GetType(action)) end) end
+  return t
+end
+
+local function actionValue(action)
+  local v
+  pcall(function() v = ListenerAction.GetValue(action) end)
+  return v
+end
+
+-- v0.41: true on the key-RELEASE edge. On deeper dialogue layers the arrows reach us ONLY as
+-- BUTTON_RELEASED (never just-pressed), so navigation keys off this. IsButtonJustReleased covers
+-- most cases; the typed-RELEASED fallback catches the rest.
+local function actionReleased(action)
+  local r = false
+  pcall(function() r = ListenerAction.IsButtonJustReleased(action) end)
+  if not r and actionType(action) == "BUTTON_RELEASED" then r = true end
+  return r
+end
+
 local function setupInteractHook()
   if interactHook.registered then return end
   local ok = pcall(function()
     Observe("PlayerPuppet", "OnAction", function(self, action, consumer)
       local name = actionName(action)
-      if not actionJustPressed(action) then return end
       -- While a choice menu is open: route navigation + selection.
       if Branch.open then
-        -- v0.33 DEBUG: log every action name pressed during the menu so we can lock the exact
-        -- arrow-key CNames for this build (then turn Config.dialogue.cycleDebug off).
-        if Config.dialogue and Config.dialogue.cycleDebug then log("CYCLE action: " .. tostring(name)) end
-        if CYCLE_UP_ACTIONS[name]   then pcall(function() Branch.move(1)  end); return end  -- arrow up (v0.33e: was flipped)
-        if CYCLE_DOWN_ACTIONS[name] then pcall(function() Branch.move(-1) end); return end  -- arrow down
-        if INTERACT_ACTIONS[name]   then pcall(function() Branch.confirm() end) end          -- F -> select
+        -- v0.40 DEBUG: log EVERY action while the box is open (name + type + value), BEFORE the
+        -- just-pressed gate, so arrows that arrive as an AXIS on deeper layers are visible too
+        -- (the old log sat behind that gate and hid them). Turn cycleDebug off once locked.
+        if Config.dialogue and Config.dialogue.cycleDebug then
+          log(string.format("CYCLE action: %s  type=%s value=%s pressed=%s",
+            tostring(name), tostring(actionType(action)), tostring(actionValue(action)),
+            tostring(actionJustPressed(action))))
+        end
+        -- v0.41: NAVIGATION fires on the RELEASED edge. On the first choice layer the arrows arrive as
+        -- BUTTON_PRESSED, but on DEEPER layers the dialog/popup input context delivers them ONLY as
+        -- BUTTON_RELEASED (confirmed: up_button/UI_MoveUp/popup_moveUp/popup_navigate_up/navigate_up all
+        -- arrive RELEASED, never just-pressed). RELEASE is the one edge present in EVERY context. A single
+        -- press emits several matching names in one frame, so debounce to one move per ~0.12 s (collapses
+        -- the same-frame burst; still lets distinct taps through).
+        if actionReleased(action) and (CYCLE_UP_ACTIONS[name] or CYCLE_DOWN_ACTIONS[name]) then
+          local now = JL.clock or 0
+          if (now - (JL.lastCycle or -999)) >= 0.12 then
+            JL.lastCycle = now
+            if CYCLE_UP_ACTIONS[name] then pcall(function() Branch.move(1) end)
+            else                           pcall(function() Branch.move(-1) end) end
+          end
+          return
+        end
+        -- SELECT stays on the press edge (F already works on every layer).
+        if actionJustPressed(action) and INTERACT_ACTIONS[name] then pcall(function() Branch.confirm() end) end
         return
       end
+      if not actionJustPressed(action) then return end
       if Config.talk and Config.talk.logActions then log("OnAction: " .. tostring(name)) end
       if not INTERACT_ACTIONS[name] then return end
       -- v0.32: try to start the location-based branching convo FIRST. Only if it doesn't
@@ -1166,9 +1265,19 @@ end
 -- the config tree is never mutated. Not added during a CALL (you can't call him while he's with
 -- you anyway) - guarded by JL.summon.active + the tree not being the call tree.
 local function withCompanionExtras(choices)
-  if not (JL.summon.active and bstate.tree ~= Config.callTree) then return choices end
+  if not JL.summon.active then return choices end
+  if bstate.tree == Config.callTree then return choices end                 -- not on a call
+  if Config.date and bstate.tree == Config.date.tree then return choices end -- and not mid-date (no recursion)
   local out = {}
   for _, c in ipairs(choices or {}) do out[#out + 1] = c end
+  -- v0.39: dinner invite (gated by dateUnlocked; for now always shown). Starts the date tree.
+  if Config.date and dateUnlocked() then
+    out[#out + 1] = {
+      text   = Config.date.inviteText or "Hey - you hungry?",
+      to     = nil,
+      action = "start_date",
+    }
+  end
   out[#out + 1] = {
     text   = (Config.dismiss and Config.dismiss.choiceText) or "Head home, Jackie.",
     to     = nil,
@@ -1409,9 +1518,28 @@ end
 -- Run an action attached to a finished choice.
 --   "summon_arrival"   -> schedule the delayed spawn-at-distance (spawn happens in arrivalTick).
 --   "dismiss_walkaway" -> Jackie drops follower role, walks off, despawns (leavingTick).
+--   "start_date"       -> begin the dinner conversation (Config.date.tree).
+--   "date_accept"      -> dinner accepted: reset his companion clock (+resetCompanionHours).
 local function runCallAction(name)
   if name == "dismiss_walkaway" then
-    if JL.summon.active and startLeaving then pcall(startLeaving) end
+    if JL.summon.active then
+      -- v0.40: if he's near the venue the schedule wants him at, walk him BACK there + go idle
+      -- (re-join the cycle) instead of despawning. Else, the normal walk-away-and-despawn.
+      local returned = false
+      if returnToPost then local ok, res = pcall(returnToPost); returned = ok and res == true end
+      if not returned and startLeaving then pcall(startLeaving) end
+    end
+    return
+  end
+  if name == "start_date" then
+    if Config.date and Config.date.tree then pcall(function() Branch.start(nil, Config.date.tree) end) end
+    return
+  end
+  if name == "date_accept" then
+    local ext = (Config.date and Config.date.resetCompanionHours) or 6.0
+    armCompanionTimer(ext)
+    JL.ui.status = ("Dinner's on - Jackie's stickin' around (+%.0f h)."):format(ext)
+    log(("Date: companion clock reset (+%.1f game-hours)."):format(ext))
     return
   end
   if name ~= "summon_arrival" then return end
@@ -1754,6 +1882,7 @@ local function leavingTick()
     ammDespawn(sp)
     pcall(hideSubtitle)                                  -- never leave the parting line on screen
     JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
+  JL.summon.companionSinceGame, JL.summon.companionExpiresGame = nil, nil   -- v0.39: reset duration clock
     JL.leaving.phase, JL.leaving.deadline, JL.leaving.subClearAt = nil, nil, nil
     JL.ui.status = far and "Jackie headed off." or "Jackie's gone."
     log(("Dismiss: despawned (%s, d=%s m)."):format(far and "reached distance" or "deadline",
@@ -2046,6 +2175,47 @@ local function resolveJackieHandle()
   return nil
 end
 
+-- v0.38 FRESH-RESPAWN FALLBACK: the bike ride broke / stalled. Throw it all out — despawn the bike
+-- and the (often stuck/mounted) Jackie — and respawn him FRESH ~fallbackDistance m away on the
+-- navmesh, then drop into the existing on-foot "sprinting" phase (sprint -> walk -> companion).
+-- Fires once per arrival; if even this stalls, the maxSeconds deadline teleports him in.
+local function vehicleArrivalFootFallback(reason)
+  local va, c = JL.varrival, vehCfg()
+  despawnArrivalBike()                                   -- kill the bike
+  if JL.summon.spawn then ammDespawn(JL.summon.spawn) end -- kill the stuck/mounted Jackie
+  JL.summon.spawn = nil
+  local pp = playerPos()
+  local pt = navmeshArrivalPoint(c.fallbackDistance or 40.0) or arrivalPoint()
+  if not pt then                                         -- nowhere to put him -> just hand off in place
+    log("VehArrival: foot fallback found no navmesh point -> promoting in place.")
+    -- re-spawn a companion right away as a last resort
+    local spawn = ammSpawn(1, Config.defaultAppearance)
+    JL.summon.spawn = spawn or nil
+    JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, (spawn ~= nil), false
+    va.phase = nil; return
+  end
+  local yaw = yawToward(pt, pp)
+  local jid = spawnDynEntity(Config.jackieRecord or "Character.Jackie", pt, yaw, "JackieLives_jackie")
+  if not jid then
+    log("VehArrival: foot fallback fresh spawn FAILED -> companion fallback.")
+    local spawn = ammSpawn(1, Config.defaultAppearance)
+    JL.summon.spawn = spawn or nil
+    JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, (spawn ~= nil), false
+    va.phase = nil; return
+  end
+  JL.summon.spawn = { id = jid, handle = nil }
+  JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
+  va.bikeId, va.bikeHandle = nil, nil
+  va.phase          = "sprinting"                        -- reuse the on-foot sprint -> walk -> handoff
+  va.sprintAt       = (JL.clock or 0) + 0.8
+  va.unmountAgainAt = nil
+  va.lastReissue    = -999
+  va.footTried      = true                               -- once only
+  JL.ui.status = "Jackie's bike's a bust - comin' on foot."
+  log(("VehArrival: FOOT FALLBACK (%s) -> fresh Jackie ~%.0f m, sprinting in.")
+      :format(tostring(reason), c.fallbackDistance or 40.0))
+end
+
 local function vehicleArrivalTick()
   local va, c = JL.varrival, vehCfg()
   -- (0) scheduled -> spawn the bike + Jackie TOGETHER behind V (same as the test harness, so the
@@ -2071,6 +2241,8 @@ local function vehicleArrivalTick()
     va.placeAt  = (JL.clock or 0) + 1.0
     va.phase    = "placing"
     va.deadline = (JL.clock or 0) + (c.maxSeconds or 120.0)
+    va.footFallbackAt = (JL.clock or 0) + (c.fallbackSeconds or 40.0)   -- v0.38 fresh-respawn deadline
+    va.footTried = false
     JL.ui.status = "Jackie's on his way (bike)..."
     log("VehArrival: bike + Jackie spawned at distance; mount in 1.0s.")
     return
@@ -2089,6 +2261,14 @@ local function vehicleArrivalTick()
     log("VehArrival: safety deadline -> force companion handoff.")
     pcall(promoteToCompanion); despawnArrivalBike()
     va.phase = nil; JL.ui.status = "Jackie rejoined."; return
+  end
+
+  -- v0.38 FRESH-RESPAWN FALLBACK: not handed off within fallbackSeconds and still on the bike
+  -- (placing/driving) -> ditch the bike, respawn Jackie fresh ~40 m out, sprint/walk in. Once only.
+  if not va.footTried and va.footFallbackAt and now >= va.footFallbackAt
+     and (va.phase == "placing" or va.phase == "driving") then
+    pcall(vehicleArrivalFootFallback, "40s, no handoff")
+    return
   end
 
   if va.phase == "placing" and va.placeAt and now >= va.placeAt then
@@ -2183,12 +2363,46 @@ local function vehicleArrivalTick()
   end
 end
 
+-- v0.39 RECRUIT-IN-PLACE: dialogue "Let's go/roll" at a location -> the Jackie standing there
+-- BECOMES your companion (no second Jackie arriving from afar). Hand his entity from the idle
+-- system to the summon system, promote to companion, and stop the schedule/wander owning him
+-- (DON'T despawn — same entity, no pop). This is what was missing: the gig dialogue ended but
+-- nothing flipped him, so scheduleTick/wanderTick kept him idle.
+local function recruitIdleJackie()
+  local sp = JL.idle.spawn
+  if not sp then JL.ui.status = "No idle Jackie here to recruit."; return false end
+  -- hand the live entity to the companion system
+  JL.summon.spawn        = sp
+  JL.summon.active       = true
+  JL.summon.companionSet = false
+  JL.summon.walkIn       = false
+  -- release the idle/schedule grip WITHOUT despawning him
+  JL.idle.spawn, JL.idle.locationKey = nil, nil
+  JL.idle.placed, JL.idle.phase      = false, nil
+  JL.idle.curIdx, JL.idle.tgtIdx     = nil, nil
+  JL.idle.leaving, JL.idle.leaveTarget = false, nil
+  if sp.handle then pcall(function() Game.GetWorkspotSystem():StopInDevice(sp.handle) end) end  -- v0.39: get up if seated
+  pcall(promoteToCompanion)            -- follower role + friendly + follow spacing
+  JL.summon.companionSet = true        -- promoteToCompanion already set it, but be explicit
+  JL.ui.status = "Jackie's with you."
+  log("Recruited idle Jackie -> companion in place.")
+  return true
+end
+
 -- stepped from onUpdate: (1) reveal the menu once Jackie's line has played; (2) after the
 -- player's chosen line has shown ~1s, advance to the next node or end the conversation.
 local function branchTick()
   if bstate.openAt and (JL.clock or 0) >= bstate.openAt then
     bstate.openAt = nil
-    if bstate.node and bstate.node.choices then openChoiceMenu(withCompanionExtras(bstate.node.choices), "Jackie") end
+    if bstate.node and bstate.node.choices then
+      openChoiceMenu(withCompanionExtras(bstate.node.choices), "Jackie")
+    elseif bstate.node then
+      -- v0.34c: terminal node with NO choices -> after Jackie's line, auto-end the convo and run
+      -- its node-level `action` (e.g. gig accept -> summon). No redundant "Let's do it" V click.
+      bstate.pending       = "__end__"
+      bstate.pendingAction = bstate.node.action
+      bstate.pendingAt     = JL.clock or 0
+    end
   end
   if bstate.pendingAt and (JL.clock or 0) >= bstate.pendingAt then
     bstate.pendingAt = nil
@@ -2223,7 +2437,8 @@ local function branchTick()
           JL.talkDone[bstate.talkCooldownKey] = JL.clock or 0
           log("Branch: '" .. tostring(bstate.talkCooldownKey) .. "' marked DONE; cooldown started.")
         end
-        if act then pcall(function() runCallAction(act) end) end
+        if act == "recruit_here" then pcall(recruitIdleJackie)   -- v0.39: idle Jackie -> companion in place
+        elseif act then pcall(function() runCallAction(act) end) end
       end
       bstate.talkCooldownKey = nil
     end
@@ -2234,10 +2449,15 @@ end
 -- Schedule tick (instant spawn/despawn MVP)
 -- ---------------------------------------------------------------------------
 local function clearIdle()
+  if JL.idle.spawn and JL.idle.spawn.handle then   -- v0.39: get him out of any sit/lean workspot first
+    pcall(function() Game.GetWorkspotSystem():StopInDevice(JL.idle.spawn.handle) end)
+  end
   if JL.idle.spawn then ammDespawn(JL.idle.spawn) end
   JL.idle.spawn, JL.idle.locationKey = nil, nil
+  JL.idle.posed, JL.idle.pendingPose = false, nil
   JL.idle.placed, JL.idle.phase = false, nil
   JL.idle.curIdx, JL.idle.tgtIdx = nil, nil
+  JL.idle.leaving, JL.idle.leaveTarget, JL.idle.leaveDeadline, JL.idle.leaveReissue = false, nil, 0, 0
 end
 
 -- ---------------------------------------------------------------------------
@@ -2276,20 +2496,60 @@ local function pickNextWaypoint(wps, cur)
   return (cur % n) + 1
 end
 
--- Plant him on a waypoint facing its yaw. Real sit/lean WORKSPOTS are a TODO; for now sit/lean
--- just snap to the exact spot with the captured facing (so a "lean" point faces the wall, etc.).
+-- v0.39 SIT/LEAN via AMM workspots. Stop any workspot pose on a handle (gets him out of the chair
+-- / off the wall) before he walks again.
+local function stopWorkspotPose(handle)
+  if not handle then return end
+  pcall(function() Game.GetWorkspotSystem():StopInDevice(handle) end)
+  JL.idle.posed = false
+  JL.idle.pendingPose = nil   -- cancel any not-yet-fired pose
+end
+
+-- Play a real sit/lean animation on Jackie using AMM's proven Poses pipeline. Returns true if
+-- the call went through (no guarantee it visually took — guarded; falls back to standing).
+local function tryWorkspotPose(handle, pose, nameOverride)
+  local P = Config.poses
+  if not (P and P.enabled) then return false end
+  if pose ~= "sit" and pose ~= "lean" then return false end
+  local name = nameOverride or P[pose]; if not name then return false end  -- per-waypoint poseAnim wins
+  local amm = getAMM()
+  if not amm or not amm.Poses or not amm.NewTarget or not amm.GetScanID then return false end
+  local ok = pcall(function()
+    local t = amm:NewTarget(handle, "NPCPuppet", amm:GetScanID(handle), "Jackie", nil, nil)
+    local anim = { name = name, rig = P.rig or "Man Average", comp = P.comp or "amm_workspot_base",
+                   ent = P.ent or "base\\amm_workspots\\entity\\workspot_anim.ent" }
+    amm.Poses:PlayAnimationOnTarget(t, anim)
+  end)
+  if ok then JL.idle.posed = true end
+  return ok
+end
+
+-- Snap onto a waypoint (with optional poseOffset for sit/lean alignment) facing its yaw, then
+-- SCHEDULE the sit/lean workspot for `Config.poses.delay` s later — playing it now would spawn the
+-- pose prop at his pre-teleport spot (the float bug). wanderTick fires the pending pose when due.
 local function applyIdlePose(handle, wp, forceSnap)
   if not handle or not wp then return end
   local W = Config.wander or {}
   if forceSnap or W.faceYawOnArrive ~= false then
-    pcall(function() aiTeleport(handle, wpVec4(wp), wp.yaw or 0.0) end)
+    local v = wpVec4(wp)
+    if (wp.pose == "sit" or wp.pose == "lean") and wp.poseOffset then
+      v = Vector4.new(wp.pos[1] + (wp.poseOffset.x or 0), wp.pos[2] + (wp.poseOffset.y or 0),
+                      wp.pos[3] + (wp.poseOffset.z or 0), 1.0)
+    end
+    pcall(function() aiTeleport(handle, v, wp.yaw or 0.0) end)
   end
-  -- TODO(pose): play a real sit/lean workspot animation for wp.pose here.
+  if wp.pose == "sit" or wp.pose == "lean" then
+    JL.idle.pendingPose = { pose = wp.pose, name = wp.poseAnim,
+                            at = (JL.clock or 0) + ((Config.poses and Config.poses.delay) or 0.5) }
+  else
+    JL.idle.pendingPose = nil
+  end
 end
 
 local function wanderTick()
   if not (Config.wander and Config.wander.enabled) then return end
   if JL.summon.active then return end                  -- following V -> not idle-wandering
+  if JL.idle.leaving then return end                   -- walking off to despawn -> idleLeavingTick owns him
   local sp = JL.idle.spawn
   local h  = sp and sp.handle
   if not h then return end
@@ -2298,6 +2558,12 @@ local function wanderTick()
   if not wps then return end
   local now = JL.clock or 0
   local W   = Config.wander
+
+  -- deferred sit/lean: play it once the snap-teleport has had time to land
+  if JL.idle.pendingPose and now >= JL.idle.pendingPose.at then
+    local pend = JL.idle.pendingPose; JL.idle.pendingPose = nil
+    pcall(function() tryWorkspotPose(h, pend.pose, pend.name) end)
+  end
 
   -- (0) PLACE him on a starting waypoint shortly after spawn (let the entity settle first).
   if not JL.idle.placed then
@@ -2315,6 +2581,7 @@ local function wanderTick()
 
   if JL.idle.phase == "dwelling" then
     if now >= (JL.idle.dwellUntil or 0) then
+      stopWorkspotPose(h)                            -- v0.39: get up out of the chair / off the wall first
       local tgt = pickNextWaypoint(wps, JL.idle.curIdx)
       JL.idle.tgtIdx      = tgt
       JL.idle.phase       = "walking"
@@ -2339,25 +2606,165 @@ local function wanderTick()
   end
 end
 
+-- ---------------------------------------------------------------------------
+-- Walk-away (v0.38): when his block ends and you're watching, idle Jackie strolls to the venue's
+-- exit (loc.exitWaypoint -> Coyote upstairs / Lizzie's outside; else just away from V) and
+-- despawns once he reaches it, leaves your range, or leaveTimeout passes. Reuses the passive
+-- AIMoveToCommand path (sendMoveToPoint / awayPoint).
+-- ---------------------------------------------------------------------------
+local function idleExitTarget(loc, h)
+  if loc and loc.exitWaypoint and loc.exitWaypoint.pos then
+    local e = loc.exitWaypoint
+    return Vector4.new(e.pos[1], e.pos[2], e.pos[3], 1.0)
+  end
+  return awayPoint(h, (Config.transitions and Config.transitions.exitReach) or 18.0)  -- no exit -> walk off
+end
+
+-- Start the walk-off. Returns true if it began (caller falls back to instant clearIdle on false).
+local function beginIdleDeparture()
+  local sp = JL.idle.spawn; local h = sp and sp.handle
+  if not h then return false end
+  if not (Config.transitions and Config.transitions.departOnFoot) then return false end
+  -- only bother animating the exit if you're actually around to see it
+  local pp = playerPos(); local jp; pcall(function() jp = h:GetWorldPosition() end)
+  if not pp or not jp or dist3(pp, jp) > (Config.proximityRadius or 45.0) then return false end
+  local loc = Config.locations[JL.idle.locationKey]
+  local tgt = idleExitTarget(loc, h)
+  if not tgt then return false end
+  local now = JL.clock or 0
+  stopWorkspotPose(h)   -- v0.39: get up out of any sit/lean before he walks to the exit
+  pcall(function() sendMoveToPoint(h, tgt, (Config.wander and Config.wander.movement) or "Walk", 1.0) end)
+  JL.idle.leaving       = true
+  JL.idle.leaveTarget   = tgt
+  JL.idle.leaveDeadline = now + ((Config.transitions and Config.transitions.leaveTimeout) or 20.0)
+  JL.idle.leaveReissue  = now
+  log("Idle Jackie leaving " .. (loc and loc.name or "?") .. " -> walking to exit.")
+  return true
+end
+
+-- Stepped from onUpdate: drive the walk-off, despawn when he reaches the exit / leaves range / times out.
+local function idleLeavingTick()
+  if not JL.idle.leaving then return end
+  if JL.summon.active then clearIdle(); return end      -- summoned a companion mid-walk -> drop the idle one
+  local sp = JL.idle.spawn; local h = sp and sp.handle
+  if not h then JL.idle.leaving = false; return end
+  local now = JL.clock or 0
+  local pp = playerPos(); local jp; pcall(function() jp = h:GetWorldPosition() end)
+  local T  = Config.transitions or {}
+  local reached = false
+  if jp and JL.idle.leaveTarget then
+    reached = dist3(jp, { x = JL.idle.leaveTarget.x, y = JL.idle.leaveTarget.y, z = JL.idle.leaveTarget.z })
+              <= (T.leaveReachDist or 2.5)
+  end
+  local outOfRange = (pp and jp) and dist3(pp, jp) > (Config.proximityRadius or 45.0) + 5.0
+  local timedOut   = now >= (JL.idle.leaveDeadline or 0)
+  if reached or outOfRange or timedOut then
+    clearIdle()   -- despawns + resets leaving state
+    log(("Idle Jackie gone (%s)."):format(reached and "reached exit" or (outOfRange and "out of range" or "timeout")))
+  elseif (now - (JL.idle.leaveReissue or 0)) >= ((Config.wander and Config.wander.repath) or 2.5) then
+    JL.idle.leaveReissue = now
+    pcall(function() sendMoveToPoint(h, JL.idle.leaveTarget, (Config.wander and Config.wander.movement) or "Walk", 1.0) end)
+  end
+end
+
+-- v0.40 RETURN-TO-POST: dismissing companion Jackie while he's near the venue the schedule wants
+-- him at -> hand the SAME entity back to the idle system, drop his follower role, and walk him to
+-- the nearest waypoint so he re-joins the cycle (no despawn/respawn). Returns true if it took over.
+-- (Assigns the forward-declared `returnToPost` upvalue so runCallAction can reach it.)
+returnToPost = function()
+  local sp = JL.summon.spawn; local h = sp and sp.handle
+  if not h then return false end
+  local block = currentScheduleBlock()
+  if not (block and block.state == "at_location") then return false end
+  local loc = Config.locations[block.locationKey]
+  if not (loc and loc.pos) then return false end
+  local anchor = { x = loc.pos[1], y = loc.pos[2], z = loc.pos[3] }
+  local jp; pcall(function() jp = h:GetWorldPosition() end)
+  local ref = jp or playerPos()
+  local radius = (Config.transitions and Config.transitions.returnRadius) or 100.0
+  if not ref or dist3(ref, anchor) > radius then return false end       -- too far -> normal dismiss
+  -- drop the follower role so the companion AI stops pulling him back (same as startLeaving)
+  pcall(function()
+    local role = h:GetAIControllerComponent():GetAIRole()
+    if role then role:OnRoleCleared(h) end
+    h.isPlayerCompanionCached = false
+  end)
+  -- hand the live entity back to the idle/schedule system (no despawn)
+  JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
+  JL.idle.spawn, JL.idle.locationKey = sp, block.locationKey
+  JL.idle.leaving, JL.idle.posed = false, false
+  -- walk to the NEAREST waypoint, then wanderTick takes over (dwell -> cycle)
+  local wps = locWaypoints(loc) or {}
+  local ti, best = 1, 1e9
+  for i, wp in ipairs(wps) do local d = dist3(ref, wpVec(wp)); if d < best then best, ti = d, i end end
+  JL.idle.placed      = true
+  JL.idle.phase       = "walking"
+  JL.idle.curIdx      = ti
+  JL.idle.tgtIdx      = ti
+  JL.idle.arriveBy    = (JL.clock or 0) + ((Config.wander and Config.wander.arriveTimeout) or 30.0)
+  JL.idle.lastReissue = JL.clock or 0
+  if wps[ti] then
+    pcall(function() sendMoveToPoint(h, wpVec4(wps[ti]), (Config.wander and Config.wander.movement) or "Walk",
+                                     (Config.wander and Config.wander.arriveDist) or 1.5) end)
+  end
+  JL.ui.status = "Jackie's headin' back to his spot at " .. (loc.name or "?") .. "."
+  log("Dismiss: RETURN TO POST at " .. (loc.name or "?") .. " (re-joining idle cycle).")
+  return true
+end
+
+-- v0.41 secret sleeping-hours cameo: during the sleep window, a once-per-night roll. Returns the
+-- secret location key when he's "showing up" tonight, else nil. Re-rolls each new night.
+local function secretWantKey(hour)
+  local S = Config.secret
+  if not (S and S.locationKey and Config.locations[S.locationKey] and Config.locations[S.locationKey].pos) then return nil end
+  if hour == nil then return nil end
+  if not hourInBlock(hour, S.startHour or 0, S.endHour or 6) then
+    JL.secret.decided, JL.secret.active = false, false   -- left the window -> reset for next night
+    return nil
+  end
+  if not JL.secret.decided then
+    JL.secret.active  = (math.random() < (S.chance or 0.2))
+    JL.secret.decided = true
+    log("Secret nap roll: " .. (JL.secret.active and "YES — he's at the nap spot tonight" or "no"))
+  end
+  return JL.secret.active and S.locationKey or nil
+end
+
 local function scheduleTick()
+  if JL.idle.leaving then return end                 -- a departure is in progress; idleLeavingTick owns it
   if JL.summon.active then clearIdle(); return end
   if not Config.enableSchedule then clearIdle(); return end
 
-  local block = currentScheduleBlock()
-  if not block or block.state ~= "at_location" then clearIdle(); return end
+  -- what location (if any) the schedule wants him at right now
+  local block, hour = currentScheduleBlock()
+  local wantKey = nil
+  if block and block.state == "at_location" then
+    local wl = Config.locations[block.locationKey]
+    if wl and wl.pos then wantKey = block.locationKey end
+  end
+  -- secret nap cameo: while asleep/unavailable, he may be at the hidden spot instead
+  if not wantKey then wantKey = secretWantKey(hour) end
+  -- DEBUG override (CET window "Force venue"): pin him to one venue regardless of time
+  if JL.ui.forceVenue and Config.locations[JL.ui.forceVenue] and Config.locations[JL.ui.forceVenue].pos then
+    wantKey = JL.ui.forceVenue
+  end
 
-  local loc = Config.locations[block.locationKey]
-  if not loc or not loc.pos then clearIdle(); return end
+  -- spawned where the schedule no longer wants him -> walk away (or instant-clear if not watched)
+  if JL.idle.spawn and JL.idle.locationKey ~= wantKey then
+    if not beginIdleDeparture() then clearIdle() end
+    return
+  end
 
-  local pp = playerPos(); if not pp then return end
+  if not wantKey then clearIdle(); return end
+
+  local loc  = Config.locations[wantKey]
+  local pp   = playerPos(); if not pp then return end
   local near = dist3(pp, { x = loc.pos[1], y = loc.pos[2], z = loc.pos[3] }) <= Config.proximityRadius
-
   if near then
-    if JL.idle.spawn and JL.idle.locationKey ~= block.locationKey then clearIdle() end
     if not JL.idle.spawn then
       local spawn, err = ammSpawn(0, loc.appearance)   -- v0.36: wear this location's outfit
       if spawn then
-        JL.idle.spawn, JL.idle.locationKey = spawn, block.locationKey
+        JL.idle.spawn, JL.idle.locationKey = spawn, wantKey
         JL.idle.placed, JL.idle.phase      = false, nil   -- v0.35: wanderTick places + roams him
         JL.idle.curIdx, JL.idle.tgtIdx     = nil, nil
         JL.idle.spawnedAt                  = JL.clock or 0
@@ -2367,7 +2774,7 @@ local function scheduleTick()
       end
     end
   else
-    clearIdle()
+    clearIdle()   -- player not nearby; no one's watching, just remove him
   end
 end
 
@@ -2499,7 +2906,22 @@ registerForEvent("onUpdate", function(dt)
     log("Companion role applied.")
   end
 
-  pcall(wanderTick)     -- v0.35: idle Jackie free-roams between his location's waypoints
+  -- v0.39: companion-duration clock. Arm it once he's a confirmed companion (any path), and when
+  -- it runs out (and autoLeaveOnExpiry) send him home via the same walk-off as a dismissal.
+  if JL.summon.active and JL.summon.companionSet and not JL.summon.companionExpiresGame then
+    armCompanionTimer()
+  end
+  if JL.summon.active and Config.companion and Config.companion.autoLeaveOnExpiry
+     and JL.summon.companionExpiresGame and JL.leaving.phase ~= "walking" then
+    local g = getGameSeconds()
+    if g and g >= JL.summon.companionExpiresGame and startLeaving then
+      log("Companion: max in-game duration reached -> Jackie heads home.")
+      pcall(startLeaving)
+    end
+  end
+
+  pcall(wanderTick)       -- v0.35: idle Jackie free-roams between his location's waypoints
+  pcall(idleLeavingTick)  -- v0.38: idle Jackie walking off to a venue exit before despawning
 
   JL.timer = JL.timer + dt
   if JL.timer >= Config.scheduleCheckInterval then
@@ -2517,7 +2939,8 @@ registerForEvent("onDraw", function()
   local block, hour = currentScheduleBlock()
   ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
              "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
-  ImGui.Text("Game hour: " .. (hour and tostring(hour) or "?") ..
+  local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
+  ImGui.Text("Game time: " .. hhmm ..
              "   Day-type: " .. tostring(JL.day.template or "?"))
   if block then
     if block.state == "at_location" then
@@ -2541,6 +2964,24 @@ registerForEvent("onDraw", function()
       tostring(JL.idle.curIdx or "?"),
       tostring(JL.idle.tgtIdx or "-")))
   end
+  ImGui.Separator()
+
+  -- DEBUG: force his schedule to a venue so you can go observe him (overrides time + secret).
+  ImGui.Text("Force venue:  " .. (JL.ui.forceVenue and ("-> " .. tostring(JL.ui.forceVenue)) or "OFF (following schedule)"))
+  local venueKeys = { "noodle", "misty", "coyote", "afterlife", "ginger", "redwood", "lizzies", "secret", "test" }
+  local perRow = 4
+  for i, k in ipairs(venueKeys) do
+    local loc = Config.locations[k]
+    if loc then
+      if ((i - 1) % perRow) ~= 0 then ImGui.SameLine() end
+      local lbl = (loc.name or k) .. (JL.ui.forceVenue == k and " *" or "")
+      if ImGui.Button(lbl .. "##fv_" .. k) then
+        JL.ui.forceVenue = k
+        log("Force venue -> " .. k .. " (go to " .. (loc.name or k) .. " to see him; overrides time).")
+      end
+    end
+  end
+  if ImGui.Button("Clear force (resume schedule)") then JL.ui.forceVenue = nil; log("Force venue cleared.") end
   ImGui.Separator()
 
   if ImGui.Button("Summon Jackie (companion)") then summonJackie() end
