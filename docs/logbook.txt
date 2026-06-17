@@ -457,3 +457,59 @@ rush?", re-promoted to companion. JL.summon.active stays true the whole time; au
 walk/arrival banter fully disabled. dinnerTick moved below the pose/move helpers it calls. Entry =
 the dine:<key> action in runCallAction. Touched Config.date + the dinner state machine only.
 OPEN: confirm the mappin draws a route line vs just the dot; confirm the sit lands at each bar stool.
+================================================================================
+
+================================================================================
+v0.34a — LIP MOVEMENT / talk animation (lipsync session, 2026-06-17). Writeup: docs/lipsync.md
+Jackie's mouth was frozen while speaking: our AudioSystem:Play / Audioware audio carries no facial data,
+so the engine's viseme system never drove his face. Probed the spawned puppet (Codeware Reflection + a
+live component dump -> facial_methods.txt): his face rig is fully INTACT (face_rig, man_face_base_animations,
+entAnimationControllerComponent, scnVoicesetComponent, jaw/teeth/head/eyes) -> a DRIVER problem, not missing
+parts. Route A (push facial anim events via entAnimationControllerComponent) FAILED. Route B ("abusing
+workspots") confirmed callable (gameWorkspotGameSystem) but ABANDONED -- a talking ambient NPC reports
+IsActorInWorkspot=true yet 0 tags / no readable resource path. Route C = THE answer: PlayVoiceOver drives
+visemes through scnVoicesetComponent (exactly AMM's "NPC Talk"); a voiceset CONTEXT token ("greeting",
+not raw event names) gives real voice + real lipsync. SHIPPED for our custom Audioware lines (which have no
+VO event): a talking-face FLAP -- shuffle AMM Expressions Overhaul "Talking" faces (AnimFeature_FacialReaction
+category 7, idle 231..266, 242 skipped; verified from Collabs/Extra_Expressions_AMM.lua) every ~0.9s while a
+line plays, then ResetFacial. init.lua: flap/flapIdles/applyTalkingFace/startFlap/flapTick, hooked into
+speakJackieLine + dialogueTick, flapTick in onUpdate. New dependency: AMM Expressions Overhaul (Nexus 20108).
+Standalone test bench mod/JackieLipsync/ (kept); scratch probes JackieFacialTest + JackieWorkspotTest deleted.
+NOTE: a concurrent session owned DIALOGUE/dinner work -- lipsync edits were isolated to the flap block +
+two one-line call sites + one onUpdate line; standalone test mods used for all probing to avoid clashes.
+NEXT (chosen direction): map dialogue beats -> real VO voiceset contexts where they exist; keep the cat-7
+flap only for bespoke lines. SKIP: volume->jaw (viseme pipe is VO-only) and hand-authored .scene lipsync.
+================================================================================
+
+================================================================================
+v0.44 — REGRESSION FIXES + COLLISION CLEANUP + ARCH DOCS (2026-06-17)
+Two problems surfaced from the 3-concurrent-session v0.43 commit (vehicle-arrival + lipsync +
+dialogue/dinner all edited init.lua at once; each entry above notes "a concurrent session owns X").
+
+BUG 1 — holocall spawned Jackie in V's face / standing inside her. ROOT CAUSE: the holocall routed to
+VEHICLE arrival (Config.call.arriveByVehicle=true). The bike path (spawnDynEntity+mount+drive AI) has
+been broken ~6 versions (no bike), and its crude foot-fallback (vehicleArrivalFootFallback) spawns him
+onto V. The clean spawn-at-distance walk-in (arrivalTick, JL.arrival) was UNCHANGED + reliable but only
+used when arriveByVehicle=false. FIX: arriveByVehicle=false -> holocall uses arrivalTick. Vehicle path
+SHELVED (kept, documented, not deleted).
+
+BUG 2 — dinner "find your seat" never worked (shipped unfinished; its own entry said "OPEN: confirm the
+sit lands"). Causes: (a) collision never dropped for the COMPANION dinner sit (the v0.43b guard
+'not Config.idleNoCollision' even disabled the narrow drop for companions) -> chair blocked him from the
+2 m seat radius; (b) sit anim played same frame as the align-teleport (the float bug v0.41 fixed for
+idle but not here); (c) no reach timeout -> silent give-up; (d) the collision restore lived in
+wanderTick, which is dead while he's a companion -> would have leaked collision-off into following V.
+FIX (dinnerTick rework): drop collision entering 'seating'; on reach OR seatTimeout(12s) snap onto the
+seat + DEFER the sit by poses.delay; restore collision when he stands; promoteToCompanion re-follows.
+
+CLEANUP — collision ownership untangled (this WAS the bug class). Removed all collision toggling from
+the shared pose helpers (tryWorkspotPose / stopWorkspotPose / wanderTick). Three owners now: IDLE ->
+applyIdleCollision() at placement (Config.idleNoCollision master switch); DINNER -> dinnerTick; COMPANION
+-> promoteToCompanion() forces collision ON. Removed unused Config.poses.sitNoCollision/
+collisionRestoreDelay. Moved setNpcCollision() above promoteToCompanion (Lua lexical scope).
+
+DOCS — init.lua now opens with an ARCHITECTURE MAP (each subsystem + its JL.* state) and a COLLISION
+OWNERSHIP map. config.lua collision section rewritten to match. Bumped Config.version 0.43 -> 0.44.
+
+NEXT: decide vehicle arrival = revive vs remove. If revived, it must restore collision on handoff too.
+================================================================================

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.43"
+Config.version = "0.44"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -143,6 +143,7 @@ Config.date = {
 
   seatTriggerRadius = 12.0,  -- metres: V this close to the spot -> Jackie peels off to his seat
   seatReachRadius   = 2.0,   -- metres: Jackie this close to his seat -> snap + sit
+  seatTimeout       = 12.0,  -- v0.44 seconds: if he can't path within seatReachRadius by now, snap+sit anyway
   sitWaitSeconds    = 2.0,   -- seconds seated before he says his line + the clock resets
   getUpRadius       = 10.0,  -- metres: V this far from seated Jackie -> he gets up + re-follows
   resetCooldownHours = 24.0, -- the dinner FULL reset can only fire once per this many in-game hours
@@ -160,9 +161,12 @@ Config.date = {
 
   -- v0.43: walk/arrival BANTER fully disabled (Antonia). The only spoken beats are the three below.
   -- Jackie's single-line beats (real-matching clips; the restaurant NAME shows via the waypoint + objective):
-  ackText   = "Right on, chica.",                  ackSfx   = "jl_1721407637774192672",  -- on accept (heading out)
-  doneText  = "Gettin' one of my good feelings.",  doneSfx  = "jl_1834502468175589376",  -- seated, 2s after sitting (reset)
-  getUpText = "Why, what's the rush?",             getUpSfx = "jl_1989527454849245184",  -- V walks off -> he gets up
+  ackText    = "Right on, chica.",                  ackSfx    = "jl_1721407637774192672",  -- on accept (heading out)
+  doneText   = "Gettin' one of my good feelings.",  doneSfx   = "jl_1834502468175589376",  -- seated, 2s after sitting (reset)
+  getUpText  = "Why, what's the rush?",             getUpSfx  = "jl_1989527454849245184",  -- V walks off -> he gets up
+  -- v0.43b: he won't go out to eat twice a day. If asked within resetCooldownHours of his last
+  -- dinner, he REFUSES with this line and the outing aborts (no walk, no waypoint).
+  refuseText = "Yeaaaah. Had enough for one day, lemme tell you.", refuseSfx = "jl_1697051347046326272",
 
   tree = {
     start = "open",
@@ -446,9 +450,12 @@ Config.call = {
   spawnDelay    = 2.5,   -- seconds after the call ends before Jackie spawns (was 5.0; halved)
   -- v0.34 VEHICLE ARRIVAL: when true, asking Jackie onto a gig makes him ride in on his bike
   -- (spawn at distance behind V -> drive in -> dismount near you -> jog/walk up -> companion),
-  -- instead of the on-foot walk-in. Tuning lives in Config.vehicle below. The 6 s pre-spawn
-  -- delay below is the dramatic beat after you hang up before he appears.
-  arriveByVehicle      = true,
+  -- instead of the on-foot walk-in. Tuning lives in Config.vehicle below.
+  -- ⚠️ v0.44: SHELVED -> false. The bike path (spawnDynEntity + mount + drive AI) has been broken for
+  -- several versions (no bike appears) and its crude foot-fallback (vehicleArrivalFootFallback) spawns
+  -- Jackie on top of V. We now route the holocall to the RELIABLE on-foot arrival (arrivalTick: spawn
+  -- at `spawnDistance`, hidden, then walk in). Flip back to true only after the vehicle path is revived.
+  arriveByVehicle      = false,
   vehicleSpawnDelay    = 1.0,   -- seconds after the call ends before the bike+Jackie spawn
   -- v0.31 SPAWN-AT-DISTANCE + WALK-IN:
   -- He spawns this far from V, snapped onto the navmesh (NavigationSystem) so he never lands
@@ -651,19 +658,18 @@ Config.poses = {
   sit     = "sit_barstool__2h_on_lap__01",          -- DEFAULT = barstool (most of his chairs)
   sitChair= "sit_chair__2h_on_lap__01",             -- low/deep chair (Misty's) — used via poseAnim
   lean    = "stand_wall_lean180__2h_on_wall__01",
-  -- v0.43: drop his collision the instant before a SIT workspot plays, so the chair geometry
-  -- can't shove/clip him out of the seat; re-enable it once he's planted. Same puppet trick
-  -- (NPCPuppet:DisableCollision/EnableCollision) noted in docs/spawn_at_distance_research.md.
-  -- NOTE: this is the NARROW fallback used only when idleNoCollision (below) is OFF.
-  sitNoCollision       = true,
-  collisionRestoreDelay = 2.0,   -- seconds after the sit anim fires before collision is turned back on
 }
 
--- v0.43b: MASTER switch — keep idle Jackie's collision OFF for his whole stay at a location. The
--- sit-time drop alone is too late: the chair/stall geometry can block him from even reaching the
--- seat coordinate. With this ON he's collision-free from the moment he's placed, so he slides onto
--- any seat cleanly and never gets shoved out. Trade-off: V can walk through idle Jackie. Flip it
--- live from the mod window ("Idle Jackie: collisions OFF"). Companion Jackie is unaffected.
+-- ---- collision ownership (v0.44) ------------------------------------------
+-- NPCs get shoved out of / blocked from chairs by collision. We drop NPCPuppet collision around
+-- seating. Two INDEPENDENT owners (they used to fight via shared pose helpers — now separated):
+--   • IDLE Jackie  -> Config.idleNoCollision (below). Applied once at placement; off his whole stay.
+--   • DINNER Jackie -> hard-wired in dinnerTick (drop on `seating`, restore when he stands).
+-- COMPANION Jackie always collides (promoteToCompanion forces it on). See init.lua header map.
+--
+-- MASTER switch: keep idle Jackie collision-free from the moment he's placed, so chairs/stalls can't
+-- block or shove him. Trade-off: V can walk through idle Jackie. Flip live from the mod window
+-- ("Idle Jackie: collisions OFF"). Companion/dinner Jackie unaffected.
 Config.idleNoCollision = true
 
 -- ---- locations ------------------------------------------------------------

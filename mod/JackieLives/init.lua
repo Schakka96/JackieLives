@@ -12,6 +12,36 @@
 
   Depends on: Cyber Engine Tweaks, AppearanceMenuMod (AMM), Codeware.
   Console lines are prefixed [JackieLives]. Red errors → send to Claude.
+
+  ============================================================================
+  ARCHITECTURE MAP (v0.44) — what each subsystem owns. There is only ever ONE
+  Jackie ENTITY; "idle" and "companion" are two SYSTEMS that hand the same entity
+  back and forth. Keep edits inside ONE subsystem; they share a few helpers (noted).
+
+   • IDLE / SCHEDULE  (state: JL.idle)  — scheduleTick spawns him at his scheduled
+     venue when V is near; wanderTick free-roams him between that venue's waypoints
+     (dwell → walk → sit/lean pose). returnToPost hands a dismissed companion back here.
+   • COMPANION        (state: JL.summon) — summonJackie (instant) / promoteToCompanion
+     (after an arrival). Follower role = AMM SetNPCAsCompanion. dismissJackie removes him.
+   • ON-FOOT ARRIVAL  (state: JL.arrival) — arrivalTick: spawn hidden, teleport to
+     `spawnDistance`, reveal, walk in, hand off to COMPANION. (Holocall uses THIS when
+     Config.call.arriveByVehicle = false — the default since v0.44.)
+   • VEHICLE ARRIVAL  (state: JL.varrival) — vehicleArrivalTick: ride in on the bike.
+     ⚠️ SHELVED/BROKEN since ~v0.38 (no bike). Not used while arriveByVehicle = false.
+   • DINNER OUTING    (state: JL.dinner)  — dinnerTick: companion Jackie walks to a
+     restaurant, sits, resets his companion clock, re-follows. Owns its own collision.
+   • DIALOGUE/CALL    (Branch.*, dlg, callTick) — the voiced choice-box + holocall convo.
+   • POSES            (tryWorkspotPose/stopWorkspotPose/applyIdlePose) — AMM workspot
+     sit/lean. SHARED by idle + dinner; it does NOT touch collision (callers do).
+   • UI               (onDraw) — the debug window (Force venue, seat tuner, toggles).
+
+  COLLISION OWNERSHIP (the v0.43 bug was two systems fighting over this):
+     setNpcCollision(handle, on) is the only low-level toggle.
+   • IDLE     -> applyIdleCollision() at placement, driven by Config.idleNoCollision.
+   • DINNER   -> dinnerTick drops it on `seating`, restores it when he stands.
+   • COMPANION-> promoteToCompanion() FORCES it on (a follower must collide / not clip V).
+     The shared pose helpers must NEVER toggle collision — that caused the cross-talk.
+  ============================================================================
 --]]
 
 local Config = require("config")
@@ -27,7 +57,7 @@ local JL = {
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
              spawnedAt = 0, dwellUntil = 0, arriveBy = 0, lastReissue = 0,
              leaving = false, leaveTarget = nil, leaveDeadline = 0, leaveReissue = 0,
-             collisionOff = false, collisionRestoreAt = nil },   -- v0.43: sit-time collision toggle
+             collisionOff = false },   -- v0.44: idle collision state (driven by Config.idleNoCollision)
   -- v0.43 seat tuner: live X/Y/Z/yaw OFFSETS from a location's captured seat, so a sit spot can be
   -- nudged in-game until perfect, then printed for config.lua. Targets Config.locations[key].
   tuner  = { init = false, key = "noodle", live = true, pendingApplyAt = nil,
@@ -48,7 +78,8 @@ local JL = {
                placeAt = nil, driveAt = nil, sprintAt = nil, lastReissue = 0, deadline = nil, driveCmd = nil },
   call    = { ringingAt = nil },  -- holocall: clock time he "picks up" after the ring
   -- v0.41 dinner outing: walk to a chosen restaurant -> linger -> full companion-clock reset.
-  dinner  = { phase = nil, dest = nil, destName = nil, destYaw = nil, mappinId = nil, satAt = nil, lastResetGame = nil },
+  dinner  = { phase = nil, dest = nil, destName = nil, destYaw = nil, mappinId = nil, satAt = nil,
+              lastResetGame = nil, collisionOff = false, seatDeadline = nil, sitFireAt = nil },  -- v0.44 seat rework
   timer  = 0,
   clock  = 0,        -- accumulated game seconds (for talk cooldowns)
   lastTalk = -999,
@@ -1190,8 +1221,20 @@ end
 -- pose/move helpers) handles arrive -> seat -> sit -> line -> reset -> walk-away -> re-follow.
 local function startDinnerWalk(key)
   if not JL.summon.active then return end
-  local r = findRestaurant(key)
   local D = Config.date or {}
+  -- v0.43b: he won't go out to eat twice in one day. Asked again within resetCooldownHours of his
+  -- last dinner -> he refuses and the outing ABORTS (no walk, no waypoint, no phase change).
+  do
+    local g  = getGameSeconds()
+    local cd = (D.resetCooldownHours or 24.0) * 3600
+    if JL.dinner.lastResetGame and g and (g - JL.dinner.lastResetGame) < cd then
+      pcall(function() speakJackieLine(D.refuseText, D.refuseSfx) end)
+      JL.ui.status = "Jackie already ate out today - maybe tomorrow."
+      log("Dinner: refused (within " .. tostring(D.resetCooldownHours or 24) .. "h of his last dinner).")
+      return
+    end
+  end
+  local r = findRestaurant(key)
   if not r or not r.pos then
     armCompanionTimer((Config.companion and Config.companion.maxGameHours) or 6.0)
     JL.ui.status = "No coords for that spot yet - reset Jackie's clock instead."
@@ -2004,6 +2047,17 @@ local function aiTeleport(handle, pos, yawDeg)
   end))
 end
 
+-- v0.43: toggle a spawned NPC's collision. NPCPuppet:DisableCollision()/EnableCollision() drop the
+-- AI collider + obstacle trace, so chair/world geometry can't block him reaching a seat or shove him
+-- out of it. Guarded — silently no-ops if the method isn't on this puppet/build. (Defined here, above
+-- promoteToCompanion, so the companion path can call it. See COLLISION OWNERSHIP map up top.)
+local function setNpcCollision(handle, enabled)
+  if not handle then return end
+  pcall(function()
+    if enabled then handle:EnableCollision() else handle:DisableCollision() end
+  end)
+end
+
 -- Promote the spawned Jackie to a real companion (follower role -> combat + auto-follow +
 -- friendly). This is when the native catch-up teleport becomes available again; we only do it
 -- once he's already close, so it never visibly skips the walk-in.
@@ -2016,6 +2070,8 @@ local function promoteToCompanion()
   end)
   setFriendly(h)
   setVisible(h, true)   -- never leave him invisible
+  setNpcCollision(h, true)   -- v0.44: a FOLLOWER must always collide (defensive: clears any idle/dinner
+                             -- collision-off that could otherwise leak in and make him clip inside V)
   -- companion follow spacing so he holds ~followDistance and doesn't clip into V
   sendWalkToPlayer(h, (Config.call and Config.call.approachMovement) or "Run",
                       (Config.call and Config.call.followDistance) or 1.6)
@@ -2591,30 +2647,15 @@ local function pickNextWaypoint(wps, cur)
   return (cur % n) + 1
 end
 
--- v0.43: toggle a spawned NPC's collision. NPCPuppet:DisableCollision()/EnableCollision() drop the
--- AI collider + obstacle trace, so chair/world geometry can't shove him out of a sit workspot.
--- Guarded — does nothing (silently) if the method isn't available on this puppet/build.
-local function setNpcCollision(handle, enabled)
-  if not handle then return end
-  pcall(function()
-    if enabled then handle:EnableCollision() else handle:DisableCollision() end
-  end)
-end
-
 -- v0.43b: apply the MASTER idle-collision switch (Config.idleNoCollision) to the live idle Jackie.
--- ON  -> collision OFF for his whole stay (no chair/stall blocking, no auto-restore).
--- OFF -> collision ON; the narrow sit-time drop (sitNoCollision) handles seating instead.
+-- ON  -> collision OFF for his whole stay (chairs/stalls can't block or shove him).
+-- OFF -> collision ON (normal). Owned ONLY by the idle system. See COLLISION OWNERSHIP map up top.
 -- Safe to call repeatedly (at placement and whenever the switch is flipped in the window).
 local function applyIdleCollision()
   local h = JL.idle.spawn and JL.idle.spawn.handle
   if not h then return end
-  if Config.idleNoCollision then
-    setNpcCollision(h, false)
-    JL.idle.collisionOff, JL.idle.collisionRestoreAt = true, nil   -- never auto-restore while master is on
-  else
-    setNpcCollision(h, true)
-    JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
-  end
+  setNpcCollision(h, not Config.idleNoCollision)
+  JL.idle.collisionOff = Config.idleNoCollision and true or false
 end
 
 -- v0.39 SIT/LEAN via AMM workspots. Stop any workspot pose on a handle (gets him out of the chair
@@ -2622,10 +2663,7 @@ end
 local function stopWorkspotPose(handle)
   if not handle then return end
   pcall(function() Game.GetWorkspotSystem():StopInDevice(handle) end)
-  if JL.idle.collisionOff and not Config.idleNoCollision then   -- v0.43: getting up -> restore
-    setNpcCollision(handle, true)                              -- (but stay off while master is on)
-    JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
-  end
+  -- v0.44: collision is NOT touched here (callers own it — see COLLISION OWNERSHIP map up top).
   JL.idle.posed = false
   JL.idle.pendingPose = nil   -- cancel any not-yet-fired pose
 end
@@ -2639,13 +2677,10 @@ local function tryWorkspotPose(handle, pose, nameOverride)
   local name = nameOverride or P[pose]; if not name then return false end  -- per-waypoint poseAnim wins
   local amm = getAMM()
   if not amm or not amm.Poses or not amm.NewTarget or not amm.GetScanID then return false end
-  -- v0.43: narrow sit-time collision drop — ONLY when the master idle switch is OFF (else it's
-  -- already off for his whole stay and we must not schedule a restore that turns it back on).
-  if pose == "sit" and P.sitNoCollision and not Config.idleNoCollision then
-    setNpcCollision(handle, false)
-    JL.idle.collisionOff = true
-    JL.idle.collisionRestoreAt = (JL.clock or 0) + (P.collisionRestoreDelay or 2.0)
-  end
+  -- v0.44: NO collision handling here. tryWorkspotPose is shared by the IDLE and DINNER systems,
+  -- which manage collision differently (idle = master switch at placement; dinner = around the seat).
+  -- Doing it here made the two fight. Each caller owns collision now. See the COLLISION OWNERSHIP map
+  -- near the top of this file.
   local ok = pcall(function()
     local t = amm:NewTarget(handle, "NPCPuppet", amm:GetScanID(handle), "Jackie", nil, nil)
     local anim = { name = name, rig = P.rig or "Man Average", comp = P.comp or "amm_workspot_base",
@@ -2679,9 +2714,13 @@ local function applyIdlePose(handle, wp, forceSnap)
 end
 
 -- ===========================================================================
--- DINNER state machine (v0.43). Defined here (not with startDinnerWalk) because it needs the
--- pose/move helpers above. Phases: walking -> seating -> seated. Jackie stays our companion
--- (JL.summon.active) the whole time; we only swap his AI ROLE (follow <-> sit) under the hood.
+-- DINNER state machine (v0.43, seat reworked v0.44). Defined here (not with startDinnerWalk)
+-- because it needs the pose/move helpers above. Phases: walking -> seating -> seated. Jackie stays
+-- our companion (JL.summon.active) the whole time; we only swap his AI ROLE (follow <-> sit).
+-- COLLISION: this system OWNS Jackie's collision while he's seating/seated — it drops it on entering
+-- `seating` (so the chair/table can't block him reaching the seat or shove him out) and restores it
+-- when he stands. It does NOT rely on the idle master switch or wanderTick (both are dead while he's
+-- a companion). See the COLLISION OWNERSHIP map up top.
 -- ===========================================================================
 local function dinnerTick()
   local D = JL.dinner
@@ -2689,8 +2728,12 @@ local function dinnerTick()
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not JL.summon.active or not h then               -- dismissed / gone -> abort cleanly
     pcall(clearDinnerWaypoint)
-    if h then pcall(function() stopWorkspotPose(h) end) end
-    D.phase = nil; return
+    if h then
+      pcall(function() stopWorkspotPose(h) end)
+      if D.collisionOff then setNpcCollision(h, true) end   -- never leave a freed entity collision-less
+    end
+    D.phase, D.collisionOff, D.seatDeadline, D.sitFireAt = nil, false, nil, nil
+    return
   end
   local C   = Config.date or {}
   local now = JL.clock or 0
@@ -2705,6 +2748,10 @@ local function dinnerTick()
         if role then role:OnRoleCleared(h) end
         h.isPlayerCompanionCached = false
       end)
+      setNpcCollision(h, false)                        -- v0.44: collision OFF so the chair can't block him
+      D.collisionOff = true
+      D.satAt, D.sitFireAt = nil, nil
+      D.seatDeadline = now + (C.seatTimeout or 12.0)   -- v0.44: force the sit if he can't path within reach
       pcall(function() sendMoveToPoint(h, D.dest, "Walk", 0.5) end)
       D.phase = "seating"
       JL.ui.status = "Jackie's grabbin' his seat."
@@ -2715,29 +2762,32 @@ local function dinnerTick()
 
   if D.phase == "seating" then
     if not D.satAt then
-      local jp; pcall(function() jp = h:GetWorldPosition() end)
-      if jp and dist3(jp, D.dest) <= (C.seatReachRadius or 2.0) then
-        pcall(function() aiTeleport(h, D.dest, D.destYaw or 0.0) end)   -- align exactly on the seat
-        pcall(function() tryWorkspotPose(h, "sit") end)                 -- the (already-programmed) sit anim
-        D.satAt = now
-        log("Dinner: Jackie reached seat + sitting.")
+      -- (a) wait until he's within reach OR the timeout fires, then align exactly + ARM a deferred sit.
+      if not D.sitFireAt then
+        local jp; pcall(function() jp = h:GetWorldPosition() end)
+        local reached = jp and dist3(jp, D.dest) <= (C.seatReachRadius or 2.0)
+        if reached or now >= (D.seatDeadline or 0) then
+          pcall(function() aiTeleport(h, D.dest, D.destYaw or 0.0) end)   -- snap exactly onto the seat
+          D.sitFireAt = now + ((Config.poses and Config.poses.delay) or 0.5)  -- v0.44: DEFER the pose so
+          if not reached then log("Dinner: seat reach timed out -> snapping him onto the seat.") end  --   it doesn't spawn at his pre-snap spot (the float bug)
+        end
+        return
+      end
+      -- (b) play the sit once the snap-teleport has had time to land.
+      if now >= D.sitFireAt then
+        pcall(function() tryWorkspotPose(h, "sit") end)
+        D.satAt, D.sitFireAt = now, nil
+        log("Dinner: Jackie seated.")
       end
       return
     end
     -- `sitWaitSeconds` after sitting -> one final line + the (once/24h) full reset
     if now - D.satAt >= (C.sitWaitSeconds or 2.0) then
       pcall(function() speakJackieLine(C.doneText, C.doneSfx) end)
-      local g  = getGameSeconds()
-      local cd = (C.resetCooldownHours or 24.0) * 3600
-      if (not D.lastResetGame) or (g and (g - D.lastResetGame) >= cd) then
-        armCompanionTimer((Config.companion and Config.companion.maxGameHours) or 6.0)
-        D.lastResetGame = g
-        JL.ui.status = "Good dinner - Jackie's clock is reset."
-        log("Dinner: companion clock fully reset (once/24h).")
-      else
-        JL.ui.status = "Good dinner (already reset in the last 24h)."
-        log("Dinner: reset skipped (within 24h cooldown).")
-      end
+      armCompanionTimer((Config.companion and Config.companion.maxGameHours) or 6.0)
+      D.lastResetGame = getGameSeconds()   -- stamp the day: the start gate refuses a 2nd dinner within 24h
+      JL.ui.status = "Good dinner - Jackie's clock is reset."
+      log("Dinner: companion clock fully reset; dinner stamped for the day.")
       D.phase = "seated"
     end
     return
@@ -2748,9 +2798,11 @@ local function dinnerTick()
     local jp; pcall(function() jp = h:GetWorldPosition() end)
     if pp and jp and dist3(pp, jp) >= (C.getUpRadius or 10.0) then
       pcall(function() stopWorkspotPose(h) end)
+      setNpcCollision(h, true)                          -- v0.44: restore collision before he follows again
+      D.collisionOff = false
       pcall(function() speakJackieLine(C.getUpText, C.getUpSfx) end)
-      pcall(promoteToCompanion)                        -- re-add follower role + follow
-      D.phase, D.dest, D.satAt = nil, nil, nil
+      pcall(promoteToCompanion)                         -- re-add follower role + follow (also re-enables collision)
+      D.phase, D.dest, D.satAt, D.seatDeadline, D.sitFireAt = nil, nil, nil, nil, nil
       JL.ui.status = "Jackie's back with you."
       log("Dinner: V left; Jackie up + following again.")
     end
@@ -2795,13 +2847,6 @@ local function wanderTick()
   if JL.idle.pendingPose and now >= JL.idle.pendingPose.at then
     local pend = JL.idle.pendingPose; JL.idle.pendingPose = nil
     pcall(function() tryWorkspotPose(h, pend.pose, pend.name) end)
-  end
-
-  -- v0.43: restore collision a beat after he's planted (narrow sit-time path only; master keeps it off)
-  if JL.idle.collisionOff and JL.idle.collisionRestoreAt and not Config.idleNoCollision
-     and now >= JL.idle.collisionRestoreAt then
-    setNpcCollision(h, true)
-    JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
   end
 
   -- (0) PLACE him on a starting waypoint shortly after spawn (let the entity settle first).
@@ -3108,6 +3153,88 @@ local function setupNativePhoneProbe()
   log("PROBE armed (real names). Open phone, call Jackie -> probe_fires.txt.")
 end
 
+-- ---------------------------------------------------------------------------
+-- v0.44 "Go Home Jackie" — blunt recovery for a stuck/duplicated/missing Jackie.
+-- Force-despawns EVERY Jackie (orphans included), wipes ALL transient state machines, then lets
+-- the next scheduleTick re-place a clean idle Jackie at his scheduled spot. Deliberately does NOT
+-- spawn here: it's fired from the Esc -> Settings panel while the game is PAUSED (onUpdate frozen),
+-- so re-placement is left to the first unpaused tick (we just prime JL.timer to fire it ASAP).
+-- ---------------------------------------------------------------------------
+local function hardReset()
+  -- get him out of any sit/lean workspot first so the despawn can't strand a posed body
+  pcall(function()
+    local ws = Game.GetWorkspotSystem()
+    if ws then
+      if JL.idle.spawn   and JL.idle.spawn.handle   then ws:StopInDevice(JL.idle.spawn.handle)   end
+      if JL.summon.spawn and JL.summon.spawn.handle then ws:StopInDevice(JL.summon.spawn.handle) end
+    end
+  end)
+  pcall(dismissAllJackies)   -- AMM-wide despawn + summon/idle/arrival/leaving/vehicle reset
+  -- wipe the newer (v0.35+) idle/dinner/secret/call/branch state dismissAllJackies doesn't cover
+  JL.idle.placed, JL.idle.phase, JL.idle.curIdx, JL.idle.tgtIdx = false, nil, nil, nil
+  JL.idle.leaving, JL.idle.leaveTarget, JL.idle.leaveDeadline, JL.idle.leaveReissue = false, nil, 0, 0
+  JL.idle.posed, JL.idle.pendingPose = false, nil
+  JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
+  JL.dinner.phase, JL.dinner.dest, JL.dinner.mappinId = nil, nil, nil
+  JL.secret.decided, JL.secret.active = false, false
+  JL.call.ringingAt, JL.call.hangupAt, JL.call.hangupAction = nil, nil, nil
+  JL.leaving.subClearAt = nil
+  -- release any open conversation so the UI can't be stuck mid-dialogue
+  pcall(hideSubtitle)
+  if Branch then Branch.open, Branch.busy = false, false end
+  JL.timer = Config.scheduleCheckInterval or 0   -- fire scheduleTick on the very next (unpaused) tick
+  JL.ui.status = "Go Home Jackie: reset done. He'll return to his schedule shortly."
+  log("Hard reset: every Jackie despawned + state wiped; schedule will re-place a clean one.")
+end
+
+-- v0.44: register the "Jackie Lives" page in the Esc -> Settings screen via Native Settings UI.
+-- DEFERRED + RETRIED from onUpdate (see nsTick) rather than run once in onInit, because CET loads
+-- mods alphabetically: "JackieLives" initializes BEFORE "nativeSettings", so GetMod() is nil at our
+-- onInit and a one-shot attempt silently fails (the menu then shows "No mods using native settings
+-- installed!"). We poll until nativeSettings is available, register exactly once, and LOG any API
+-- error instead of swallowing it. State lives in JL.ns so a concurrent JL-table edit won't clash.
+local function nsState()
+  if not JL.ns then JL.ns = { done = false, attempts = 0 } end
+  return JL.ns
+end
+
+local function nsTick()
+  local s = nsState()
+  if s.done then return end
+  s.attempts = s.attempts + 1
+  if s.attempts > 1200 then   -- ~ a few min at 60 fps; nativeSettings clearly absent -> stop polling
+    s.done = true
+    log("Native Settings UI not found after retries — Esc-menu panel skipped; CET window still works.")
+    return
+  end
+  local ns = GetMod("nativeSettings")
+  if not ns then return end   -- not loaded yet this tick; try again next frame
+  s.done = true               -- only ever attempt the real registration once
+  if ns.pathExists and ns.pathExists("/jackielives/recovery") then
+    log("Native Settings panel already present (hot-reload) — not re-registering.")
+    return
+  end
+  local ok, err = pcall(function()
+    ns.addTab("/jackielives", "Jackie Lives")
+    ns.addSubcategory("/jackielives/recovery", "Recovery")
+    ns.addButton(
+      "/jackielives/recovery",
+      "Go Home Jackie",
+      "Force-despawns every Jackie (including any stuck or duplicate copies), resets him to a clean " ..
+      "state, and sends a fresh Jackie back to his scheduled location once you close this menu. " ..
+      "Use this if Jackie is missing, frozen, won't follow, or is otherwise misbehaving.",
+      "Go Home",   -- button text
+      18,          -- font size
+      function() pcall(hardReset) end
+    )
+  end)
+  if ok then
+    log("Native Settings panel registered (Esc -> Settings -> Jackie Lives -> Recovery).")
+  else
+    log("Native Settings registration FAILED: " .. tostring(err))
+  end
+end
+
 registerForEvent("onInit", function()
   pcall(function() math.randomseed((os.time and os.time() or 0)) end)  -- v0.36: random day-bag shuffle
   getAMM()
@@ -3178,6 +3305,7 @@ end
 
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
+  pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
   pcall(branchTick)

@@ -2,11 +2,65 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
-> **v0.44 "Go Home Jackie" (Esc-menu settings panel) is being developed in an ISOLATED COPY**, not in
-> these live files — see `../Cyberpunk_modding-nativesettings/`. Low priority; kept out of `main` so it
-> doesn't collide with concurrent edits here. Merge it back when ready.
+## 🆕 v0.44 — Esc-menu "Go Home Jackie" recovery panel (MERGED to main, awaiting test, 2026-06-18)
+- **NEW DEPENDENCY: Native Settings UI (`nativeSettings`)**, CET 1.18.1+. Adds an in-game
+  **Esc → Settings → Jackie Lives → Recovery** page (see README requirements for the folder-name +
+  load-order notes). Folder must be named exactly `nativeSettings`.
+- **`hardReset()`** (init.lua): stops sit/lean workspots → `dismissAllJackies()` (AMM-wide despawn +
+  orphan/duplicate clear) → wipes ALL newer transient state (idle wander/leave/pose/collision, dinner,
+  secret cameo, call, branch/subtitle). Does NOT spawn (settings menu pauses the game → `onUpdate`
+  frozen); primes `JL.timer` so the next unpaused `scheduleTick` re-places one clean idle Jackie at his
+  scheduled spot. Player-facing panic button for a stuck/duplicated/missing Jackie.
+- **`nsTick()`** registers the page from `onUpdate` (retried until `nativeSettings` is available, once),
+  NOT `onInit` — CET loads `JackieLives` before `nativeSettings` alphabetically, so onInit `GetMod` is
+  nil. Logs `…registered` / `…FAILED: <err>` / `…not found after retries`.
+- [ ] **TEST:** reload/restart → console prints `[JackieLives] Native Settings panel registered`. Then
+      Esc → Settings → Jackie Lives → Recovery → "Go Home". Confirm all Jackies vanish (incl. dupes), no
+      errors, and a single clean Jackie returns to his scheduled spot. Try while summoned, idle, mid-sit.
+
+### Problems & Resolutions (v0.44 Esc-menu)
+- **Menu showed empty ("No mods using native settings installed!") = OUR registration failed, not a
+  NativeSettings install issue.** First build registered in `onInit` → `GetMod` nil (load order). Fixed
+  with the `onUpdate` retry. Compounded by a **shared-deploy clobber**: a `main` deploy (feature absent)
+  overwrote the test build in the game's CET mods dir, so the running mod had no menu code at all.
+- **`GetMod("nativeSettings")` matches by FOLDER name** — a `CP77_nativeSettings-…` folder returns nil
+  forever. Documented in README.
+- **Spawn-while-paused** avoided by deferring re-placement to `scheduleTick` (the menu pauses the game).
+
+## 🆕 v0.44 — REGRESSION FIXES + collision cleanup + arch docs (DEPLOYED, awaiting test, 2026-06-17)
+**Context:** v0.43 was authored by 3 concurrent sessions editing `init.lua` at once (vehicle-arrival,
+lipsync, dialogue/dinner — each logbook entry flags "a concurrent session owns X"). Two regressions/
+unfinished bits surfaced; root cause = subsystems reaching into shared helpers.
+
+- **BUG 1 — holocall: Jackie spawns in V's face / stands inside her.** Cause: the holocall routed to
+  the **VEHICLE arrival** (`Config.call.arriveByVehicle = true`), which has been broken for ~6 versions
+  (no bike appears) and falls back to a crude foot-spawn that lands him on V. The clean spawn-at-distance
+  walk-in (`arrivalTick`) was unchanged + reliable but only used when `arriveByVehicle = false`.
+  - **FIX:** `Config.call.arriveByVehicle = false` → holocall now uses the on-foot `arrivalTick` (spawn
+    at 80 m, hidden, walk in, hand off). Vehicle arrival is **SHELVED** (documented, not deleted).
+- **BUG 2 — dinner: Jackie won't go to his chair.** Shipped UNFINISHED (its own logbook entry: "OPEN:
+  confirm the sit lands"). Causes: (a) collision never dropped for the dinner sit → chair blocked him
+  from reaching the 2 m seat radius (my v0.43b guard had even disabled the narrow drop for companions);
+  (b) sit anim played the SAME frame as the align-teleport (the float bug); (c) no reach timeout → silent
+  give-up; (d) the would-be collision restore lived in `wanderTick`, which is dead while he's a companion.
+  - **FIX (dinnerTick rework):** drop collision on entering `seating`; walk to seat; on reach **or**
+    `seatTimeout` (12 s) snap onto the seat + **defer** the sit by `poses.delay`; restore collision when
+    he stands; `promoteToCompanion` re-follows. Dinner now OWNS its collision end-to-end.
+- **CLEANUP — collision ownership untangled.** Removed all collision toggling from the SHARED pose
+  helpers (`tryWorkspotPose`/`stopWorkspotPose`/`wanderTick`). Now exactly three owners: IDLE →
+  `applyIdleCollision()` at placement (`Config.idleNoCollision`); DINNER → `dinnerTick`; COMPANION →
+  `promoteToCompanion()` forces collision ON (a follower must collide / not clip V). Dropped the unused
+  `Config.poses.sitNoCollision` / `collisionRestoreDelay`. Moved `setNpcCollision` above
+  `promoteToCompanion` (Lua scope: the companion path needs it).
+- **DOCS — `init.lua` now opens with an ARCHITECTURE MAP** (each subsystem + its `JL.*` state) and a
+  **COLLISION OWNERSHIP** map, so the next session knows which block owns what. `config.lua` collision
+  section rewritten to match.
+- [ ] **TEST:** (1) Call Jackie → he spawns far + walks in (no bike, not in V's face). (2) While he's a
+      companion, invite him to dinner → he walks to the chosen bar, sits cleanly, clock resets, re-follows.
 
 ## 🆕 v0.43 — in-game SEAT TUNER + sit-time collision drop (DEPLOYED, awaiting test, 2026-06-17)
+> ⚠️ v0.44 SUPERSEDED the collision parts below — the "sit-time drop" + master-switch guards were
+> removed and replaced by the per-subsystem ownership model (see v0.44). The SEAT TUNER is unchanged.
 - **SEAT POSITION TUNER (debug window).** New collapsing panel "Seat position tuner (Noodle bar)" with
   live **X / Z** sliders (+ Y and yaw for free) as **offsets** from the captured noodle seat. "Live"
   re-seats Jackie ~0.25 s after you stop sliding (debounced full stop→teleport→deferred-sit, so it

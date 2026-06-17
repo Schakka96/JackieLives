@@ -5,9 +5,24 @@ quests, and gives him a simple daily schedule at his Heywood spots. Spawn + comb
 **AppearanceMenuMod (AMM)**; this mod owns the trigger / schedule / ban logic.
 
 ## Requirements
-- Cyber Engine Tweaks
+- Cyber Engine Tweaks (**1.18.1+** — required by Native Settings UI)
 - AppearanceMenuMod (AMM)
 - Codeware
+- **Native Settings UI** (`nativeSettings`) — adds the in-game **Esc → Settings → Jackie Lives**
+  page (the "Go Home Jackie" recovery button). Get it from
+  [Nexus mod 3518](https://www.nexusmods.com/cyberpunk2077/mods/3518).
+  - ⚠️ **The folder MUST be named exactly `nativeSettings`** under
+    `...\cyber_engine_tweaks\mods\`. `GetMod("nativeSettings")` looks it up *by folder name*; if a
+    download extracts to `CP77_nativeSettings-…` or similar, the lookup returns nil, the page never
+    appears, and Native Settings' own panel shows *"No mods using native settings installed!"* (that
+    message means Native Settings loaded fine but no mod registered with it). Rename the folder if so.
+  - ℹ️ **Load order is handled in code, not by you.** CET loads mods alphabetically, so `JackieLives`
+    initializes before `nativeSettings`. Rather than register in `onInit` (where
+    `GetMod("nativeSettings")` could still be nil), we retry from `onUpdate` (`nsTick`) until it's
+    available, then register once. No manual load-order/priority setup is needed — just install the
+    dependency. If the page still doesn't show, check the CET console for the `[JackieLives]` line:
+    `…panel registered` (success), `…registration FAILED: <err>` (API error — send to Claude), or
+    `…not found after retries` (the `nativeSettings` folder is missing/misnamed — see the warning above).
 
 ## Install / update (one command)
 From the project root (`...\Cyberpunk_modding`), in PowerShell:

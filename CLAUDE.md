@@ -37,6 +37,13 @@ See `docs/DESIGN.md` for the full lore + system design and `TODO.md` for the liv
    Tier 3 = details & fun interactions. Build Tier 1 first, smallest viable thing at each step.
 7. **MVP first, then grow.** Prove feasibility with the smallest spawn-and-behave slice before adding
    complexity. Claude proposes the step order.
+8. **Commit at every working version; tag releases.** Whenever a feature/fix reaches a working,
+   testable state, make a git commit (don't batch many features into one rare commit). Use a clear
+   `feat:`/`fix:`/`docs:` message. When a commit corresponds to a bumped version (e.g. v0.44), also
+   `git tag v0.44` so it's easy to check out and diff later. Push to GitHub after committing for an
+   offsite backup. Rationale: every commit is a full recoverable snapshot — this is what lets us roll
+   back or compare when something breaks, and it means **superseded files should be deleted, not kept
+   in a "legacy" folder** (git history is the archive).
 
 ## Tech stack (the frameworks we build on — install/reference)
 
