@@ -2,6 +2,24 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.63 — bike-model test harness (find Jackie's REAL Arch) (DEPLOYED, awaiting test, 2026-06-19)
+Problem: the bike arrival often spawns the WRONG bike model/livery. During the vehicle-testing phase
+it reliably spawned the right Arch; now it doesn't. Live + test both spawn the same record
+(`Vehicle.v_sportbike2_arch_jackie_player`) the same way (string recordID + `appearanceName="default"`),
+so the cause is either appearance resolving to a random/fallback livery or the recordID string not
+pinning the model — needs in-game evidence to tell which.
+- **3 spawn approaches as buttons** under a new "Bike model test (spawn Arch in front)" collapsing header
+  in the main CET window. Each spawns the bike ~6 m in front of you, then logs a **READ-BACK** line of
+  what ACTUALLY spawned (record + appearance + class):
+  - **M1** = record string + appearance `"default"` (exactly what the live arrival does now — the control).
+  - **M2** = record string + explicit `Config.vehicle.bikeAppearance` (pins the livery; currently "default").
+  - **M3** = recordID as `TweakDBID.new()` + record-default appearance (tests a string-coercion / default bug).
+  - Plus "Dump appearances (console)" (best-effort TweakDB read) and "Despawn test bike".
+- New `Config.vehicle.bikeAppearance` knob for M2 / the eventual live fix.
+- [ ] **TEST:** open the header, click M1/M2/M3 in turn, and tell me (a) which spawns his correct gold Arch
+      and (b) the console `READ-BACK` appearance string for each. Then I lock the winning method +
+      appearance into the live `spawnDynEntity` bike spawn so arrivals always use his real bike.
+
 ## 🆕 v0.62 — CET window declutter + main-quest detection + companion safety dismount (DEPLOY + test, 2026-06-19)
 - **Disabled the VEHICLE + LIPSYNC test windows.** Renamed their deployed `init.lua → init.lua.disabled`
   in the game's CET mods folder (windows gone on reload; nothing deleted). Source stays under `mod/`

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.62"
+Config.version = "0.63"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -596,6 +596,10 @@ Config.vehicle = {
   respawnProgressEps  = 1.0, -- m: distance he must shave off his closest-so-far to count as "progress"
   -- --- BIKE KNOBS (used by "bike" arrival) ---
   bikeRecord       = "Vehicle.v_sportbike2_arch_jackie_player",  -- Jackie's Arch
+  -- v0.63: appearance name for the bike-model test (method M2). The arrival sometimes spawns the
+  -- WRONG model/livery; once the "Bike model test" buttons + console read-back tell us the exact
+  -- appearance of his real Arch, set it here and we'll lock it into the live arrival spawn.
+  bikeAppearance   = "default",
   mountSeconds     = 4.0,    -- v0.53: seconds to let Jackie walk to the seat + climb on BEFORE the bike drives off
   fellOffDist      = 6.0,    -- v0.53: if Jackie is >this from the moving bike, the mount failed -> he walks in on foot
   cruiseSpeed      = 8.0,    -- drive speed (8 = careful; he was reckless at higher)

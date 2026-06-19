@@ -2397,6 +2397,107 @@ local function yawToward(from, to)
   return math.deg(math.atan2(to.y - from.y, to.x - from.x)) - 90.0
 end
 
+-- ---------------------------------------------------------------------------
+-- v0.63: BIKE-MODEL TEST. The bike arrival sometimes spawns the WRONG bike model/livery. These
+-- three spawn methods (buttons in the CET window) each PIN his Arch a different way and read back
+-- what ACTUALLY spawned, so we can lock in the one that reliably gives his real bike. All spawn the
+-- bike ~6 m in FRONT of where you're looking.
+--   M1 = record string + appearance "default"           (exactly what the live arrival does now)
+--   M2 = record string + an EXPLICIT appearance name     (Config.vehicle.bikeAppearance)
+--   M3 = record as a TweakDBID object + record-default    (tests a string-coercion / default-appearance bug)
+-- ---------------------------------------------------------------------------
+local BIKE_TEST_TAG = "JackieLives_biketest"
+
+-- point ~`d` m ahead of V (where you're looking), snapped to ground.
+local function pointAheadOfV(d)
+  local pl = Game.GetPlayer(); if not pl then return nil end
+  local pp; pcall(function() pp = pl:GetWorldPosition() end); if not pp then return nil end
+  local fwd; pcall(function() fwd = pl:GetWorldForward() end)
+  local pt = fwd and Vector4.new(pp.x + fwd.x * d, pp.y + fwd.y * d, pp.z, 1.0)
+                  or Vector4.new(pp.x + d, pp.y, pp.z, 1.0)
+  return snapToNavmesh(pt) or pt
+end
+
+-- Spawn the test bike in front of V using one of the three methods; despawns the previous one.
+local function bikeTestSpawn(method)
+  JL.biketest = JL.biketest or { id = nil, handle = nil, method = nil, reported = false }
+  local st = JL.biketest
+  if st.id then deleteEntityById(st.id); st.id, st.handle = nil, nil end
+  local pos = pointAheadOfV(6.0)
+  if not pos then JL.ui.status = "Bike test: no spawn point."; return end
+  local yaw = yawToward(pos, playerPos())
+  local rec = (Config.vehicle and Config.vehicle.bikeRecord) or "Vehicle.v_sportbike2_arch_jackie_player"
+  local app = (Config.vehicle and Config.vehicle.bikeAppearance) or "default"
+  local des = Game.GetDynamicEntitySystem()
+  if not des then JL.ui.status = "Bike test: DES unavailable."; return end
+  local id, used
+  local ok, err = pcall(function()
+    local spec = DynamicEntitySpec.new()
+    if method == 3 then
+      spec.recordID = TweakDBID.new(rec)   -- explicit TweakDBID object (not a coerced string)
+      spec.appearanceName = ""             -- let the record's OWN default appearance apply
+      used = "M3: TweakDBID.new + record-default appearance"
+    elseif method == 2 then
+      spec.recordID = rec
+      spec.appearanceName = app            -- explicit appearance name from config
+      used = "M2: string record + appearance '" .. tostring(app) .. "'"
+    else
+      spec.recordID = rec
+      spec.appearanceName = "default"      -- exactly what the live arrival does now
+      used = "M1: string record + appearance 'default'"
+    end
+    spec.position = pos
+    pcall(function() spec.orientation = EulerAngles.new(0.0, 0.0, yaw or 0.0):ToQuat() end)
+    spec.persistState, spec.persistSpawn, spec.alwaysSpawned, spec.spawnInView = false, false, false, true
+    spec.tags = { CName.new(BIKE_TEST_TAG) }
+    id = des:CreateEntity(spec)
+  end)
+  if not ok or not id then JL.ui.status = "Bike test M" .. tostring(method) .. " FAILED (see console)."; log("BikeTest spawn FAILED: " .. tostring(err)); return end
+  st.id, st.handle, st.method, st.reported = id, nil, method, false
+  JL.ui.status = "Bike test -> " .. used .. ". Watch in front; read-back lands in console."
+  log("BikeTest spawn: " .. used .. "  record='" .. rec .. "'")
+end
+
+-- Once the handle resolves, read back what ACTUALLY spawned (record + appearance + class) — the
+-- real diagnostic for "is this his bike". Stepped from onUpdate.
+local function bikeTestTick()
+  local st = JL.biketest
+  if not st or not st.id then return end
+  if not st.handle then pcall(function() st.handle = Game.FindEntityByID(st.id) end) end
+  if st.handle and not st.reported then
+    st.reported = true
+    local rec, app, cls = "?", "?", "?"
+    pcall(function() rec = tostring(st.handle:GetRecordID()) end)
+    pcall(function() app = tostring(st.handle:GetCurrentAppearanceName()) end)
+    pcall(function() cls = st.handle:GetClassName().value end)
+    log(("BikeTest M%s READ-BACK: record=%s  appearance=%s  class=%s"):format(tostring(st.method), rec, app, cls))
+    JL.ui.status = ("Bike M%s spawned. appearance=%s (see console for record)."):format(tostring(st.method), app)
+  end
+end
+
+-- Best-effort: log any appearance names TweakDB lists for the bike record. Vehicle appearances
+-- usually live in the .ent template (not TweakDB), so this may be empty — the M-button READ-BACK
+-- above is the reliable signal for the real appearance name.
+local function bikeTestDumpAppearances()
+  local rec = (Config.vehicle and Config.vehicle.bikeRecord) or "Vehicle.v_sportbike2_arch_jackie_player"
+  log("BikeTest: TweakDB appearance dump for '" .. rec .. "':")
+  local any = false
+  for _, flat in ipairs({ ".appearances", ".appearanceName", ".appearanceNames" }) do
+    pcall(function()
+      local v = TweakDB and TweakDB:GetFlat(rec .. flat)
+      if v ~= nil then any = true; log("  " .. flat .. " = " .. tostring(v)) end
+    end)
+  end
+  if not any then log("  (nothing in TweakDB — appearances are in the .ent template; rely on the M-button read-back)") end
+end
+
+local function bikeTestDespawn()
+  local st = JL.biketest
+  if st and st.id then deleteEntityById(st.id) end
+  if st then st.id, st.handle, st.reported = nil, nil, false end
+  JL.ui.status = "Bike test despawned."
+end
+
 -- Mount/unmount an NPC as the bike's driver (AMM Scan:AssignSeats recipe).
 local function mountAsDriver(npc, veh)
   if not (npc and veh) then return false end
@@ -3786,6 +3887,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(ambientGruntTick)  -- v0.55: rare non-pained "feel alive" grunt while he's around
   pcall(callTick)       -- holocall: ring -> pick up
   pcall(vehicleArrivalTick)  -- v0.50: THE arrival state machine — foot (DES sprint-in) + bike, one tail
+  pcall(bikeTestTick)        -- v0.63: read back what the bike-model test actually spawned
   pcall(arrivalGreetTick)    -- v0.46/v0.48: one-shot fresh greeting when an arrived Jackie closes to 4 m
   pcall(leavingTick)    -- v0.33: dismissed Jackie walking off -> despawn at distance
   if JL.summon.spawn and JL.summon.spawn.handle and not JL.summon.companionSet and not JL.summon.walkIn then
@@ -4044,6 +4146,25 @@ registerForEvent("onDraw", function()
   ImGui.Text("Main quest detected: " .. (isMainQuestActive() and "YES (Jackie won't follow)" or "no"))
 
   ImGui.Separator()
+  -- v0.63: BIKE-MODEL TEST — find the spawn method that reliably gives Jackie's REAL Arch. Each
+  -- button spawns the bike ~6 m in front of you; the console logs what actually spawned. Tell me
+  -- which one looks right (+ its read-back appearance) and I'll lock it into the live arrival.
+  if ImGui.CollapsingHeader("Bike model test (spawn Arch in front)") then
+    ImGui.TextWrapped("Spawns Config.vehicle.bikeRecord ('" ..
+      tostring(Config.vehicle and Config.vehicle.bikeRecord) .. "') 3 ways. Watch the bike + read the " ..
+      "console 'READ-BACK' line. M2 uses appearance '" ..
+      tostring(Config.vehicle and Config.vehicle.bikeAppearance) .. "'.")
+    if ImGui.Button("M1: record + 'default'") then bikeTestSpawn(1) end
+    ImGui.SameLine()
+    if ImGui.Button("M2: record + appearance") then bikeTestSpawn(2) end
+    ImGui.SameLine()
+    if ImGui.Button("M3: TweakDBID + record-default") then bikeTestSpawn(3) end
+    if ImGui.Button("Dump appearances (console)") then bikeTestDumpAppearances() end
+    ImGui.SameLine()
+    if ImGui.Button("Despawn test bike") then bikeTestDespawn() end
+  end
+
+  ImGui.Separator()
   if ImGui.Button("Capture current position") then capturePosition() end
   if JL.ui.lastCapture then
     ImGui.Text("Last capture (also in console — copy into config.lua):")
@@ -4132,6 +4253,7 @@ registerForEvent("onShutdown", function()
   pcall(hideSubtitle)
   pcall(clearIdle)
   pcall(clearVehicleArrival)     -- v0.34: never orphan the arrival bike
+  pcall(bikeTestDespawn)         -- v0.63: never orphan the bike-model test spawn
   pcall(clearDinnerWaypoint)     -- v0.41: never leave a dinner map pin stuck
   pcall(dismissJackie)
 end)
