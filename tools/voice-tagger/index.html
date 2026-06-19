@@ -23,6 +23,10 @@
     background:#ff9d2b;color:#2a1800;vertical-align:middle;margin-left:6px}
   .mem-badge{font-size:10px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:999px;
     background:#9d6bff;color:#160029;vertical-align:middle;margin-left:6px}
+  .used-badge{font-size:10px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:999px;
+    background:#00e0c6;color:#04201d;vertical-align:middle;margin-left:6px}
+  .usable-badge{font-size:10px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:999px;
+    background:#5a6573;color:#fff;vertical-align:middle;margin-left:6px}
   .vg{font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;vertical-align:middle;margin-left:6px}
   .vg.male{background:#2b6bff;color:#fff} .vg.female{background:#ff4d9d;color:#2a001a}
   .tx-edit{width:100%;font-size:15px;font-family:inherit;background:var(--panel2);
@@ -56,9 +60,6 @@
   button.bad{background:var(--bad);color:#2a0307;border-color:var(--bad);font-weight:600}
   .tchip{padding:4px 8px;border-radius:999px;background:#26303a;font-size:12px}
   .tchip b{cursor:pointer;color:var(--bad);margin-left:6px}
-  .slider{display:flex;gap:10px;align-items:center}
-  .slider input{flex:1}
-  .pct{min-width:42px;text-align:right;color:var(--acc)}
   select.cat{width:100%}
   .addtrig{display:flex;gap:6px;margin-top:6px}
   .addtrig input{flex:1}
@@ -94,9 +95,11 @@
 
 <script>
 "use strict";
-const CATS = ["greetings","conversation","environmental","combat","idle","emotional","banter","romance","memorial"];
-const BASE_MOODS = ["chill","warm","excited","worried","somber","flirty","gruff","hyped","proud","teasing"];
-const LOCS = ["noodle","coyote","afterlife","mamas","misty","vik","lizzie","delamain","combat","anywhere","never"];
+// Categories = the mod's actual in-use roles (replaces the old generic buckets).
+const CATS = ["greeting","accept","decline","bye","food","conversation","memorial","usable"];
+const BASE_MOODS = ["chill","warm","excited","worried","somber","flirty","gruff","hyped","proud","teasing","sneaky","professional"];
+// Play weight buttons (replaces the 0-100% slider). "never" also auto-marks the line tagged.
+const PLAY_WEIGHTS = ["never","very rare","sometimes","often"];
 const LS_KEY = "jackie_voice_tags_v1";
 const LS_MOODS = "jackie_custom_moods_v1";
 
@@ -134,8 +137,8 @@ function load(){
   loadMoods();
   // try to fetch a colocated lines.json (works when served over http); fall back to sample
   fetch("lines.json").then(r=>r.ok?r.json():Promise.reject()).then(j=>{
-    LINES = normalize(j); render();
-  }).catch(()=>{ LINES = normalize(SAMPLE); render(); });
+    LINES = normalize(j); seedTags(); render();
+  }).catch(()=>{ LINES = normalize(SAMPLE); seedTags(); render(); });
 }
 function normalize(arr){
   // keep every field from lines.json (string_id, vo_wem, context… survive to export),
@@ -148,8 +151,25 @@ function normalize(arr){
   }));
 }
 function tagFor(id){
-  if(!TAGS[id]) TAGS[id] = {category:"",mood:[],triggers:[],probability:1,locations:[],notes:"",done:false};
-  return TAGS[id];
+  if(!TAGS[id]) TAGS[id] = {category:"",mood:[],triggers:[],playWeight:"",notes:"",done:false};
+  const t=TAGS[id];
+  // tolerate older saved tags that lack the newer fields
+  if(t.mood===undefined) t.mood=[];
+  if(t.triggers===undefined) t.triggers=[];
+  if(t.playWeight===undefined) t.playWeight="";
+  return t;
+}
+// Pre-mark lines the mod already uses (used/usable, flagged seed_done in lines.json):
+// seed their category + a "tagged" state once, unless the user already tagged them.
+function seedTags(){
+  let changed=false;
+  LINES.forEach(l=>{
+    if(l.seed_done && !TAGS[l.id]){
+      TAGS[l.id]={category:l.category||"",mood:[],triggers:[],playWeight:"",notes:"",done:true};
+      changed=true;
+    }
+  });
+  if(changed) localStorage.setItem(LS_KEY, JSON.stringify(TAGS));
 }
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(TAGS)); updateProg(); }
 function isTagged(id){ const t=TAGS[id]; return !!(t && t.done); }
@@ -221,6 +241,8 @@ function cardEl(l,t){
   if(l.v_gender==="male"||l.v_gender==="female") badges+=`<span class="vg ${l.v_gender}">V ${l.v_gender==="male"?"♂":"♀"}</span>`;
   if(isNew) badges+='<span class="new-badge">NEW</span>';
   if(l.memorial) badges+='<span class="mem-badge">MEMORIAL · V→Jackie</span>';
+  if(l.used) badges+=`<span class="used-badge">USED · ${esc(l.category||"")}</span>`;
+  else if(l.usable) badges+='<span class="usable-badge">USABLE</span>';
   meta.innerHTML=esc(bits.join("  ·  "))+badges;
   c.appendChild(meta);
 
@@ -268,22 +290,20 @@ function cardEl(l,t){
   tb.onclick=addT; ti.onkeydown=e=>{ if(e.key==="Enter") addT(); };
   add.appendChild(ti); add.appendChild(tb); c.appendChild(add);
 
-  // probability
-  c.appendChild(fld("Play chance"));
-  const sl=document.createElement("div"); sl.className="slider";
-  const r=document.createElement("input"); r.type="range"; r.min=0; r.max=100; r.step=5; r.value=Math.round((t.probability??1)*100);
-  const pc=document.createElement("span"); pc.className="pct"; pc.textContent=r.value+"%";
-  r.oninput=()=>{ pc.textContent=r.value+"%"; t.probability=(+r.value)/100; save(); };
-  sl.appendChild(r); sl.appendChild(pc); c.appendChild(sl);
-
-  // locations
-  c.appendChild(fld("Where it fits"));
-  const lw=document.createElement("div"); lw.className="chips";
-  LOCS.forEach(x=>lw.appendChild(chip(x,t.locations.includes(x),x==="never"?"never":null,()=>toggle(t.locations,x,()=>{
-    if(x==="never" && t.locations.includes("never")) t.probability=0;  // never heard again
-    save();render();
-  }))));
-  c.appendChild(lw);
+  // play weight (replaces the old 0-100% slider): never / very rare / sometimes / often.
+  // clicking "never" also auto-marks the line tagged (and excludes it from use).
+  c.appendChild(fld("Play weight"));
+  const pw=document.createElement("div"); pw.className="chips";
+  PLAY_WEIGHTS.forEach(w=>{
+    const on=(t.playWeight||"")===w;
+    const b=chip(w,on,w==="never"?"never":null,()=>{
+      t.playWeight=w;
+      if(w==="never") t.done=true;   // never => auto-tag
+      save(); render();
+    });
+    pw.appendChild(b);
+  });
+  c.appendChild(pw);
 
   // notes
   c.appendChild(fld("Notes"));
@@ -297,14 +317,7 @@ function cardEl(l,t){
   db.textContent=t.done?"✓ tagged":"mark tagged";
   db.onclick=()=>{ t.done=!t.done; save(); render(); };
   dr.appendChild(db);
-
-  // partial — for now: never play (chance 0, fit "never"); later we'll cut a snippet from this line
-  const pb=document.createElement("button"); pb.className=t.partial?"bad":"ghost";
-  pb.textContent=t.partial?"⚑ partial":"partial";
-  pb.onclick=()=>{ t.partial=!t.partial;
-    if(t.partial){ t.probability=0; if(!t.locations.includes("never")) t.locations.push("never"); }
-    save(); render(); };
-  dr.appendChild(pb); c.appendChild(dr);
+  c.appendChild(dr);
   return c;
 }
 

@@ -81,7 +81,12 @@ WolvenKit export (.Wav)
    └─ tools/register_new_lines.py   → renames the 503 to jl_<stem>.wav AND adds them to the YML
                                         ⇒ now referenceable from config.lua
    └─ tools/tag_lines.py            → adds v_gender + memorial flags to lines.json (filename-derived)
+   └─ tools/tag_usage.py            → marks lines already wired in config.lua (used + role) and the
+                                        conversations.md §4 "usable" stash; the tagger pre-marks these tagged
 ```
+
+**Re-run `tag_usage.py` whenever you wire a new line into `config.lua`** — it re-derives the
+`used`/`category`/`usable`/`seed_done` marks from scratch each run (so removing a line un-marks it).
 
 Re-running any of these is safe (idempotent). `register_new_lines.py` rewrites its
 own `# ===== NEW UNSCRAPED LINES =====` block, so re-run it after transcribing more.
@@ -118,6 +123,11 @@ python -m http.server 8080
 - **"memorial only"** checkbox → the 80 V-funeral/voicemail lines (purple **MEMORIAL · V→Jackie** badge).
 - New lines have an editable **Transcript** box (Whisper pre-filled it; fix typos by ear).
 - Search matches transcript text **and** the id/stem.
+- **Category** = the mod's in-use roles: greeting / accept / decline / bye / food / conversation / memorial / usable.
+- **Already-used lines** show a teal **USED · <role>** badge (wired in `config.lua`); the §4 stash shows a
+  grey **USABLE** badge. Both are **pre-marked tagged** on first load (you can still un-tag them).
+- **Play weight** buttons (never / very rare / sometimes / often) replace the old % slider. Clicking
+  **never** also auto-marks the line tagged (i.e. "reviewed, don't use").
 - **Export tags** downloads your tags as JSON (localStorage is per-browser, so export to back up).
 
 ### Whisper accuracy caveat
