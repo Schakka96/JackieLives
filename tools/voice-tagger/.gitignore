@@ -4,3 +4,5 @@ audio/
 lines_test.json
 # classifier output (contains verbatim CDPR transcripts - keep out of the public repo)
 classify_out.json
+# bulk transcript dump of the new lines (verbatim CDPR text - keep out of the public repo)
+new_transcripts.tsv

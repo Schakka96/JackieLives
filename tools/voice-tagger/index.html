@@ -187,9 +187,11 @@ function cardEl(l,t){
     const txLabel=fld("Transcript"); c.appendChild(txLabel);
     const txEdit=document.createElement("textarea"); txEdit.className="tx-edit";
     txEdit.placeholder="Type what you hear…";
-    txEdit.value=t.transcript_edit||"";
+    // seed from a manual edit if present, else the Whisper transcript baked into lines.json
+    txEdit.value = (t.transcript_edit!==undefined && t.transcript_edit!=="") ? t.transcript_edit : (l.transcript||"");
     txEdit.oninput=()=>{ t.transcript_edit=txEdit.value; save(); };
     c.appendChild(txEdit);
+    if(l.transcript) { const h=document.createElement("p"); h.className="tiny"; h.textContent="↑ Whisper auto-transcript — fix any errors by ear"; c.appendChild(h); }
   } else {
     const tx=document.createElement("p"); tx.className="tx"; tx.textContent=l.transcript; c.appendChild(tx);
   }
