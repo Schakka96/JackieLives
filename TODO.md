@@ -180,15 +180,22 @@ New line dump documented in `docs/conversations.md` §7–§8.1 (clips matched, 
 - [x] Jackie can open a lunch invite himself ("C'mon, let's go have some lunch.") — done in v0.48.
 - [ ] **Dinner cooldown REFUSE line** — "Got no time for this!" dropped (unsuitable); currently a placeholder
   (reuses the decline line "Why, what's the rush?"). Pick a proper "already ate today / not again" clip.
+  NOTE (v0.58): the new 503-line pool is **thin on clean declines** (most "no" lines are quest-combat
+  specific) — see `docs/VOICE_LINES.md` § Decline. Needs a targeted listen/search before this resolves.
 
-## 🎙️ Voice bank refresh (~777 → ~1000 lines) — extract via WolvenKit (added 2026-06-19)
-Antonia found more Jackie lines exist (~1000) and will extract them with WolvenKit to .wav (higher quality than
-the SoundDB `.ogg` previews). Naming reconciliation — see `memory/voice-bank-refresh-naming.md`:
-- `jl_<id>` = SoundDB **String ID**; every `sfx` in `config.lua` keys off it → **must stay stable**.
-- WolvenKit exports VO by **wem-hash depot name** (e.g. `jackie_q005_f_<hash>.wem`) — does NOT match `jl_<id>`.
-- [ ] Crosswalk the 777 via `lines.json` `vo_wem` (string_id ↔ wem basename) → rename exports to `jl_<id>.wav`.
-- [ ] Get String IDs for the new ~220 lines (re-scrape SoundDB if it now lists them, or capture the VO map).
-- [ ] Extend `tools/convert_audio.py` to merge the WolvenKit export → regenerate `lines.json` + the audioware `.yml`.
+## 🎙️ Voice bank refresh (777 → 1280 lines) — DONE (v0.56–v0.58, 2026-06-19)
+WolvenKit WAV extraction (1282 clips) ingested. Full pipeline + conventions now in **`docs/VOICE_LINES.md`**.
+- [x] **v0.56** — crosswalk the 777 via `lines.json` `vo_wem` → `tools/upgrade_audio.py` replaced every
+  `jl_<id>.ogg` with the full-quality `jl_<id>.wav`; YML rewritten. 503 unknown clips staged in `new_lines/`.
+- [x] **v0.57** — `tools/ingest_new_lines.py` copied the 503 into the tagger + stubbed `lines.json`
+  (`source:"new_unscraped"`, keyed `new_<stem>`). Tagger gained NEW badge / editable transcript / "new only" filter.
+- [x] **Transcripts** — `tools/whisper_transcribe.py` (Whisper "small", CPU) auto-transcribed all 505. ~90%
+  accurate; **mishears names** (cabrón/chica/Misty/hermano) → always listen before wiring a line in.
+- [x] **v0.58** — `tools/register_new_lines.py` renamed the 503 to `jl_<stem>.wav` and registered them in the
+  YML → **all 1280 lines now playable from `config.lua`** via `sfx="jl_<stem>"`. Integrity verified (1281 unique
+  keys, 0 missing files, existing 44 refs still resolve). New lines have **no String ID** → keyed by wem stem.
+- The 2 `civ_low_*` voicemail clips are tagger-only (not in the audioware bank) — don't reference them.
+- [ ] **Backlog:** tag/curate the 503 in the tagger; wire chosen ones (see category picks in `docs/VOICE_LINES.md`).
 
 ## 🆕 v0.47 — dinner dialogue refinements (DEPLOYED, awaiting test, 2026-06-18)
 - **Invite question** (`Config.date.inviteText`): "Hey - you hungry?..." → **"Wanna get something to eat?"**
