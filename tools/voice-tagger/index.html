@@ -21,6 +21,10 @@
   .bar input[type=search]{flex:1 1 140px;min-width:120px}
   .new-badge{font-size:10px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:999px;
     background:#ff9d2b;color:#2a1800;vertical-align:middle;margin-left:6px}
+  .mem-badge{font-size:10px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:999px;
+    background:#9d6bff;color:#160029;vertical-align:middle;margin-left:6px}
+  .vg{font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;vertical-align:middle;margin-left:6px}
+  .vg.male{background:#2b6bff;color:#fff} .vg.female{background:#ff4d9d;color:#2a001a}
   .tx-edit{width:100%;font-size:15px;font-family:inherit;background:var(--panel2);
     border:1px solid var(--acc);border-radius:8px;padding:6px 8px;resize:vertical;min-height:36px;
     color:var(--txt)}
@@ -72,6 +76,8 @@
     <select id="fcat"><option value="">all categories</option></select>
     <label class="tiny"><input type="checkbox" id="funtag"> untagged only</label>
     <label class="tiny"><input type="checkbox" id="fnew"> new lines only</label>
+    <select id="fgender" class="tiny"><option value="">V: any</option><option value="female">V: female</option><option value="male">V: male</option></select>
+    <label class="tiny"><input type="checkbox" id="fmem"> memorial only</label>
   </div>
   <div class="bar" style="margin-top:8px">
     <button class="ghost" id="import">Import lines.json</button>
@@ -88,7 +94,7 @@
 
 <script>
 "use strict";
-const CATS = ["greetings","conversation","environmental","combat","idle","emotional","banter","romance"];
+const CATS = ["greetings","conversation","environmental","combat","idle","emotional","banter","romance","memorial"];
 const BASE_MOODS = ["chill","warm","excited","worried","somber","flirty","gruff","hyped","proud","teasing"];
 const LOCS = ["noodle","coyote","afterlife","mamas","misty","vik","lizzie","delamain","combat","anywhere","never"];
 const LS_KEY = "jackie_voice_tags_v1";
@@ -164,6 +170,8 @@ function render(){
   const fc=document.getElementById("fcat").value;
   const untag=document.getElementById("funtag").checked;
   const fnew=document.getElementById("fnew").checked;
+  const fgender=document.getElementById("fgender").value;
+  const fmem=document.getElementById("fmem").checked;
   list.innerHTML="";
   LINES.forEach(l=>{
     const isNew = l.source==="new_unscraped";
@@ -173,6 +181,8 @@ function render(){
     if(fc && (t.category||l.category)!==fc) return;
     if(untag && isTagged(l.id)) return;
     if(fnew && !isNew) return;
+    if(fgender && l.v_gender!==fgender) return;
+    if(fmem && !l.memorial) return;
     list.appendChild(cardEl(l,t));
   });
   updateProg();
@@ -200,14 +210,18 @@ function cardEl(l,t){
   if(isNew){
     bits.push(l.id.replace("new_",""));  // show the wem stem
     if(l.quests&&l.quests.length) bits.push("q:"+l.quests.join(","));
-    meta.innerHTML=bits.join("  ·  ")+'<span class="new-badge">NEW</span>';
   } else {
     bits.push("id: "+l.id);
     if(l.context&&l.context.length)    bits.push(l.context.map(x=>x.replace("Vo_Context_","")).join("/"));
     if(l.expression&&l.expression.length) bits.push(l.expression.map(x=>x.replace(/Vo_Exp\w*?_/,"")).join("/"));
     if(l.quests&&l.quests.length)      bits.push("q:"+l.quests.slice(0,2).join(","));
-    meta.textContent=bits.join("  ·  ");
   }
+  // badges: V-gender (always), NEW (new pool), MEMORIAL (V funeral/voicemail set)
+  let badges="";
+  if(l.v_gender==="male"||l.v_gender==="female") badges+=`<span class="vg ${l.v_gender}">V ${l.v_gender==="male"?"♂":"♀"}</span>`;
+  if(isNew) badges+='<span class="new-badge">NEW</span>';
+  if(l.memorial) badges+='<span class="mem-badge">MEMORIAL · V→Jackie</span>';
+  meta.innerHTML=esc(bits.join("  ·  "))+badges;
   c.appendChild(meta);
 
   if(l.file){
@@ -303,6 +317,8 @@ document.getElementById("search").oninput=render;
 document.getElementById("fcat").onchange=render;
 document.getElementById("funtag").onchange=render;
 document.getElementById("fnew").onchange=render;
+document.getElementById("fgender").onchange=render;
+document.getElementById("fmem").onchange=render;
 CATS.forEach(x=>document.getElementById("fcat").appendChild(new Option(x,x)));
 
 document.getElementById("next").onclick=()=>{

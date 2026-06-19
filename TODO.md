@@ -90,6 +90,11 @@ made progress. (NOT collision — the foot Jackie is a fresh DES entity with col
       store in `jl_settings.txt` in the mod folder (NO json dependency — relative `io.open`, same as the
       phone probes). Loaded in `onInit`; each switch callback saves. `JL_SETTINGS_KEYS` = the persisted
       flag list; add future toggles there.
+- [ ] **Hermano/Husbando = V-gender modes (added 2026-06-19):** **Hermano mode = male V**, **Husbando
+      mode = female V** — these are V-gender-specific dialogue tracks. The voice bank now carries the
+      `v_gender` tag on every line (`tools/tag_lines.py`; 108 male-V + 1174 female-V), so gendered
+      branches can pull the correct variant — filter `lines.json` / the tagger by `v_gender`. See
+      `docs/VOICE_LINES.md` § Line metadata.
 - [ ] **Husbando-mode dialogue:** branch/alternate lines for talk, holocall, arrivals, dismiss when
       `JL.husbando` is true (terms of endearment, couple banter, no Misty references).
 - [ ] **Husbando-mode venue schedule:** alternate `Config.daySchedules` / locations for husbando mode
@@ -195,6 +200,13 @@ WolvenKit WAV extraction (1282 clips) ingested. Full pipeline + conventions now 
   YML → **all 1280 lines now playable from `config.lua`** via `sfx="jl_<stem>"`. Integrity verified (1281 unique
   keys, 0 missing files, existing 44 refs still resolve). New lines have **no String ID** → keyed by wem stem.
 - The 2 `civ_low_*` voicemail clips are tagger-only (not in the audioware bank) — don't reference them.
+- [x] **v0.59 — `tools/tag_lines.py`:** filename-derived `v_gender` (108 male-V + 1174 female-V) + flagged
+  the **80-line V funeral/voicemail set** (`v_scene_jackie_default_*`) as `memorial` / `speaker:"V"`. Tagger
+  gained V-gender dropdown + "memorial only" filter + V♀/V♂/MEMORIAL badges. `lines.json` documented as the
+  canonical label DB the whole mod reads. See `docs/VOICE_LINES.md`.
+- [ ] **Reunion scene (retrieval questline):** the 80 `memorial` lines are V calling Jackie's dead line
+  ("So I went to your funeral", "my last call") — V-side audio, pick by player `v_gender`. Strong material
+  for the retrieval/reunion beat. Not for Jackie's voice.
 - [ ] **Backlog:** tag/curate the 503 in the tagger; wire chosen ones (see category picks in `docs/VOICE_LINES.md`).
 
 ## 🆕 v0.47 — dinner dialogue refinements (DEPLOYED, awaiting test, 2026-06-18)

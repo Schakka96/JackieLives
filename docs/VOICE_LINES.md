@@ -17,9 +17,17 @@ tick **"new lines only"**, and search the transcript before settling for an old 
 
 ## Where everything lives
 
+> 📒 **`tools/voice-tagger/lines.json` is the project's canonical line-label database.**
+> It is NOT just for the tagger — it's the single source of truth for *what every clip says*
+> and its tags (`transcript`, `v_gender`, `category`, `memorial`, `quests`, `context`…).
+> Any tool/script (and future mod-side build steps) that needs to pick a line by meaning
+> should read this file. It is gitignored (verbatim CDPR text) but always present locally.
+> The runtime mod itself still references audio by **`sfx` key only**; `lines.json` is the
+> authoring/lookup layer that tells you *which* key to use.
+
 | Thing | Path | What it is |
 |---|---|---|
-| Transcripts (all 1280) | `tools/voice-tagger/lines.json` | One entry per line: `id`, `transcript`, `vo_wem`, `source`, tags… |
+| **Line-label database (all 1280)** | `tools/voice-tagger/lines.json` | **Canonical.** `id`, `transcript`, `vo_wem`, `source`, `v_gender`, `memorial`, tags… |
 | New-only transcript dump | `tools/voice-tagger/new_transcripts.tsv` | `stem <tab> transcript`, 505 rows — quick grep target |
 | Playable audio bank | `audioware/JackieLives/*.wav` | 1280 clips, full-quality WolvenKit WAV |
 | Sound bank manifest | `audioware/JackieLives/JackieLives.yml` | Maps each `sfx` key → a `.wav` file |
@@ -35,6 +43,34 @@ Both are real sfx keys in the YML and used identically in `config.lua`.
 
 ---
 
+## Line metadata you get for free (`tools/tag_lines.py`)
+
+Two tags are derived from the filename alone (no listening), idempotent, re-run any time:
+
+### `v_gender` — which V playthrough the line belongs to
+CP2077 VO encodes the player-V scene variant as an `_f_` / `_m_` token right before the
+trailing wem hash (`jackie_q000_*_f_<hash>`, `v_scene_jackie_default_m_<hash>`). So:
+- `v_gender: "female"` → female-V scene · `v_gender: "male"` → male-V scene.
+- Counts: **1174 female-V, 108 male-V.** The old 777 are ALL female-V (the SoundDB scrape
+  only pulled female); the **male-V lines live entirely in the new pool**.
+- In the tagger: the **"V: female / V: male"** dropdown filters by this; each card shows a
+  **V♀ / V♂** badge.
+
+> ⚠️ This matters for **Hermano / Husbando mode**: Hermano = **male V**, Husbando = **female V**
+> (see TODO). When you build gendered dialogue, filter by `v_gender` to pull the right variant.
+
+### `memorial` — V's funeral / voicemail set (V→Jackie, for the reunion)
+Every stem starting `v_scene_jackie_default_` (80 lines, 40 male-V + 40 female-V) is **V**,
+not Jackie, leaving messages on Jackie's line after his death — *"So I went to your funeral…"*,
+*"Jackie, I'm afraid this is gonna be my last call."* Tagged `speaker:"V"`, `category:"memorial"`,
+`memorial:true`. Filter them with the **"memorial only"** checkbox or the `memorial` category.
+
+> 🚫 **Do NOT use these as Jackie's voice** — they're V speaking. They are the **V-side audio
+> for the retrieval/reunion scene** (e.g. play V's old voicemail back, or reuse her lines when
+> she finally reaches him). Pick the clip matching the player's `v_gender`.
+
+---
+
 ## How a line becomes playable (the full chain)
 
 ```
@@ -44,6 +80,7 @@ WolvenKit export (.Wav)
    └─ tools/whisper_transcribe.py   → fills empty transcripts (Whisper "small", CPU)
    └─ tools/register_new_lines.py   → renames the 503 to jl_<stem>.wav AND adds them to the YML
                                         ⇒ now referenceable from config.lua
+   └─ tools/tag_lines.py            → adds v_gender + memorial flags to lines.json (filename-derived)
 ```
 
 Re-running any of these is safe (idempotent). `register_new_lines.py` rewrites its
@@ -77,6 +114,8 @@ python -m http.server 8080
 ```
 
 - **"new lines only"** checkbox → just the 503 new ones (orange **NEW** badge).
+- **"V: female / V: male"** dropdown → filter by `v_gender` (each card shows a **V♀/V♂** badge).
+- **"memorial only"** checkbox → the 80 V-funeral/voicemail lines (purple **MEMORIAL · V→Jackie** badge).
 - New lines have an editable **Transcript** box (Whisper pre-filled it; fix typos by ear).
 - Search matches transcript text **and** the id/stem.
 - **Export tags** downloads your tags as JSON (localStorage is per-browser, so export to back up).
