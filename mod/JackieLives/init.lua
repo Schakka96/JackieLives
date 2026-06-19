@@ -308,11 +308,51 @@ local function ammDespawn(spawn)
 end
 
 -- ---------------------------------------------------------------------------
--- Main-quest ban (MVP stub — real detection comes once we read quest IDs in-game)
--- ---------------------------------------------------------------------------
-local function isMainQuestActive()
-  if JL.ui.forceMainQuest then return true end
+-- Main-quest ban. We read the player's CURRENTLY TRACKED journal quest (the one the HUD
+-- objective tracker is showing) and check whether it's a MAIN quest. Main quests have
+-- gameJournalQuestType.MainQuest; side jobs / NCPD / minor are other types. So: V tracking a
+-- main quest -> Jackie won't be pulled in (declines a summon, and excuses himself if already
+-- tagging along). Everything is pcall-guarded and defaults to "not main" so a reflection
+-- hiccup can never wrongly strand or block him. Result is cached for ~0.5 s so we don't walk
+-- the journal every frame (isMainQuestActive is polled from onUpdate + several buttons).
+local mq = { val = false, checkedAt = -999 }
+
+-- True if `entry` (or any parent up the journal tree) is a main-type quest.
+local function entryIsMainQuest(jm, entry)
+  local hops = 0
+  while entry and hops < 8 do
+    hops = hops + 1
+    local cls; pcall(function() cls = entry:GetClassName().value end)
+    if cls == "gameJournalQuest" then
+      -- read the quest type; match by NAME so we're robust to the enum's exact spelling/order
+      local isMain = false
+      pcall(function()
+        local t = entry:GetType()                      -- gameJournalQuestType
+        local s = tostring(t)
+        isMain = s:find("Main") ~= nil                 -- "MainQuest" / "gameJournalQuestType.MainQuest"
+      end)
+      return isMain
+    end
+    local parent; pcall(function() parent = jm:GetParentEntry(entry) end)
+    entry = parent
+  end
   return false
+end
+
+local function isMainQuestActive()
+  if JL.ui.forceMainQuest then return true end          -- debug override (CET checkbox)
+  local now = JL.clock or 0
+  if (now - mq.checkedAt) < 0.5 then return mq.val end   -- cached
+  mq.checkedAt = now
+  local active = false
+  pcall(function()
+    local jm = Game.GetJournalManager()
+    if not jm then return end
+    local tracked; pcall(function() tracked = jm:GetTrackedEntry() end)
+    if tracked then active = entryIsMainQuest(jm, tracked) end
+  end)
+  mq.val = active
+  return active
 end
 
 -- ---------------------------------------------------------------------------
@@ -674,6 +714,7 @@ local interactHook = { registered = false }
 local startLinearDialogue
 local startLeaving                 -- v0.33: "send Jackie off"; defined after the move helpers below
 local returnToPost                 -- v0.40: dismiss near his venue -> walk back + go idle (defined late)
+local unmountDriver                -- v0.62: bike-seat unmount; defined w/ the vehicle helpers, used early by promoteToCompanion's safety dismount
 local Branch = { open = false }
 
 -- Action names the interact / choice-confirm key (F by default) fires under. We accept
@@ -2157,11 +2198,14 @@ end
 -- v0.33: "send Jackie off". Drop his follower role (the same OnRoleCleared AMM uses) so the
 -- companion AI stops pulling him back, say a parting line, then walk him away. leavingTick()
 -- despawns him once he's far enough (or after maxSeconds). Forward-declared above the F hook.
-startLeaving = function()
+-- opts (optional): { text=, sfx= } to override the parting line — e.g. the main-quest "excuse
+-- himself" line. Defaults to the normal Config.dismiss send-off line.
+startLeaving = function(opts)
   local sp = JL.summon.spawn
   local h  = sp and sp.handle
   if not h then return end
   local D = Config.dismiss or {}
+  opts = opts or {}
   -- 1) clear the follower role so he becomes a passive NPC that obeys a plain move command
   pcall(function()
     local role = h:GetAIControllerComponent():GetAIRole()
@@ -2172,7 +2216,7 @@ startLeaving = function()
   --    WIPE the subtitle afterwards - a one-off speakJackieLine has no follow-up hide, so the
   --    parting line ("Time we were on our way, mamita") was sticking on screen forever.
   local secs = 4.0
-  pcall(function() secs = speakJackieLine(D.partingText, D.partingSfx) or 4.0 end)
+  pcall(function() secs = speakJackieLine(opts.text or D.partingText, opts.sfx or D.partingSfx) or 4.0 end)
   JL.leaving.subClearAt = (JL.clock or 0) + secs + 0.8
   -- 3) start walking away; leavingTick re-issues + despawns. Keep summon.active/companionSet so
   --    the onUpdate "re-apply companion role" block stays OFF until he's actually gone.
@@ -2262,12 +2306,34 @@ local function setNpcCollision(handle, enabled)
   end)
 end
 
+-- v0.62: is this NPC currently mounted to a vehicle? Asks the mounting facility for his mount
+-- info and checks for a valid parent (the vehicle). pcall-guarded -> returns false on any reflection
+-- hiccup, so the safety dismount below can NEVER play a phantom get-off on a Jackie who's on foot.
+local function isMounted(handle)
+  if not handle then return false end
+  local mounted = false
+  pcall(function()
+    local mf = Game.GetMountingFacility()
+    if not mf then return end
+    local info = mf:GetMountInfoSingle(handle:GetEntityID())
+    if info and info.parentId and EntityID.IsDefined(info.parentId) then mounted = true end
+  end)
+  return mounted
+end
+
 -- Promote the spawned Jackie to a real companion (follower role -> combat + auto-follow +
 -- friendly). This is when the native catch-up teleport becomes available again; we only do it
 -- once he's already close, so it never visibly skips the walk-in.
 local function promoteToCompanion()
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
+  -- v0.62: SAFETY dismount. On a bike arrival Jackie is sometimes STILL in the seat when he's
+  -- promoted (the walk-phase unmount didn't take). Re-issue one unmount, but ONLY if he's really
+  -- still mounted — so a foot arrival or an already-grounded Jackie never plays a phantom get-off.
+  if unmountDriver and isMounted(h) then
+    log("promoteToCompanion: Jackie still mounted -> safety dismount.")
+    pcall(function() unmountDriver(h, JL.varrival and JL.varrival.bikeHandle) end)
+  end
   local amm = getAMM()
   pcall(function()
     if amm and amm.Spawn and amm.Spawn.SetNPCAsCompanion then amm.Spawn:SetNPCAsCompanion(h) end
@@ -2354,7 +2420,7 @@ local function mountAsDriver(npc, veh)
   end))
 end
 
-local function unmountDriver(npc, veh)
+unmountDriver = function(npc, veh)
   if not npc then return false end
   return (pcall(function()
     local cmd = NewObject('AIUnmountCommand')
@@ -3754,6 +3820,14 @@ registerForEvent("onUpdate", function(dt)
       pcall(startLeaving)
     end
   end
+  -- v0.62: MAIN-QUEST EXIT. If V starts/tracks a main quest while Jackie's tagging along, he
+  -- excuses himself and walks off (he won't be dragged into the main story). Same guards as the
+  -- expiry exit: not mid-dinner, not already walking off; fires once (summon.active clears on despawn).
+  if JL.summon.active and JL.summon.companionSet and not JL.dinner.phase
+     and JL.leaving.phase ~= "walking" and startLeaving and isMainQuestActive() then
+    log("Main quest active -> Jackie excuses himself and heads out.")
+    pcall(function() startLeaving(Config.mainQuestExit) end)
+  end
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
   pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap
 
@@ -3947,7 +4021,7 @@ registerForEvent("onDraw", function()
 
   -- v0.50: TWO arrival modes only — toggle FOOT <-> BIKE, live. Pick one, then Call Jackie (or hit
   -- "Test arrival now"). Both spawn via DES out at distance and share the sprint -> walk -> companion tail.
-  local cc, vc = Config.call, Config.vehicle
+  local cc = Config.call
   ImGui.Separator()
   local bikeOn = (cc.arrivalMethod == "bike")
   if ImGui.Button("Arrival method: " .. (bikeOn and "BIKE (ride in on his Arch)" or "FOOT (sprint -> walk in)")) then
@@ -3965,42 +4039,9 @@ registerForEvent("onDraw", function()
       log(("TEST: %s arrival armed."):format(cc.arrivalMethod == "bike" and "BIKE" or "FOOT"))
     end
   end
-
-  -- live A/B knobs. spawnBehind (rear arc) is read by navmeshArrivalPoint; foot spawn distance lives
-  -- in Config.vehicle.spawnDistance now; arriveDistance is how short of V the foot MoveTo aims.
-  ImGui.Text("Arrival test modes (live; then Call Jackie):")
-  if ImGui.Button("1) Spawn: " .. (cc.spawnBehind and "BEHIND V" or "IN FRONT")) then
-    cc.spawnBehind = not cc.spawnBehind
-  end
-  ImGui.SameLine()
-  if ImGui.Button(("2) Foot dist: %.0f m"):format(vc.spawnDistance or 50)) then
-    local steps, cur, nxt = { 20, 35, 50, 65, 80 }, vc.spawnDistance or 50, nil
-    for i, v in ipairs(steps) do if math.abs(v - cur) < 0.5 then nxt = steps[(i % #steps) + 1]; break end end
-    vc.spawnDistance = nxt or 50
-  end
-  ImGui.SameLine()
-  local adOn = (vc.arriveDistance or 0) > 0.1
-  if ImGui.Button("3) Arrive dist: " .. (adOn and ("ON %.1f m"):format(vc.arriveDistance) or "OFF (into V)")) then
-    vc.arriveDistance = adOn and 0.0 or 3.0
-  end
-
-  ImGui.Separator()
-  ImGui.Text("NATIVE phone test (drives the real call UI via PhoneSystem:TriggerCall):")
-  ImGui.Text("Call id: '" .. tostring(Config.nativeCall and Config.nativeCall.id) .. "'  (edit Config.nativeCall.id)")
-  local id = (Config.nativeCall and Config.nativeCall.id) or "jackie"
-  if ImGui.Button("Native: RING (IncomingCall)") then triggerNativeCall(id, "IncomingCall", 1) end
-  ImGui.SameLine()
-  if ImGui.Button("Native: CONNECT (StartCall)") then triggerNativeCall(id, "StartCall", 2) end
-  ImGui.SameLine()
-  if ImGui.Button("Native: END (EndCall)") then triggerNativeCall(id, "EndCall", 3) end
-  if ImGui.Button("Force hang up (clear stuck call)") then
-    JL.call.nativeOpen = false
-    triggerNativeCall(id, "EndCall", 3)
-    triggerNativeCall("jackie", "EndCall", 3)   -- clear either call id
-  end
-  ImGui.TextWrapped("Click RING -> does Jackie's avatar + ringtone show? Then CONNECT -> does he appear " ..
-                    "connected, and does the game play its OWN canned Jackie call, or stay silent (so we add ours)? END hangs up.")
+  -- DEBUG: pretend a main quest is active so you can test Jackie declining / excusing himself.
   JL.ui.forceMainQuest = ImGui.Checkbox("Force main-quest active (test decline)", JL.ui.forceMainQuest)
+  ImGui.Text("Main quest detected: " .. (isMainQuestActive() and "YES (Jackie won't follow)" or "no"))
 
   ImGui.Separator()
   if ImGui.Button("Capture current position") then capturePosition() end
@@ -4076,60 +4117,6 @@ registerForEvent("onDraw", function()
     if ImGui.Button("Print coords -> config.lua") then tunerPrint() end
     ImGui.TextWrapped("Printed line goes to the console + the 'Last capture' box above. Tell me the " ..
                       "numbers and I'll bake them into config.lua permanently.")
-  end
-
-  ImGui.Separator()
-  ImGui.Text("ISOLATED UI TESTS (no Jackie / no audio - debug the two UI mechanisms):")
-  if ImGui.Button("TEST: push subtitle (look at BOTTOM of screen)") then
-    local ok = showSubtitle("SUBTITLE TEST - can you read this at the BOTTOM of the screen?", "JACKIE", 6.0, nil)
-    JL.ui.status = "showSubtitle -> " .. tostring(ok) .. (ok and "  (pushed; if nothing shows, native subs may be OFF in settings)" or "  - SEE CONSOLE for the error")
-  end
-  ImGui.Text("Picker styles (click one - they differ in name-frame + highlight):")
-  local function showPicker(styleN)
-    JL.ui.pickerStyle = styleN
-    openChoiceMenu({ { text = "Maelstrom - we gotta meet 'em." },
-                     { text = "Been waitin' long?" },
-                     { text = "What's the word on T-Bug?" } }, "JACKIE")
-  end
-  if ImGui.Button("testV1") then showPicker(1) end ImGui.SameLine()
-  if ImGui.Button("testV2") then showPicker(2) end ImGui.SameLine()
-  if ImGui.Button("testV3") then showPicker(3) end ImGui.SameLine()
-  if ImGui.Button("hide picker") then closeChoiceMenu() end
-  if menu.shown then
-    if ImGui.Button("cycle (->)") then Branch.move(1) end
-    ImGui.SameLine(); if ImGui.Button("select") then Branch.confirm() end
-    ImGui.Text(("Showing style %d. Compare V1/V2/V3. Then CLOSE the overlay:"):format(JL.ui.pickerStyle or 1))
-    ImGui.Text("if the box stays visible in gameplay -> render works; if it vanishes -> CET can't draw it in-game.")
-  end
-
-  ImGui.Separator()
-  ImGui.Text("Dialogue (summon Jackie first so his voice plays on him):")
-  if ImGui.Button("Play branching dialogue") then pcall(function() Branch.start(nil, Config.dialogueTree) end) end
-  ImGui.TextWrapped("Branch: ↑/↓ move the highlight (every layer), F confirms.")
-
-  ImGui.Separator()
-  do  -- v0.42: PROXIMITY BARK tuning (idle, non-companion Jackie). Sliders are live until distances feel right.
-    local b = barkCfg()
-    b.enabled = ImGui.Checkbox("Proximity barks (greet on approach + bump grunt)", b.enabled)
-    b.greetRange    = ImGui.SliderFloat("Greet range (m)",    b.greetRange,    0.0, 15.0)
-    b.bumpRange     = ImGui.SliderFloat("Bump range (m)",     b.bumpRange,     0.0,  5.0)
-    b.greetCooldown = ImGui.SliderFloat("Greet cooldown (s)", b.greetCooldown, 0.0, 300.0)
-    b.bumpCooldown  = ImGui.SliderFloat("Bump cooldown (s)",  b.bumpCooldown,  0.0,  30.0)
-    local dtxt = b.lastDist and string.format("%.2f m", b.lastDist) or "—"
-    ImGui.Text("Idle Jackie here: " .. ((JL.idle.spawn and not JL.summon.active) and "yes" or "no") ..
-               "   V distance: " .. dtxt)
-    if ImGui.Button("Test greet now") then
-      if JL.idle.spawn and JL.idle.spawn.handle then
-        local list = (b.greetEvents and #b.greetEvents > 0) and b.greetEvents or { "ono_jackie_greet" }
-        pcall(function() playEventOn(JL.idle.spawn.handle, list[math.random(1, #list)], "") end)
-      end
-    end
-    ImGui.SameLine()
-    if ImGui.Button("Test bump grunt") then
-      if JL.idle.spawn and JL.idle.spawn.handle then
-        pcall(function() playEventOn(JL.idle.spawn.handle, b.bumpEvent or "ono_jackie_bump", "") end)
-      end
-    end
   end
 
   ImGui.Separator()

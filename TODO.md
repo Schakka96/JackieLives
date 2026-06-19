@@ -2,6 +2,32 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.62 — CET window declutter + main-quest detection + companion safety dismount (DEPLOY + test, 2026-06-19)
+- **Disabled the VEHICLE + LIPSYNC test windows.** Renamed their deployed `init.lua → init.lua.disabled`
+  in the game's CET mods folder (windows gone on reload; nothing deleted). Source stays under `mod/`
+  so `deploy_probe.ps1 -ModName JackieVehicleTest|JackieLipsync` redeploys them instantly to test again.
+- **Decluttered the main "Jackie Lives" CET window** — permanently removed the UI for: push-subtitle test,
+  NATIVE phone test (RING/CONNECT/END/Force-hang-up), "Play branching dialogue" button, proximity-bark +
+  bump-grunt sliders, the "Arrival test modes" (BEHIND/foot-dist/arrive-dist) block, and the picker-styles
+  (testV1/2/3) block. Underlying systems (subtitles, native call, barks, branching dialogue, picker) are
+  untouched — only the debug buttons are gone. Kept the force-main-quest test checkbox + a live "Main quest
+  detected" readout.
+- **MAIN-QUEST DETECTION (real, replaces the stub).** `isMainQuestActive()` now reads the player's
+  currently TRACKED journal quest (`JournalManager:GetTrackedEntry` → walk parents → `gameJournalQuestType`
+  name-match on "Main"), cached ~0.5 s, fully pcall-guarded (defaults to "not main" so a reflection hiccup
+  can't wrongly block him). Already gates summon/call/arrival; NEW: if Jackie's tagging along when a main
+  quest goes active he **excuses himself and walks off** (`Config.mainQuestExit`, reuses the send-off
+  walk-off; line currently = the send-off VO, TODO a dedicated clip).
+- **COMPANION SAFETY DISMOUNT (bike).** `promoteToCompanion` now checks `isMounted()` (mounting facility)
+  and re-issues ONE unmount if Jackie's somehow still in the bike seat at handoff — gated so a foot arrival
+  or already-grounded Jackie never plays a phantom get-off.
+- [ ] **VERIFY main-quest API in-game:** the journal reflection (`GetTrackedEntry`/`GetParentEntry`/`GetType`
+      → "Main") is best-effort — confirm the "Main quest detected" readout flips YES during an actual main
+      quest and stays "no" on side jobs / free-roam. If it never flips, we adjust the reflection path.
+- [ ] **TEST:** (a) both test windows gone from CET, JackieLives window is tidy. (b) Tracking a main quest →
+      "Main quest detected: YES", summon declines, and a tagging-along Jackie excuses himself + leaves.
+      (c) Bike arrival where he used to stay seated → safety dismount fires (`still mounted -> safety dismount`).
+
 ## 🔬 Track A — native line-by-stringId + baked lipsync (probe, awaiting test, 2026-06-19)
 Goal: make a SPAWNED Jackie speak a SPECIFIC line by VO string id WITH the game's own baked
 lipsync, WITHOUT authoring a `.scene` file. If it works, the heavy WolvenKit scene-authoring
@@ -217,7 +243,7 @@ WolvenKit WAV extraction (1282 clips) ingested. Full pipeline + conventions now 
   the **80-line V funeral/voicemail set** (`v_scene_jackie_default_*`) as `memorial` / `speaker:"V"`. Tagger
   gained V-gender dropdown + "memorial only" filter + V♀/V♂/MEMORIAL badges. `lines.json` documented as the
   canonical label DB the whole mod reads. See `docs/VOICE_LINES.md`.
-- [x] **v0.61 — recover String IDs for the new pool (`tools/backfill_string_ids.py`):** the String ID *is*
+- [x] **v0.62 — recover String IDs for the new pool (`tools/backfill_string_ids.py`):** the String ID *is*
   the wem hash in decimal — `string_id == int(<trailing hex token>, 16)`, verified **777/777** on the scraped
   lines. No WolvenKit/metadata/guessing needed. Filled `string_id` for all **505** new records (reference-only;
   sfx keys stay `jl_<stem>`). Idempotent; `--all` re-verifies the old 777. Documented in `docs/VOICE_LINES.md`.

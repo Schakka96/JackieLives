@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.60"
+Config.version = "0.62"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -157,6 +157,16 @@ Config.dismiss = {
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
+}
+
+-- ---- main-quest "excuse himself" exit (v0.62) ----------------------------
+-- When V starts/tracks a MAIN quest while Jackie is tagging along, he bows out (same walk-off as
+-- a normal send-off). Defaults to the send-off line so spoken VO + subtitle stay in sync. To give
+-- him a DEDICATED excuse line, set `sfx` to a jl_ clip from the voice bank and `text` to its exact
+-- words (so audio and subtitle match) — e.g. something like "This one's yours, hermano — go."
+Config.mainQuestExit = {
+  text = Config.dismiss.partingText,   -- TODO: dedicated "excuse himself" VO + matching subtitle
+  sfx  = Config.dismiss.partingSfx,
 }
 
 -- ---- companion duration (v0.39) ------------------------------------------
