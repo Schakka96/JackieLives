@@ -25,7 +25,7 @@
      (after an arrival). Follower role = AMM SetNPCAsCompanion. dismissJackie removes him.
    • ARRIVAL (v0.50)  (state: JL.varrival) — vehicleArrivalTick is the ONE arrival machine, TWO modes
      (Config.call.arrivalMethod): "foot" DES-spawns Jackie at `Config.vehicle.spawnDistance` (50 m) and
-     SPRINTS him in (-> WALK last 25 m); "bike" spawns his Arch + Jackie at `bikeSpawnDistance` (60 m),
+     SPRINTS him in (-> WALK last 14 m); "bike" spawns his Arch + Jackie at `bikeSpawnDistance` (60 m),
      mounts, rides in, slows at 30 m, PARKS on the road at 20 m, then WALKS the rest. Both end at
      COMPANION via `Config.call.companionDistance` (5 m, small so AMM's catch-up teleport can't yank him
      into V), then say a GREETING LINE within `arrivalGruntDistance` (4 m; v0.52). Spawn point obeys: same level as V
@@ -84,6 +84,8 @@ local JL = {
   varrival = { at = nil, phase = nil, pt = nil, bikeId = nil, bikeHandle = nil,
                placeAt = nil, driveAt = nil, sprintAt = nil, lastReissue = 0, deadline = nil, driveCmd = nil },
   call    = { ringingAt = nil },  -- holocall: clock time he "picks up" after the ring
+  -- v0.55 ambient "feel alive" grunts: nextRoll = clock time of the next chance-to-grunt.
+  ambient = { nextRoll = 0 },
   -- v0.41 dinner outing: walk to a chosen restaurant -> linger -> full companion-clock reset.
   dinner  = { phase = nil, dest = nil, destName = nil, destYaw = nil, mappinId = nil, satAt = nil,
               lastResetGame = nil, collisionOff = false, seatDeadline = nil, sitFireAt = nil,  -- v0.44 seat rework
@@ -561,6 +563,16 @@ local function currentScheduleBlock()
     if hourInBlock(h, b.startHour, b.endHour) then return b, h end
   end
   return nil, h
+end
+
+-- v0.55: is Jackie asleep right now? True during his nightly sleep window (Config.secret
+-- startHour..endHour, default 00:00-06:00). Calls placed while he's asleep don't connect — the
+-- phone just rings out (he doesn't pick up). Independent of where the schedule has him.
+local function jackieAsleep()
+  local S = Config.secret
+  local h = getGameHour()
+  if not h or not S then return false end
+  return hourInBlock(h, S.startHour or 0, S.endHour or 6)
 end
 
 local function playerPos()
@@ -1130,6 +1142,36 @@ local function smileTick()
   s.until_    = now + (cfg.duration or 3.0)
   s.nextApply = 0   -- apply on the next tick
   log("Smile: caught V's eye -> brief smile.")
+end
+
+-- v0.55 AMBIENT "feel alive" grunts. While Jackie is present (companion OR idle at a venue) and
+-- nothing else is driving his voice/face, roll a small `chance` every `everyMinutes` real minutes
+-- for ONE of his non-pained vocal efforts (a laugh, a huff, a curious "hmm"). The pool deliberately
+-- excludes pain/choking/scream/death + combat barks, so he never randomly grunts like he's hurt or
+-- fighting. Same WWise playback path as the talk grunts; gated by the same talk/call locks as the smile.
+local function ambientGruntTick()
+  local cfg = Config.ambientGrunt
+  if not (cfg and cfg.enabled) then return end
+  local now = JL.clock or 0
+  local a   = JL.ambient
+  -- only when Jackie's actually here (never on V or a random look-at target)
+  local handle = (JL.summon.spawn and JL.summon.spawn.handle) or (JL.idle.spawn and JL.idle.spawn.handle)
+  if not handle then a.nextRoll = 0; return end           -- gone -> re-arm a fresh full gap next time
+  -- don't grunt over a line / dialogue / call (same locks the smile uses)
+  if flap.until_ > 0 or dlg.active or Branch.open or Branch.busy then return end
+  -- first arm after he appears: wait one full gap before the first roll (no grunt the instant he spawns)
+  if not a.nextRoll or a.nextRoll == 0 then
+    a.nextRoll = now + (cfg.everyMinutes or 10.0) * 60
+    return
+  end
+  if now < a.nextRoll then return end
+  a.nextRoll = now + (cfg.everyMinutes or 10.0) * 60      -- next window regardless of the roll outcome
+  if math.random() >= (cfg.chance or 0.10) then return end
+  local pool = cfg.events or {}
+  if #pool == 0 then return end
+  local ev = pool[math.random(1, #pool)]
+  pcall(function() playEventOn(handle, ev, "") end)
+  log("Ambient: '" .. tostring(ev) .. "' (feel-alive grunt).")
 end
 
 -- Audioware: play a registered voice clip (his real .ogg) by event name. 2D for the
@@ -1782,7 +1824,9 @@ local function runCallAction(name)
   if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
   -- v0.50: two modes only — both run through vehicleArrivalTick (foot = bikeless, bike = useBike).
-  local bike  = (Config.call and Config.call.arrivalMethod) == "bike"
+  -- v0.51: player Esc-menu "Disable vehicle arrivals" (JL.disableVehicleArrivals) forces FOOT,
+  -- regardless of Config.call.arrivalMethod — the bike arrival is buggy and players can opt out.
+  local bike  = ((Config.call and Config.call.arrivalMethod) == "bike") and not JL.disableVehicleArrivals
   local delay = (Config.call and Config.call.vehicleSpawnDelay) or 1.0
   JL.varrival.at      = (JL.clock or 0) + delay
   JL.varrival.useBike = bike
@@ -1805,6 +1849,15 @@ local function startCall()
   if Config.nativeCall and Config.nativeCall.useNativeWindow then
     triggerNativeCall(id, "IncomingCall", 1)   -- native ring (avatar + ringtone)
   end
+  -- v0.55: if Jackie's asleep he doesn't pick up — ring out, then auto hang up (no connect, no convo).
+  if jackieAsleep() then
+    local rs = (Config.call and Config.call.asleepRingSeconds) or 7.0
+    showOnscreenMsg("Calling Jackie...", rs + 0.5)
+    JL.call.noAnswerAt = (JL.clock or 0) + rs
+    JL.ui.status = "Calling Jackie... (no answer — asleep)"
+    log("Call: ringing... (Jackie asleep — he won't pick up).")
+    return
+  end
   local secs = (Config.call and Config.call.ringSeconds) or 2.0
   showOnscreenMsg("Calling Jackie...", secs + 0.5)
   JL.call.ringingAt = (JL.clock or 0) + secs
@@ -1821,6 +1874,17 @@ local function callTick()
   local now = JL.clock or 0
   local id  = (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
   local native = Config.nativeCall and Config.nativeCall.useNativeWindow
+
+  -- v0.55: asleep -> the call just rings out, then hangs up. No pickup, no convo.
+  if JL.call.noAnswerAt and now >= JL.call.noAnswerAt then
+    JL.call.noAnswerAt = nil
+    if native then triggerNativeCall(id, "EndCall", 3) end   -- hang up the ring
+    showOnscreenMsg("No answer.", 2.5)
+    JL.ui.status = "No answer — Jackie's asleep."
+    log("Call: no answer (Jackie asleep) -> hung up.")
+    Branch.busy = false
+    return
+  end
 
   if JL.call.ringingAt and now >= JL.call.ringingAt then
     JL.call.ringingAt = nil
@@ -1866,6 +1930,13 @@ local function onPlayerCalledJackie()
   if Branch.open or Branch.busy or dlg.active then return end   -- already talking
   if JL.summon.active then return end                          -- already with you
   if isMainQuestActive() then return end
+  -- v0.55: asleep -> DON'T hijack. The game's own ring just plays out and auto-hangs-up; Jackie
+  -- never "picks up" (our connect hook never arms). Matches "rings until it auto hangs up".
+  if jackieAsleep() then
+    JL.ui.status = "Jackie's not pickin' up (asleep)."
+    log("Hijack: player called Jackie while asleep -> left it ringing (no pickup).")
+    return
+  end
   Branch.busy = true
   local ring = (Config.call and Config.call.ringEvent) or ""
   if ring ~= "" then pcall(function() playVoice(ring) end) end
@@ -3341,6 +3412,38 @@ local function setupNativePhoneProbe()
 end
 
 -- ---------------------------------------------------------------------------
+-- v0.51 PERSISTENT Esc-menu settings. A tiny self-contained store (no json dependency): one
+-- `key=true/false` per line in the mod folder (relative io.open writes here, like the phone probes).
+-- Only the boolean toggles exposed in the Native Settings panel are persisted; they live on JL.* so
+-- gameplay code can read them. Load once at onInit; save on every toggle change.
+-- ---------------------------------------------------------------------------
+local JL_SETTINGS_FILE = "jl_settings.txt"
+local JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals" }  -- persisted JL.* boolean flags
+
+local function jlSaveSettings()
+  local f = io.open(JL_SETTINGS_FILE, "w")
+  if not f then log("settings: could not write " .. JL_SETTINGS_FILE); return end
+  for _, k in ipairs(JL_SETTINGS_KEYS) do f:write(k .. "=" .. tostring(JL[k] == true) .. "\n") end
+  f:close()
+end
+
+local function jlLoadSettings()
+  local f = io.open(JL_SETTINGS_FILE, "r")
+  if not f then return end
+  for line in f:lines() do
+    local k, v = line:match("^(%w+)%s*=%s*(%w+)")
+    if k then
+      for _, want in ipairs(JL_SETTINGS_KEYS) do
+        if k == want then JL[k] = (v == "true") end
+      end
+    end
+  end
+  f:close()
+  log("settings: loaded (husbando=" .. tostring(JL.husbando) ..
+      ", disableVehicleArrivals=" .. tostring(JL.disableVehicleArrivals) .. ").")
+end
+
+-- ---------------------------------------------------------------------------
 -- v0.44 "Go Home Jackie" — blunt recovery for a stuck/duplicated/missing Jackie.
 -- Force-despawns EVERY Jackie (orphans included), wipes ALL transient state machines, then lets
 -- the next scheduleTick re-place a clean idle Jackie at his scheduled spot. Deliberately does NOT
@@ -3407,7 +3510,9 @@ local function nsTick()
     log("Native Settings panel already present (hot-reload) — not re-registering.")
     return
   end
-  if JL.husbando == nil then JL.husbando = false end   -- v0.47: relationship mode (false = Hermano)
+  -- defaults for the persisted flags (jlLoadSettings in onInit may already have set them)
+  if JL.husbando == nil then JL.husbando = false end                              -- v0.47 (false = Hermano)
+  if JL.disableVehicleArrivals == nil then JL.disableVehicleArrivals = false end  -- v0.51 (false = bike allowed)
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
 
@@ -3422,8 +3527,26 @@ local function nsTick()
       false,         -- default (Hermano)
       function(state)
         JL.husbando = state
+        pcall(jlSaveSettings)
         JL.ui.status = "Jackie mode: " .. (state and "Husbando" or "Hermano")
         log("Jackie relationship mode -> " .. (state and "Husbando" or "Hermano"))
+      end
+    )
+
+    ns.addSubcategory("/jackielives/arrivals", "Arrivals")
+    ns.addSwitch(
+      "/jackielives/arrivals",
+      "Disable vehicle arrivals",
+      "ON = Jackie always arrives ON FOOT when summoned. Jackie riding in on his bike often breaks " ..
+      "(pathing/physics), so turn this ON if his arrivals glitch. OFF = allow the bike arrival when " ..
+      "the arrival method is set to bike.",
+      JL.disableVehicleArrivals,   -- current state
+      false,                       -- default (vehicle arrivals allowed)
+      function(state)
+        JL.disableVehicleArrivals = state
+        pcall(jlSaveSettings)
+        JL.ui.status = "Vehicle arrivals: " .. (state and "DISABLED (foot only)" or "allowed")
+        log("Vehicle arrivals -> " .. (state and "DISABLED (foot only)" or "allowed"))
       end
     )
 
@@ -3452,6 +3575,7 @@ registerForEvent("onInit", function()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
   if Config.probeNativePhone then pcall(setupNativePhoneProbe) end
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
+  pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
   log("Loaded v" .. tostring(Config.version or "?") .. ". AMM present: " .. tostring(JL.amm ~= nil))
 end)
 
@@ -3593,6 +3717,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(branchTick)
   pcall(flapTick)       -- lip-movement: shuffle talking faces while a Jackie line plays
   pcall(smileTick)      -- v0.53: low-chance brief smile when V catches his eye
+  pcall(ambientGruntTick)  -- v0.55: rare non-pained "feel alive" grunt while he's around
   pcall(callTick)       -- holocall: ring -> pick up
   pcall(vehicleArrivalTick)  -- v0.50: THE arrival state machine — foot (DES sprint-in) + bike, one tail
   pcall(arrivalGreetTick)    -- v0.46/v0.48: one-shot fresh greeting when an arrived Jackie closes to 4 m

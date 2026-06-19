@@ -2,6 +2,31 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.55 — arrival/immersion tuning + asleep-no-pickup + ambient grunts + dinner gate ON (DEPLOYED, awaiting test, 2026-06-19)
+Batch of small polish + two new behaviours.
+- **Foot arrival downshift 25→14 m** (`Config.vehicle.sprintToWalk`): he now sprints closer and only
+  walks the last 14 m (was 25).
+- **Spawn wait 2× again:** `Config.call.vehicleSpawnDelay` 1.0→**2.0 s** (the delay actually used before
+  he spawns post-call); `spawnDelay` restored 2.5→5.0 for consistency (legacy, unused in the live path).
+- **Smile a bit rarer:** `Config.smile.chance` 0.04→**0.025**/roll.
+- **Dinner gate ENGAGED:** `Config.date.enforceUnlock` false→**true** — the "Wanna get something to eat?"
+  invite now only unlocks after **1 in-game hour** out together (`unlockAfterGameHours`, measured from
+  `companionSinceGame`). `dateUnlocked()` already implemented the gate; this just turns it on.
+- **Asleep = no pickup (NEW):** new `jackieAsleep()` (true during the `Config.secret` sleep window,
+  00:00–06:00). Calling him then doesn't connect:
+  - Our holocall button/hotkey (`startCall`): rings `asleepRingSeconds` (7 s) then auto hangs up
+    (`callTick` `noAnswerAt` branch fires `EndCall`), shows "No answer." No convo, no spawn.
+  - Native phone (`onPlayerCalledJackie`): we simply DON'T hijack → the game's own ring plays out and
+    auto-hangs-up (Jackie never "picks up"). Matches "hook won't trigger, just rings until it hangs up".
+- **Ambient "feel alive" grunts (NEW):** `ambientGruntTick` — while Jackie's present (companion OR idle)
+  and not mid-talk/call, every `everyMinutes` (10) REAL min there's a `chance` (10%) he plays ONE
+  NON-PAINED vocal effort (laugh/huff/curious/greet). Pool in `Config.ambientGrunt.events` deliberately
+  excludes pain/choking/scream/death + attack barks. Same WWise path + talk-locks as the smile.
+- [ ] **TEST:** (a) call Jackie between 00:00–06:00 → rings, no pickup, hangs up with "No answer".
+      (b) Be a companion <1 in-game h → no dinner invite; after 1 h it appears. (c) Hang around idle/
+      companion Jackie a while → occasional casual grunt (console `Ambient: '...'`), never a pained one.
+      (d) Foot arrival → he walks only the last ~14 m. (e) Post-call spawn wait feels ~2 s longer.
+
 ## 🆕 v0.52–v0.54 — arrival tuning: side spawn, bike park+walk, mount timing, fell-off, no face-teleport (DEPLOYED, awaiting test, 2026-06-19)
 Iterative polish on the v0.50 two-mode (foot/bike) arrival. See `docs/logbook.txt` "ARRIVAL OVERHAUL" for the full narrative.
 - **Side spawn (v0.52):** `navmeshArrivalPoint` spawns him on a SIDE of V (left/right, 90°±20°, random),
@@ -54,17 +79,21 @@ made progress. (NOT collision — the foot Jackie is a fresh DES entity with col
       `BEHIND dist=50 dZ=+0.x` spawn that closes in, OR `STUCK at X m -> respawn closer at 35/20/5 m`
       until he reaches you. Confirm no duplicate Jackies and he ends as companion at ~5 m + grunt.
 
-## 🆕 Esc-menu setting: Hermano ↔ Husbando mode toggle (added, awaiting test)
-- Added an **Esc → Settings → Jackie Lives → Relationship** switch **"Husbando mode"** (`addSwitch` in
-  `nsTick`). OFF = Hermano (canon, with Misty); ON = Husbando (closer to V, broke up with Misty). Sets
-  `JL.husbando` (lazy-init false). Nothing reads the flag yet — it's the hook for the work below.
+## 🆕 Esc-menu settings: Husbando toggle + Disable-vehicle-arrivals + PERSISTENCE (added, awaiting test)
+- **Husbando mode** switch (Relationship): OFF = Hermano (canon, with Misty); ON = Husbando (closer to
+  V, broke up with Misty). Sets `JL.husbando`. Nothing reads it yet — it's the hook for the work below.
+- **Disable vehicle arrivals** switch (Arrivals): ON forces FOOT arrival regardless of
+  `Config.call.arrivalMethod`. Wired: `runCallAction` gates `bike` with `and not JL.disableVehicleArrivals`
+  (the single decision point at the `arrivalMethod == "bike"` line). Default OFF (bike allowed) so it
+  doesn't surprise the concurrent arrival-overhaul work; players opt in when the bike glitches.
+- [x] **Persisted across saves** (`jlSaveSettings`/`jlLoadSettings`). Self-contained `key=true/false`
+      store in `jl_settings.txt` in the mod folder (NO json dependency — relative `io.open`, same as the
+      phone probes). Loaded in `onInit`; each switch callback saves. `JL_SETTINGS_KEYS` = the persisted
+      flag list; add future toggles there.
 - [ ] **Husbando-mode dialogue:** branch/alternate lines for talk, holocall, arrivals, dismiss when
       `JL.husbando` is true (terms of endearment, couple banter, no Misty references).
 - [ ] **Husbando-mode venue schedule:** alternate `Config.daySchedules` / locations for husbando mode
       (e.g. shared apartment, different hangouts; no Misty's-shop stops).
-- [ ] **Persist the toggle across sessions.** `JL.husbando` currently resets on reload — save/load it
-      (CET ships `json`; write a tiny `husbando` flag to a mod file, load in onInit). Applies to any
-      future Esc-menu settings too, so consider a shared `settings.json`.
 
 ## 🆕 v0.49–v0.50 — ARRIVAL OVERHAUL: bike revived + DES-unified to TWO modes (DEPLOYED, awaiting test, 2026-06-19)
 

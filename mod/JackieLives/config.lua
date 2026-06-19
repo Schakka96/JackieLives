@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.54"
+Config.version = "0.55"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -83,7 +83,7 @@ Config.talkLines = {
 -- category 3 / idle 6 (5=Joy, 2=Neutral; verified). Reset via stim:ResetFacial(0).
 Config.smile = {
   enabled  = true,
-  chance   = 0.04,   -- per-roll probability he smiles when caught looking (low on purpose)
+  chance   = 0.025,  -- per-roll probability he smiles when caught looking (low on purpose; v0.55 lowered from 0.04)
   rollEvery= 1.5,    -- seconds between rolls while you keep looking at him
   duration = 3.0,    -- seconds the smile is held before his face relaxes
   range    = 8.0,    -- metres; only if V is within this distance
@@ -91,6 +91,28 @@ Config.smile = {
   reapply  = 0.6,    -- re-assert the facial every N s so it doesn't decay before duration ends
   category = 3,      -- FacialReaction category for the smile set
   idle     = 6,      -- 6 = Smile (5 = Joy, 2 = Neutral)
+}
+
+-- ---- ambient "feel alive" grunts (v0.55) ----------------------------------
+-- While Jackie is present (your companion OR idling at a venue) and nothing else is driving his
+-- voice (no talk/dialogue/call), every `everyMinutes` REAL minutes there's a small `chance` he
+-- lets out ONE of his NON-PAINED vocal efforts — a laugh, a huff, a curious "hmm". Pure ambience to
+-- make him feel alive. The pool below is deliberately the calm/casual events only: NO pain, choking,
+-- scream, death, or combat/attack barks, so he never randomly sounds hurt or like he's fighting.
+-- Played on his entity via the same WWise path as the talk grunts. enabled=false turns it off.
+Config.ambientGrunt = {
+  enabled      = true,
+  chance       = 0.10,    -- per-roll probability he grunts (10%)
+  everyMinutes = 10.0,    -- REAL minutes between rolls (so ~once every ~100 min on average)
+  events = {              -- non-pained vocal efforts only:
+    "ono_jackie_greet",
+    "ono_jackie_curious",
+    "ono_jackie_huff_emote",
+    "ono_jackie_additional",
+    "ono_jackie_laughs",
+    "ono_jackie_laughs_soft",
+    "ono_jackie_laughs_hard",
+  },
 }
 
 -- ---- dialogue runner (v0.20: REAL audio via Audioware) --------------------
@@ -156,7 +178,7 @@ Config.companion = {
 Config.date = {
   inviteText           = "Wanna get something to eat?",  -- the menu option (V's invite)
   unlockAfterGameHours = 1.0,    -- the invite only appears after this long together...
-  enforceUnlock        = false,  -- ...OFF for now (always show, for testing). Flip true to gate it.
+  enforceUnlock        = true,   -- v0.55: ON — dinner invite only unlocks after 1 in-game hour together.
 
   seatTriggerRadius = 12.0,  -- metres: V this close to the spot -> Jackie peels off to his seat
   seatReachRadius   = 2.0,   -- metres: Jackie this close to his seat -> snap + sit
@@ -485,8 +507,9 @@ Config.locationDialogue = {
 -- A real native holocall (portrait/video) is a separate, much larger WolvenKit task.
 Config.call = {
   ringSeconds   = 2.3,   -- native ring (IncomingCall) plays this long, then we abort + connect
+  asleepRingSeconds = 7.0,  -- v0.55: if Jackie's ASLEEP (Config.secret window), the call rings this long then hangs up — no pickup
   ringEvent     = "ono_jackie_phone",  -- extra WWise ring SFX layered on ("" = silent)
-  spawnDelay    = 2.5,   -- seconds after the call ends before Jackie spawns (was 5.0; halved)
+  spawnDelay    = 5.0,   -- seconds after the call ends before Jackie spawns (v0.55: 2x back to 5.0)
   -- ============================================================================
   -- ARRIVAL METHOD — v0.50: TWO modes only (down from 3). Cycled live in the CET window.
   --   "foot" = ON-FOOT (the default). DES-spawn Jackie DIRECTLY at `Config.vehicle.spawnDistance`
@@ -501,7 +524,7 @@ Config.call = {
   -- (too slow). This is the big complexity collapse: one spawn backend (DES), one arrival tail.
   -- ============================================================================
   arrivalMethod        = "foot",   -- "foot" | "bike"
-  vehicleSpawnDelay    = 1.0,   -- seconds after the call ends before the foot / bike Jackie spawns
+  vehicleSpawnDelay    = 2.0,   -- seconds after the call ends before the foot / bike Jackie spawns (v0.55: 2x; was 1.0)
   -- He spawns navmesh-snapped (NavigationSystem) so he never lands inside a wall/object, in the rear
   -- arc when `spawnBehind`. While approaching he is a PASSIVE DES NPC (no follower role) so the AMM
   -- companion catch-up TELEPORT can't yank him to V; he becomes a real companion only at `companionDistance`.
@@ -547,7 +570,7 @@ Config.vehicle = {
   -- BIKE spawn distance: 60 m (was 80). 80 m let him path so far out he could leave the streamed/
   -- rendered zone and stall; 60 m keeps the whole ride on-screen while still giving room to ride + brake.
   bikeSpawnDistance = 60.0,
-  sprintToWalk      = 25.0,  -- Jackie->V distance where he downshifts sprint -> walk (FOOT only; last 25 m)
+  sprintToWalk      = 14.0,  -- Jackie->V distance where he downshifts sprint -> walk (FOOT only; last 14 m — v0.55)
   arriveDistance    = 3.0,   -- Jackie->V distance the foot/walk MoveTo aims to stop short of him
   -- --- VALID-SPAWN GUARD + STUCK->RESPAWN LADDER (v0.51) ---
   -- The spawn point is rejected unless it's on the human navmesh AND within `maxSpawnZDelta` of V's
