@@ -604,3 +604,34 @@ COLLISION STATUS: added a line to the CET window — "Collision  setting: ON/OFF
 
 aiTeleport signature left UNCHANGED (the doNavTest path is only ever true now). Config.version -> 0.45.
 ================================================================================
+
+--------------------------------------------------------------------------------
+v0.45b — tuner STILL didn't move him; real fix (2026-06-18)
+First v0.45 pass made placeAtExact use the TeleportationFacility ONLY — but that often NO-OPS on
+AMM/DES-spawned puppets (the AITeleportCommand is the real mover; see spawn_at_distance_research.md).
+Symptom: he replayed the sit animation but never changed coords or yaw. TWO bugs:
+  1) placeAtExact must lead with aiTeleport(pos, yaw, doNavTest=FALSE) — exact (no navmesh snap) AND it
+     actually relocates the puppet. Facility kept only as a secondary write.
+  2) Teleporting in the SAME frame as the workspot let the workspot re-pin him at the OLD spot. Fixed by
+     splitting the deferred sit into TWO steps in wanderTick: (1) pendingPose -> placeAtExact + arm
+     pendingSit; (2) ~0.4 s later pendingSit -> tryWorkspotPose only (no teleport, so nothing ejects him).
+  3) Tuner re-seat: he's SEATED (pinned). stopWorkspotPose, wait 0.45 s for the release, THEN the
+     two-step deferred runs — teleporting while still pinned was being ignored.
+Dinner sit reworked the same way (place in step (a), sit-only in step (b)). aiTeleport regained its
+doNavTest param (default true; false = exact). Net: sliding X/Y/Z moves him, yaw spins him, seat angle
+is deterministic from the waypoint yaw.
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+v0.45c — seat tuner CONFIRMED + generalised; noodle settled (2026-06-18)
+Tuner confirmed working in-game (sliding moves him, yaw spins him). Then:
+- Generalised the tuner to ANY sit venue: a Venue button-row (only venues with a sit waypoint; picking
+  one also Force-venues Jackie there) + a < prev / next > SEAT selector for venues with multiple stools.
+  tunerSeatWaypoint() now keys off JL.tuner.key + seatIdx; carries that seat's poseAnim (so Misty's deep
+  chair tunes with the right anim); single-seat venues also move the anchor pos. New helpers
+  tunerSitWaypoints/tunerSitVenues.
+- Noodle: tuned two stools, but hopping between them (1 m apart) looked fidgety -> kept ONE seat = the
+  MIDDLE stool { -1439.472, 1259.021, 23.090 } yaw -87.1; RIGHT stool kept as a DEPRECATED comment.
+- README: added "Fine-tune his seats (the seat tuner)" section + collision note; dropped the stale
+  "precise placement is a planned follow-up" line.
+--------------------------------------------------------------------------------

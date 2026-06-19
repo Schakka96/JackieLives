@@ -2,6 +2,119 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.51 — fix STUCK foot arrival: valid-spawn height guard + respawn-closer ladder (DEPLOYED, awaiting test, 2026-06-19)
+**Symptom (Antonia's log):** a foot/sprint arrival spawned ~50 m out and STUTTERED in place —
+`sprinting in... 50.7 m / 51.1 / 48.7 / 48.7 / 48.7 ...`, never closing. Cause: the spawn point was on
+a navmesh island the path AI couldn't route from (wrong building level / blocked), so the MoveTo never
+made progress. (NOT collision — the foot Jackie is a fresh DES entity with collision on.)
+- **Height guard on the spawn point** (`navmeshArrivalPoint`): a snapped navmesh point is now rejected
+  unless `|point.z - V.z| <= Config.vehicle.maxSpawnZDelta` (4 m). Keeps him on V's own floor — a
+  same-level point is far likelier to have a walkable path. (The navmesh-below search could otherwise
+  return a roof/balcony/metro/parking-deck point.)
+- **STUCK -> RESPAWN-CLOSER ladder** (the catch-all, Antonia's idea): while sprinting/walking we track
+  his CLOSEST distance to V; if it doesn't improve for `respawnStuckSeconds` (5 s) he's despawned and
+  respawned at the next-closer `respawnRungs` (**35 -> 20 -> 5 m**). At 5 m he's on V's own navmesh, so
+  it converges; if no rung is closer than where he's stuck, he just hands off to companion in place.
+- Refactor: the foot spawn is now one helper `beginFootApproach(dist, reason)` reused by BOTH the
+  initial arrival and every respawn rung (despawns any current Jackie+bike first → no duplicates).
+- [ ] **TEST:** trigger FOOT arrival somewhere he used to get stuck. Console should show either a clean
+      `BEHIND dist=50 dZ=+0.x` spawn that closes in, OR `STUCK at X m -> respawn closer at 35/20/5 m`
+      until he reaches you. Confirm no duplicate Jackies and he ends as companion at ~5 m + grunt.
+
+## 🆕 Esc-menu setting: Hermano ↔ Husbando mode toggle (added, awaiting test)
+- Added an **Esc → Settings → Jackie Lives → Relationship** switch **"Husbando mode"** (`addSwitch` in
+  `nsTick`). OFF = Hermano (canon, with Misty); ON = Husbando (closer to V, broke up with Misty). Sets
+  `JL.husbando` (lazy-init false). Nothing reads the flag yet — it's the hook for the work below.
+- [ ] **Husbando-mode dialogue:** branch/alternate lines for talk, holocall, arrivals, dismiss when
+      `JL.husbando` is true (terms of endearment, couple banter, no Misty references).
+- [ ] **Husbando-mode venue schedule:** alternate `Config.daySchedules` / locations for husbando mode
+      (e.g. shared apartment, different hangouts; no Misty's-shop stops).
+- [ ] **Persist the toggle across sessions.** `JL.husbando` currently resets on reload — save/load it
+      (CET ships `json`; write a tiny `husbando` flag to a mod file, load in onInit). Applies to any
+      future Esc-menu settings too, so consider a shared `settings.json`.
+
+## 🆕 v0.49–v0.50 — ARRIVAL OVERHAUL: bike revived + DES-unified to TWO modes (DEPLOYED, awaiting test, 2026-06-19)
+
+### Decisions (Antonia) — why the arrival section was rebuilt
+The arrival code had grown to 3 overlapping spawn machines + an invisibility hack + 2 spawn backends.
+Root-cause research (git diff back to v0.36, the last version where the bike worked):
+
+1. **Why bike "broke": the v0.38 foot-fallback.** The bike spawn/mount/drive code + `Config.vehicle`
+   are BYTE-IDENTICAL to working v0.36. The only material addition since was `vehicleArrivalFootFallback`
+   (v0.38): at **40 s** it despawned the bike + Jackie and respawned him on foot. An 80 m city ride
+   routinely exceeds 40 s, so it was guillotining good rides ("no bike appears" = bike got nuked).
+   → **v0.49: `Config.vehicle.footFallback` now defaults OFF.** Bike rides uninterrupted like v0.36;
+   only the 120 s `maxSeconds` deadline is a backstop. The fallback code stays, opt-in.
+
+2. **AMM-spawn vs DES — picked DES (Antonia's call, confirmed correct).** AMM spawns Jackie 1 m in
+   front of V and instant-promotes to companion → that's exactly why the old "safe" path needed the
+   HIDE-during-spawn + teleport-to-distance hack AND a `walkIn` flag to suppress the double-promote.
+   DES spawns him EXACTLY at distance (no pop, no hide, no teleport, no race); `promoteToCompanion`
+   still calls AMM's `SetNPCAsCompanion`, so we keep full follower/combat behaviour.
+
+3. **Collapse to TWO modes (v0.50).** Deleted the AMM "safe walk-in" (`arrivalTick` + `arrivalMoveType`)
+   and the entire invisibility subsystem from arrivals. Deleted the slow all-the-way "walk" approach.
+   `Config.call.arrivalMethod` is now just **"foot" | "bike"**, both driven by `vehicleArrivalTick`:
+   - **foot** — DES-spawn at `Config.vehicle.spawnDistance` (**50 m**) → SPRINT → swap to WALK at
+     `sprintToWalk` (25 m) → companion → stop.
+   - **bike** — Arch + Jackie at `bikeSpawnDistance` (**80 m**) → mount → ride → ease to `slowSpeed`
+     at `slowDownDistance` (40 m) → park/dismount at `dismountDistance` (30 m) → same foot finish.
+
+4. **Companion handoff moved 18 m → 5 m.** At 18 m, AMM's catch-up TELEPORT could fire on promote and
+   YANK him into V — the "runs into V" bug. `companionDistance = 5.0` promotes him only once he's
+   basically arrived, so the teleport never triggers. (Collision wasn't the cause: the foot Jackie is a
+   fresh DES entity with collision on, and `promoteToCompanion` re-asserts collision-on defensively.)
+
+5. **Bike braking.** Yes he can stop safely: at 40 m the drive command re-issues at `slowSpeed` (3 m/s),
+   so by 30 m he's crawling and parks smoothly rather than slamming to a halt.
+
+6. **Debug pings.** Both modes now log distance every **3 s** (`riding/sprinting/walking in... X m to V`),
+   plus one-shot transition logs (easing off, downshift to walk, dismount, handoff).
+
+- [ ] **TEST:** CET window → toggle FOOT/BIKE → "Test arrival now". FOOT: spawn ~50 m, sprint, walk last
+      25 m, companion at ~5 m (no yank into V), grunt at 4 m. BIKE: rides in, eases at 40 m, parks ~30 m,
+      sprints, same finish. Watch the 3 s distance pings in the console.
+- ⚠️ Leftover legacy (harmless): `JL.arrival` table kept ONLY for `.seeded` (RNG flag used by
+  navmeshArrivalPoint); the dismiss/hardReset clears of its dead fields are no-ops. Can be pruned later.
+
+## 🆕 v0.48 — Jackie hungry-hint + arrival greeting + seated line fix (DEPLOYED, awaiting test, 2026-06-19)
+- **Jackie drops a hungry HINT himself:** new `jackieDinnerOfferTick` — while companion + dinner available
+  (off the 24h cooldown), after a random in-game gap (`Config.date.jackieInvite`, **140–175 min**, near his max
+  summon time) he just SAYS *"C'mon, let's go have some lunch."* — **no picker, no choices**; it nudges V to
+  use her own invite. Set `jackieInvite.enabled=false` to revert.
+- **Arrival no longer grunts — he GREETS:** `arrivalGreetTick` (was `arrivalGruntTick`) now plays a greeting
+  from the full greet pool via `pickFreshGreet` — never the one used most recently, and not any greet used in
+  the last **5 min** (`greetRepeatCooldown=300`). Proximity greets use the same no-repeat picker now.
+- **Seated beat reworded:** `doneText` (said 2s after he sits at dinner) "Gettin' one of my good feelings." →
+  **"Anyway, what's goin' on?"** (`jl_1878047791342612480`). That line was wrongly used as a v0.47 greeting.
+- **`everywhere` greeting** 3rd line is now **"¿Qué onda?"** (`jl_2015561179233951744`).
+- Files: `config.lua` (`doneText`, `jackieInvite` text/sfx + 140–175 min, `everywhere` pool, version 0.48),
+  `init.lua` (`jackieDinnerOfferTick` speaks the line; `pickFreshGreet` + greet no-repeat state;
+  `arrivalGruntTick`→`arrivalGreetTick`, `arrivalGruntPending`→`arrivalGreetPending`).
+
+## 📝 Backlog — dialogue lines to wire (added 2026-06-19)
+New line dump documented in `docs/conversations.md` §7–§8.1 (clips matched, Antonia's audio trims noted). To place:
+- [ ] **Goodbyes** for phone + dismiss: rotate the **4** "Ahí luego, V." recordings + "Better get goin'" + "Hey V... keep an eye out".
+- [ ] **Embers date (date 3)** — script written in `docs/conversations.md` §8.1. Needs: a completed-dinner **counter** (`JL.dinner.count`), **Embers coords** captured into `Config.date.restaurants`, per-venue seated-line override (orders Tequila Old Fashioneds), and the `embersOpen/embersPay/embersSplit` nodes.
+- [ ] **Date 1** "I'm a bit light, can't pay you" (→ V "my treat") — first-dinner gag.
+- [ ] **Afterlife date ACCEPT** line ("...Afterlife, here we come, baby!") when the picked venue is the Afterlife.
+- [ ] Splice the bare "Nah"s with a warm follow-up (Misty/Sorry) so they're not abrupt.
+- [x] Jackie can open a lunch invite himself ("C'mon, let's go have some lunch.") — done in v0.48.
+
+## 🆕 v0.47 — dinner dialogue refinements (DEPLOYED, awaiting test, 2026-06-18)
+- **Invite question** (`Config.date.inviteText`): "Hey - you hungry?..." → **"Wanna get something to eat?"**
+- **Accept line:** Jackie now answers the invite immediately with **"Yeah, had enough for one day, lemme tell you."**
+  (open node of `Config.date.tree`). V then either picks a spot or rainchecks.
+- **Decline ends earlier:** the venue picker moved to a new `venue` node, so picking *raincheck* (or the
+  on-cooldown refusal) ends the talk **right after the question** — the restaurant list never shows.
+- **Cooldown refusal moved up + reworded:** the "won't eat out twice a day" check now fires at the invite
+  (`runCallAction "start_date"`), not after a venue pick. New line **"Got no time for this!"**
+  (`refuseText`, `jl_1693539624046764032`) since "had enough for one day" became the accept line.
+- **"Don't come here often..."** dropped from the `everywhere` (companion/after-a-call) tree — it's a
+  fixed-location greeting only now; replaced there with "Anyway, what's goin' on?".
+- Files: `config.lua` (inviteText, refuseText, `date.tree`, `everywhere` pool, version 0.47),
+  `init.lua` (`start_date` cooldown gate, removed the now-dead gate in `startDinnerWalk`).
+
 ## 🆕 v0.46 — 3-way arrival selector (safe/sprint/bike), earlier handoff + arrival grunt (DEPLOYED, awaiting test, 2026-06-18)
 - **`Config.call.arrivalMethod`** (`"safe" | "sprint" | "bike"`) replaces the `arriveByVehicle` boolean.
   CET-window button now CYCLES safe → sprint → bike; "Test arrival now" fires the selected one.
@@ -22,11 +135,15 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
   shared helper both ticks call, behind small distance accessors.
 
 ## 🆕 v0.45 — seat tuner FIX + seat-angle lock + collision status line (DEPLOYED, awaiting test, 2026-06-18)
-- **Seat tuner was doing nothing — ROOT CAUSE: `aiTeleport`'s `doNavTest=true` navmesh-snap.** Every
-  re-seat/slide snapped the target to the nearest navmesh point, so small nudges (and the requested yaw)
-  were discarded → he never moved. **FIX:** new `placeAtExact(handle, pos, yaw)` = TeleportationFacility
-  teleport (immediate, EXACT pos + yaw, NO navmesh snap; no async AI command that could eject him from
-  the seat). Tuner + the deferred idle sit + the dinner sit all use it now.
+> v0.45b correction: the first pass still didn't move him. THREE causes (see below, now all fixed).
+- **Seat tuner did nothing — THREE bugs.** (1) `aiTeleport`'s `doNavTest=true` snapped any nudge to the
+  nearest navmesh point. (2) The first fix made `placeAtExact` use the **TeleportationFacility ONLY**,
+  which **no-ops on AMM/DES puppets** (the AITeleportCommand is the real mover) → he replayed the sit in
+  place. (3) Teleporting the SAME frame as the workspot let it re-pin him at the old spot. **FIX:**
+  `placeAtExact` now leads with `aiTeleport(pos, yaw, doNavTest=false)` (exact + actually moves him),
+  facility as a 2nd write; and the sit is deferred in TWO steps (place → 0.4 s gap → workspot). The tuner
+  re-seat also `stopWorkspotPose`s and waits 0.45 s for the release before teleporting (a teleport while
+  he's pinned in the seat is ignored). Idle sit + dinner sit use the same place-then-gap-then-sit path.
 - **Wrong seat ANGLE depending on arrival direction — FIXED.** The AMM workspot inherited his walk-in
   facing. Now the deferred sit carries the EXACT pos + yaw (`pendingPose.vec/.yaw`) and `placeAtExact`
   locks his facing the instant before the workspot plays → seat angle is deterministic from the waypoint
@@ -34,8 +151,16 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 - **Collision STATUS line in the CET window:** `Collision  setting: ON/OFF  |  live on Jackie: …` shows
   the master-switch setting AND the live state on the entity (idle "OFF — deactivated ✓", dinner-seat, or
   "no idle Jackie spawned yet"), so you can confirm collision is actually deactivated.
-- [ ] **TEST:** Force venue → Noodle bar → seat tuner → sliding X/Z now moves him; yaw spins him; "Print
-      coords" → send me the numbers. Confirm the status line reads "live on Jackie: OFF — deactivated ✓".
+- [x] **CONFIRMED WORKING (Antonia):** sliding/yaw move + spin him; tuned the noodle stools.
+- **Noodle = ONE seat = the MIDDLE stool** `{ -1439.472, 1259.021, 23.090 }`, yaw -87.1 (two stools made
+  him fidget/hop between them, so he stays on the middle one). The RIGHT stool `{ -1440.477, 1258.164,
+  23.090 }` is kept as a DEPRECATED comment in `config.lua` for reference.
+- **Tuner generalised to ANY sit venue (v0.45):** a **Venue picker** (only venues with a sit waypoint:
+  noodle/misty/coyote/afterlife/ginger/lizzies) — picking one also Force-venues Jackie there — plus a
+  **seat selector** (`< prev / next >`) for venues with multiple stools. Tuner now edits
+  `Config.locations[key]`'s `seatIdx`-th sit waypoint; carries that seat's `poseAnim` (so Misty's deep
+  chair tunes with the right anim); single-seat venues also move the anchor. `JL.tuner.key/seatIdx`.
+- [ ] **TEST (other venues):** tuner → pick Misty/Coyote/etc → walk to him → tune → Print → send coords.
 
 ## 🆕 v0.45 — bikeless "SPRINT-IN" arrival + live method toggle (DEPLOYED, awaiting test, 2026-06-18)
 **Goal (Antonia):** salvage the good details from the shelved vehicle arrival — sprint-first-then-walk
@@ -73,6 +198,12 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
       errors, and a single clean Jackie returns to his scheduled spot. Try while summoned, idle, mid-sit.
 
 ### Problems & Resolutions (v0.44 Esc-menu)
+- **THE root cause (v0.46 fix): our dupe-guard threw.** We called `nativeSettings.pathExists("/jackielives/recovery")`
+  (a SUB-path) before the tab existed; the lib does `data[tabPath].subcategories[...]` and `data["jackielives"]`
+  is nil → indexing `.subcategories` on nil **throws**. The throw was swallowed by `pcall(nsTick)` with
+  `s.done` already true → silent: NativeSettings init line printed, but NO `[JackieLives]` line, no page.
+  Fix: guard on the TAB path `pathExists("/jackielives")` only (the lib handles a missing tab there
+  cleanly), wrapped in pcall. Lesson: `pathExists` is only safe on a sub-path once the tab already exists.
 - **Menu showed empty ("No mods using native settings installed!") = OUR registration failed, not a
   NativeSettings install issue.** First build registered in `onInit` → `GetMod` nil (load order). Fixed
   with the `onUpdate` retry. Compounded by a **shared-deploy clobber**: a `main` deploy (feature absent)

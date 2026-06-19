@@ -71,14 +71,30 @@ The schedule only spawns idle Jackie at spots whose coordinates you've captured.
 Once captured, walk near a spot during its time block and Jackie appears; leave and he despawns.
 Schedule (game-time): 08–14 noodle · 14–20 Coyote Cojo · 20–02 Afterlife · 02–08 asleep/unavailable.
 
+### Fine-tune his seats (the seat tuner)
+AMM's sit animation is freestanding (invisible chair), so a captured spot rarely lands him perfectly on
+a real stool/chair the first time. The **"Seat position tuner"** panel (in the Jackie Lives window) lets
+you nudge a seat live until it's right:
+1. In the tuner, click the **Venue** you want (only venues with a sit spot are listed) — this also sends
+   Jackie there. Walk over to him.
+2. Slide **X / Y / Z** (position) and **Yaw** (which way he faces) — with **Live** ticked he re-seats as
+   you go. Yaw is what fixes a seat that faces the wrong way; it's now consistent no matter how he arrived.
+3. If a venue has more than one stool, use **`< prev seat / next seat >`** to choose which one you're editing.
+4. Click **"Print coords → config.lua"**. The line appears in the console + the "Last capture" box. Paste
+   it to Claude (or into the venue's `waypoints` entry yourself) to make it permanent.
+
+Collision note: idle Jackie's collision is dropped while he's at a venue (so chairs can't block/shove
+him) — the window's **"Collision … live on Jackie"** line confirms it's off. Toggle with the
+**"Idle Jackie: collisions OFF"** checkbox.
+
 ## Troubleshooting
 - Open the CET overlay; the console shows lines starting with `[JackieLives]`. **Red errors → send them
   to Claude.** Common ones the status line will tell you: "AMM Spawn module not available" (AMM not
   loaded), "Jackie record not found" (AMM character DB issue).
 - If Jackie spawns but doesn't follow/fight, that's the companion hedge not catching — tell Claude; it's
   a known iteration point.
-- Exact placement: idle Jackie currently appears *near* you when you reach his spot (within
-  `proximityRadius`), not pinned to the exact prop. Precise placement is a planned follow-up.
+- Exact placement: idle Jackie spawns when you reach his spot (within `proximityRadius`) and walks to his
+  waypoint. To dial a seat onto a real stool/chair, use the **seat tuner** (see "Fine-tune his seats").
 
 ## Files
 - `init.lua` — all logic (summon, schedule, ban, capture, UI).

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.46"
+Config.version = "0.52"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -137,7 +137,7 @@ Config.companion = {
 -- When V walks off (>getUpRadius) Jackie gets up, says a line, and re-follows. He stays our
 -- companion (never despawns) the whole time. No quest/WolvenKit - a Lua state machine (dinnerTick).
 Config.date = {
-  inviteText           = "Hey - you hungry? Let's grab a bite, just us.",  -- the menu option (V's invite)
+  inviteText           = "Wanna get something to eat?",  -- the menu option (V's invite)
   unlockAfterGameHours = 1.0,    -- the invite only appears after this long together...
   enforceUnlock        = false,  -- ...OFF for now (always show, for testing). Flip true to gate it.
 
@@ -162,16 +162,41 @@ Config.date = {
   -- v0.43: walk/arrival BANTER fully disabled (Antonia). The only spoken beats are the three below.
   -- Jackie's single-line beats (real-matching clips; the restaurant NAME shows via the waypoint + objective):
   ackText    = "Right on, chica.",                  ackSfx    = "jl_1721407637774192672",  -- on accept (heading out)
-  doneText   = "Gettin' one of my good feelings.",  doneSfx   = "jl_1834502468175589376",  -- seated, 2s after sitting (reset)
+  doneText   = "Anyway, what's goin' on?",          doneSfx   = "jl_1878047791342612480",  -- v0.48: seated, 2s after sitting (reset) — relaxed catch-up beat
   getUpText  = "Why, what's the rush?",             getUpSfx  = "jl_1989527454849245184",  -- V walks off -> he gets up
-  -- v0.43b: he won't go out to eat twice a day. If asked within resetCooldownHours of his last
-  -- dinner, he REFUSES with this line and the outing aborts (no walk, no waypoint).
-  refuseText = "Yeaaaah. Had enough for one day, lemme tell you.", refuseSfx = "jl_1697051347046326272",
+  -- v0.43b/v0.47: he won't go out to eat twice a day. If asked within resetCooldownHours of his last
+  -- dinner, he REFUSES the moment V invites him (before the venue picker shows) and the outing aborts.
+  -- v0.48: "Got no time for this!" was unsuitable -> DROPPED. Placeholder reuses the decline line until a
+  -- better "already ate today" clip is chosen from the refreshed (~1000-line) bank. (See TODO backlog.)
+  refuseText = "Why, what's the rush?", refuseSfx = "jl_1989527454849245184",
+
+  -- v0.48: JACKIE drops a hungry HINT himself (not just V's menu invite). While he's your companion and a
+  -- dinner is available (off cooldown), after a randomized in-game gap he simply SAYS this line — no picker,
+  -- no choices. It nudges V to use her own "Wanna get something to eat?" invite. The gap sits close to his
+  -- max summon time so it lands like an occasional "I'm gettin' hungry", not a nag. enabled=false disables.
+  jackieInvite = {
+    enabled           = true,
+    text              = "C'mon, let's go have some lunch.",
+    sfx               = "jl_1834500545020096512",
+    minGapGameMinutes = 140.0,  -- earliest he'll hint after a fresh companion session / the last hint
+    maxGapGameMinutes = 175.0,  -- latest; the actual gap is random in [min,max] in-game minutes
+  },
 
   tree = {
     start = "open",
     nodes = {
+      -- v0.47: V's "Wanna get something to eat?" lands -> Jackie ACCEPTS immediately with the
+      -- "had enough for one day" line, THEN V either commits (-> venue picker) or rainchecks.
+      -- Declining ends the talk HERE, after the question, before the venue list is ever shown.
       open = {
+        jackie  = { text = "Yeah, had enough for one day, lemme tell you.", sfx = "jl_1697051347046326272" },
+        choices = {
+          { text = "Then let's find a spot.", to = "venue"   },
+          { text = "Actually... raincheck.",  to = "decline" },
+        },
+      },
+      -- the restaurant picker only appears once V has committed to going out.
+      venue = {
         restaurantPicker = true,   -- restaurant options are auto-injected here from `restaurants`
         jackiePool = {
           { text = "Man, I'm starvin'. Let's grab a tight-bite. Whaddaya say?", sfx = "jl_1904096844380655616" },
@@ -179,8 +204,7 @@ Config.date = {
           { text = "C'mon. I'm fuckin' starved.",                               sfx = "jl_1834512408575406080" },
         },
         choices = {
-          { text = "You pick, hermano.",     to = nil, action = "dine:random" },
-          { text = "Actually... raincheck.", to = "decline" },
+          { text = "You pick, hermano.", to = nil, action = "dine:random" },
         },
       },
       decline = {
@@ -415,10 +439,13 @@ Config.locationDialogue = {
     cooldownSeconds = 60,   -- after finishing this once, F just grunts until 60s pass
     nodes = {
       open = {
+        -- v0.47: "Don't come here often..." is a FIXED-LOCATION greeting (proximity/meet-at-his-spot)
+        -- only — it makes no sense when he's your companion after a call, so it's dropped from here.
+        -- v0.48: "Anyway, what's goin' on?" moved to the dinner SEATED beat; a casual greeting sits here.
         jackiePool = {
-          { text = "Talk to me, choomba.",                                          sfx = "jl_2239163066690486272" },
-          { text = "V, how you feel? You all right?",                              sfx = "jl_1802590928224841728" },
-          { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
+          { text = "Talk to me, choomba.",            sfx = "jl_2239163066690486272" },
+          { text = "V, how you feel? You all right?", sfx = "jl_1802590928224841728" },
+          { text = "¿Qué onda?",                      sfx = "jl_2015561179233951744" },
         },
         choices = {
           { text = "Just checkin' in. Take it easy.", to = "care" },
@@ -448,76 +475,92 @@ Config.call = {
   ringSeconds   = 2.3,   -- native ring (IncomingCall) plays this long, then we abort + connect
   ringEvent     = "ono_jackie_phone",  -- extra WWise ring SFX layered on ("" = silent)
   spawnDelay    = 2.5,   -- seconds after the call ends before Jackie spawns (was 5.0; halved)
-  -- ARRIVAL METHOD — 3 paths, cycled live from the CET window "Arrival method" button:
-  --   "safe"   = SAFE WALK-IN (arrivalTick): AMM-spawn near V, HIDE through the pop, AI-teleport to
-  --              `spawnDistance`, reveal, jog in -> companion. Rock-solid; the default since v0.44.
-  --   "sprint" = SPRINT-IN (vehicleArrivalTick, bikeless): spawn DIRECTLY at the far navmesh point
-  --              (clean dynamic-entity spawn — no pop near V, no hide hack), SPRINT in, then WALK the
-  --              last `Config.vehicle.sprintToWalk` m before companion.
-  --   "bike"   = VEHICLE ARRIVAL (vehicleArrivalTick + bike): spawn his Arch + Jackie behind V, mount,
-  --              ride in, dismount near you, sprint -> walk -> companion. Being nursed back to health.
-  arrivalMethod        = "safe",
-  vehicleSpawnDelay    = 1.0,   -- seconds after the call ends before the sprint-in / bike Jackie spawns
-  -- v0.31 SPAWN-AT-DISTANCE + WALK-IN:
-  -- He spawns this far from V, snapped onto the navmesh (NavigationSystem) so he never lands
-  -- inside a wall/object, then WALKS in. During the walk he is a PASSIVE NPC (no follower
-  -- role) so the companion catch-up TELEPORT can't skip the distance we put between you; he
-  -- becomes a real companion (combat + follow) only once he's within `companionDistance` of V.
-  -- NOTE ON 100 m: that's near the edge of NPC render distance (~100 m) and a long city path.
-  -- At "Walk" 100 m is ~90 s, so the approach defaults to "Run" (~25-30 s). For a casual
-  -- stroll-up, drop spawnDistance to ~30-40 m and set approachMovement = "Walk".
-  -- v0.33c: hideOnSpawn CONFIRMED working (Antonia) -> back ON. The other two arrival vars
-  -- (spawnBehind, spawnDistance) + arriveDistance are now A/B-testable live from the CET window
-  -- ("Arrival test modes" buttons) so we can dial in the best feel. Values below are the
-  -- starting point; the buttons mutate them at runtime.
-  spawnDistance    = 80.0,   -- metres from V he spawns at (navmesh-snapped), then walks in
-  spawnBehind      = true,   -- spawn BEHIND V (confirmed good); button still toggles for testing
-  hideOnSpawn      = true,   -- ON (confirmed): hide through the spawn-pop + teleport, reveal at distance
-  approachMovement = "Run",  -- "Walk" | "Run" | "Sprint" -- how he covers the distance to V (a jog)
-  -- v0.33d: Sprint was too fast -> the "boost" is now a JOG (Run), same as the steady pace, so he
-  -- jogs the whole way in. (Engine has only discrete Walk/Run/Sprint tiers, no continuous speed.)
-  approachBoostSeconds  = 15.0,
-  approachBoostMovement = "Run",   -- jog (was "Sprint" - too fast over the approach)
-  arriveDistance   = 3.0,    -- metres from V the walk-in MoveTo aims to stop short of him
+  -- ============================================================================
+  -- ARRIVAL METHOD — v0.50: TWO modes only (down from 3). Cycled live in the CET window.
+  --   "foot" = ON-FOOT (the default). DES-spawn Jackie DIRECTLY at `Config.vehicle.spawnDistance`
+  --            (50 m), SPRINT in, swap to a WALK for the last `Config.vehicle.sprintToWalk` m,
+  --            promote to COMPANION at `companionDistance`, then he holds `followDistance` + stops.
+  --   "bike" = his Arch + Jackie spawn at `Config.vehicle.bikeSpawnDistance` (60 m), he mounts, rides in,
+  --            slows at `slowDownDistance` (30 m), PARKS on the road + dismounts at `dismountDistance`
+  --            (20 m), then WALKS the rest to companion.
+  -- BOTH go through vehicleArrivalTick + the shared promoteToCompanion. v0.50 DELETED the old
+  -- "safe" AMM-spawn-near-V + hide + teleport walk-in entirely — DES needs no invisibility hack
+  -- (Jackie spawns out at distance, never pops near V), and the slow all-the-way "walk" mode is gone
+  -- (too slow). This is the big complexity collapse: one spawn backend (DES), one arrival tail.
+  -- ============================================================================
+  arrivalMethod        = "foot",   -- "foot" | "bike"
+  vehicleSpawnDelay    = 1.0,   -- seconds after the call ends before the foot / bike Jackie spawns
+  -- He spawns navmesh-snapped (NavigationSystem) so he never lands inside a wall/object, in the rear
+  -- arc when `spawnBehind`. While approaching he is a PASSIVE DES NPC (no follower role) so the AMM
+  -- companion catch-up TELEPORT can't yank him to V; he becomes a real companion only at `companionDistance`.
+  -- PLACEMENT (v0.52): spawnSides=true (default) spawns him on a SIDE of V — left or right, 90°±20° off
+  -- V's facing, random side (the other side is a fallback if the first has no valid navmesh spot). Still
+  -- obeys the navmesh + same-level (`maxSpawnZDelta`) rules. Set false to use the old `spawnBehind` arc.
+  spawnSides       = true,
+  spawnBehind      = true,   -- only used when spawnSides=false: rear arc (true) vs front (false)
+  approachMovement = "Run",  -- movement tier the COMPANION uses to close to followDistance after handoff
+  arriveDistance   = 3.0,    -- metres from V the sprint/walk MoveTo aims to stop short of him
   followDistance   = 1.6,    -- metres the COMPANION keeps after handoff (so he doesn't clip into V)
-  -- v0.46: ONE handoff knob for ALL THREE arrival types. He promotes to a real companion (combat +
-  -- follow) once he's within this — earlier than before (was 6) so he stops the long solo walk-in
-  -- sooner and just follows you. Then, once companion + within `arrivalGruntDistance`, he barks a grunt.
-  companionDistance    = 18.0,   -- m: promote to companion at this range (safe / sprint / bike)
+  -- HANDOFF: promote to a real companion (combat + follow) once within this. KEEP IT SMALL: AMM's
+  -- SetNPCAsCompanion enables a catch-up TELEPORT, so promoting while he's still far (e.g. 18 m) can
+  -- visibly YANK him into V. v0.50 dropped it to 5 m so he's basically arrived before the teleport
+  -- ever becomes available -> no yank, no running-into-V. Then the grunt fires at arrivalGruntDistance.
+  companionDistance    = 5.0,    -- m: promote to companion at this range (foot + bike)
   arrivalGruntDistance = 4.0,    -- m: once companion + this close, Jackie barks a "made it" grunt
-  maxWalkSeconds   = 90.0,   -- safety: if he hasn't arrived by now, promote anyway (may teleport in)
 }
 
--- ---- SPRINT-IN / VEHICLE ARRIVAL (v0.34, revived v0.46) ---------------------
--- Both non-safe arrivals share this tuning (see Config.call.arrivalMethod):
---   "sprint" — Jackie spawns DIRECTLY at the far navmesh point (clean dynamic-entity spawn, no pop
---              near V), SPRINTS toward V, downshifts to a WALK for the last `sprintToWalk` m.
---   "bike"   — his Arch + Jackie spawn behind V, he mounts, rides in at `cruiseSpeed` (re-targeting
---              V every `retargetInterval`), parks + dismounts at `dismountDistance`, then the SAME
---              sprint -> walk finish. STUCK FAILSAFE + fresh-respawn FOOT FALLBACK cover a broken ride.
--- Both promote to companion at `Config.call.companionDistance` (18 m), not `arriveDistance`.
+-- ---- ARRIVAL TUNING — foot + bike (v0.34, unified v0.50) --------------------
+-- The two arrival modes (Config.call.arrivalMethod) share this block and ONE state machine
+-- (vehicleArrivalTick). Both finish with the SAME sprint -> walk -> companion tail:
+--   "foot" — DES-spawn Jackie at `spawnDistance` (50 m), SPRINT in, downshift to WALK for the last
+--            `sprintToWalk` m, promote at Config.call.companionDistance.
+--   "bike" — Arch + Jackie spawn at `bikeSpawnDistance` (60 m), he mounts + rides in at `cruiseSpeed`
+--            (re-targeting V every `retargetInterval`); at `slowDownDistance` (30 m) he eases to
+--            `slowSpeed`, PARKS the bike on the road + dismounts at `dismountDistance` (20 m), then just
+--            WALKS the rest. A STUCK FAILSAFE bails him to foot if the bike truly can't path (disabled
+--            while he's deliberately slowing); the fresh-respawn FOOT FALLBACK is OPT-IN (footFallback).
 Config.vehicle = {
-  spawnDistance    = 80.0,   -- metres from V Jackie (and the bike) spawn at (navmesh-snapped, rear arc)
-  sprintToWalk     = 25.0,   -- Jackie->V distance where he downshifts sprint -> walk (last 25 m on foot)
-  arriveDistance   = 3.0,    -- Jackie->V distance the foot MoveTo aims to stop short of him
+  spawnDistance     = 50.0,  -- FOOT: metres from V Jackie spawns at (navmesh-snapped), then sprints in
+  -- BIKE spawn distance: 60 m (was 80). 80 m let him path so far out he could leave the streamed/
+  -- rendered zone and stall; 60 m keeps the whole ride on-screen while still giving room to ride + brake.
+  bikeSpawnDistance = 60.0,
+  sprintToWalk      = 25.0,  -- Jackie->V distance where he downshifts sprint -> walk (FOOT only; last 25 m)
+  arriveDistance    = 3.0,   -- Jackie->V distance the foot/walk MoveTo aims to stop short of him
+  -- --- VALID-SPAWN GUARD + STUCK->RESPAWN LADDER (v0.51) ---
+  -- The spawn point is rejected unless it's on the human navmesh AND within `maxSpawnZDelta` of V's
+  -- height, so he can't land on a roof / balcony / metro level / parking deck (wrong floor = usually
+  -- no walkable path). If he STILL can't path in (stutters in place, no progress for
+  -- `respawnStuckSeconds`), he's despawned + respawned at the next-closer `respawnRungs` distance.
+  -- At the closest rung he's on V's own navmesh, so it converges; beyond it, he just hands off in place.
+  maxSpawnZDelta    = 4.0,   -- m: max |Jackie.z - V.z| for a valid spawn point (same floor as V)
+  respawnRungs      = { 35.0, 20.0, 5.0 },  -- progressively-closer respawn distances when stuck
+  respawnStuckSeconds = 10.0,-- v0.52: seconds of no forward progress (to V) before a stuck-respawn fires (2x; was 5 — too tight)
+  respawnProgressEps  = 1.0, -- m: distance he must shave off his closest-so-far to count as "progress"
   -- --- BIKE KNOBS (used by "bike" arrival) ---
   bikeRecord       = "Vehicle.v_sportbike2_arch_jackie_player",  -- Jackie's Arch
   cruiseSpeed      = 8.0,    -- drive speed (8 = careful; he was reckless at higher)
+  slowDownDistance = 30.0,   -- bike->V distance at which he eases off to slowSpeed (brakes smoothly)
+  slowSpeed        = 3.0,    -- m/s drive speed once inside slowDownDistance, so the park isn't a hard stop
+  dismountDistance = 20.0,   -- bike->V distance at which he parks the bike (on the road) + gets off, then WALKS in
   retargetInterval = 3.0,    -- re-issue the drive at V's latest position (longer = less re-path stutter)
-  dismountDistance = 40.0,   -- bike->V distance at which he parks the bike + gets off (was 20)
-  -- STUCK FAILSAFE: if the bike crawls (< stuckSpeed m/s) for stuckSustain s, after a
-  -- stuckGrace beat at the start (he's still climbing on), he parks early + sprints in on foot.
-  -- Covers dense areas where the bike can't path.
-  -- (loosened: he was ditching the bike almost always. Only TRULY stuck counts now.)
-  stuckSpeed       = 1.0,    -- m/s; below this = likely stuck (was 2.0)
-  stuckGrace       = 4.0,    -- seconds after mounting before stuck-detection starts (was 5)
-  stuckSustain     = 4.0,    -- seconds of crawling before he bails off the bike (was 2)
-  maxSeconds       = 120.0,  -- safety: force the companion handoff if the ride-in stalls
-  -- FRESH-RESPAWN FALLBACK (v0.38): the bike ride often breaks. If the arrival hasn't handed off
-  -- to a companion within `fallbackSeconds`, give up on the bike entirely: despawn the bike AND
-  -- Jackie, respawn him FRESH ~`fallbackDistance` m away on the navmesh, and switch to the plain
-  -- on-foot sprint/walk arrival. Fires once per arrival; the maxSeconds teleport is the last resort.
-  fallbackSeconds  = 40.0,   -- no companion handoff by now -> fresh on-foot respawn
+  -- STUCK FAILSAFE: if the bike crawls (< stuckSpeed m/s) for stuckSustain s, after a stuckGrace beat
+  -- at the start (he's still climbing on), he parks early + walks in on foot. Covers dense areas where
+  -- the bike can't path. v0.52: DISABLED while he's inside slowDownDistance (a deliberate crawl near the
+  -- stop was tripping it), and the timers doubled so a brief snag at a light no longer ditches the bike.
+  stuckSpeed       = 1.0,    -- m/s; below this = likely stuck
+  stuckGrace       = 8.0,    -- v0.52: seconds after mounting before stuck-detection starts (2x; was 4)
+  stuckSustain     = 8.0,    -- v0.52: seconds of crawling before he bails off the bike (2x; was 4)
+  -- TWO independent safety timers (they fire at DIFFERENT times + do DIFFERENT things):
+  --   maxSeconds (120) = LAST RESORT. Force the companion handoff in place (no respawn) — may use
+  --                      AMM's catch-up teleport. Always armed.
+  --   fallbackSeconds (40) = (ONLY if footFallback=true) ditch the bike, DESPAWN bike+Jackie and
+  --                      RESPAWN him fresh ~fallbackDistance m out on foot, then sprint/walk in.
+  -- v0.47: footFallback DEFAULTS OFF — it was firing at 40s and killing legit bike rides (an 80 m
+  -- city ride routinely takes >40s) which is what "broke" bike arrivals since v0.38. Off = the bike
+  -- rides uninterrupted like it did in the working v0.36; maxSeconds is the only backstop.
+  footFallback     = false,  -- true = re-enable the 40s ditch-bike-and-respawn-on-foot rescue
+  maxSeconds       = 120.0,  -- LAST RESORT: force companion handoff if the whole arrival stalls
+  fallbackSeconds  = 40.0,   -- (footFallback only) no handoff by now -> fresh on-foot respawn
   fallbackDistance = 40.0,   -- metres from V the fresh Jackie spawns at, then sprints/walks in
 }
 
@@ -699,10 +742,11 @@ Config.defaultAppearance = "jackie_welles_default"   -- summon/arrival + any loc
 Config.locations = {
   -- captured 2026-06-16 (Antonia). sitNearest kept for the future chair-sit feature.
   noodle = {
-    name = "Noodle bar", appearance = "jackie_welles_default", pos = { -1441.064, 1257.748, 23.090 }, yaw = -87.1, sitNearest = true,
+    name = "Noodle bar", appearance = "jackie_welles_default", pos = { -1439.472, 1259.021, 23.090 }, yaw = -87.1, sitNearest = true,
     exitWaypoint = { pos = { -1440.553, 1258.332, 23.099 }, yaw = -108.3 },   -- outside the stall (may not reach if unloaded)
-    waypoints = {
-      { pos = { -1441.064, 1257.748, 23.090 }, yaw = -87.1, pose = "sit" },   -- barstool
+    waypoints = {   -- v0.45: ONE seat = the MIDDLE stool. (Two stools made him fidget/hop between them.)
+      { pos = { -1439.472, 1259.021, 23.090 }, yaw = -87.1, pose = "sit" },   -- MIDDLE stool
+      -- DEPRECATED right stool (kept for reference): pos = { -1440.477, 1258.164, 23.090 }, yaw = -87.1
     },
   },
 

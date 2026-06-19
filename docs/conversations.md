@@ -158,6 +158,126 @@ lay low and try the quiet life — but swears he'll protect V if she ever needs 
 
 ---
 
+## 7. Line dump — 2026-06-19 (Antonia) — to place
+
+Brackets `[ ]` = the part Antonia will **cut from the clip** in audio; the un-bracketed text is what plays.
+
+### 7a. Goodbyes / partings — for BOTH phone hang-up and dismiss
+| Line (after trim) | `sfx` | Notes |
+|---|---|---|
+| Ahí luego, V. | `jl_1698516624514703372` | ✅ **4 separate recordings — rotate all of them** (this + next 3) |
+| Ahí luego, V. | `jl_1790892452886372352` | ✅ recording #2 |
+| Ahí luego, V. | `jl_1697051347046326288` | ✅ recording #3 |
+| Ahí luego, V. | `jl_1790930025243500544` | ✅ recording #4 |
+| Ahí luego. | `jl_1754957630472646704` | ✂️ "[Don't forget to let Dex know we got his toy for him.] Ahí luego." — trim to the sign-off |
+| Better get goin'. | `jl_1967553783536623616` | ✅ also a **stock goodbye** line |
+| Hey V... just keep an eye out, OK? | `jl_1767765385102974976` | ✅ caring parting |
+
+### 7b. "Stop / hold up" flavor (mid-walk / outing)
+| Line (after trim) | `sfx` | Full clip |
+|---|---|---|
+| Gonna stop here, need to sort out a few things before we go on. | `jl_1771945225346895872` | ✂️ "[Place looks deserted.] Gonna stop here, need to sort out a few things before we go on." |
+
+### 7c. Favor / setup
+| Line (after trim) | `sfx` | Full clip / variant |
+|---|---|---|
+| Listen, chica, I got this thing. | `jl_1866205008628969472` | ✂️ "[Mind if I borrow your wheels?]" — variant "Listen, amiga..." `jl_2008326330108538880` |
+
+### 7d. Negatives — too abrupt alone, PAIR with a warm follow-up
+| Bare "no" line (after trim) | `sfx` | Trimmed-off tail |
+|---|---|---|
+| Nah, chica. | `jl_1866261886444662784` | ✂️ "[Not just any other city.]" |
+| Nah. | `jl_2192574119410593792` | ✂️ "[Said it didn't suit her, uh, "style" – hah. You'll see what I mean.]" |
+| Nah, no way, | `jl_1785253540930662400` | ✂️ "[our guy had a saggier neck, many, many folds.]" |
+
+Warm follow-ups to splice after a bare "Nah" (Antonia: combine so it's not abrupt):
+| Follow-up | `sfx` | Full clip |
+|---|---|---|
+| Me 'n' Misty got a little catchin' up to do. | `jl_1614041695221669888` | ✂️ "[I'll sit tight over here.] Me 'n' Misty got a little catchin' up to do." |
+| Sorry, V. | `jl_1888115393428475904` | ✂️ "[Agh. Scratched your baby up pretty bad.] Sorry, V." |
+| Now I go back, find Misty. | `jl_1677043911795367936` | ✂️ "Now I go back, find Misty[ and we do somethin' to make me feel alive again.]" (full version already used in the Misty location tree) |
+
+### 7e. Lunch suggestion
+**"C'mon, let's go have some lunch."** `jl_1834500545020096512` — already wired into the noodle-bar greeting pool
+(`Config.locationDialogue.noodle`). ❓ Also good as a **post-gig** suggestion so JACKIE can open a lunch/date
+invite himself (not only V).
+
+---
+
+## 8. Dinner / date payment arc (DESIGN ❓)
+
+A running gag tied to Jackie's "I quit the merc life, I'm broke now" plot.
+
+- **Date 1 — first time V invites him to eat:** Jackie: *"Uh, I ain't gonna lie... I'm a bit light. I can't
+  pay you now."* `jl_1885122683250601984` → V (text): *"My treat."* Matches him being out of merc money.
+- **Date 3 — the fancy spot:** Jackie suggests a high-end bar. ❓ **Which?** — proposed **Embers** (the
+  Michelin-tier place from the heist briefing; most lore-fitting "fancy"; alt: Afterlife VIP / Empathy).
+  If V asks (playfully) whether *he's* paying this time / will live off her merc money forever:
+  - Jackie: *"Come on, chica. You know I was raised right."* `jl_2028600518010400768`
+  - then he orders: *"Two Tequila Old Fashioneds with a splash of cerveza and a chili garnish."*
+    `jl_1721401856077123596` (singular variant: "A Tequila Old Fashioned..." `jl_1721408614996692992`)
+- **Split-the-bill option:** Jackie: *"Yeah, partner. We'll go halfsies."* `jl_1660742685327118336`
+- More date flavor already in the bank: *"You comin'? Time's precious."* `jl_1989698664979570696` ·
+  *"Sin problemas. [Meet you by the Delamain.]"* `jl_1866394972076257280`
+
+### Afterlife as a date venue — ACCEPT line
+When V invites Jackie specifically to the **Afterlife**, he accepts with:
+*"[But that's done after tomorrow.] Afterlife, here we come, baby! Yeah!"* `jl_1658860298971172864` (✂️ trim prefix).
+
+---
+
+## 8.1 Scene — Date 3 at Embers (script)
+
+The pay-off date in Jackie's "broke ex-merc" arc: after two outings on V's tab, the **3rd dinner** he proposes
+a *fancy* spot himself — **Embers** (the Michelin-tier place from the heist briefing) — and insists on paying.
+
+**Prerequisites to wire (not yet built):**
+- A **completed-dinner counter** (`JL.dinner.count`, ++ when a meal finishes in `dinnerTick`). Fire this scene
+  the first time `count == 2` and the next dinner triggers (i.e. the 3rd), then fall back to the normal flow.
+- **Embers coordinates** captured into `Config.date.restaurants` (key `embers`) — pos/yaw still TODO.
+- Reuses the existing walk → seat → linger state machine; only the dialogue + "who pays" beat are new.
+
+All Jackie lines are real clips; V lines are silent text. ✂️ = trim (full clip shown).
+
+1. **Jackie proposes (instead of the usual jackieOpen line):**
+   Jackie: *"Now, whaddaya say we liquor up and talk life."* `jl_1661715724513484800`
+   → V choices: **"Somewhere nice for once?"** → `embers` · **"Maybe later."** → `decline`
+2. **The "who pays" beat (playful):** V (text): *"You buyin' this time, or livin' off my eddies forever?"*
+   → Jackie: *"Come on, chica. You know I was raised right."* `jl_2028600518010400768`
+3. **Seated at Embers — he orders for them both:**
+   Jackie: *"Two Tequila Old Fashioneds with a splash of cerveza and a chili garnish."* `jl_1721401856077123596`
+   *(singular variant if it's just drinks for one: "A Tequila Old Fashioned…" `jl_1721408614996692992`)*
+4. **Optional split:** V (text): *"We can go halfsies."* → Jackie: *"Yeah, partner. We'll go halfsies."*
+   `jl_1660742685327118336`
+5. **Leave:** V walks off → Jackie (stand-up line): *"Sin problemas. [Meet you by the Delamain.]"*
+   `jl_1866394972076257280` (✂️ trim the Delamain tail), or reuse the standard get-up line.
+
+### Implementation-ready node sketch (drop into `Config.date.tree` once `embers` coords + counter exist)
+```lua
+embersOpen = {   -- entered only on the 3rd dinner (Jackie-proposed)
+  jackie  = { text = "Now, whaddaya say we liquor up and talk life.", sfx = "jl_1661715724513484800" },
+  choices = {
+    { text = "Somewhere nice for once?", to = "embersPay" },
+    { text = "Maybe later.",             to = "decline"   },
+  },
+},
+embersPay = {
+  jackie  = { text = "Come on, chica. You know I was raised right.", sfx = "jl_2028600518010400768" },
+  choices = {
+    { text = "Your treat, then.",   to = nil, action = "dine:embers" },
+    { text = "We'll go halfsies.",  to = "embersSplit" },
+  },
+},
+embersSplit = {
+  jackie  = { text = "Yeah, partner. We'll go halfsies.", sfx = "jl_1660742685327118336" },
+  choices = { { text = "Deal. Let's eat.", to = nil, action = "dine:embers" } },
+},
+```
+*(The seated order line `jl_1721401856077123596` would play as the `doneText`-style beat on sitting at Embers —
+i.e. a per-venue override of the seated line, another small addition.)*
+
+---
+
 ## Appendix — quick line → clip index
 
 Every line above, flat, for ctrl-F:
@@ -233,4 +353,29 @@ jl_1908400584180912128  Ehh… brought wheels with ya? Sure could use some.
 jl_1793962760102408192  Agh, esa chamba te va a matar.
 jl_1877989126535311360  Buena suerte.
 jl_1740241310388776960  But don't you worry. Lemme help you find digs. You gotta live somewhere.
+
+LINE DUMP 2026-06-19 (brackets = Antonia trims them out)
+jl_1698516624514703372  Ahí luego, V.                (goodbye — recording 1/4)
+jl_1790892452886372352  Ahí luego, V.                (goodbye — recording 2/4)
+jl_1697051347046326288  Ahí luego, V.                (goodbye — recording 3/4)
+jl_1790930025243500544  Ahí luego, V.                (goodbye — recording 4/4)
+jl_1754957630472646704  [Don't forget to let Dex know we got his toy for him.] Ahí luego.
+jl_1967553783536623616  Better get goin'.            (also stock goodbye)
+jl_1767765385102974976  Hey V... just keep an eye out, OK?
+jl_1771945225346895872  [Place looks deserted.] Gonna stop here, need to sort out a few things before we go on.
+jl_1866205008628969472  Listen, chica, I got this thing. [Mind if I borrow your wheels?]
+jl_2008326330108538880  Listen, amiga, I got this thing. [Mind if I borrow your wheels?]  (variant)
+jl_1866261886444662784  Nah, chica. [Not just any other city.]
+jl_2192574119410593792  Nah. [Said it didn't suit her, uh, "style" – hah. You'll see what I mean.]
+jl_1785253540930662400  Nah, no way, [our guy had a saggier neck, many, many folds.]
+jl_1614041695221669888  [I'll sit tight over here.] Me 'n' Misty got a little catchin' up to do.
+jl_1888115393428475904  [Agh. Scratched your baby up pretty bad.] Sorry, V.
+jl_1677043911795367936  Now I go back, find Misty[ and we do somethin' to make me feel alive again.]
+jl_1834500545020096512  C'mon, let's go have some lunch.   (already in noodle tree)
+jl_1885122683250601984  Uh, I ain't gonna lie... I'm a bit light. I can't pay you now.  (date 1)
+jl_2028600518010400768  Come on, chica. You know I was raised right.   (date 3 — who pays)
+jl_1721401856077123596  Two Tequila Old Fashioneds with a splash of cerveza and a chili garnish.
+jl_1721408614996692992  A Tequila Old Fashioned with a splash of cerveza and a chili garnish.  (singular variant)
+jl_1660742685327118336  Yeah, partner. We'll go halfsies.
+jl_1658860298971172864  [But that's done after tomorrow.] Afterlife, here we come, baby! Yeah!  (afterlife date accept)
 ```

@@ -23,13 +23,15 @@
      (dwell → walk → sit/lean pose). returnToPost hands a dismissed companion back here.
    • COMPANION        (state: JL.summon) — summonJackie (instant) / promoteToCompanion
      (after an arrival). Follower role = AMM SetNPCAsCompanion. dismissJackie removes him.
-   • SAFE WALK-IN     (state: JL.arrival) — arrivalTick: AMM-spawn near V, hide through the pop,
-     teleport to `spawnDistance`, reveal, jog in, hand off to COMPANION. Config.call.arrivalMethod="safe".
-   • SPRINT-IN / BIKE (state: JL.varrival) — vehicleArrivalTick: "sprint" spawns Jackie directly at
-     `spawnDistance` (clean dynamic-entity spawn) and runs in; "bike" spawns his Arch + Jackie behind
-     V, mounts, rides in, dismounts. BOTH finish SPRINT -> WALK -> COMPANION. arrivalMethod="sprint"/"bike".
-   • All three promote to companion at `Config.call.companionDistance` (18 m), then bark a grunt once
-     within `Config.call.arrivalGruntDistance` (4 m). (See promoteToCompanion / arrivalGruntTick.)
+   • ARRIVAL (v0.50)  (state: JL.varrival) — vehicleArrivalTick is the ONE arrival machine, TWO modes
+     (Config.call.arrivalMethod): "foot" DES-spawns Jackie at `Config.vehicle.spawnDistance` (50 m) and
+     SPRINTS him in (-> WALK last 25 m); "bike" spawns his Arch + Jackie at `bikeSpawnDistance` (60 m),
+     mounts, rides in, slows at 30 m, PARKS on the road at 20 m, then WALKS the rest. Both end at
+     COMPANION via `Config.call.companionDistance` (5 m, small so AMM's catch-up teleport can't yank him
+     into V), then bark within `arrivalGruntDistance` (4 m). Spawn point obeys: same level as V
+     (`maxSpawnZDelta`), on a SIDE of V (`spawnSides`), and a STUCK->respawn-closer ladder (`respawnRungs`)
+     if he can't path in. NOTE: the old AMM-spawn+hide+teleport "safe walk-in" + invisibility hack were
+     DELETED in v0.50 — DES spawns out at distance, never pops near V.
    • DINNER OUTING    (state: JL.dinner)  — dinnerTick: companion Jackie walks to a
      restaurant, sits, resets his companion clock, re-follows. Owns its own collision.
    • DIALOGUE/CALL    (Branch.*, dlg, callTick) — the voiced choice-box + holocall convo.
@@ -62,7 +64,7 @@ local JL = {
              collisionOff = false },   -- v0.44: idle collision state (driven by Config.idleNoCollision)
   -- v0.43 seat tuner: live X/Y/Z/yaw OFFSETS from a location's captured seat, so a sit spot can be
   -- nudged in-game until perfect, then printed for config.lua. Targets Config.locations[key].
-  tuner  = { init = false, key = "noodle", live = true, pendingApplyAt = nil,
+  tuner  = { init = false, key = "noodle", seatIdx = 1, live = true, pendingApplyAt = nil,
              baseX = 0, baseY = 0, baseZ = 0, baseYaw = 0,
              dx = 0, dy = 0, dz = 0, dyaw = 0,
              prevX = 0, prevY = 0, prevZ = 0, prevYaw = 0 },
@@ -81,7 +83,8 @@ local JL = {
   call    = { ringingAt = nil },  -- holocall: clock time he "picks up" after the ring
   -- v0.41 dinner outing: walk to a chosen restaurant -> linger -> full companion-clock reset.
   dinner  = { phase = nil, dest = nil, destName = nil, destYaw = nil, mappinId = nil, satAt = nil,
-              lastResetGame = nil, collisionOff = false, seatDeadline = nil, sitFireAt = nil },  -- v0.44 seat rework
+              lastResetGame = nil, collisionOff = false, seatDeadline = nil, sitFireAt = nil,  -- v0.44 seat rework
+              nextOfferGame = nil, offerSession = nil },  -- v0.48: Jackie's self-initiated dinner offer schedule
   timer  = 0,
   clock  = 0,        -- accumulated game seconds (for talk cooldowns)
   lastTalk = -999,
@@ -329,13 +332,15 @@ local function clearVehicleArrival()
   JL.varrival.at, JL.varrival.phase, JL.varrival.bikeId, JL.varrival.bikeHandle = nil, nil, nil, nil
   JL.varrival.placeAt, JL.varrival.driveAt, JL.varrival.sprintAt, JL.varrival.deadline, JL.varrival.driveCmd = nil, nil, nil, nil, nil
   JL.varrival.footFallbackAt, JL.varrival.footTried, JL.varrival.useBike = nil, nil, nil   -- v0.38 fallback / v0.46 bike flag
+  JL.varrival.closestD, JL.varrival.lastProgressT, JL.varrival.rungIdx = nil, nil, nil      -- v0.51 stuck-respawn tracker
+  JL.varrival.pingAt, JL.varrival.slowedLogged = nil, nil
 end
 
 local function dismissJackie()
   if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
   JL.summon.companionSinceGame, JL.summon.companionExpiresGame = nil, nil   -- v0.39: reset duration clock
-  JL.summon.arrivalGruntPending = false   -- v0.46: cancel a pending "made it" grunt
+  JL.summon.arrivalGreetPending = false   -- v0.46/v0.48: cancel a pending arrival greeting
   JL.arrival.at, JL.arrival.phase, JL.arrival.placeAt, JL.arrival.moveAt, JL.arrival.deadline = nil, nil, nil, nil, nil
   JL.leaving.phase, JL.leaving.deadline = nil, nil   -- v0.33: cancel any in-progress walk-off
   clearVehicleArrival()
@@ -1225,18 +1230,8 @@ end
 local function startDinnerWalk(key)
   if not JL.summon.active then return end
   local D = Config.date or {}
-  -- v0.43b: he won't go out to eat twice in one day. Asked again within resetCooldownHours of his
-  -- last dinner -> he refuses and the outing ABORTS (no walk, no waypoint, no phase change).
-  do
-    local g  = getGameSeconds()
-    local cd = (D.resetCooldownHours or 24.0) * 3600
-    if JL.dinner.lastResetGame and g and (g - JL.dinner.lastResetGame) < cd then
-      pcall(function() speakJackieLine(D.refuseText, D.refuseSfx) end)
-      JL.ui.status = "Jackie already ate out today - maybe tomorrow."
-      log("Dinner: refused (within " .. tostring(D.resetCooldownHours or 24) .. "h of his last dinner).")
-      return
-    end
-  end
+  -- v0.47: the "not twice a day" refusal moved UP to the invite (runCallAction "start_date"), so by the
+  -- time we get here V has already passed the cooldown gate and committed to a venue.
   local r = findRestaurant(key)
   if not r or not r.pos then
     armCompanionTimer((Config.companion and Config.companion.maxGameHours) or 6.0)
@@ -1669,7 +1664,19 @@ local function runCallAction(name)
     return
   end
   if name == "start_date" then
-    if Config.date and Config.date.tree then pcall(function() Branch.start(nil, Config.date.tree) end) end
+    if not (Config.date and Config.date.tree) then return end
+    local D = Config.date
+    -- v0.47: the "not twice a day" refusal now fires HERE, right after V's invite, so an
+    -- on-cooldown Jackie declines immediately with refuseText and the venue picker never shows.
+    local g  = getGameSeconds()
+    local cd = (D.resetCooldownHours or 24.0) * 3600
+    if JL.dinner.lastResetGame and g and (g - JL.dinner.lastResetGame) < cd then
+      pcall(function() speakJackieLine(D.refuseText, D.refuseSfx) end)
+      JL.ui.status = "Jackie already ate out today - maybe tomorrow."
+      log("Dinner: refused at invite (within " .. tostring(D.resetCooldownHours or 24) .. "h of his last dinner).")
+      return
+    end
+    pcall(function() Branch.start(nil, Config.date.tree) end)
     return
   end
   if type(name) == "string" and name:sub(1, 5) == "dine:" then   -- v0.41: V picked a restaurant
@@ -1686,21 +1693,14 @@ local function runCallAction(name)
   if name ~= "summon_arrival" then return end
   if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
-  -- v0.46: route by arrivalMethod — "sprint"/"bike" use vehicleArrivalTick, "safe" the on-foot walk-in.
-  local method = (Config.call and Config.call.arrivalMethod) or "safe"
-  if method == "sprint" or method == "bike" then
-    local delay = (Config.call and Config.call.vehicleSpawnDelay) or 6.0
-    JL.varrival.at      = (JL.clock or 0) + delay
-    JL.varrival.useBike = (method == "bike")
-    JL.ui.status = (method == "bike") and ("Jackie's grabbin' his bike (%.0fs)..."):format(delay)
-                                        or ("Jackie's headin' over (%.0fs)..."):format(delay)
-    log(("Call: %s arrival scheduled in %ss."):format(method == "bike" and "BIKE" or "SPRINT-IN", tostring(delay)))
-    return
-  end
-  local delay = (Config.call and Config.call.spawnDelay) or 5.0
-  JL.arrival.at = (JL.clock or 0) + delay
-  JL.ui.status = ("Jackie's on his way (%.0fs)..."):format(delay)
-  log("Call: arrival scheduled in " .. tostring(delay) .. "s.")
+  -- v0.50: two modes only — both run through vehicleArrivalTick (foot = bikeless, bike = useBike).
+  local bike  = (Config.call and Config.call.arrivalMethod) == "bike"
+  local delay = (Config.call and Config.call.vehicleSpawnDelay) or 1.0
+  JL.varrival.at      = (JL.clock or 0) + delay
+  JL.varrival.useBike = bike
+  JL.ui.status = bike and ("Jackie's grabbin' his bike (%.0fs)..."):format(delay)
+                       or ("Jackie's headin' over (%.0fs)..."):format(delay)
+  log(("Call: %s arrival scheduled in %ss."):format(bike and "BIKE" or "FOOT", tostring(delay)))
 end
 
 -- Begin a holocall. With useNativeWindow: fire the native RING (IncomingCall) now; callTick
@@ -1845,26 +1845,44 @@ local function navmeshArrivalPoint(distance)
     JL.arrival.seeded = true
   end
   local fwdAng  = math.atan2(fwd.y, fwd.x)
-  local behind  = not (Config.call and Config.call.spawnBehind == false)   -- default TRUE
-  local baseAng = behind and (fwdAng + math.pi) or fwdAng                  -- directly behind V (or ahead)
-  local jitter  = (math.random() * 180.0) - 90.0                           -- random dir in the 180-deg arc
-  -- try the random direction first, then nearby angles (clamped to that half of V), then closer.
-  for _, df in ipairs({ 1.0, 0.8, 0.6 }) do
-    local d = distance * df
-    for _, deg in ipairs({ 0, 25, -25, 50, -50, 75, -75, 90, -90 }) do
-      local rel = math.max(-90.0, math.min(90.0, jitter + deg))            -- keep him on V's chosen side
-      local a   = baseAng + math.rad(rel)
-      local cand = Vector4.new(pp.x + math.cos(a) * d, pp.y + math.sin(a) * d, pp.z, 1.0)
-      local snapped = snapToNavmesh(cand)
-      if snapped then
-        log(("Call: arrival navmesh point %s dist=%.0f rel=%+.0f -> { %.2f, %.2f, %.2f }")
-            :format(behind and "BEHIND" or "front", d, rel, snapped.x, snapped.y, snapped.z))
-        return snapped
+  -- v0.52: PLACEMENT. Default = a SIDE of V (left or right, 90°±20° off forward, random side first; the
+  -- other side is tried as a fallback). Set Config.call.spawnSides=false to fall back to the old
+  -- behind/front placement (Config.call.spawnBehind). Build the ordered list of base angles to try.
+  local bases, label = {}, ""
+  if Config.call and Config.call.spawnSides ~= false then
+    local s = (math.random() < 0.5) and 1.0 or -1.0                        -- +1 = one side, -1 = the other
+    local j = math.rad((math.random() * 40.0) - 20.0)                      -- ±20° within the side cone
+    bases = { fwdAng + s * (math.pi * 0.5) + j, fwdAng - s * (math.pi * 0.5) + j }   -- chosen side, then the other
+    label = "SIDE"
+  else
+    local behind = not (Config.call and Config.call.spawnBehind == false)  -- default TRUE
+    bases = { behind and (fwdAng + math.pi) or fwdAng }
+    label = behind and "BEHIND" or "front"
+  end
+  -- v0.51: reject snapped points whose height differs from V's by more than `maxSpawnZDelta`, so he
+  -- never lands on a roof / balcony / metro level / parking deck the navmesh-below search can find. A
+  -- same-level point is far likelier to actually have a walkable PATH to V (the stuck-respawn ladder
+  -- is the backstop if it still doesn't).
+  local maxZ = (Config.vehicle and Config.vehicle.maxSpawnZDelta) or 4.0
+  -- for each base direction: sweep a few nearby angles + shorter distances until something snaps onto
+  -- the human navmesh AT V'S LEVEL (a blocked direction/wall still yields a spot).
+  for _, baseAng in ipairs(bases) do
+    for _, df in ipairs({ 1.0, 0.8, 0.6 }) do
+      local d = distance * df
+      for _, deg in ipairs({ 0, 15, -15, 30, -30, 45, -45 }) do
+        local a    = baseAng + math.rad(deg)
+        local cand = Vector4.new(pp.x + math.cos(a) * d, pp.y + math.sin(a) * d, pp.z, 1.0)
+        local snapped = snapToNavmesh(cand)
+        if snapped and math.abs(snapped.z - pp.z) <= maxZ then
+          log(("Call: arrival navmesh point %s dist=%.0f off=%+.0f dZ=%+.1f -> { %.2f, %.2f, %.2f }")
+              :format(label, d, deg, snapped.z - pp.z, snapped.x, snapped.y, snapped.z))
+          return snapped
+        end
       end
     end
   end
-  log(("Call: NO navmesh point within %.0fm (%s arc) -> plain forward point.")
-      :format(distance, behind and "rear" or "front"))
+  log(("Call: NO navmesh+height-valid point within %.0fm (%s, dZ<=%.0f) -> plain forward point.")
+      :format(distance, label, maxZ))
   return nil
 end
 
@@ -2042,29 +2060,33 @@ end
 -- unlike the world TeleportationFacility which silently no-ops on them (confirmed in-game: the
 -- facility Teleport left Jackie 1.9 m from V). doNavTest snaps the target onto navmesh; sent
 -- through the AI controller, the same channel the move command uses.
-local function aiTeleport(handle, pos, yawDeg)
+local function aiTeleport(handle, pos, yawDeg, doNavTest)
   if not handle or not pos then return false end
+  if doNavTest == nil then doNavTest = true end   -- default ON (existing callers); pass FALSE for exact placement
   return (pcall(function()
     local cmd = NewObject('handle:AITeleportCommand')
     cmd.position  = pos
     cmd.rotation  = yawDeg or 0.0
-    cmd.doNavTest = true
+    cmd.doNavTest = doNavTest
     handle:GetAIControllerComponent():SendCommand(cmd)
   end))
 end
 
--- v0.45: place a SETTLED npc at an EXACT world pos + yaw with NO navmesh snap. The seat tuner needs
--- this (doNavTest=true ate small slider nudges by snapping to the nearest navmesh point), and the
--- SIT facing needs it (otherwise the workspot inherits his walk-in direction -> wrong seat angle).
--- Uses the TeleportationFacility: IMMEDIATE + sets yaw, and reliable on a settled NPC (the "no-op on
--- a FRESH npc" caveat doesn't apply to idle Jackie who's been at his venue). We deliberately do NOT
--- queue an AITeleportCommand here — it'd apply a frame later and could eject him from the seat.
+-- v0.45: place a npc at an EXACT world pos + yaw, with NO navmesh snap. The seat tuner needs this
+-- (doNavTest=true ate small slider nudges by snapping to the nearest navmesh point), and the SIT
+-- facing needs it (else the workspot inherits his walk-in direction -> wrong seat angle).
+-- IMPORTANT: the AITeleportCommand (doNavTest=false) is what ACTUALLY relocates a spawned puppet — the
+-- world TeleportationFacility often no-ops on them (see docs/spawn_at_distance_research.md), so we lead
+-- with the AI command and use the facility only as a belt-and-braces second write. It's ASYNC (lands a
+-- frame or two later), so callers MUST leave a gap before playing a workspot or it can eject him.
 local function placeAtExact(handle, pos, yawDeg)
   if not handle or not pos then return false end
-  return (pcall(function()
+  aiTeleport(handle, pos, yawDeg, false)            -- the real mover (exact, no navmesh snap)
+  pcall(function()
     local tf = Game.GetTeleportationFacility()
     if tf then tf:Teleport(handle, pos, EulerAngles.new(0.0, 0.0, yawDeg or 0.0)) end
-  end))
+  end)
+  return true
 end
 
 -- v0.43: toggle a spawned NPC's collision. NPCPuppet:DisableCollision()/EnableCollision() drop the
@@ -2096,129 +2118,16 @@ local function promoteToCompanion()
   sendWalkToPlayer(h, (Config.call and Config.call.approachMovement) or "Run",
                       (Config.call and Config.call.followDistance) or 1.6)
   JL.summon.companionSet, JL.summon.walkIn = true, false
-  JL.summon.arrivalGruntPending = true   -- v0.46: bark a "made it" grunt once he closes to arrivalGruntDistance
+  JL.summon.arrivalGreetPending = true   -- v0.46/v0.48: bark a fresh greeting once he closes to arrivalGruntDistance
 end
 
--- Stepped from onUpdate. Phases:
---  (0) JL.arrival.at  -> pick a navmesh point, spawn Jackie PASSIVE 1 m from V.
---  (1) "placing"      -> AI-teleport him to the far point; arm a 0.7s verify.
---  (2) "teleporting"  -> verify he actually moved out, then send the move-to-V command.
---  (3) "walking"      -> when he's close (or after maxWalkSeconds) make him a companion.
--- v0.33b: for the first `approachBoostSeconds` after the walk-in starts, move one tier faster
--- (`approachBoostMovement`) so he closes the gap quickly, then settle to `approachMovement`.
-local function arrivalMoveType()
-  local c = Config.call or {}
-  local base = c.approachMovement or "Walk"
-  local bs = c.approachBoostSeconds
-  if bs and JL.arrival.walkStart and ((JL.clock or 0) - JL.arrival.walkStart) < bs then
-    return c.approachBoostMovement or base
-  end
-  return base
-end
-
-local function arrivalTick()
-  -- Keep a called-in Jackie HIDDEN from the instant the entity exists until he's placed at distance,
-  -- so the brief AMM "spawn 1 m in front of V" pop + the teleport are never seen. v0.33d fixes a
-  -- flash: (1) AMM only sets spawn.handle several frames late (a Cron poll), so we ALSO resolve the
-  -- entity ourselves via spawn.entityID (set synchronously by SpawnNPC) to hide it frames earlier;
-  -- (2) we RE-APPLY the hide EVERY tick until reveal - a single ToggleVisuals(false) fired before the
-  -- visual components attach silently no-ops, so hiding once left him visible. Re-applying sticks.
-  if JL.arrival.hideUntilPlaced then
-    local sp = JL.summon.spawn
-    local hh = sp and sp.handle
-    if not hh and sp and sp.entityID then pcall(function() hh = Game.FindEntityByID(sp.entityID) end) end
-    if hh then
-      setVisible(hh, false)
-      if not JL.arrival.hidden then JL.arrival.hidden = true; log("Call: Jackie hidden during placement.") end
-    end
-  end
-  if JL.arrival.at and (JL.clock or 0) >= JL.arrival.at then
-    JL.arrival.at = nil
-    local dist = (Config.call and Config.call.spawnDistance) or 60.0
-    JL.arrival.pt = navmeshArrivalPoint(dist) or arrivalPoint()       -- fallback: plain forward point
-    local spawn, err = ammSpawn(0)                                    -- 0 = passive (no follower teleport)
-    if not spawn then JL.ui.status = "Arrival spawn failed: " .. tostring(err); log("Arrival spawn failed: " .. tostring(err)); return end
-    JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = spawn, true, false, true
-    JL.arrival.hideUntilPlaced = not (Config.call and Config.call.hideOnSpawn == false)  -- default TRUE
-    JL.arrival.hidden          = false
-    -- v0.33d: try to hide him THIS very frame (entity may already be resolvable via entityID),
-    -- so there's no one-frame visible pop before the per-tick hide loop above kicks in.
-    if JL.arrival.hideUntilPlaced then
-      local hh = spawn.handle
-      if not hh and spawn.entityID then pcall(function() hh = Game.FindEntityByID(spawn.entityID) end) end
-      if hh then setVisible(hh, false); JL.arrival.hidden = true end
-    end
-    JL.arrival.placeAt = (JL.clock or 0) + 0.5                        -- let AMM finish placing before we move him
-    JL.arrival.phase   = "placing"
-    JL.ui.status = "Jackie's on his way..."
-    log("Call: Jackie spawned passive; place-at-distance armed (+0.8s).")
-    return
-  end
-  if JL.arrival.phase == "placing" and JL.arrival.placeAt and (JL.clock or 0) >= JL.arrival.placeAt then
-    JL.arrival.placeAt = nil
-    local h = JL.summon.spawn and JL.summon.spawn.handle
-    if not h then log("Call: arrival place skipped (no handle)."); JL.arrival.phase = nil; return end
-    setFriendly(h)
-    teleportEntity(h, JL.arrival.pt)        -- world facility (belt) - often no-ops on a fresh NPC
-    aiTeleport(h, JL.arrival.pt)            -- AI command - the one that actually relocates puppets
-    JL.arrival.moveAt = (JL.clock or 0) + 0.7        -- let the teleport APPLY before we verify + walk
-    JL.arrival.phase  = "teleporting"
-    JL.ui.status = "Placing Jackie..."
-    log("Call: teleport-to-distance sent (facility + AI command); verify in 0.7s.")
-    return
-  end
-  if JL.arrival.phase == "teleporting" and JL.arrival.moveAt and (JL.clock or 0) >= JL.arrival.moveAt then
-    JL.arrival.moveAt = nil
-    local h = JL.summon.spawn and JL.summon.spawn.handle
-    if not h then JL.arrival.phase = nil; return end
-    -- Did the teleport stick? (read on a LATER tick - reading it the same frame as Teleport
-    -- showed the stale pre-teleport position.)
-    local pp = playerPos()
-    local jp; pcall(function() jp = h:GetWorldPosition() end)
-    local d  = (pp and jp) and dist3(pp, jp) or nil
-    log(("Call: after teleport, Jackie is %s m from V (target ~%.0f m)."):format(
-        d and ("%.1f"):format(d) or "?", (Config.call and Config.call.spawnDistance) or 40.0))
-    if d and d < 8.0 then                              -- teleport didn't take -> one more facility try
-      log("Call: teleport did NOT move him (still near V); retrying facility teleport once.")
-      teleportEntity(h, JL.arrival.pt)
-    end
-    -- placed at distance now -> REVEAL him (he was hidden through the spawn-pop + teleport).
-    if JL.arrival.hidden then setVisible(h, true); log("Call: Jackie revealed at distance.") end
-    JL.arrival.hideUntilPlaced, JL.arrival.hidden = false, false
-    JL.arrival.walkStart   = JL.clock or 0           -- v0.33b: start the speed-boost window
-    local moved = sendMoveToPlayer(h, arrivalMoveType(), (Config.call and Config.call.arriveDistance) or 3.0)
-    JL.arrival.phase       = "walking"
-    JL.arrival.deadline    = (JL.clock or 0) + ((Config.call and Config.call.maxWalkSeconds) or 120.0)
-    JL.arrival.lastReissue = JL.clock or 0
-    JL.ui.status = "Jackie's heading your way..."
-    log("Call: move-to-V command sent (ok=" .. tostring(moved) .. ").")
-    return
-  end
-  if JL.arrival.phase == "walking" then
-    local h = JL.summon.spawn and JL.summon.spawn.handle
-    if not h then JL.arrival.phase = nil; return end
-    local pp = playerPos()
-    local jp; pcall(function() jp = h:GetWorldPosition() end)
-    local d   = (pp and jp) and dist3(pp, jp) or nil
-    local now = JL.clock or 0
-    local arrived = d and d <= ((Config.call and Config.call.companionDistance) or 18.0)  -- v0.46: earlier handoff
-    if arrived or (JL.arrival.deadline and now >= JL.arrival.deadline) then
-      promoteToCompanion()
-      JL.arrival.phase, JL.arrival.deadline = nil, nil
-      JL.ui.status = arrived and "Jackie's with you." or "Jackie rejoined."
-      log(("Call: handoff to companion (%s, d=%s m)."):format(
-          arrived and "arrived" or "deadline", d and ("%.1f"):format(d) or "?"))
-    elseif (now - (JL.arrival.lastReissue or 0)) >= 2.0 then       -- re-issue MoveTo with V's CURRENT coords
-      JL.arrival.lastReissue = now
-      sendMoveToPlayer(h, arrivalMoveType(), (Config.call and Config.call.arriveDistance) or 3.0)
-      if d then log(("Call: walking in... %.1f m to V."):format(d)) end
-    end
-  end
-end
+-- v0.50: the old AMM-spawn-near-V + HIDE + teleport "safe walk-in" (arrivalTick / arrivalMoveType)
+-- was DELETED here. Both arrival modes now spawn via DES out at distance (no pop near V -> no
+-- invisibility hack needed) and share vehicleArrivalTick's sprint -> walk -> companion tail. See the
+-- ARRIVAL design note above Config.call in config.lua.
 
 -- ---------------------------------------------------------------------------
--- VEHICLE ARRIVAL (v0.34) - Jackie rides in on his Arch. Validated in the
--- JackieVehicleTest harness, then folded in here. Reuses the existing helpers
+-- ARRIVAL (v0.34, unified v0.50) - the ONE arrival state machine, for BOTH modes. Reuses helpers
 -- (navmeshArrivalPoint / ammSpawn / aiTeleport / sendMoveToPoint / promoteToCompanion).
 -- Pipeline: spawn bike behind V + spawn passive Jackie -> teleport him to the bike + mount as
 -- driver -> drive in (re-targeting V every retargetInterval) -> stop+dismount at dismountDistance
@@ -2388,6 +2297,41 @@ local function vehicleArrivalFootFallback(reason)
       :format(tostring(reason), c.fallbackDistance or 40.0))
 end
 
+-- v0.51: (re)spawn a fresh on-foot Jackie `dist` m from V (navmesh + height-valid point) and drop
+-- into the "sprinting" phase. Used for BOTH the initial foot arrival and the STUCK -> RESPAWN-CLOSER
+-- ladder (if a sprinting/walking Jackie can't path to V — bad navmesh island / wrong building level —
+-- we kill him and respawn at the next-closer rung). Despawns any current arrival Jackie + bike first
+-- so we never leave a duplicate. Returns true on success.
+local function beginFootApproach(dist, reason)
+  local va, c = JL.varrival, vehCfg()
+  local now = JL.clock or 0
+  local pp  = playerPos()
+  -- clear out whatever's there (DES Jackie + any bike) so there's never a second body
+  despawnArrivalBike()
+  local old = JL.summon.spawn
+  if old then pcall(function() ammDespawn(old) end); if old.id then deleteEntityById(old.id) end end
+  JL.summon.spawn = nil
+  local pt = navmeshArrivalPoint(dist) or arrivalPoint()
+  if not pt then JL.ui.status = "Arrival: no valid spawn point."; log(("FootApproach: NO navmesh/height-valid point at %.0f m."):format(dist)); return false end
+  local jid = spawnDynEntity(Config.jackieRecord or "Character.Jackie", pt, yawToward(pt, pp), "JackieLives_jackie")
+  if not jid then JL.ui.status = "Arrival spawn failed (see console)."; log("FootApproach: spawn failed."); return false end
+  JL.summon.spawn = { id = jid, handle = nil }
+  JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
+  va.pt             = pt
+  va.bikeId, va.bikeHandle = nil, nil
+  va.phase          = "sprinting"
+  va.sprintAt       = now + 0.8
+  va.unmountAgainAt = nil
+  va.lastReissue    = -999
+  va.deadline       = now + (c.maxSeconds or 120.0)
+  va.footTried      = true
+  va.pingAt, va.slowedLogged = 0, false
+  va.closestD, va.lastProgressT = nil, now   -- reset the stuck-detector for this (re)spawn
+  JL.ui.status = "Jackie's on his way (sprinting in)..."
+  log(("FootApproach: spawned ~%.0f m (%s); sprinting in."):format(dist, tostring(reason)))
+  return true
+end
+
 local function vehicleArrivalTick()
   local va, c = JL.varrival, vehCfg()
   -- (0) scheduled -> spawn at distance. TWO sub-paths (va.useBike, set when the arrival is armed):
@@ -2399,52 +2343,48 @@ local function vehicleArrivalTick()
   -- dialogue / dismiss) treats him as the summoned Jackie.
   if va.at and (JL.clock or 0) >= va.at then
     va.at = nil
-    local pp = playerPos()
-    va.pt = navmeshArrivalPoint(c.spawnDistance or 80.0) or arrivalPoint()
-    if not va.pt then JL.ui.status = "Arrival: no spawn point."; return end
-    local yaw = yawToward(va.pt, pp)                                    -- face V (the way he'll ride/run)
+    va.rungIdx = 0   -- v0.51: stuck-respawn ladder starts fresh
 
-    if va.useBike then
-      -- BIKE: bike + Jackie spawn together behind V (local mount).
-      va.bikeId  = spawnDynEntity(c.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", va.pt, yaw, "JackieLives_bike")
-      local jpos = snapToNavmesh(Vector4.new(va.pt.x + 1.5, va.pt.y, va.pt.z, 1.0)) or va.pt
-      local jid  = spawnDynEntity(Config.jackieRecord or "Character.Jackie", jpos, yaw, "JackieLives_jackie")
-      if not va.bikeId or not jid then
-        JL.ui.status = "Vehicle arrival spawn failed (see console)."
-        log("VehArrival: spawn failed (bike=" .. tostring(va.bikeId ~= nil) .. ", jackie=" .. tostring(jid ~= nil) .. ")")
-        despawnArrivalBike(); if jid then deleteEntityById(jid) end; return
-      end
-      JL.summon.spawn = { id = jid, handle = nil }
-      JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
-      va.bikeHandle = nil
-      va.placeAt    = (JL.clock or 0) + 1.0
-      va.phase      = "placing"
-      va.deadline   = (JL.clock or 0) + (c.maxSeconds or 120.0)
-      va.footFallbackAt = (JL.clock or 0) + (c.fallbackSeconds or 40.0)   -- v0.38 fresh-respawn deadline
-      va.footTried  = false
-      JL.ui.status = "Jackie's on his way (bike)..."
-      log("VehArrival: bike + Jackie spawned at distance; mount in 1.0s.")
+    if not va.useBike then
+      -- FOOT: spawn at Config.vehicle.spawnDistance (50 m) and sprint in (handled by the helper, which
+      -- the stuck-respawn ladder also reuses). DES + navmesh/height-valid point, no invisibility hack.
+      beginFootApproach(c.spawnDistance or 50.0, "call")
       return
     end
 
-    -- SPRINT (bikeless)
-    local jid = spawnDynEntity(Config.jackieRecord or "Character.Jackie", va.pt, yaw, "JackieLives_jackie")
-    if not jid then
-      JL.ui.status = "Sprint-in arrival spawn failed (see console)."
-      log("SprintArrival: spawn failed.")
-      return
+    -- BIKE: bike needs room to ride + brake, so it spawns farther than the foot sprint-in.
+    local pp = playerPos()
+    va.pt = navmeshArrivalPoint(c.bikeSpawnDistance or 80.0) or arrivalPoint()
+    if not va.pt then JL.ui.status = "Arrival: no spawn point."; return end
+    local yaw = yawToward(va.pt, pp)                                    -- face V (the way he'll ride)
+    va.pingAt, va.slowedLogged = 0, false                              -- arm the 3s ping + "easing off" one-shot
+    -- bike + Jackie spawn together behind V (local mount).
+    va.bikeId  = spawnDynEntity(c.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", va.pt, yaw, "JackieLives_bike")
+    local jpos = snapToNavmesh(Vector4.new(va.pt.x + 1.5, va.pt.y, va.pt.z, 1.0)) or va.pt
+    local jid  = spawnDynEntity(Config.jackieRecord or "Character.Jackie", jpos, yaw, "JackieLives_jackie")
+    if not va.bikeId or not jid then
+      JL.ui.status = "Vehicle arrival spawn failed (see console)."
+      log("VehArrival: spawn failed (bike=" .. tostring(va.bikeId ~= nil) .. ", jackie=" .. tostring(jid ~= nil) .. ")")
+      despawnArrivalBike(); if jid then deleteEntityById(jid) end; return
     end
     JL.summon.spawn = { id = jid, handle = nil }
     JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
-    va.bikeId, va.bikeHandle = nil, nil                                 -- bikeless: the bike phases never run
-    va.phase          = "sprinting"                                    -- straight to the sprint -> walk handoff
-    va.sprintAt       = (JL.clock or 0) + 0.8                          -- let the spawn settle, then run in
-    va.unmountAgainAt = nil
-    va.lastReissue    = -999
-    va.deadline       = (JL.clock or 0) + (c.maxSeconds or 120.0)       -- safety: force handoff if it stalls
-    va.footTried      = true                                           -- already on foot; no bike fallback
-    JL.ui.status = "Jackie's on his way (sprinting in)..."
-    log("SprintArrival: Jackie spawned at distance; sprinting in.")
+    va.bikeHandle = nil
+    va.placeAt    = (JL.clock or 0) + 1.0
+    va.phase      = "placing"
+    va.deadline   = (JL.clock or 0) + (c.maxSeconds or 120.0)
+    -- v0.47: the v0.38 foot-fallback (40s -> ditch bike + respawn on foot) was KILLING working rides
+    -- before they finished (an 80 m city ride routinely exceeds 40s). It's now OPT-IN via
+    -- Config.vehicle.footFallback (default OFF) so the bike gets its uninterrupted v0.36 conditions
+    -- back. With it off, the only backstop is the maxSeconds deadline (force companion handoff).
+    if c.footFallback then
+      va.footFallbackAt = (JL.clock or 0) + (c.fallbackSeconds or 40.0)
+      va.footTried = false
+    else
+      va.footFallbackAt, va.footTried = nil, true   -- no respawn; let the bike ride the whole way
+    end
+    JL.ui.status = "Jackie's on his way (bike)..."
+    log("VehArrival: bike + Jackie spawned at distance; mount in 1.0s.")
     return
   end
 
@@ -2471,6 +2411,34 @@ local function vehicleArrivalTick()
     return
   end
 
+  -- v0.51 ON-FOOT STUCK -> RESPAWN CLOSER. While sprinting/walking, track his CLOSEST distance to V.
+  -- If he makes no further progress for `respawnStuckSeconds` (bad navmesh island, wrong building
+  -- level, blocked path — he just stutters in place, never closing), kill him and respawn at the next
+  -- rung in `respawnRungs` (e.g. 35 -> 20 -> 5 m). At 5 m he's on V's own navmesh, so this converges;
+  -- once no rung is closer than where he's stuck, just hand off in place.
+  if (va.phase == "sprinting" or va.phase == "walking") and jh then
+    local jp; pcall(function() jp = jh:GetWorldPosition() end)
+    local d = (pp and jp) and dist3(pp, jp) or nil
+    if d then
+      if not va.closestD or d < va.closestD - (c.respawnProgressEps or 1.0) then
+        va.closestD, va.lastProgressT = d, now                       -- real progress -> reset the timer
+      elseif (now - (va.lastProgressT or now)) >= (c.respawnStuckSeconds or 5.0) then
+        local nd
+        for _, r in ipairs(c.respawnRungs or { 35.0, 20.0, 5.0 }) do
+          if r < (va.closestD or 1e9) - 2.0 then nd = r; break end   -- pick the first rung that's actually closer
+        end
+        if nd then
+          log(("VehArrival: STUCK at %.1f m (no progress %.0fs) -> respawn closer at %.0f m.")
+              :format(d, c.respawnStuckSeconds or 5.0, nd))
+          beginFootApproach(nd, "stuck-respawn"); return
+        else
+          log(("VehArrival: STUCK at %.1f m, no closer rung -> companion in place."):format(d))
+          pcall(promoteToCompanion); despawnArrivalBike(); va.phase = nil; return
+        end
+      end
+    end
+  end
+
   if va.phase == "placing" and va.placeAt and now >= va.placeAt then
     if not (va.bikeHandle and jh) then return end                   -- wait for both handles
     va.placeAt = nil
@@ -2492,15 +2460,23 @@ local function vehicleArrivalTick()
     if now < (va.driveAt or 0) then return end
     local bp; pcall(function() bp = va.bikeHandle:GetWorldPosition() end)
     local d = (pp and bp) and dist3(pp, bp) or nil
-    -- re-issue the drive at V's live position so he tracks you
+    local slowing = d and d <= (c.slowDownDistance or 30.0)            -- v0.52: he's intentionally crawling here
+    -- v0.50: distance ping every 3s
+    if d and now >= (va.pingAt or 0) then va.pingAt = now + 3.0; log(("VehArrival: riding in... %.1f m to V."):format(d)) end
+    -- re-issue the drive at V's live position so he tracks you. v0.50/0.52: ease off to `slowSpeed` once
+    -- inside `slowDownDistance` (30 m) so the park at `dismountDistance` (20 m) is a smooth brake, not a
+    -- hard stop. (The autonomous drive command decelerates toward a slower target.)
     if (now - (va.lastReissue or 0)) >= (c.retargetInterval or 2.0) then
       va.lastReissue = now
-      va.driveCmd = driveBikeTo(va.bikeHandle, pp, c.cruiseSpeed or 8.0)
+      local speed = slowing and (c.slowSpeed or 3.0) or (c.cruiseSpeed or 8.0)
+      if slowing and not va.slowedLogged then va.slowedLogged = true; log(("VehArrival: easing off at %.0f m (slow to %0.0f m/s)."):format(d or 0, speed)) end
+      va.driveCmd = driveBikeTo(va.bikeHandle, pp, speed)
     end
-    -- STUCK FAILSAFE: after the grace beat, sample the bike's speed ~1x/s; if it crawls
-    -- (< stuckSpeed) for stuckSustain seconds, he bails off and sprints (dense area).
+    -- STUCK FAILSAFE: after the grace beat, sample the bike's speed ~1x/s; if it crawls (< stuckSpeed)
+    -- for stuckSustain seconds, he bails off + walks (dense area). v0.52: DISABLED while `slowing` —
+    -- a deliberate crawl near the stop point was tripping it; only true stalls out on the open road count.
     local stuck = false
-    if bp and (now - (va.mountAt or 0)) >= (c.stuckGrace or 5.0)
+    if bp and not slowing and (now - (va.mountAt or 0)) >= (c.stuckGrace or 5.0)
        and (now - (va.lastSpeedT or now)) >= 1.0 then
       local dt    = now - (va.lastSpeedT or now)
       local moved = va.lastBikePos and dist3(bp, va.lastBikePos) or 999
@@ -2509,44 +2485,45 @@ local function vehicleArrivalTick()
       va.lastBikePos, va.lastSpeedT = bp, now
       if (va.stuckTime or 0) >= (c.stuckSustain or 2.0) then stuck = true end
     end
-    local reached = d and d <= (c.dismountDistance or 40.0)
+    local reached = d and d <= (c.dismountDistance or 20.0)
     if reached or stuck then
-      stopBikeVeh(va.bikeHandle, va.driveCmd)                       -- park the bike where it is
+      stopBikeVeh(va.bikeHandle, va.driveCmd)                       -- park the bike where it is (on the road)
       unmountDriver(jh, va.bikeHandle)
-      va.sprintAt = now + 1.0
-      va.unmountAgainAt = now + 1.6                                 -- one retry so he can't stick in the seat
+      va.unmountAgainAt = now + 1.0                                 -- one retry so he can't stick in the seat
       va.lastReissue = -999
-      va.phase = "sprinting"
+      va.phase = "walking"                                         -- v0.52: park is close (20 m) -> just WALK in
       JL.ui.status = stuck and "Jackie's bike's stuck - he's on foot." or "Jackie parked the bike."
-      log(("VehArrival: %s at %.0f m -> dismount + sprint in."):format(stuck and "STUCK" or "reached", d or 0))
+      log(("VehArrival: %s at %.0f m -> dismount + walk in."):format(stuck and "STUCK" or "reached", d or 0))
     end
     return
   end
 
   if va.phase == "sprinting" then
     if now < (va.sprintAt or 0) then return end
-    -- one unmount retry: if the dismount didn't take, this gets him out of the mounted pose
+    local jp; pcall(function() jp = jh and jh:GetWorldPosition() end)
+    local d = (pp and jp) and dist3(pp, jp) or nil
+    if d and now >= (va.pingAt or 0) then va.pingAt = now + 3.0; log(("VehArrival: sprinting in... %.1f m to V."):format(d)) end
+    if (now - (va.lastReissue or 0)) >= 1.2 then
+      va.lastReissue = now
+      sendMoveToPoint(jh, pp, "Sprint", c.arriveDistance or 3.0)
+    end
+    if d and d <= (c.sprintToWalk or 25.0) then va.phase = "walking"; va.lastReissue = -999; log(("VehArrival: %.0f m -> downshift to walk."):format(d)) end
+    return
+  end
+
+  if va.phase == "walking" then
+    -- v0.52: bike dismount enters here directly; retry the unmount once so he can't stick in the seat pose.
     if va.unmountAgainAt and now >= va.unmountAgainAt then
       va.unmountAgainAt = nil; pcall(function() unmountDriver(jh, va.bikeHandle) end)
     end
     local jp; pcall(function() jp = jh and jh:GetWorldPosition() end)
     local d = (pp and jp) and dist3(pp, jp) or nil
-    if (now - (va.lastReissue or 0)) >= 1.2 then
-      va.lastReissue = now
-      sendMoveToPoint(jh, pp, "Sprint", c.arriveDistance or 3.0)
-    end
-    if d and d <= (c.sprintToWalk or 25.0) then va.phase = "walking"; va.lastReissue = -999 end
-    return
-  end
-
-  if va.phase == "walking" then
-    local jp; pcall(function() jp = jh and jh:GetWorldPosition() end)
-    local d = (pp and jp) and dist3(pp, jp) or nil
+    if d and now >= (va.pingAt or 0) then va.pingAt = now + 3.0; log(("VehArrival: walking in... %.1f m to V."):format(d)) end
     if (now - (va.lastReissue or 0)) >= 1.5 then
       va.lastReissue = now
       sendMoveToPoint(jh, pp, "Walk", c.arriveDistance or 3.0)
     end
-    if d and d <= ((Config.call and Config.call.companionDistance) or 18.0) then   -- v0.46: earlier handoff (was arriveDistance)
+    if d and d <= ((Config.call and Config.call.companionDistance) or 5.0) then   -- v0.50: small (5 m) so AMM's catch-up teleport never yanks him into V
       pcall(function() unmountDriver(jh, va.bikeHandle) end)   -- FORCE unmount on entering companion range
       promoteToCompanion()
       va.phase = "handoff"
@@ -2654,7 +2631,7 @@ local function clearIdle()
   end
   if JL.idle.spawn then ammDespawn(JL.idle.spawn) end
   JL.idle.spawn, JL.idle.locationKey = nil, nil
-  JL.idle.posed, JL.idle.pendingPose = false, nil
+  JL.idle.posed, JL.idle.pendingPose, JL.idle.pendingSit = false, nil, nil
   JL.idle.placed, JL.idle.phase = false, nil
   JL.idle.curIdx, JL.idle.tgtIdx = nil, nil
   JL.idle.leaving, JL.idle.leaveTarget, JL.idle.leaveDeadline, JL.idle.leaveReissue = false, nil, 0, 0
@@ -2714,7 +2691,7 @@ local function stopWorkspotPose(handle)
   pcall(function() Game.GetWorkspotSystem():StopInDevice(handle) end)
   -- v0.44: collision is NOT touched here (callers own it — see COLLISION OWNERSHIP map up top).
   JL.idle.posed = false
-  JL.idle.pendingPose = nil   -- cancel any not-yet-fired pose
+  JL.idle.pendingPose, JL.idle.pendingSit = nil, nil   -- cancel any not-yet-fired pose/sit
 end
 
 -- Play a real sit/lean animation on Jackie using AMM's proven Poses pipeline. Returns true if
@@ -2761,7 +2738,7 @@ local function applyIdlePose(handle, wp, forceSnap)
     JL.idle.pendingPose = { pose = wp.pose, name = wp.poseAnim, vec = v, yaw = wp.yaw or 0.0,
                             at = (JL.clock or 0) + ((Config.poses and Config.poses.delay) or 0.5) }
   else
-    JL.idle.pendingPose = nil
+    JL.idle.pendingPose, JL.idle.pendingSit = nil, nil
   end
 end
 
@@ -2814,20 +2791,22 @@ local function dinnerTick()
 
   if D.phase == "seating" then
     if not D.satAt then
-      -- (a) wait until he's within reach OR the timeout fires, then ARM a deferred sit.
+      -- (a) within reach OR timeout -> lock EXACT seat pos + facing NOW (v0.45 placeAtExact), then arm a
+      --     deferred sit. Placing here (not at sit-time) leaves a gap so the async teleport lands before
+      --     the workspot plays — same-frame would let it eject him. Forcing yaw keeps the seat angle
+      --     consistent no matter which way he walked in.
       if not D.sitFireAt then
         local jp; pcall(function() jp = h:GetWorldPosition() end)
         local reached = jp and dist3(jp, D.dest) <= (C.seatReachRadius or 2.0)
         if reached or now >= (D.seatDeadline or 0) then
-          D.sitFireAt = now + ((Config.poses and Config.poses.delay) or 0.5)  -- DEFER the pose (float bug)
+          placeAtExact(h, D.dest, D.destYaw or 0.0)
+          D.sitFireAt = now + ((Config.poses and Config.poses.delay) or 0.5)
           if not reached then log("Dinner: seat reach timed out -> snapping him onto the seat.") end
         end
         return
       end
-      -- (b) lock EXACT seat pos + facing (v0.45 placeAtExact) then play the sit. Forcing yaw here keeps
-      --     the seat angle consistent no matter which direction he walked in from.
+      -- (b) he's settled at the exact seat now -> just play the sit (NO teleport here).
       if now >= D.sitFireAt then
-        placeAtExact(h, D.dest, D.destYaw or 0.0)
         pcall(function() tryWorkspotPose(h, "sit") end)
         D.satAt, D.sitFireAt = now, nil
         log("Dinner: Jackie seated.")
@@ -2863,6 +2842,43 @@ local function dinnerTick()
   end
 end
 
+-- v0.48: schedule Jackie's NEXT self-initiated dinner offer, a random in-game gap from now, tied to the
+-- current companion session (so a fresh session re-rolls instead of firing instantly on a stale stamp).
+local function scheduleJackieDinnerOffer()
+  local g = getGameSeconds(); if not g then return end
+  local ji = Config.date and Config.date.jackieInvite
+  local mn = ((ji and ji.minGapGameMinutes) or 20.0) * 60
+  local mx = ((ji and ji.maxGapGameMinutes) or 45.0) * 60
+  local r  = 0; pcall(function() r = math.random() end)
+  JL.dinner.nextOfferGame = g + mn + r * math.max(0, mx - mn)
+  JL.dinner.offerSession  = JL.summon.companionSinceGame
+end
+
+-- v0.48: while Jackie is your companion and a dinner is available (off the once/24h cooldown), after the
+-- scheduled gap HE just SAYS a hungry hint (jackieInvite.text) — no picker, no choices. It nudges V to use
+-- her own "Wanna get something to eat?" invite. The gap is tuned close to his max summon time.
+local function jackieDinnerOfferTick()
+  local ji = Config.date and Config.date.jackieInvite
+  if not (ji and ji.enabled) then return end
+  if not (JL.summon.active and JL.summon.companionSet) then return end
+  if JL.dinner.phase then return end                                  -- already mid-outing
+  if JL.leaving.phase == "walking" then return end                    -- heading home, don't interrupt
+  if Branch.open or Branch.busy or (dlg and dlg.active) then return end -- never talk over a conversation
+  if not dateUnlocked() then return end
+  local g = getGameSeconds(); if not g then return end
+  local cd = (Config.date.resetCooldownHours or 24.0) * 3600
+  if JL.dinner.lastResetGame and (g - JL.dinner.lastResetGame) < cd then return end  -- he just ate out
+  -- (re)schedule on a fresh companion session or if never scheduled
+  if JL.dinner.offerSession ~= JL.summon.companionSinceGame or not JL.dinner.nextOfferGame then
+    scheduleJackieDinnerOffer(); return
+  end
+  if g < JL.dinner.nextOfferGame then return end
+  scheduleJackieDinnerOffer()                                         -- arm the next gap regardless
+  pcall(function() speakJackieLine(ji.text, ji.sfx) end)             -- just the line — V invites him for real
+  JL.ui.status = "Jackie's gettin' hungry."
+  log("Dinner: Jackie dropped a hungry hint.")
+end
+
 -- Blue objective text shown (during gameplay) while heading to dinner, until V reaches the spot.
 local function drawDinnerObjective()
   if JL.dinner.phase ~= "walking" then return end
@@ -2896,11 +2912,20 @@ local function wanderTick()
   local now = JL.clock or 0
   local W   = Config.wander
 
-  -- deferred sit/lean: play it once the snap-teleport has had time to land
+  -- v0.45 deferred sit/lean in TWO steps so the (async) exact-teleport lands BEFORE the workspot plays
+  -- (playing it same-frame let the workspot re-pin him at the OLD spot — the "tuner does nothing" bug):
+  --   (1) pendingPose -> placeAtExact (exact pos + facing) + arm pendingSit a beat later
   if JL.idle.pendingPose and now >= JL.idle.pendingPose.at then
     local pend = JL.idle.pendingPose; JL.idle.pendingPose = nil
-    if pend.vec then placeAtExact(h, pend.vec, pend.yaw) end   -- v0.45: lock exact pos + facing first
-    pcall(function() tryWorkspotPose(h, pend.pose, pend.name) end)
+    if pend.vec then placeAtExact(h, pend.vec, pend.yaw) end
+    JL.idle.pendingSit = { pose = pend.pose, name = pend.name, vec = pend.vec, yaw = pend.yaw,
+                           at = now + 0.4 }
+  end
+  --   (2) pendingSit -> he's now settled at the exact spot/facing from step (1); just play the workspot
+  --       (NO teleport here — an async one would land after the pose and eject him from the seat).
+  if JL.idle.pendingSit and now >= JL.idle.pendingSit.at then
+    local s = JL.idle.pendingSit; JL.idle.pendingSit = nil
+    pcall(function() tryWorkspotPose(h, s.pose, s.name) end)
   end
 
   -- (0) PLACE him on a starting waypoint shortly after spawn (let the entity settle first).
@@ -3227,7 +3252,7 @@ local function hardReset()
   -- wipe the newer (v0.35+) idle/dinner/secret/call/branch state dismissAllJackies doesn't cover
   JL.idle.placed, JL.idle.phase, JL.idle.curIdx, JL.idle.tgtIdx = false, nil, nil, nil
   JL.idle.leaving, JL.idle.leaveTarget, JL.idle.leaveDeadline, JL.idle.leaveReissue = false, nil, 0, 0
-  JL.idle.posed, JL.idle.pendingPose = false, nil
+  JL.idle.posed, JL.idle.pendingPose, JL.idle.pendingSit = false, nil, nil
   JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
   JL.dinner.phase, JL.dinner.dest, JL.dinner.mappinId = nil, nil, nil
   JL.secret.decided, JL.secret.active = false, false
@@ -3274,8 +3299,26 @@ local function nsTick()
     log("Native Settings panel already present (hot-reload) — not re-registering.")
     return
   end
+  if JL.husbando == nil then JL.husbando = false end   -- v0.47: relationship mode (false = Hermano)
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
+
+    ns.addSubcategory("/jackielives/relationship", "Relationship")
+    ns.addSwitch(
+      "/jackielives/relationship",
+      "Husbando mode",
+      "OFF = Hermano (canon): Jackie's your brother-in-arms and he's with Misty. " ..
+      "ON = Husbando: Jackie and V are closer/together and he's broken up with Misty. " ..
+      "(Mode-specific dialogue and venue schedules are WIP — toggling this only sets the flag for now.)",
+      JL.husbando,   -- current state
+      false,         -- default (Hermano)
+      function(state)
+        JL.husbando = state
+        JL.ui.status = "Jackie mode: " .. (state and "Husbando" or "Hermano")
+        log("Jackie relationship mode -> " .. (state and "Husbando" or "Hermano"))
+      end
+    )
+
     ns.addSubcategory("/jackielives/recovery", "Recovery")
     ns.addButton(
       "/jackielives/recovery",
@@ -3325,17 +3368,42 @@ local function barkCfg()
       bumpCooldown  = 8.0,    -- s: anti-spam on the grunt
       greetEvents   = { "ono_jackie_greet", "ono_jackie_curious", "ono_jackie_additional" },
       bumpEvent     = "ono_jackie_bump",
+      greetRepeatCooldown = 300.0,  -- v0.48: s before a greet event may repeat (5 min); also never the last one used
+      greetUsed = {}, lastGreetEvent = nil,  -- v0.48: per-event last-used clock for the no-repeat picker
       lastGreet = -999, lastBump = -999, checkT = 0, lastDist = nil,
     }
   end
   return JL.bark
 end
 
--- v0.46: ARRIVAL GRUNT. After ANY arrival hands off to companion (promoteToCompanion sets
--- JL.summon.arrivalGruntPending), Jackie barks a one-shot "made it" grunt the moment he closes to
--- `Config.call.arrivalGruntDistance` (4 m). Works for safe / sprint / bike alike. Fires once per arrival.
-local function arrivalGruntTick()
-  if not JL.summon.arrivalGruntPending then return end
+-- v0.48: pick a greet event that is NOT the one used most recently and NOT used within greetRepeatCooldown
+-- (5 min). Degrades gracefully: if every event is on cooldown, just avoid an immediate repeat; with a
+-- single-event pool, return it. Records the pick so the next call steers away from it. `now` = JL.clock.
+local function pickFreshGreet(b, now)
+  local pool = (b.greetEvents and #b.greetEvents > 0) and b.greetEvents or { "ono_jackie_greet" }
+  b.greetUsed = b.greetUsed or {}
+  local cd = b.greetRepeatCooldown or 300.0
+  local fresh = {}
+  for _, ev in ipairs(pool) do
+    local last = b.greetUsed[ev]
+    if ev ~= b.lastGreetEvent and (not last or (now - last) >= cd) then fresh[#fresh + 1] = ev end
+  end
+  if #fresh == 0 then                       -- all on cooldown -> at least don't repeat the last one
+    for _, ev in ipairs(pool) do if ev ~= b.lastGreetEvent then fresh[#fresh + 1] = ev end end
+  end
+  if #fresh == 0 then fresh = pool end       -- single-event pool: nothing else to pick
+  local ev = fresh[1]; pcall(function() ev = fresh[math.random(1, #fresh)] end)
+  b.greetUsed[ev]  = now
+  b.lastGreetEvent = ev
+  return ev
+end
+
+-- v0.46/v0.48: ARRIVAL GREETING. After ANY arrival hands off to companion (promoteToCompanion sets
+-- JL.summon.arrivalGreetPending), Jackie barks a one-shot GREETING (v0.48: from the full greet pool, not the
+-- "made it" grunt) the moment he closes to `Config.call.arrivalGruntDistance` (4 m). The greeting avoids the
+-- one used most recently + any used in the last 5 min (pickFreshGreet). Safe / sprint / bike alike; once per arrival.
+local function arrivalGreetTick()
+  if not JL.summon.arrivalGreetPending then return end
   local sp = JL.summon.spawn
   local h  = sp and sp.handle
   if not h then return end
@@ -3344,10 +3412,10 @@ local function arrivalGruntTick()
   if not jp then return end
   local d = dist3(pp, jp)
   if d <= ((Config.call and Config.call.arrivalGruntDistance) or 4.0) then
-    JL.summon.arrivalGruntPending = false
-    local ev = (barkCfg().bumpEvent) or "ono_jackie_bump"
+    JL.summon.arrivalGreetPending = false
+    local ev = pickFreshGreet(barkCfg(), JL.clock or 0)
     pcall(function() playEventOn(h, ev, "") end)
-    log(("Arrival: 'made it' grunt '%s' (d=%.1f m)."):format(tostring(ev), d))
+    log(("Arrival: greeting '%s' (d=%.1f m)."):format(tostring(ev), d))
   end
 end
 
@@ -3375,8 +3443,7 @@ local function proximityBarkTick(dt)
   elseif d <= (b.greetRange or 6.0) then
     if (now - (b.lastGreet or -999)) >= (b.greetCooldown or 120.0) then
       b.lastGreet = now
-      local list = (b.greetEvents and #b.greetEvents > 0) and b.greetEvents or { "ono_jackie_greet" }
-      local ev = list[math.random(1, #list)]
+      local ev = pickFreshGreet(b, now)   -- v0.48: avoid the last-used + any used in the last 5 min
       pcall(function() playEventOn(sp.handle, ev, "") end)
       log(string.format("Bark: GREET '%s' (d=%.2f m)", tostring(ev), d))
     end
@@ -3391,9 +3458,8 @@ registerForEvent("onUpdate", function(dt)
   pcall(branchTick)
   pcall(flapTick)       -- lip-movement: shuffle talking faces while a Jackie line plays
   pcall(callTick)       -- holocall: ring -> pick up
-  pcall(arrivalTick)    -- holocall: scheduled spawn-at-distance (on-foot walk-in)
-  pcall(vehicleArrivalTick)  -- v0.34: sprint-in / bike arrival (ride in on the Arch)
-  pcall(arrivalGruntTick)    -- v0.46: one-shot "made it" grunt when an arrived Jackie closes to 4 m
+  pcall(vehicleArrivalTick)  -- v0.50: THE arrival state machine — foot (DES sprint-in) + bike, one tail
+  pcall(arrivalGreetTick)    -- v0.46/v0.48: one-shot fresh greeting when an arrived Jackie closes to 4 m
   pcall(leavingTick)    -- v0.33: dismissed Jackie walking off -> despawn at distance
   if JL.summon.spawn and JL.summon.spawn.handle and not JL.summon.companionSet and not JL.summon.walkIn then
     local amm = getAMM()
@@ -3428,6 +3494,7 @@ registerForEvent("onUpdate", function(dt)
     end
   end
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
+  pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap
 
   pcall(wanderTick)       -- v0.35: idle Jackie free-roams between his location's waypoints
   pcall(idleLeavingTick)  -- v0.38: idle Jackie walking off to a venue exit before despawning
@@ -3446,20 +3513,40 @@ end)
 -- line. Re-seating goes through the normal stop-workspot -> teleport -> deferred sit path, so the
 -- v0.43 sit-time collision drop applies and he won't clip the chair.
 -- ---------------------------------------------------------------------------
-local function tunerSeatWaypoint(loc)   -- the location's sit waypoint (else its anchor)
+-- All of a location's SIT waypoints, in order (a venue can have several stools — e.g. noodle has 2).
+local function tunerSitWaypoints(loc)
+  local out = {}
   if loc and loc.waypoints then
-    for _, wp in ipairs(loc.waypoints) do if wp.pose == "sit" then return wp end end
-    if loc.waypoints[1] then return loc.waypoints[1] end
+    for _, wp in ipairs(loc.waypoints) do if wp.pose == "sit" then out[#out + 1] = wp end end
   end
-  return nil
+  return out
+end
+
+-- The venue keys (in menu order) that actually have a sit waypoint — the tuner's dropdown list.
+local TUNER_VENUE_ORDER = { "noodle", "misty", "coyote", "afterlife", "ginger", "redwood", "lizzies", "secret" }
+local function tunerSitVenues()
+  local out = {}
+  for _, k in ipairs(TUNER_VENUE_ORDER) do
+    local loc = Config.locations[k]
+    if loc and #tunerSitWaypoints(loc) > 0 then out[#out + 1] = k end
+  end
+  return out
+end
+
+-- The specific seat waypoint the tuner is editing right now (location key + seat index).
+local function tunerSeatWaypoint()
+  local loc   = Config.locations[JL.tuner.key]
+  local seats = tunerSitWaypoints(loc)
+  if #seats == 0 then return nil, loc, seats end
+  if JL.tuner.seatIdx > #seats then JL.tuner.seatIdx = 1 end
+  return seats[JL.tuner.seatIdx], loc, seats
 end
 
 local function tunerInit()
-  local t   = JL.tuner
-  local loc = Config.locations[t.key]
-  local wp  = tunerSeatWaypoint(loc)
-  local p   = (wp and wp.pos) or (loc and loc.pos) or { 0, 0, 0 }
-  local y   = (wp and wp.yaw) or (loc and loc.yaw) or 0.0
+  local t        = JL.tuner
+  local wp, loc  = tunerSeatWaypoint()
+  local p        = (wp and wp.pos) or (loc and loc.pos) or { 0, 0, 0 }
+  local y        = (wp and wp.yaw) or (loc and loc.yaw) or 0.0
   t.baseX, t.baseY, t.baseZ, t.baseYaw = p[1], p[2], p[3], y
   t.dx, t.dy, t.dz, t.dyaw = 0, 0, 0, 0
   t.prevX, t.prevY, t.prevZ, t.prevYaw = 0, 0, 0, 0
@@ -3485,26 +3572,29 @@ local function tunerApply()
   local h = JL.idle.spawn.handle
   local x, y, z, yaw = tunerCoords()
   local v = Vector4.new(x, y, z, 1.0)
+  local wp = tunerSeatWaypoint()                 -- carry this seat's anim override (e.g. Misty's deep chair)
+  -- v0.45: he's currently SEATED (pinned by the workspot). Get him OUT first; the teleport+re-sit then
+  -- run via the two-step deferred path in wanderTick (placeAtExact -> gap -> workspot). Teleporting THIS
+  -- frame would be ignored (still pinned) — that was why the tuner did nothing. The 0.45s delay lets
+  -- StopInDevice actually release him before placeAtExact moves him.
   stopWorkspotPose(h)
-  placeAtExact(h, v, yaw)                                      -- v0.45: EXACT move (no navmesh snap) so slides register
-  JL.idle.pendingPose = { pose = "sit", vec = v, yaw = yaw,    -- re-lock pos + facing when the sit fires
-                          at = (JL.clock or 0) + ((Config.poses and Config.poses.delay) or 0.5) }
+  JL.idle.pendingSit = nil   -- cancel any in-flight sit so this re-seat wins
+  JL.idle.pendingPose = { pose = "sit", name = wp and wp.poseAnim, vec = v, yaw = yaw,
+                          at = (JL.clock or 0) + 0.45 }
   return true
 end
 
 -- Print the config-ready line AND live-patch the in-memory config so he keeps sitting right this
--- session (anchor + the sit waypoint both move, mirroring how config.lua stores noodle).
+-- session. Updates THIS seat waypoint (key + seatIdx); for a single-seat venue it also moves the
+-- anchor pos so his fall-back spot tracks the seat.
 local function tunerPrint()
   local x, y, z, yaw = tunerCoords()
   local line = string.format("pos = { %.3f, %.3f, %.3f }, yaw = %.1f", x, y, z, yaw)
   JL.ui.lastCapture = line
-  log(JL.tuner.key .. " seat tuned -> " .. line)
-  local loc = Config.locations[JL.tuner.key]
-  if loc then
-    loc.pos = { x, y, z }; loc.yaw = yaw
-    local wp = tunerSeatWaypoint(loc)
-    if wp then wp.pos = { x, y, z }; wp.yaw = yaw end
-  end
+  log(("%s seat %d tuned -> %s"):format(JL.tuner.key, JL.tuner.seatIdx, line))
+  local wp, loc, seats = tunerSeatWaypoint()
+  if wp then wp.pos = { x, y, z }; wp.yaw = yaw end
+  if loc and #seats <= 1 then loc.pos = { x, y, z }; loc.yaw = yaw end  -- single-seat venue: anchor tracks it
 end
 
 registerForEvent("onDraw", function()
@@ -3594,54 +3684,43 @@ registerForEvent("onDraw", function()
   ImGui.SameLine()
   ImGui.TextWrapped("ring -> choices -> ask onto a gig -> he spawns at distance + walks in")
 
-  -- v0.46: CYCLE which arrival the holocall uses (safe -> sprint -> bike), live. Pick one, then Call
-  -- Jackie (or hit "Test arrival now") to watch it.
-  local cc = Config.call
+  -- v0.50: TWO arrival modes only — toggle FOOT <-> BIKE, live. Pick one, then Call Jackie (or hit
+  -- "Test arrival now"). Both spawn via DES out at distance and share the sprint -> walk -> companion tail.
+  local cc, vc = Config.call, Config.vehicle
   ImGui.Separator()
-  local methods = { "safe", "sprint", "bike" }
-  local mlabel  = {
-    safe   = "SAFE WALK-IN (hidden -> teleport -> jog)",
-    sprint = "SPRINT-IN (spawn far -> run -> walk)",
-    bike   = "BIKE (ride in on his Arch)",
-  }
-  local m = cc.arrivalMethod or "safe"
-  if ImGui.Button("Arrival method: " .. (mlabel[m] or m)) then
-    local idx = 1
-    for i, v in ipairs(methods) do if v == m then idx = i; break end end
-    cc.arrivalMethod = methods[(idx % #methods) + 1]
+  local bikeOn = (cc.arrivalMethod == "bike")
+  if ImGui.Button("Arrival method: " .. (bikeOn and "BIKE (ride in on his Arch)" or "FOOT (sprint -> walk in)")) then
+    cc.arrivalMethod = bikeOn and "foot" or "bike"
     log("Arrival method -> " .. cc.arrivalMethod)
   end
   ImGui.SameLine()
   if ImGui.Button("Test arrival now") then
     -- fire the selected arrival immediately, no call needed (mirrors runCallAction's summon_arrival)
-    local sel = cc.arrivalMethod or "safe"
     if isMainQuestActive() then JL.ui.status = Config.declineLine
     elseif JL.summon.active then JL.ui.status = "Jackie's already with you."
-    elseif sel == "safe" then
-      JL.arrival.at = (JL.clock or 0) + 0.2; JL.ui.status = "Testing SAFE walk-in arrival..."
-      log("TEST: SAFE walk-in arrival armed.")
     else
-      JL.varrival.at = (JL.clock or 0) + 0.2; JL.varrival.useBike = (sel == "bike")
-      JL.ui.status = ("Testing %s arrival..."):format(sel == "bike" and "BIKE" or "SPRINT-IN")
-      log(("TEST: %s arrival armed."):format(sel == "bike" and "BIKE" or "SPRINT-IN"))
+      JL.varrival.at = (JL.clock or 0) + 0.2; JL.varrival.useBike = (cc.arrivalMethod == "bike")
+      JL.ui.status = ("Testing %s arrival..."):format(cc.arrivalMethod == "bike" and "BIKE" or "FOOT")
+      log(("TEST: %s arrival armed."):format(cc.arrivalMethod == "bike" and "BIKE" or "FOOT"))
     end
   end
 
-  -- v0.33c: live A/B toggles for the three (safe-walk-in) arrival variables. Tweak, then test.
+  -- live A/B knobs. spawnBehind (rear arc) is read by navmeshArrivalPoint; foot spawn distance lives
+  -- in Config.vehicle.spawnDistance now; arriveDistance is how short of V the foot MoveTo aims.
   ImGui.Text("Arrival test modes (live; then Call Jackie):")
   if ImGui.Button("1) Spawn: " .. (cc.spawnBehind and "BEHIND V" or "IN FRONT")) then
     cc.spawnBehind = not cc.spawnBehind
   end
   ImGui.SameLine()
-  if ImGui.Button(("2) Distance: %.0f m"):format(cc.spawnDistance or 40)) then
-    local steps, cur, nxt = { 20, 40, 60, 80, 100 }, cc.spawnDistance or 40, nil
+  if ImGui.Button(("2) Foot dist: %.0f m"):format(vc.spawnDistance or 50)) then
+    local steps, cur, nxt = { 20, 35, 50, 65, 80 }, vc.spawnDistance or 50, nil
     for i, v in ipairs(steps) do if math.abs(v - cur) < 0.5 then nxt = steps[(i % #steps) + 1]; break end end
-    cc.spawnDistance = nxt or 40
+    vc.spawnDistance = nxt or 50
   end
   ImGui.SameLine()
-  local adOn = (cc.arriveDistance or 0) > 0.1
-  if ImGui.Button("3) Arrive dist: " .. (adOn and ("ON %.1f m"):format(cc.arriveDistance) or "OFF (into V)")) then
-    cc.arriveDistance = adOn and 0.0 or 3.0
+  local adOn = (vc.arriveDistance or 0) > 0.1
+  if ImGui.Button("3) Arrive dist: " .. (adOn and ("ON %.1f m"):format(vc.arriveDistance) or "OFF (into V)")) then
+    vc.arriveDistance = adOn and 0.0 or 3.0
   end
 
   ImGui.Separator()
@@ -3669,15 +3748,39 @@ registerForEvent("onDraw", function()
     ImGui.TextWrapped(JL.ui.lastCapture)
   end
 
-  -- v0.43 SEAT TUNER: slide Jackie's seat until perfect, then print the coords for config.lua.
+  -- v0.43 SEAT TUNER (v0.45: any venue + multi-seat): slide a seat until perfect, print for config.lua.
   ImGui.Separator()
-  if ImGui.CollapsingHeader("Seat position tuner (Noodle bar)") then
+  if ImGui.CollapsingHeader("Seat position tuner") then
     if not JL.tuner.init then tunerInit() end
     local t = JL.tuner
+
+    -- LOCATION picker — only venues that have a sit waypoint. Picking one also Force-venues Jackie there.
+    ImGui.Text("Venue:")
+    local venues = tunerSitVenues()
+    for i, k in ipairs(venues) do
+      if ((i - 1) % 4) ~= 0 then ImGui.SameLine() end
+      local loc = Config.locations[k]
+      if ImGui.Button(((loc and loc.name or k) .. (k == t.key and " *" or "")) .. "##tv_" .. k) then
+        t.key, t.seatIdx = k, 1
+        JL.ui.forceVenue = k                 -- send Jackie there so you can tune him on the spot
+        tunerInit()
+        log("Tuner -> " .. k .. " (Force venue set; go to " .. (loc and loc.name or k) .. ").")
+      end
+    end
+
+    -- SEAT picker — only when this venue has more than one stool/chair.
+    local _, _, seats = tunerSeatWaypoint()
+    if seats and #seats > 1 then
+      if ImGui.Button("< prev seat") then t.seatIdx = ((t.seatIdx - 2) % #seats) + 1; tunerInit() end
+      ImGui.SameLine()
+      if ImGui.Button("next seat >") then t.seatIdx = (t.seatIdx % #seats) + 1; tunerInit() end
+      ImGui.SameLine(); ImGui.Text(("seat %d / %d"):format(t.seatIdx, #seats))
+    end
+
     local here = tunerHere()
     ImGui.TextWrapped(here
-      and "Jackie is here — slide and he re-seats live."
-      or  ("Jackie NOT at " .. t.key .. ". Use Force venue -> Noodle bar above, then walk over to him."))
+      and ("Jackie is here — slide and he re-seats live. (Editing " .. t.key .. " seat " .. t.seatIdx .. ".)")
+      or  ("Jackie NOT at " .. t.key .. " yet — he's heading there (Force venue set). Walk over once he arrives."))
     ImGui.TextWrapped("Offsets from the captured seat. X/Y/Z = position (metres); YAW spins him to the " ..
                       "right seat angle (his facing is now forced from this, so it's the same no matter " ..
                       "which way he walked in). Yaw range is wider so you can flip him fully around.")
