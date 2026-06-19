@@ -2,6 +2,20 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.64 — smile tuning + dinner objective = neon-left flash (DEPLOYED, awaiting test, 2026-06-19)
+- **Smile chance:** middle ground `0.025 -> 0.033`; new `Config.smile.dinnerChance = 0.04` used by
+  `smileTick` whenever `JL.dinner.phase` is set (he smiles more on the dinner outing).
+- **Dinner objective restored to the native neon-left flash.** The persistent top-center ImGui blue
+  box (`drawDinnerObjective`) was the wrong UI — DELETED (function + onDraw call). `startDinnerWalk`
+  now fires ONE `showOnscreenMsg(...)` flash via the `UI_Notifications.OnscreenMessage` blackboard
+  (`SimpleScreenMessage`) — the same neon-left system we used before subtitles existed. Map pin still
+  guides the rest of the way.
+- **Message text updated:** `Config.date.objectiveText = "Grab some food with Jackie: Go to %s"`
+  (+ `objectiveDuration = 6.0` s).
+- [ ] **TEST:** start a dinner outing -> neon-blue "Grab some food with Jackie: Go to <place>" flashes
+      on the left for ~6 s (NOT the top-center box). While walking/at dinner, smiles come a bit more
+      often than normal.
+
 ## 🆕 v0.63 — bike-model test harness (find Jackie's REAL Arch) (DEPLOYED, awaiting test, 2026-06-19)
 Problem: the bike arrival often spawns the WRONG bike model/livery. During the vehicle-testing phase
 it reliably spawned the right Arch; now it doesn't. Live + test both spawn the same record

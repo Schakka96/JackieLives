@@ -1177,7 +1177,9 @@ local function smileTick()
     local jp; pcall(function() jp = jackie:GetWorldPosition() end)
     if jp and dist3(pp, jp) > (cfg.range or 8.0) then return end
   end
-  if math.random() >= (cfg.chance or 0.04) then return end   -- low likelihood
+  -- low likelihood normally; bumped while out for dinner with him (the happy occasion)
+  local chance = (JL.dinner.phase and cfg.dinnerChance) or cfg.chance or 0.033
+  if math.random() >= chance then return end
 
   s.handle    = jackie
   s.until_    = now + (cfg.duration or 3.0)
@@ -1408,10 +1410,13 @@ local function startDinnerWalk(key)
   local line = selfPick and r.pickText or D.ackText
   local sfx  = selfPick and r.pickSfx  or D.ackSfx
   pcall(function() speakJackieLine(line, sfx) end)
+  -- v0.64: flash the objective as the native neon-left on-screen message (not a persistent ImGui box).
+  local fmt = (D.objectiveText) or "Grab some food with Jackie: Go to %s"
+  pcall(function() showOnscreenMsg(fmt:format(tostring(r.name)), D.objectiveDuration or 6.0) end)
   JL.ui.status = "Headin' to " .. tostring(r.name) .. " with Jackie."
   log("Dinner: walk to '" .. tostring(r.name) .. "' started.")
 end
--- dinnerTick + drawDinnerObjective are defined further down (they need sendMoveToPoint / aiTeleport
+-- dinnerTick is defined further down (it needs sendMoveToPoint / aiTeleport
 -- / tryWorkspotPose / promoteToCompanion, all declared below this point).
 
 -- v0.24: the choice menu is a CUSTOM ImGui box drawn during gameplay (overlay closed),
@@ -3225,25 +3230,8 @@ local function jackieDinnerOfferTick()
   log("Dinner: Jackie dropped a hungry hint.")
 end
 
--- Blue objective text shown (during gameplay) while heading to dinner, until V reaches the spot.
-local function drawDinnerObjective()
-  if JL.dinner.phase ~= "walking" then return end
-  pcall(function()
-    local W, H = 520, 64
-    local sw = 1920
-    pcall(function() local x = ImGui.GetDisplaySize(); if x and x > 0 then sw = x end end)
-    ImGui.SetNextWindowPos((sw - W) * 0.5, 90, ImGuiCond.Always)
-    ImGui.SetNextWindowSize(W, H, ImGuiCond.Always)
-    ImGui.Begin("##jkdinnerobj", pickerWindowFlags())
-    ImGui.SetWindowFontScale(1.25)
-    ImGui.PushStyleColor(ImGuiCol.Text, 0.30, 0.62, 1.0, 1.0)   -- blue
-    local fmt = (Config.date and Config.date.objectiveText) or "Dinner with Jackie - meet him at %s"
-    ImGui.Text("  " .. fmt:format(tostring(JL.dinner.destName or "the spot")))
-    ImGui.PopStyleColor(1)
-    ImGui.SetWindowFontScale(1.0)
-    ImGui.End()
-  end)
-end
+-- (v0.64) The persistent ImGui "head to dinner" objective was replaced by a native neon-left
+-- on-screen flash fired once from startDinnerWalk (showOnscreenMsg). Map waypoint still guides.
 
 local function wanderTick()
   if not (Config.wander and Config.wander.enabled) then return end
@@ -4036,7 +4024,6 @@ end
 
 registerForEvent("onDraw", function()
   pcall(drawDialogueBox)                      -- v0.24: the styled choice box draws DURING gameplay
-  pcall(drawDinnerObjective)                  -- v0.43: blue "head to dinner" objective while walking
   if not JL.ui.overlayOpen then return end   -- the debug window only draws while the overlay is open
   if not JL.ui.open then return end
   ImGui.Begin("Jackie Lives")

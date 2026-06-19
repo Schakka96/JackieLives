@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.63"
+Config.version = "0.64"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -83,7 +83,8 @@ Config.talkLines = {
 -- category 3 / idle 6 (5=Joy, 2=Neutral; verified). Reset via stim:ResetFacial(0).
 Config.smile = {
   enabled  = true,
-  chance   = 0.025,  -- per-roll probability he smiles when caught looking (low on purpose; v0.55 lowered from 0.04)
+  chance      = 0.033, -- per-roll probability he smiles when caught looking (middle ground: 0.025 -> 0.033)
+  dinnerChance= 0.04,  -- higher chance while out for dinner with him (the happy occasion; original 0.04)
   rollEvery= 1.5,    -- seconds between rolls while you keep looking at him
   duration = 3.0,    -- seconds the smile is held before his face relaxes
   range    = 8.0,    -- metres; only if V is within this distance
@@ -196,7 +197,8 @@ Config.date = {
   sitWaitSeconds    = 2.0,   -- seconds seated before he says his line + the clock resets
   getUpRadius       = 10.0,  -- metres: V this far from seated Jackie -> he gets up + re-follows
   resetCooldownHours = 24.0, -- the dinner FULL reset can only fire once per this many in-game hours
-  objectiveText     = "Dinner with Jackie - meet him at %s",  -- blue on-screen objective (%s = place)
+  objectiveText     = "Grab some food with Jackie: Go to %s",  -- neon-left flash when the walk starts (%s = place)
+  objectiveDuration = 6.0,                                     -- seconds the flash stays up
 
   venuesShown       = 4,     -- v0.52: only this many RANDOM venues (of the full pool) are offered per picker
 
