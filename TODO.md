@@ -217,6 +217,10 @@ WolvenKit WAV extraction (1282 clips) ingested. Full pipeline + conventions now 
   the **80-line V funeral/voicemail set** (`v_scene_jackie_default_*`) as `memorial` / `speaker:"V"`. Tagger
   gained V-gender dropdown + "memorial only" filter + V♀/V♂/MEMORIAL badges. `lines.json` documented as the
   canonical label DB the whole mod reads. See `docs/VOICE_LINES.md`.
+- [x] **v0.61 — recover String IDs for the new pool (`tools/backfill_string_ids.py`):** the String ID *is*
+  the wem hash in decimal — `string_id == int(<trailing hex token>, 16)`, verified **777/777** on the scraped
+  lines. No WolvenKit/metadata/guessing needed. Filled `string_id` for all **505** new records (reference-only;
+  sfx keys stay `jl_<stem>`). Idempotent; `--all` re-verifies the old 777. Documented in `docs/VOICE_LINES.md`.
 - [ ] **Reunion scene (retrieval questline):** the 80 `memorial` lines are V calling Jackie's dead line
   ("So I went to your funeral", "my last call") — V-side audio, pick by player `v_gender`. Strong material
   for the retrieval/reunion beat. Not for Jackie's voice.

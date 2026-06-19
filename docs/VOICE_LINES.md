@@ -36,10 +36,28 @@ tick **"new lines only"**, and search the transcript before settling for an old 
 
 **Two id systems (don't mix them up):**
 - **Old 777:** keyed by the game's String ID → `jl_<string_id>` (e.g. `jl_1661700260668284928`).
-- **New 503:** no String ID, so keyed by their WolvenKit **wem stem** → `jl_<stem>`
+- **New 503:** keyed by their WolvenKit **wem stem** → `jl_<stem>`
   (e.g. `jl_jackie_q000_f_170a4a14f8405008`). `source: "new_unscraped"` in `lines.json`.
 
 Both are real sfx keys in the YML and used identically in `config.lua`.
+
+### The String ID *is* the wem hash (decimal = hex of the trailing token)
+
+The new lines were never missing their VO String ID — **it's the wem hash, just in hex.**
+The game's String ID (what SoundDB stored as `string_id` for the old 777) equals the trailing
+`_`-delimited hex token of the wem filename, read as a base‑16 integer:
+
+```
+base/.../jackie_q000_f_170a4a14f8405008.wem
+                       └────────┬───────┘
+              int("170a4a14f8405008", 16) = 1660220866564214792   ← String ID (decimal)
+```
+
+Verified `string_id == int(<trailing hex>, 16)` against **all 777** scraped lines → 777/777, 0 misses.
+So no WolvenKit / metadata dig / guessing is needed to recover a new line's String ID — it's a pure
+base conversion. `tools/backfill_string_ids.py` computed it for all 505 new lines and wrote it into
+their `string_id` field (`--all` also re-verifies the old 777). It is **reference-only**:
+the sfx key stays `jl_<stem>` (config.lua keys off the stem — never rename to `jl_<string_id>`).
 
 ---
 
