@@ -2,6 +2,19 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🔬 Track A — native line-by-stringId + baked lipsync (probe, awaiting test, 2026-06-19)
+Goal: make a SPAWNED Jackie speak a SPECIFIC line by VO string id WITH the game's own baked
+lipsync, WITHOUT authoring a `.scene` file. If it works, the heavy WolvenKit scene-authoring
+route (Track B) is unnecessary.
+- **Built:** standalone CET probe `mod/JackieSceneProbe/` + `deploy_probe.ps1`. Dump-first
+  pattern (same one that cracked the phone system): reflection-dump scene/voiceset/dialog/VO
+  classes → `scene_methods.txt`; placeholder "play the line" attempts → `scene_attempts.txt`.
+  Test line: **"Ka-ching, baby!"** stringId `1927336253241237504`, lipsync `f_1ABF461C612D2000`.
+- [ ] **TEST:** deploy, summon Jackie, look at him, press "1) DUMP", paste `scene_methods.txt` back.
+- [ ] Wire the real play-by-stringId call from the dumped method names; retest A1/A2.
+- [ ] If no runtime door exists → fall back to Track B (author minimal `.scene` from a word spec).
+- Audio-only V1 export (wscript over `lines.json` `vo_wem`) is the separate, already-scoped path.
+
 ## 🆕 v0.55 — arrival/immersion tuning + asleep-no-pickup + ambient grunts + dinner gate ON (DEPLOYED, awaiting test, 2026-06-19)
 Batch of small polish + two new behaviours.
 - **Foot arrival downshift 25→14 m** (`Config.vehicle.sprintToWalk`): he now sprints closer and only
