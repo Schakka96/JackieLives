@@ -46,11 +46,52 @@ local function lookAtTarget()
 end
 
 -- ── reflection helpers (mirror JackieLives dumpPhoneReflection) ───────────────────────
+-- CET serializes CName as: ToCName{...--[[ ReadableName --]] }. Pull the readable part out.
+local function readable(x)
+  local s = tostring(x)
+  local r = s:match("%-%-%[%[%s*(.-)%s*%-%-%]%]")
+  return r or s
+end
 local function methodName(m)
   local nm
   pcall(function() nm = m:GetFullName() end)   -- includes param/return types — what we want
   if not nm then pcall(function() nm = m:GetName() end) end
-  return tostring(nm)
+  return readable(nm)
+end
+
+-- Full, UNFILTERED method list for one class (the over-filter hid scnVoicesetComponent's 1 method).
+local function dumpClassFull(cn, w)
+  local cls; pcall(function() cls = Reflection.GetClass(cn) end)
+  if not cls then w("=== " .. cn .. " : CLASS NOT FOUND ==="); w(""); return end
+  local parent = "?"; pcall(function() local p = cls:GetParent(); if p then parent = readable(p:GetName()) end end)
+  w("=== " .. cn .. "  (parent: " .. parent .. ")  [ALL METHODS] ===")
+  local methods; pcall(function() methods = cls:GetMethods() end)
+  if not methods then pcall(function() methods = cls:GetFunctions() end) end
+  if methods then
+    for _, m in ipairs(methods) do w("    " .. methodName(m)) end
+    w("    (total: " .. #methods .. ")")
+  else w("    (could not list methods)") end
+  w("")
+end
+
+-- Global (static) functions — PlayVoiceOver lives here, NOT on gameObject:GetMethods().
+local function dumpGlobals(w)
+  w("=== GLOBAL FUNCTIONS (voice/vo/dialog/line/speak/play/scene) ===")
+  local fns
+  for _, getter in ipairs({ "GetGlobalFunctions", "GetFunctions" }) do
+    if not fns then pcall(function() fns = Reflection[getter] and Reflection[getter]() end) end
+  end
+  if not fns then w("    (no global-function accessor on Reflection — Codeware version?)"); w(""); return end
+  local hits = 0
+  for _, fn in ipairs(fns) do
+    local nm = methodName(fn); local low = nm:lower()
+    if low:find("voiceover") or low:find("voiceset") or low:find("dialog") or low:find("speak")
+       or low:find("playvo") or low:find("playline") or low:find("scnplay") or low:find("playdialog") then
+      w("    " .. nm); hits = hits + 1
+    end
+  end
+  w("    (matched " .. hits .. " of " .. #fns .. " globals)")
+  w("")
 end
 
 -- Candidate classes. Unknowns are fine — "CLASS NOT FOUND" tells us which names are real.
@@ -145,6 +186,41 @@ local function dumpReflection()
   log(UI.status)
 end
 
+-- Focused FULL dump: every method of the key small classes + matching globals -> scene_full.txt
+local FULL_CLASSES = {
+  "scnVoicesetComponent",            -- the 1 method we MUST see
+  "scnSceneSystem", "scnISceneSystem",
+  "scnDialogLineEvent", "scnDialogLineData",
+  "ScriptedPuppet", "NPCPuppet",
+  "AIHumanComponent",
+}
+local function dumpFull()
+  if not Reflection then UI.status = "Reflection missing — Codeware loaded?"; log(UI.status); return end
+  local out, n = {}, 0
+  local function w(s) n = n + 1; out[n] = tostring(s) end
+  w("# JackieSceneProbe FULL dump (key classes, unfiltered, + globals)")
+  w("")
+  dumpGlobals(w)
+  for _, cn in ipairs(FULL_CLASSES) do dumpClassFull(cn, w) end
+  -- also: the live look-at target's exact class, dumped in full
+  local npc = lookAtTarget()
+  if npc then
+    local cn = readable(npc:GetClassName())
+    w("=== LIVE TARGET class full dump ===")
+    dumpClassFull(cn, w)
+    -- and the voiceset component instance's class
+    local comp; pcall(function() comp = npc:FindComponentByName(CName.new("VoicesetComponent")) end)
+    if comp then dumpClassFull(readable(comp:GetClassName()), w) end
+  else
+    w("(no look-at target — aim at Jackie for the live-class dump)")
+  end
+  local f = io.open("scene_full.txt", "w")
+  if f then f:write(table.concat(out, "\n")); f:close()
+    UI.status = "Wrote scene_full.txt (" .. n .. " lines). Paste it to Claude."
+  else UI.status = "ERROR: could not write scene_full.txt." end
+  log(UI.status)
+end
+
 -- ── attempts (placeholders, refined after we read the dump) ───────────────────────────
 local function attemptLog(tag, ok, extra)
   local line = ("%s  ok=%s%s"):format(tag, tostring(ok), extra and ("  | " .. extra) or "")
@@ -159,7 +235,7 @@ end
 --     us if the VO event resolver accepts a raw id / hash / wem stem.
 local function attemptPlayVoiceOverByIds()
   local npc = lookAtTarget()
-  if not npc then UI.status = "Look AT Jackie first."; log(UI.status); return end
+  if not npc then attemptLog("A1 PlayVoiceOver", false, "NO look-at target — aim at Jackie"); return end
   pcall(function()
     local stim = npc:GetStimReactionComponent()
     if stim then stim:ActivateReactionLookAt(Game.GetPlayer(), false, 1, true, true) end
@@ -178,7 +254,7 @@ end
 --     real play-by-id call gets wired after we read its method list from the dump.
 local function attemptFindVoiceset()
   local npc = lookAtTarget()
-  if not npc then UI.status = "Look AT Jackie first."; log(UI.status); return end
+  if not npc then attemptLog("A2 FindVoiceset", false, "NO look-at target — aim at Jackie"); return end
   local found = {}
   for _, c in ipairs({ "voiceset", "VoiceSet", "scnVoicesetComponent", "VoicesetComponent", "voice" }) do
     local comp; pcall(function() comp = npc:FindComponentByName(CName.new(c)) end)
@@ -211,6 +287,7 @@ registerForEvent("onDraw", function()
   ImGui.Separator()
   ImGui.Text("STEP 1 — discover the API:")
   if ImGui.Button("1) DUMP scene/VO reflection -> scene_methods.txt") then dumpReflection() end
+  if ImGui.Button("1b) FULL dump key classes + globals -> scene_full.txt") then dumpFull() end
 
   ImGui.Separator()
   ImGui.Text("STEP 2 — best-guess attempts (watch mouth / listen):")
@@ -223,5 +300,6 @@ registerForEvent("onDraw", function()
 end)
 
 registerHotkey("jkscn_dump", "SceneProbe: DUMP reflection", function() dumpReflection() end)
+registerHotkey("jkscn_full", "SceneProbe: FULL dump", function() dumpFull() end)
 registerHotkey("jkscn_a1",   "SceneProbe: A1 PlayVoiceOver", function() attemptPlayVoiceOverByIds() end)
 registerHotkey("jkscn_a2",   "SceneProbe: A2 find voiceset", function() attemptFindVoiceset() end)
