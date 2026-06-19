@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.52"
+Config.version = "0.53"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -74,6 +74,23 @@ Config.talk = {
 Config.talkLines = {
   common = { "ono_jackie_greet", "ono_jackie_curious", "ono_jackie_phone" },
   rare   = { "ono_jackie_bump", "ono_jackie_additional", "ono_jackie_laughs_soft" },
+}
+
+-- ---- catch-his-eye smile (v0.53) -----------------------------------------
+-- When V holds their gaze straight on Jackie (look-at, within range), there's a LOW chance per roll
+-- that he flashes a brief smile back, then his face relaxes. Pure facial — no audio, no dialogue —
+-- so it never interrupts talking/barks (those gate it off). Smile = native FacialReaction
+-- category 3 / idle 6 (5=Joy, 2=Neutral; verified). Reset via stim:ResetFacial(0).
+Config.smile = {
+  enabled  = true,
+  chance   = 0.04,   -- per-roll probability he smiles when caught looking (low on purpose)
+  rollEvery= 1.5,    -- seconds between rolls while you keep looking at him
+  duration = 3.0,    -- seconds the smile is held before his face relaxes
+  range    = 8.0,    -- metres; only if V is within this distance
+  cooldown = 25.0,   -- seconds after a smile before he can smile again (keeps it special)
+  reapply  = 0.6,    -- re-assert the facial every N s so it doesn't decay before duration ends
+  category = 3,      -- FacialReaction category for the smile set
+  idle     = 6,      -- 6 = Smile (5 = Joy, 2 = Neutral)
 }
 
 -- ---- dialogue runner (v0.20: REAL audio via Audioware) --------------------

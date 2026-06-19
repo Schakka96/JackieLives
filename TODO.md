@@ -2,6 +2,21 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.53 — catch-his-eye smile (DEPLOYED, awaiting test, 2026-06-19)
+Tier-3 immersion: when V holds their gaze **straight on Jackie** (look-at, within range), a **low
+chance per roll** that he flashes a **brief smile**, then his face relaxes.
+- New `smileTick` (`init.lua`, beside `flapTick`) — reuses the proven `AnimFeature_FacialReaction`
+  mechanism. Smile = native **category 3 / idle 6** (5=Joy, 2=Neutral; from `jackie-facial-rig-runtime`).
+  Held by re-asserting the facial every `reapply` s, then `stim:ResetFacial(0)` to relax.
+- **Gated OFF while he's talking** (`flap.until_ > 0`, `dlg.active`, `Branch.open/busy`) so a smile
+  never stomps the mouth flap mid-line. Pure facial — no audio, no dialogue interrupt.
+- Tunable in `Config.smile`: `chance` 0.04/roll, `rollEvery` 1.5 s, `duration` 3.0 s, `range` 8 m,
+  `cooldown` 25 s (keeps it special), `reapply` 0.6 s.
+- [ ] **TEST:** stand near idle/summoned Jackie and stare at him for a while. Occasionally (rare) he
+      should smile for ~3 s then relax. Console logs `Smile: caught V's eye`. Confirm he never smiles
+      mid-bark/dialogue. If the smile face looks wrong, sweep category/idle in `JackieLipsync` and
+      update `Config.smile.category/idle`.
+
 ## 🆕 v0.51 — fix STUCK foot arrival: valid-spawn height guard + respawn-closer ladder (DEPLOYED, awaiting test, 2026-06-19)
 **Symptom (Antonia's log):** a foot/sprint arrival spawned ~50 m out and STUTTERED in place —
 `sprinting in... 50.7 m / 51.1 / 48.7 / 48.7 / 48.7 ...`, never closing. Cause: the spawn point was on
@@ -100,6 +115,17 @@ New line dump documented in `docs/conversations.md` §7–§8.1 (clips matched, 
 - [ ] **Afterlife date ACCEPT** line ("...Afterlife, here we come, baby!") when the picked venue is the Afterlife.
 - [ ] Splice the bare "Nah"s with a warm follow-up (Misty/Sorry) so they're not abrupt.
 - [x] Jackie can open a lunch invite himself ("C'mon, let's go have some lunch.") — done in v0.48.
+- [ ] **Dinner cooldown REFUSE line** — "Got no time for this!" dropped (unsuitable); currently a placeholder
+  (reuses the decline line "Why, what's the rush?"). Pick a proper "already ate today / not again" clip.
+
+## 🎙️ Voice bank refresh (~777 → ~1000 lines) — extract via WolvenKit (added 2026-06-19)
+Antonia found more Jackie lines exist (~1000) and will extract them with WolvenKit to .wav (higher quality than
+the SoundDB `.ogg` previews). Naming reconciliation — see `memory/voice-bank-refresh-naming.md`:
+- `jl_<id>` = SoundDB **String ID**; every `sfx` in `config.lua` keys off it → **must stay stable**.
+- WolvenKit exports VO by **wem-hash depot name** (e.g. `jackie_q005_f_<hash>.wem`) — does NOT match `jl_<id>`.
+- [ ] Crosswalk the 777 via `lines.json` `vo_wem` (string_id ↔ wem basename) → rename exports to `jl_<id>.wav`.
+- [ ] Get String IDs for the new ~220 lines (re-scrape SoundDB if it now lists them, or capture the VO map).
+- [ ] Extend `tools/convert_audio.py` to merge the WolvenKit export → regenerate `lines.json` + the audioware `.yml`.
 
 ## 🆕 v0.47 — dinner dialogue refinements (DEPLOYED, awaiting test, 2026-06-18)
 - **Invite question** (`Config.date.inviteText`): "Hey - you hungry?..." → **"Wanna get something to eat?"**
@@ -107,9 +133,10 @@ New line dump documented in `docs/conversations.md` §7–§8.1 (clips matched, 
   (open node of `Config.date.tree`). V then either picks a spot or rainchecks.
 - **Decline ends earlier:** the venue picker moved to a new `venue` node, so picking *raincheck* (or the
   on-cooldown refusal) ends the talk **right after the question** — the restaurant list never shows.
-- **Cooldown refusal moved up + reworded:** the "won't eat out twice a day" check now fires at the invite
-  (`runCallAction "start_date"`), not after a venue pick. New line **"Got no time for this!"**
-  (`refuseText`, `jl_1693539624046764032`) since "had enough for one day" became the accept line.
+- **Cooldown refusal moved up:** the "won't eat out twice a day" check now fires at the invite
+  (`runCallAction "start_date"`), not after a venue pick. ~~"Got no time for this!"~~ **DROPPED** (unsuitable,
+  Antonia) — `refuseText` is a **placeholder** ("Why, what's the rush?") until a real "already ate today"
+  clip is picked from the refreshed bank (see Voice-bank backlog below).
 - **"Don't come here often..."** dropped from the `everywhere` (companion/after-a-call) tree — it's a
   fixed-location greeting only now; replaced there with "Anyway, what's goin' on?".
 - Files: `config.lua` (inviteText, refuseText, `date.tree`, `everywhere` pool, version 0.47),

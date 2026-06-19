@@ -77,6 +77,9 @@ local JL = {
   arrival = { at = nil, phase = nil, pt = nil, placeAt = nil, moveAt = nil, deadline = nil, lastReissue = 0 },
   -- v0.33 "send Jackie off": drop follower role -> walk away -> despawn once far enough.
   leaving = { phase = nil, deadline = nil, lastReissue = 0 },
+  -- v0.53 catch-his-eye smile: until_=hold-smile deadline; nextRoll=next gaze roll; nextApply=re-assert
+  -- facial; cooldownUntil=earliest next smile; handle=who's smiling (to reset the right face).
+  smile  = { until_ = 0, nextRoll = 0, nextApply = 0, cooldownUntil = 0, handle = nil },
   -- v0.34 VEHICLE ARRIVAL: spawn on bike behind V -> drive in -> dismount -> jog/walk -> companion.
   varrival = { at = nil, phase = nil, pt = nil, bikeId = nil, bikeHandle = nil,
                placeAt = nil, driveAt = nil, sprintAt = nil, lastReissue = 0, deadline = nil, driveCmd = nil },
@@ -1064,6 +1067,69 @@ local function flapTick()
     flap.nextAt = now + (flap.interval or 0.9)
     applyTalkingFace(dialogueTarget())
   end
+end
+
+-- ---------------------------------------------------------------------------
+-- v0.53 CATCH-HIS-EYE SMILE. While V holds their look straight on Jackie (and nothing else is
+-- driving his face), roll a LOW chance every `rollEvery` s; on a hit he smiles for `duration` s
+-- then relaxes. Same FacialReaction mechanism as the talk-flap, so it's gated OFF whenever a line
+-- is playing (flap/dialogue) — a smile must never stomp the mouth mid-sentence.
+-- ---------------------------------------------------------------------------
+local function applySmileFace(handle)
+  if not handle then return end
+  pcall(function()
+    local anim = handle:GetAnimationControllerComponent()
+    if not anim then return end
+    local f = NewObject("handle:AnimFeature_FacialReaction")
+    pcall(function() f.category = (Config.smile and Config.smile.category) or 3 end)
+    pcall(function() f.idle     = (Config.smile and Config.smile.idle)     or 6 end)
+    anim:ApplyFeature(CName.new("FacialReaction"), f)
+  end)
+end
+local function resetSmileFace(handle)
+  if not handle then return end
+  pcall(function() local s = handle:GetStimReactionComponent(); if s then s:ResetFacial(0) end end)
+end
+-- stepped from onUpdate.
+local function smileTick()
+  local cfg = Config.smile
+  if not (cfg and cfg.enabled) then return end
+  local now = JL.clock or 0
+  local s   = JL.smile
+
+  -- (a) a smile is in progress: hold it (re-assert so it doesn't decay), then relax when it elapses.
+  if s.until_ > 0 then
+    if now >= s.until_ then
+      resetSmileFace(s.handle)
+      s.until_, s.handle = 0, nil
+      s.cooldownUntil = now + (cfg.cooldown or 25.0)
+    elseif now >= (s.nextApply or 0) then
+      s.nextApply = now + (cfg.reapply or 0.6)
+      applySmileFace(s.handle)
+    end
+    return
+  end
+
+  -- (b) never start a smile while he's talking (would stomp the mouth flap) or in cooldown.
+  if flap.until_ > 0 or dlg.active or Branch.open or Branch.busy then return end
+  if now < (s.cooldownUntil or 0) then return end
+
+  -- (c) roll only while V is actually looking straight at Jackie, within range, on the roll cadence.
+  if now < (s.nextRoll or 0) then return end
+  s.nextRoll = now + (cfg.rollEvery or 1.5)
+  local jackie = lookedAtJackie()
+  if not jackie then return end
+  local pp = playerPos()
+  if pp then
+    local jp; pcall(function() jp = jackie:GetWorldPosition() end)
+    if jp and dist3(pp, jp) > (cfg.range or 8.0) then return end
+  end
+  if math.random() >= (cfg.chance or 0.04) then return end   -- low likelihood
+
+  s.handle    = jackie
+  s.until_    = now + (cfg.duration or 3.0)
+  s.nextApply = 0   -- apply on the next tick
+  log("Smile: caught V's eye -> brief smile.")
 end
 
 -- Audioware: play a registered voice clip (his real .ogg) by event name. 2D for the
@@ -3457,6 +3523,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(dialogueTick)
   pcall(branchTick)
   pcall(flapTick)       -- lip-movement: shuffle talking faces while a Jackie line plays
+  pcall(smileTick)      -- v0.53: low-chance brief smile when V catches his eye
   pcall(callTick)       -- holocall: ring -> pick up
   pcall(vehicleArrivalTick)  -- v0.50: THE arrival state machine — foot (DES sprint-in) + bike, one tail
   pcall(arrivalGreetTick)    -- v0.46/v0.48: one-shot fresh greeting when an arrived Jackie closes to 4 m
