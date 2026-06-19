@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.53"
+Config.version = "0.54"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -166,14 +166,20 @@ Config.date = {
   resetCooldownHours = 24.0, -- the dinner FULL reset can only fire once per this many in-game hours
   objectiveText     = "Dinner with Jackie - meet him at %s",  -- blue on-screen objective (%s = place)
 
+  venuesShown       = 4,     -- v0.52: only this many RANDOM venues (of the full pool) are offered per picker
+
   -- Restaurants V can pick. pos/yaw reuse coords already captured in Config.locations (his bar/stall
   -- waypoints) so he sits facing the right way. Each entry WITH pos auto-becomes a dialogue option.
+  -- pickText/pickSfx (v0.52): Jackie's spoken line when HE picks this spot (the "You pick, hermano." path).
+  -- Only venues WITH a pickSfx are eligible for his self-pick, so he can actually NAME where they're going.
   restaurants = {
     { key = "noodle",    name = "the noodle bar", pos = { -1441.064, 1257.748,  23.090 }, yaw =  -87.1 },  -- noodle bar
     { key = "redwood",   name = "Redwood Market", pos = {  -431.550,  669.948, 115.010 }, yaw =  -33.5 },  -- "noodle place" stall
-    { key = "afterlife", name = "Afterlife",      pos = { -1449.437, 1012.129,  17.357 }, yaw = -168.3 },  -- barstool, right side
+    { key = "afterlife", name = "Afterlife",      pos = { -1449.437, 1012.129,  17.357 }, yaw = -168.3,    -- barstool, right side
+      pickText = "...then I say we hit the Afterlife, hahaha... You know, do some shots.", pickSfx = "jl_1790891785270616064" },
     { key = "ginger",    name = "Ginger Panda",   pos = {  -485.426,  576.939,  31.302 }, yaw =  -17.1 },  -- the bar
-    { key = "lizzies",   name = "Lizzie's Bar",   pos = { -1174.427, 1572.135,  23.115 }, yaw =  -68.5 },  -- rear bar
+    { key = "lizzies",   name = "Lizzie's Bar",   pos = { -1174.427, 1572.135,  23.115 }, yaw =  -68.5,    -- rear bar
+      pickText = "Meet me at Lizzie's.", pickSfx = "jl_1691270077089771520" },
   },
 
   -- v0.43: walk/arrival BANTER fully disabled (Antonia). The only spoken beats are the three below.
@@ -202,26 +208,15 @@ Config.date = {
   tree = {
     start = "open",
     nodes = {
-      -- v0.47: V's "Wanna get something to eat?" lands -> Jackie ACCEPTS immediately with the
-      -- "had enough for one day" line, THEN V either commits (-> venue picker) or rainchecks.
-      -- Declining ends the talk HERE, after the question, before the venue list is ever shown.
+      -- v0.52: V's "Wanna get something to eat?" lands -> Jackie ACCEPTS ("had enough for one day"), then the
+      -- venue picker shows RIGHT HERE: 4 random venues (withDateChoices) + "You pick, hermano." (he names a
+      -- spot) + "Actually... raincheck." (-> decline). Raincheck now lives IN the picker, not a step before it.
       open = {
         jackie  = { text = "Yeah, had enough for one day, lemme tell you.", sfx = "jl_1697051347046326272" },
+        restaurantPicker = true,   -- 4 random restaurant options are auto-injected here from `restaurants`
         choices = {
-          { text = "Then let's find a spot.", to = "venue"   },
-          { text = "Actually... raincheck.",  to = "decline" },
-        },
-      },
-      -- the restaurant picker only appears once V has committed to going out.
-      venue = {
-        restaurantPicker = true,   -- restaurant options are auto-injected here from `restaurants`
-        jackiePool = {
-          { text = "Man, I'm starvin'. Let's grab a tight-bite. Whaddaya say?", sfx = "jl_1904096844380655616" },
-          { text = "Now, whaddaya say we liquor up and talk life.",             sfx = "jl_1661715724513484800" },
-          { text = "C'mon. I'm fuckin' starved.",                               sfx = "jl_1834512408575406080" },
-        },
-        choices = {
-          { text = "You pick, hermano.", to = nil, action = "dine:random" },
+          { text = "You pick, hermano.",     to = nil, action = "dine:random" },
+          { text = "Actually... raincheck.", to = "decline" },
         },
       },
       decline = {
@@ -523,7 +518,18 @@ Config.call = {
   -- visibly YANK him into V. v0.50 dropped it to 5 m so he's basically arrived before the teleport
   -- ever becomes available -> no yank, no running-into-V. Then the grunt fires at arrivalGruntDistance.
   companionDistance    = 5.0,    -- m: promote to companion at this range (foot + bike)
-  arrivalGruntDistance = 4.0,    -- m: once companion + this close, Jackie barks a "made it" grunt
+  arrivalGruntDistance = 4.0,    -- m: once companion + this close, Jackie says an arrival GREETING line (below)
+
+  -- v0.52: on arrival (once he closes to arrivalGruntDistance) Jackie speaks a real GREETING LINE — a jl_
+  -- clip + subtitle, NOT a WWise grunt event. The picker avoids the last-used line + any used in the last
+  -- 5 min (JL.bark.greetRepeatCooldown). Add/trim entries freely; any jl_<id> from the bank works.
+  arrivalGreetings = {
+    { text = "Talk to me, choomba.",        sfx = "jl_2239163066690486272" },
+    { text = "¿Qué onda?",                  sfx = "jl_2015561179233951744" },
+    { text = "Got me right behind you.",    sfx = "jl_1679806464288055296" },
+    { text = "So? You ready?",              sfx = "jl_1902765821582520320" },
+    { text = "V, hey! ¿Cómo te sientes?",   sfx = "jl_1867549271199477760" },
+  },
 }
 
 -- ---- ARRIVAL TUNING — foot + bike (v0.34, unified v0.50) --------------------
@@ -550,11 +556,15 @@ Config.vehicle = {
   -- `respawnStuckSeconds`), he's despawned + respawned at the next-closer `respawnRungs` distance.
   -- At the closest rung he's on V's own navmesh, so it converges; beyond it, he just hands off in place.
   maxSpawnZDelta    = 4.0,   -- m: max |Jackie.z - V.z| for a valid spawn point (same floor as V)
-  respawnRungs      = { 35.0, 20.0, 5.0 },  -- progressively-closer respawn distances when stuck
+  -- v0.53: rungs end at 20 m, NOT 5 m — a 5 m respawn read as a "teleport to V's face". 20 m is still a
+  -- clean walk-in, and with the BEHIND fallback in the spawn picker the ladder rarely needs to fire at all.
+  respawnRungs      = { 35.0, 20.0 },  -- progressively-closer respawn distances when stuck
   respawnStuckSeconds = 10.0,-- v0.52: seconds of no forward progress (to V) before a stuck-respawn fires (2x; was 5 — too tight)
   respawnProgressEps  = 1.0, -- m: distance he must shave off his closest-so-far to count as "progress"
   -- --- BIKE KNOBS (used by "bike" arrival) ---
   bikeRecord       = "Vehicle.v_sportbike2_arch_jackie_player",  -- Jackie's Arch
+  mountSeconds     = 4.0,    -- v0.53: seconds to let Jackie walk to the seat + climb on BEFORE the bike drives off
+  fellOffDist      = 6.0,    -- v0.53: if Jackie is >this from the moving bike, the mount failed -> he walks in on foot
   cruiseSpeed      = 8.0,    -- drive speed (8 = careful; he was reckless at higher)
   slowDownDistance = 30.0,   -- bike->V distance at which he eases off to slowSpeed (brakes smoothly)
   slowSpeed        = 3.0,    -- m/s drive speed once inside slowDownDistance, so the park isn't a hard stop
@@ -633,7 +643,6 @@ Config.callTree = {
         { text = "V, hey! Como te sientes?",                                     sfx = "jl_1867549271199477760" },
         { text = "Que onda?",                                                    sfx = "jl_2015561179233951744" },
         { text = "About time.",                                                  sfx = "jl_1934361222363238400" },
-        { text = "Gettin' one of my good feelings.",                             sfx = "jl_1834502468175589376" },
         -- very rare, dark family humor (~1%):
         { text = "Checkin' to see if I'm not rotting in some dumpster, like most o' the Welles boys?", sfx = "jl_2008332149470457856", chance = 0.01 },
       },

@@ -202,6 +202,15 @@ Warm follow-ups to splice after a bare "Nah" (Antonia: combine so it's not abrup
 (`Config.locationDialogue.noodle`). ❓ Also good as a **post-gig** suggestion so JACKIE can open a lunch/date
 invite himself (not only V).
 
+### 7f. Jackie NAMES the venue (dinner "You pick, hermano." → he self-picks) — WIRED v0.52
+When V tells Jackie to choose the spot, he picks a venue he has a line for and says it (`restaurants[].pickText/pickSfx`):
+| Venue | Line (after trim) | `sfx` | Full clip |
+|---|---|---|---|
+| Lizzie's Bar (`lizzies`) | Meet me at Lizzie's. | `jl_1691270077089771520` | ✂️ "[That kinda sounded like a "yes."] Meet me at Lizzie's. [Be there in an hour.]" |
+| Afterlife (`afterlife`) | ...we hit the Afterlife, hahaha... You know, do some shots. | `jl_1790891785270616064` | ✂️ "['Ey, let Dex know we got his toy for him. And then I say] we hit the Afterlife, hahaha... You know, do some shots." |
+
+*(Add more `pickText/pickSfx` to other `Config.date.restaurants` entries to widen his self-pick pool.)*
+
 ---
 
 ## 8. Dinner / date payment arc (DESIGN ❓)
@@ -378,4 +387,6 @@ jl_1721401856077123596  Two Tequila Old Fashioneds with a splash of cerveza and 
 jl_1721408614996692992  A Tequila Old Fashioned with a splash of cerveza and a chili garnish.  (singular variant)
 jl_1660742685327118336  Yeah, partner. We'll go halfsies.
 jl_1658860298971172864  [But that's done after tomorrow.] Afterlife, here we come, baby! Yeah!  (afterlife date accept)
+jl_1691270077089771520  [That kinda sounded like a "yes."] Meet me at Lizzie's. [Be there in an hour.]  (venue self-pick: lizzies)
+jl_1790891785270616064  ['Ey, let Dex know... And then I say] we hit the Afterlife, hahaha... do some shots.  (venue self-pick: afterlife)
 ```

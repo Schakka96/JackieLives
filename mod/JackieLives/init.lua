@@ -28,7 +28,7 @@
      SPRINTS him in (-> WALK last 25 m); "bike" spawns his Arch + Jackie at `bikeSpawnDistance` (60 m),
      mounts, rides in, slows at 30 m, PARKS on the road at 20 m, then WALKS the rest. Both end at
      COMPANION via `Config.call.companionDistance` (5 m, small so AMM's catch-up teleport can't yank him
-     into V), then bark within `arrivalGruntDistance` (4 m). Spawn point obeys: same level as V
+     into V), then say a GREETING LINE within `arrivalGruntDistance` (4 m; v0.52). Spawn point obeys: same level as V
      (`maxSpawnZDelta`), on a SIDE of V (`spawnSides`), and a STUCK->respawn-closer ladder (`respawnRungs`)
      if he can't path in. NOTE: the old AMM-spawn+hide+teleport "safe walk-in" + invisibility hack were
      DELETED in v0.50 — DES spawns out at distance, never pops near V.
@@ -1275,12 +1275,19 @@ local function setDinnerWaypoint(pos)
   log("Dinner: waypoint set (mappin id=" .. tostring(JL.dinner.mappinId) .. ").")
 end
 
--- Resolve a restaurant by key ("random" -> any with coords). Returns the entry or nil.
+-- Resolve a restaurant by key. "random" = Jackie self-picks: he prefers venues he can NAME (have a pickSfx)
+-- so he actually says where they're going; if none are nameable he falls back to any with coords.
 local function findRestaurant(key)
   local list = (Config.date and Config.date.restaurants) or {}
   if key == "random" then
-    local avail = {}
-    for _, r in ipairs(list) do if r.pos then avail[#avail + 1] = r end end
+    local nameable, anyPos = {}, {}
+    for _, r in ipairs(list) do
+      if r.pos then
+        anyPos[#anyPos + 1] = r
+        if r.pickSfx then nameable[#nameable + 1] = r end
+      end
+    end
+    local avail = (#nameable > 0) and nameable or anyPos
     if #avail == 0 then return nil end
     local i = 1; pcall(function() i = math.random(1, #avail) end)
     return avail[i]
@@ -1312,7 +1319,12 @@ local function startDinnerWalk(key)
   JL.dinner.destName = r.name
   JL.dinner.destYaw  = r.yaw or 0.0
   JL.dinner.satAt    = nil
-  pcall(function() speakJackieLine(D.ackText, D.ackSfx) end)
+  -- v0.52: if HE picked the spot ("You pick, hermano." -> dine:random) and it has a naming line, he SAYS it
+  -- ("Meet me at Lizzie's." / "...we hit the Afterlife..."); otherwise the generic accept ack.
+  local selfPick = (key == "random") and r.pickSfx
+  local line = selfPick and r.pickText or D.ackText
+  local sfx  = selfPick and r.pickSfx  or D.ackSfx
+  pcall(function() speakJackieLine(line, sfx) end)
   JL.ui.status = "Headin' to " .. tostring(r.name) .. " with Jackie."
   log("Dinner: walk to '" .. tostring(r.name) .. "' started.")
 end
@@ -1472,13 +1484,23 @@ local function withCompanionExtras(choices)
   return out
 end
 
--- v0.41: on the date tree's restaurant-picker node, auto-build one choice per restaurant that has
--- coords (action "dine:<key>"), shown BEFORE the node's static choices ("You pick" / raincheck).
+-- v0.41/v0.52: on the date tree's restaurant-picker node, auto-build a choice per restaurant (action
+-- "dine:<key>"), shown BEFORE the node's static choices ("You pick" / raincheck). v0.52: only `venuesShown`
+-- (default 4) RANDOM venues from the full pool are offered. Runs once per menu-open (branchTick), so the
+-- random selection stays stable while the picker is up.
 local function withDateChoices(node, choices)
   if not (node and node.restaurantPicker and Config.date and Config.date.restaurants) then return choices end
+  local pool = {}
+  for _, r in ipairs(Config.date.restaurants) do if r.pos then pool[#pool + 1] = r end end
+  for i = #pool, 2, -1 do                                  -- Fisher-Yates shuffle
+    local j = i; pcall(function() j = math.random(1, i) end)
+    pool[i], pool[j] = pool[j], pool[i]
+  end
+  local n = math.min((Config.date.venuesShown or 4), #pool)
   local out = {}
-  for _, r in ipairs(Config.date.restaurants) do
-    if r.pos then out[#out + 1] = { text = r.name .. ".", to = nil, action = "dine:" .. r.key } end
+  for i = 1, n do
+    local r = pool[i]
+    out[#out + 1] = { text = r.name .. ".", to = nil, action = "dine:" .. r.key }
   end
   for _, c in ipairs(choices or {}) do out[#out + 1] = c end
   return out
@@ -1918,7 +1940,10 @@ local function navmeshArrivalPoint(distance)
   if Config.call and Config.call.spawnSides ~= false then
     local s = (math.random() < 0.5) and 1.0 or -1.0                        -- +1 = one side, -1 = the other
     local j = math.rad((math.random() * 40.0) - 20.0)                      -- ±20° within the side cone
-    bases = { fwdAng + s * (math.pi * 0.5) + j, fwdAng - s * (math.pi * 0.5) + j }   -- chosen side, then the other
+    -- chosen side, then the OTHER side, then BEHIND (v0.53: behind is the reliable v0.51 fallback — a
+    -- side point at 90° often lands in a building/wall = unreachable; falling back to behind keeps the
+    -- spawn ON A STREET so he can actually path in, instead of bottoming out the stuck-respawn ladder).
+    bases = { fwdAng + s * (math.pi * 0.5) + j, fwdAng - s * (math.pi * 0.5) + j, fwdAng + math.pi }
     label = "SIDE"
   else
     local behind = not (Config.call and Config.call.spawnBehind == false)  -- default TRUE
@@ -2184,7 +2209,7 @@ local function promoteToCompanion()
   sendWalkToPlayer(h, (Config.call and Config.call.approachMovement) or "Run",
                       (Config.call and Config.call.followDistance) or 1.6)
   JL.summon.companionSet, JL.summon.walkIn = true, false
-  JL.summon.arrivalGreetPending = true   -- v0.46/v0.48: bark a fresh greeting once he closes to arrivalGruntDistance
+  JL.summon.arrivalGreetPending = true   -- v0.46/v0.48/v0.52: say a fresh greeting LINE once he closes to arrivalGruntDistance
 end
 
 -- v0.50: the old AMM-spawn-near-V + HIDE + teleport "safe walk-in" (arrivalTick / arrivalMoveType)
@@ -2480,8 +2505,8 @@ local function vehicleArrivalTick()
   -- v0.51 ON-FOOT STUCK -> RESPAWN CLOSER. While sprinting/walking, track his CLOSEST distance to V.
   -- If he makes no further progress for `respawnStuckSeconds` (bad navmesh island, wrong building
   -- level, blocked path — he just stutters in place, never closing), kill him and respawn at the next
-  -- rung in `respawnRungs` (e.g. 35 -> 20 -> 5 m). At 5 m he's on V's own navmesh, so this converges;
-  -- once no rung is closer than where he's stuck, just hand off in place.
+  -- rung in `respawnRungs` (35 -> 20 m). v0.53: stops at 20 m (a 5 m respawn read as a face-teleport);
+  -- once no rung is closer than where he's stuck, just hand off to companion in place.
   if (va.phase == "sprinting" or va.phase == "walking") and jh then
     local jp; pcall(function() jp = jh:GetWorldPosition() end)
     local d = (pp and jp) and dist3(pp, jp) or nil
@@ -2490,7 +2515,7 @@ local function vehicleArrivalTick()
         va.closestD, va.lastProgressT = d, now                       -- real progress -> reset the timer
       elseif (now - (va.lastProgressT or now)) >= (c.respawnStuckSeconds or 5.0) then
         local nd
-        for _, r in ipairs(c.respawnRungs or { 35.0, 20.0, 5.0 }) do
+        for _, r in ipairs(c.respawnRungs or { 35.0, 20.0 }) do
           if r < (va.closestD or 1e9) - 2.0 then nd = r; break end   -- pick the first rung that's actually closer
         end
         if nd then
@@ -2511,13 +2536,16 @@ local function vehicleArrivalTick()
     setFriendly(jh)
     pcall(function() va.bikeHandle:TurnVehicleOn(true) end)
     mountAsDriver(jh, va.bikeHandle)                                -- local climb-on (both at distance)
-    va.driveAt = now + 1.2                                          -- let the mount settle, then drive
-    va.mountAt = now                                               -- start of the stuck-grace window
+    -- v0.53: give him REAL time to walk to the seat + climb on before the bike drives off. 1.2s was
+    -- too short — the bike left without him. The "driving" phase then watches Jackie-to-bike distance
+    -- and, if he's clearly NOT on it (mount failed), ditches the bike and he comes in on foot from there.
+    va.driveAt = now + (c.mountSeconds or 4.0)
+    va.mountAt = va.driveAt                                        -- stuck-grace starts when the bike starts moving
     va.lastReissue = -999
     va.stuckTime, va.lastBikePos, va.lastSpeedT = 0, nil, now      -- stuck-detector state
     va.phase = "driving"
-    JL.ui.status = "Jackie's riding in..."
-    log("VehArrival: mounted; driving in.")
+    JL.ui.status = "Jackie's getting on the bike..."
+    log(("VehArrival: mount sent; %.0fs to climb on, then drive."):format(c.mountSeconds or 4.0))
     return
   end
 
@@ -2525,10 +2553,24 @@ local function vehicleArrivalTick()
     if not (va.bikeHandle and jh) then return end
     if now < (va.driveAt or 0) then return end
     local bp; pcall(function() bp = va.bikeHandle:GetWorldPosition() end)
-    local d = (pp and bp) and dist3(pp, bp) or nil
+    local jp; pcall(function() jp = jh:GetWorldPosition() end)
+    local d   = (pp and bp) and dist3(pp, bp) or nil                  -- BIKE -> V (when to park)
+    local dj  = (pp and jp) and dist3(pp, jp) or nil                  -- JACKIE -> V (what we report)
+    local jbd = (jp and bp) and dist3(jp, bp) or nil                  -- JACKIE -> BIKE (is he actually riding?)
+    -- v0.53: if the bike has been moving a couple seconds and Jackie is NOT on it (mount failed -> the
+    -- bike drove off without him), DITCH the bike and he comes in ON FOOT from where he's standing. No
+    -- teleport, no "bike arrives alone". This also fixes the report following the bike instead of him.
+    if jbd and jbd > (c.fellOffDist or 6.0) and (now - (va.driveAt or 0)) >= 2.0 then
+      log(("VehArrival: Jackie NOT on the bike (%.1f m from it) -> ditch bike, he comes on foot."):format(jbd))
+      stopBikeVeh(va.bikeHandle, va.driveCmd); despawnArrivalBike()
+      va.phase, va.sprintAt, va.lastReissue, va.pingAt = "sprinting", now, -999, 0
+      va.closestD, va.lastProgressT = nil, now
+      JL.ui.status = "Jackie missed the bike - on foot."
+      return
+    end
     local slowing = d and d <= (c.slowDownDistance or 30.0)            -- v0.52: he's intentionally crawling here
-    -- v0.50: distance ping every 3s
-    if d and now >= (va.pingAt or 0) then va.pingAt = now + 3.0; log(("VehArrival: riding in... %.1f m to V."):format(d)) end
+    -- v0.53: ping reports JACKIE's distance to V (bike's in parens), not the bike's, since he's the one arriving
+    if dj and now >= (va.pingAt or 0) then va.pingAt = now + 3.0; log(("VehArrival: riding in... %.1f m to V (bike %.0f)."):format(dj, d or 0)) end
     -- re-issue the drive at V's live position so he tracks you. v0.50/0.52: ease off to `slowSpeed` once
     -- inside `slowDownDistance` (30 m) so the park at `dismountDistance` (20 m) is a smooth brake, not a
     -- hard stop. (The autonomous drive command decelerates toward a slower target.)
@@ -3464,10 +3506,34 @@ local function pickFreshGreet(b, now)
   return ev
 end
 
--- v0.46/v0.48: ARRIVAL GREETING. After ANY arrival hands off to companion (promoteToCompanion sets
--- JL.summon.arrivalGreetPending), Jackie barks a one-shot GREETING (v0.48: from the full greet pool, not the
--- "made it" grunt) the moment he closes to `Config.call.arrivalGruntDistance` (4 m). The greeting avoids the
--- one used most recently + any used in the last 5 min (pickFreshGreet). Safe / sprint / bike alike; once per arrival.
+-- v0.52: no-repeat picker for arrival GREETING LINES (real jl_ clips + subtitle, NOT WWise grunt events).
+-- Avoids the last-used line + any used within greetRepeatCooldown (5 min). State on JL.arrivalGreet (keyed by sfx).
+local function pickArrivalGreetLine(now)
+  local pool = (Config.call and Config.call.arrivalGreetings) or {}
+  if #pool == 0 then return nil end
+  JL.arrivalGreet = JL.arrivalGreet or { used = {}, last = nil }
+  local st = JL.arrivalGreet
+  local cd = (barkCfg().greetRepeatCooldown) or 300.0
+  local fresh = {}
+  for _, e in ipairs(pool) do
+    local k = e.sfx or e.text
+    local last = st.used[k]
+    if k ~= st.last and (not last or (now - last) >= cd) then fresh[#fresh + 1] = e end
+  end
+  if #fresh == 0 then                       -- all on cooldown -> at least don't repeat the last one
+    for _, e in ipairs(pool) do if (e.sfx or e.text) ~= st.last then fresh[#fresh + 1] = e end end
+  end
+  if #fresh == 0 then fresh = pool end       -- single-entry pool
+  local e = fresh[1]; pcall(function() e = fresh[math.random(1, #fresh)] end)
+  local k = e.sfx or e.text
+  st.used[k] = now; st.last = k
+  return e
+end
+
+-- v0.46/v0.48/v0.52: ARRIVAL GREETING. After ANY arrival hands off to companion (promoteToCompanion sets
+-- JL.summon.arrivalGreetPending), Jackie says a one-shot real GREETING LINE (v0.52: a jl_ clip + subtitle, not
+-- the old WWise grunt) the moment he closes to `Config.call.arrivalGruntDistance` (4 m). Picks via
+-- pickArrivalGreetLine (no immediate repeat + 5-min cooldown). Safe / sprint / bike alike; once per arrival.
 local function arrivalGreetTick()
   if not JL.summon.arrivalGreetPending then return end
   local sp = JL.summon.spawn
@@ -3478,10 +3544,13 @@ local function arrivalGreetTick()
   if not jp then return end
   local d = dist3(pp, jp)
   if d <= ((Config.call and Config.call.arrivalGruntDistance) or 4.0) then
+    if Branch.open or Branch.busy or (dlg and dlg.active) then return end  -- don't talk over a convo; retry next tick
     JL.summon.arrivalGreetPending = false
-    local ev = pickFreshGreet(barkCfg(), JL.clock or 0)
-    pcall(function() playEventOn(h, ev, "") end)
-    log(("Arrival: greeting '%s' (d=%.1f m)."):format(tostring(ev), d))
+    local e = pickArrivalGreetLine(JL.clock or 0)
+    if e then
+      pcall(function() speakJackieLine(e.text, e.sfx) end)
+      log(("Arrival: greeting line '%s' (d=%.1f m)."):format(tostring(e.text), d))
+    end
   end
 end
 

@@ -59,6 +59,18 @@ Bind **"Talk to Jackie"** (CET → Bindings), then **look at Jackie and press it
 - No voice yet? The pools use a placeholder event; real Jackie audio depends on the VO playback test
   (Route A native event ids vs Route B Audioware).
 
+### Call Jackie onto a gig (arrival)
+Click **"Call Jackie (holocall)"** → a short call plays; ask him along and he ARRIVES from a distance and
+walks up as your companion (he never just pops in next to you). Two modes, toggled live in the window
+with **"Arrival method"** (and **"Test arrival now"** fires one without a call):
+- **FOOT** (default) — spawns ~50 m off to one side of you, sprints in, walks the last stretch.
+- **BIKE** — spawns ~60 m back on his Arch, rides in, parks on the road ~20 m out, walks the rest.
+
+He spawns on a valid street at *your* height (not a roof/other floor), and if he ever can't path to you
+he respawns a little closer until he reaches you. Tuning lives in `Config.call` + `Config.vehicle`
+(spawn distances, where he becomes a companion, bike park distance, etc. — all commented). The CET
+console logs his distance every few seconds (`riding in... 44 m to V`) so you can see what he's doing.
+
 ## Capture his locations (needed for the schedule)
 The schedule only spawns idle Jackie at spots whose coordinates you've captured.
 1. Walk to the exact spot (e.g. the noodle stand in front of MB8).

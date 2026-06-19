@@ -635,3 +635,48 @@ Tuner confirmed working in-game (sliding moves him, yaw spins him). Then:
 - README: added "Fine-tune his seats (the seat tuner)" section + collision note; dropped the stale
   "precise placement is a planned follow-up" line.
 --------------------------------------------------------------------------------
+
+================================================================================
+ARRIVAL OVERHAUL (v0.45 -> v0.54, 2026-06-19)
+The holocall "call Jackie onto a gig" arrival got rebuilt from 3 tangled spawn machines into ONE
+state machine with TWO modes. Root-cause research first: git-diffed the bike path back to v0.36 (the
+last version where it worked) — the spawn/mount/drive code + Config.vehicle were BYTE-IDENTICAL; the
+only regression since was the v0.38 foot-fallback that, at 40 s, despawned the bike and respawned him
+on foot — guillotining legit 80 m city rides ("no bike appears"). So footFallback now DEFAULTS OFF.
+
+SPAWN BACKEND = DES, not AMM (v0.50). AMM spawns Jackie 1 m in front of V + instant-promotes to
+companion — which is exactly why the old "safe walk-in" needed a HIDE-during-spawn + teleport-to-
+distance hack and a walkIn flag to suppress the double-promote. DES (DynamicEntitySystem) spawns him
+EXACTLY at distance — no pop, no hide, no teleport, no race. promoteToCompanion still calls AMM's
+SetNPCAsCompanion, so follower/combat behaviour is unchanged. DELETED: arrivalTick, arrivalMoveType,
+and the whole invisibility subsystem (setVisible/ToggleVisuals) from arrivals.
+
+TWO MODES (Config.call.arrivalMethod = "foot" | "bike"), both vehicleArrivalTick, shared tail:
+  foot — DES-spawn at spawnDistance (50 m), SPRINT in, downshift to WALK at sprintToWalk (25 m).
+  bike — Arch + Jackie spawn at bikeSpawnDistance (60 m; 80 let him path out of the streamed zone),
+         mount, ride, ease to slowSpeed at slowDownDistance (30 m), PARK on the road + dismount at
+         dismountDistance (20 m), then WALK the rest.
+Both promote to companion at companionDistance = 5 m (was 18 — at 18 AMM's catch-up TELEPORT yanked
+him into V, the "runs into V" bug), then bark a grunt at arrivalGruntDistance (4 m).
+
+VALID SPAWN + STUCK LADDER (v0.51). Reject any spawn point not within maxSpawnZDelta (4 m) of V's
+height (no roofs/balconies/metro/parking decks = wrong floor = no path). If he STILL can't path in
+(stutters in place, no progress for respawnStuckSeconds), despawn + respawn one rung closer
+(respawnRungs). Converges; reuses beginFootApproach (the single foot-spawn helper).
+
+PLACEMENT = SIDES (v0.52). Spawn on a side of V (L/R 90deg +-20, random) instead of behind. v0.53: a
+90deg point often lands in a building, so it now tries other-side then BEHIND (the reliable v0.51
+street spot) before giving up — this was making side spawns unreachable and bottoming the ladder out
+at 5 m = a teleport to V's face. Fixes: rungs end at 20 m not 5 m (v0.54); behind fallback (v0.53).
+
+BIKE MOUNT (v0.54). 1.2 s was too little to climb on — the bike drove off without him and the loop
+tracked the BIKE's distance, so it parked at V while Jackie sprinted from spawn. Fixes: mountSeconds
+= 4 (time to climb on before driving); during driving, if Jackie is > fellOffDist (6 m) from the
+moving bike the mount failed -> ditch the bike, he walks in on foot from there; the ping now reports
+JACKIE's distance to V, not the bike's. NOTE: if "Jackie NOT on the bike" fires every run, the
+AIMountCommand mount itself is broken on the current patch and needs a different approach.
+
+DEBUG: both modes log distance every 3 s + transition one-shots (easing off / downshift / dismount /
+handoff / stuck-respawn). CET window: arrival method toggles FOOT<->BIKE + "Test arrival now".
+Config.version -> 0.54.
+================================================================================

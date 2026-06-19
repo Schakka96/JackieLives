@@ -2,6 +2,24 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+## 🆕 v0.52–v0.54 — arrival tuning: side spawn, bike park+walk, mount timing, fell-off, no face-teleport (DEPLOYED, awaiting test, 2026-06-19)
+Iterative polish on the v0.50 two-mode (foot/bike) arrival. See `docs/logbook.txt` "ARRIVAL OVERHAUL" for the full narrative.
+- **Side spawn (v0.52):** `navmeshArrivalPoint` spawns him on a SIDE of V (left/right, 90°±20°, random),
+  not behind. `Config.call.spawnSides` (default on). v0.53: falls back to the **other side, then BEHIND**
+  if a side has no walkable point (a 90° point often lands in a building → unreachable).
+- **Bike park + walk (v0.52):** spawn 80→**60 m** (stays in the streamed zone), slow at **30 m**, PARK on
+  the road + dismount at **20 m**, then WALK the rest (was sprint). Stuck-failsafe disabled while
+  deliberately slowing; bike stuck timers doubled.
+- **Bike mount fix (v0.54):** `mountSeconds = 4` gives Jackie real time to climb on before the bike
+  drives; if he's then >`fellOffDist` (6 m) from the moving bike the mount failed → ditch the bike, he
+  walks in on foot from there. The progress ping now reports JACKIE's distance to V, not the bike's.
+- **Companion handoff 18→5 m (v0.50)** so AMM's catch-up teleport can't yank him into V; **stuck-respawn
+  ladder** ends at **20 m not 5 m (v0.54)** — a 5 m respawn read as a "teleport to V's face".
+- **Stuck timers 2× (v0.52):** `respawnStuckSeconds` 5→10 (foot was too twitchy).
+- [ ] **TEST:** foot — no face-teleports, spawns to a side or `BEHIND` and walks in. bike — `mount sent;
+      4s to climb on` → if mounted, `riding in... X to V (bike Y)` X≈Y; if not, `Jackie NOT on the bike ->
+      on foot`. If that fires EVERY bike run, the AIMountCommand is broken on this patch (needs rework).
+
 ## 🆕 v0.53 — catch-his-eye smile (DEPLOYED, awaiting test, 2026-06-19)
 Tier-3 immersion: when V holds their gaze **straight on Jackie** (look-at, within range), a **low
 chance per roll** that he flashes a **brief smile**, then his face relaxes.
@@ -91,6 +109,22 @@ Root-cause research (git diff back to v0.36, the last version where the bike wor
       sprints, same finish. Watch the 3 s distance pings in the console.
 - ⚠️ Leftover legacy (harmless): `JL.arrival` table kept ONLY for `.seeded` (RNG flag used by
   navmeshArrivalPoint); the dismiss/hardReset clears of its dead fields are no-ops. Can be pruned later.
+
+## 🆕 v0.52 — dinner picker polish (DEPLOYED, awaiting test, 2026-06-19)
+- **Merged the picker into the accept node:** after Jackie's "had enough for one day", the venue picker shows
+  immediately. **Raincheck is now an option IN the picker** (alongside the venues + "You pick, hermano.").
+- **Only 4 random venues** shown per picker (`Config.date.venuesShown`, Fisher-Yates in `withDateChoices`;
+  stable for the menu's lifetime since it builds once).
+- **"You pick, hermano." → Jackie NAMES the spot:** `restaurants[].pickText/pickSfx`; `dine:random` prefers
+  venues he can name. Wired: Lizzie's (`jl_1691270077089771520`), Afterlife (`jl_1790891785270616064`).
+- **Removed "Gettin' one of my good feelings."** from the holocall greeting pool (`Config.callTree.ring`).
+- **Arrival greeting = a real LINE now, not a grunt:** `arrivalGreetTick` used to play WWise bark *events*
+  (`ono_jackie_greet`/etc., which sound like grunts). It now speaks a jl_ clip + subtitle from
+  `Config.call.arrivalGreetings` via `pickArrivalGreetLine` (same no-repeat + 5-min cooldown; guards against
+  talking over an open convo). Proximity barks still use the WWise events.
+- Files: `config.lua` (restaurants pickText/sfx + `venuesShown`, merged `date.tree`, callTree pool,
+  `call.arrivalGreetings`), `init.lua` (`withDateChoices` random-4, `findRestaurant` prefers nameable,
+  `startDinnerWalk` speaks pick line, `pickArrivalGreetLine` + `arrivalGreetTick` speaks a real greeting).
 
 ## 🆕 v0.48 — Jackie hungry-hint + arrival greeting + seated line fix (DEPLOYED, awaiting test, 2026-06-19)
 - **Jackie drops a hungry HINT himself:** new `jackieDinnerOfferTick` — while companion + dinner available
