@@ -19,6 +19,11 @@
   h1 span{color:var(--acc)}
   .bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   .bar input[type=search]{flex:1 1 140px;min-width:120px}
+  .new-badge{font-size:10px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:999px;
+    background:#ff9d2b;color:#2a1800;vertical-align:middle;margin-left:6px}
+  .tx-edit{width:100%;font-size:15px;font-family:inherit;background:var(--panel2);
+    border:1px solid var(--acc);border-radius:8px;padding:6px 8px;resize:vertical;min-height:36px;
+    color:var(--txt)}
   input,select,textarea,button{font:inherit;color:var(--txt);background:var(--panel2);
     border:1px solid var(--line);border-radius:8px;padding:7px 9px}
   textarea{width:100%;resize:vertical;min-height:42px}
@@ -66,6 +71,7 @@
     <input id="search" type="search" placeholder="search transcript…">
     <select id="fcat"><option value="">all categories</option></select>
     <label class="tiny"><input type="checkbox" id="funtag"> untagged only</label>
+    <label class="tiny"><input type="checkbox" id="fnew"> new lines only</label>
   </div>
   <div class="bar" style="margin-top:8px">
     <button class="ghost" id="import">Import lines.json</button>
@@ -157,12 +163,16 @@ function render(){
   const q=(document.getElementById("search").value||"").toLowerCase();
   const fc=document.getElementById("fcat").value;
   const untag=document.getElementById("funtag").checked;
+  const fnew=document.getElementById("fnew").checked;
   list.innerHTML="";
   LINES.forEach(l=>{
-    if(q && !l.transcript.toLowerCase().includes(q)) return;
+    const isNew = l.source==="new_unscraped";
+    const displayTranscript = TAGS[l.id]?.transcript_edit || l.transcript || "";
+    if(q && !displayTranscript.toLowerCase().includes(q) && !l.id.toLowerCase().includes(q)) return;
     const t=tagFor(l.id);
     if(fc && (t.category||l.category)!==fc) return;
     if(untag && isTagged(l.id)) return;
+    if(fnew && !isNew) return;
     list.appendChild(cardEl(l,t));
   });
   updateProg();
@@ -171,13 +181,32 @@ function render(){
 function cardEl(l,t){
   const c=document.createElement("div"); c.className="card"+(t.done?" done":""); c.id="card-"+l.id;
 
-  const tx=document.createElement("p"); tx.className="tx"; tx.textContent=l.transcript; c.appendChild(tx);
+  const isNew = l.source==="new_unscraped";
+  if(isNew){
+    // editable transcript for lines with no scraped text
+    const txLabel=fld("Transcript"); c.appendChild(txLabel);
+    const txEdit=document.createElement("textarea"); txEdit.className="tx-edit";
+    txEdit.placeholder="Type what you hear…";
+    txEdit.value=t.transcript_edit||"";
+    txEdit.oninput=()=>{ t.transcript_edit=txEdit.value; save(); };
+    c.appendChild(txEdit);
+  } else {
+    const tx=document.createElement("p"); tx.className="tx"; tx.textContent=l.transcript; c.appendChild(tx);
+  }
   const meta=document.createElement("p"); meta.className="meta";
-  const bits=["id: "+l.id];
-  if(l.context&&l.context.length)    bits.push(l.context.map(x=>x.replace("Vo_Context_","")).join("/"));
-  if(l.expression&&l.expression.length) bits.push(l.expression.map(x=>x.replace(/Vo_Exp\w*?_/,"")).join("/"));
-  if(l.quests&&l.quests.length)      bits.push("q:"+l.quests.slice(0,2).join(","));
-  meta.textContent=bits.join("  ·  "); c.appendChild(meta);
+  const bits=[];
+  if(isNew){
+    bits.push(l.id.replace("new_",""));  // show the wem stem
+    if(l.quests&&l.quests.length) bits.push("q:"+l.quests.join(","));
+    meta.innerHTML=bits.join("  ·  ")+'<span class="new-badge">NEW</span>';
+  } else {
+    bits.push("id: "+l.id);
+    if(l.context&&l.context.length)    bits.push(l.context.map(x=>x.replace("Vo_Context_","")).join("/"));
+    if(l.expression&&l.expression.length) bits.push(l.expression.map(x=>x.replace(/Vo_Exp\w*?_/,"")).join("/"));
+    if(l.quests&&l.quests.length)      bits.push("q:"+l.quests.slice(0,2).join(","));
+    meta.textContent=bits.join("  ·  ");
+  }
+  c.appendChild(meta);
 
   if(l.file){
     const a=document.createElement("audio"); a.controls=true; a.preload="none"; a.src=l.file; c.appendChild(a);
@@ -271,6 +300,7 @@ function esc(s){ return String(s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",
 document.getElementById("search").oninput=render;
 document.getElementById("fcat").onchange=render;
 document.getElementById("funtag").onchange=render;
+document.getElementById("fnew").onchange=render;
 CATS.forEach(x=>document.getElementById("fcat").appendChild(new Option(x,x)));
 
 document.getElementById("next").onclick=()=>{
@@ -285,7 +315,14 @@ document.getElementById("file").onchange=e=>{
   rd.readAsText(f);
 };
 document.getElementById("export").onclick=()=>{
-  const out=LINES.map(l=>Object.assign({}, l, TAGS[l.id]||{}));
+  const out=LINES.map(l=>{
+    const tag=TAGS[l.id]||{};
+    const merged=Object.assign({}, l, tag);
+    // bake any typed transcript into the transcript field
+    if(tag.transcript_edit) merged.transcript=tag.transcript_edit;
+    delete merged.transcript_edit;
+    return merged;
+  });
   const blob=new Blob([JSON.stringify(out,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
   a.download="jackie_voice_tags.json"; a.click();
