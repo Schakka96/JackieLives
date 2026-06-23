@@ -277,6 +277,22 @@ made progress. (NOT collision — the foot Jackie is a fresh DES entity with col
 - [ ] **Husbando-mode venue schedule:** alternate `Config.daySchedules` / locations for husbando mode
       (e.g. shared apartment, different hangouts; no Misty's-shop stops).
 
+### Esc-menu settings — backlog (next session can pick any; all back onto existing systems)
+Pattern for each: add an `addSwitch`/`addRangeFloat`/`addSelectorString` in `nsTick`, store the value on
+`JL.*`, add the key to `JL_SETTINGS_KEYS` (booleans persist automatically), and read the flag where the
+system already decides. Sliders/selectors persist too but need their value serialized as text (extend
+`jlSaveSettings`/`jlLoadSettings` beyond booleans — currently boolean-only).
+- [ ] **Schedule on/off** (`Config.enableSchedule`) + **proximity radius** slider (`Config.proximityRadius`).
+- [ ] **Arrival method dropdown** (foot / bike) — surfaces `Config.call.arrivalMethod`; supersedes the
+      boolean "Disable vehicle arrivals" if added (keep them consistent).
+- [ ] **Companion auto-leave** on/off + duration slider (`Config.companion.autoLeaveOnExpiry` + hours).
+- [ ] **Proximity barks** on/off (`JL.bark.enabled`).
+- [ ] **Dinner outings** on/off; **Secret nap cameo** on/off (`Config.secret`).
+- [ ] **Buttons:** "Dismiss all Jackies" (lighter than Go Home); "Reset settings to default".
+- [ ] **Debug subcategory** (hide normally): toggle `Config.probeNativePhone`; "Diagnostics" button.
+- [ ] **Persistence: support non-boolean values** so the sliders/dropdowns above survive saves
+      (`jlSaveSettings`/`jlLoadSettings` currently serialize booleans only).
+
 ## 🆕 v0.49–v0.50 — ARRIVAL OVERHAUL: bike revived + DES-unified to TWO modes (DEPLOYED, awaiting test, 2026-06-19)
 
 ### Decisions (Antonia) — why the arrival section was rebuilt
@@ -381,6 +397,15 @@ WolvenKit WAV extraction (1282 clips) ingested. Full pipeline + conventions now 
   the **80-line V funeral/voicemail set** (`v_scene_jackie_default_*`) as `memorial` / `speaker:"V"`. Tagger
   gained V-gender dropdown + "memorial only" filter + V♀/V♂/MEMORIAL badges. `lines.json` documented as the
   canonical label DB the whole mod reads. See `docs/VOICE_LINES.md`.
+- [x] **v0.60 — tagger rework (`tools/tag_usage.py` + `index.html`):** category dropdown replaced with the
+  mod's real roles (greeting/accept/decline/bye/food/conversation/memorial/usable); play-chance % slider
+  replaced with **never / very rare / sometimes / often** buttons (clicking *never* auto-marks tagged); deleted
+  the "Where it fits" section + "partial" button; added **sneaky/professional** moods. `tag_usage.py` derives
+  which lines are **wired in `config.lua`** (44, with role) + the `conversations.md` §4 **"usable" stash** (10)
+  and writes `used`/`category`/`usable`/`seed_done` onto `lines.json`; the tagger shows **USED·\<role\>** /
+  **USABLE** badges and pre-marks those 54 lines tagged on load (`seedTags`). Verified live.
+  - [ ] **Re-run `tools/tag_usage.py` whenever you wire a new line into `config.lua`** (idempotent; un-marks removed lines).
+  - [ ] The "usable" stash parse only covers `conversations.md` **§4**. If lines are stashed elsewhere (§5/§6 scene scripts), widen the parse or move them under §4.
 - [x] **v0.62 — recover String IDs for the new pool (`tools/backfill_string_ids.py`):** the String ID *is*
   the wem hash in decimal — `string_id == int(<trailing hex token>, 16)`, verified **777/777** on the scraped
   lines. No WolvenKit/metadata/guessing needed. Filled `string_id` for all **505** new records (reference-only;

@@ -680,3 +680,93 @@ DEBUG: both modes log distance every 3 s + transition one-shots (easing off / do
 handoff / stuck-respawn). CET window: arrival method toggles FOOT<->BIKE + "Test arrival now".
 Config.version -> 0.54.
 ================================================================================
+
+================================================================================
+v0.55 — TUNING + ASLEEP-NO-PICKUP + AMBIENT GRUNTS + DINNER GATE ON (2026-06-23)
+================================================================================
+Small-batch polish plus two new behaviours. No arrival-machine rework this round.
+
+TUNING.
+- Foot arrival sprint->walk downshift 25 m -> 14 m (Config.vehicle.sprintToWalk). He sprints closer,
+  walks only the last 14 m. (Header comment + config updated.)
+- Spawn wait doubled again: Config.call.vehicleSpawnDelay 1.0 -> 2.0 s (the delay actually read in the
+  summon_arrival path, init.lua ~line 1788). spawnDelay 2.5 -> 5.0 restored too, but it's legacy/unused.
+- Smile rarer: Config.smile.chance 0.04 -> 0.025 / roll.
+- Dinner gate ENGAGED: Config.date.enforceUnlock false -> true. dateUnlocked() already gated on
+  unlockAfterGameHours (1.0) measured from JL.summon.companionSinceGame; this just turns it on. So the
+  "Wanna get something to eat?" invite + Jackie's self-hint only unlock 1 in-game hour after he joins.
+
+ASLEEP = NO PICKUP (new). jackieAsleep() = game hour inside Config.secret window (00:00-06:00, the same
+window the secret nap cameo uses). Two call entry points handled:
+  - startCall() (our holocall button/hotkey): fire the native ring, then instead of connecting, arm
+    JL.call.noAnswerAt = now + Config.call.asleepRingSeconds (7 s). New callTick branch fires EndCall,
+    shows "No answer.", releases Branch.busy. No convo, no spawn.
+  - onPlayerCalledJackie() (native phone hijack): if asleep, DON'T hijack — return early so the game's
+    own ring plays out and auto-hangs-up (our connect hook never arms). Matches Antonia's described
+    behaviour ("hook won't trigger, just rings until it auto hangs up"). Avoids the callId mismatch of
+    trying to EndCall the player's real "jackie" call with our "jackie_dead" id.
+
+AMBIENT "FEEL ALIVE" GRUNTS (new). ambientGruntTick (init.lua, right after smileTick). While Jackie is
+present (JL.summon.spawn OR JL.idle.spawn handle) and not mid-line/dialogue/call (same locks as the
+smile: flap.until_, dlg.active, Branch.open/busy), roll Config.ambientGrunt.chance (10%) every
+everyMinutes (10) REAL min for ONE event from Config.ambientGrunt.events. JL.ambient.nextRoll tracks the
+window; re-arms a fresh full gap whenever he's absent (no grunt the instant he spawns). Pool = calm/
+casual NON-PAINED efforts only: greet, curious, huff_emote, additional, laughs, laughs_soft,
+laughs_hard. DELIBERATELY excludes pain/choking/scream/death AND effort/attack barks (they read as
+hurt/fighting when idle). Same WWise playback path as the talk grunts (playEventOn).
+
+OPEN THOUGHTS (decide next session):
+- Ambient pool could add effort/attack variants for variety if 7 casual events feel repetitive.
+- Dinner "together for 1 h" = companion clock since join, which RESETS on dismiss + re-summon. Confirm
+  that's the intended reading (vs. cumulative lifetime). Tune Config.date.unlockAfterGameHours if not.
+- Asleep no-pickup keys off the 00:00-06:00 sleep window only; "home but awake" blocks still let him
+  pick up. Probably fine, but could extend jackieAsleep() to any "unavailable" block if desired.
+
+Config.version -> 0.55.
+================================================================================
+
+ESC-MENU SETTINGS PANEL via Native Settings UI (concurrent session — settings/recovery, not arrivals).
+NEW DEPENDENCY: Native Settings UI (nativeSettings), CET 1.18.1+. Adds an in-game Esc -> Settings ->
+"Jackie Lives" page. All registration lives in nsTick() (stepped from onUpdate), NOT onInit.
+
+  WHY onUpdate not onInit: CET loads mods alphabetically -> JackieLives inits before nativeSettings, so
+  GetMod("nativeSettings") is nil in our onInit. nsTick retries each frame until it's available, then
+  registers once (s.done). Logs: "panel registered" / "registration FAILED: <err>" / "not found after
+  retries". GetMod matches by FOLDER name -> the dependency folder MUST be exactly "nativeSettings".
+
+  THE BUG THAT COST 3 ROUNDS (fixed): the dupe-guard called nativeSettings.pathExists("/jackielives/
+  recovery") — a SUB-path — before the tab existed. The lib does data[tab].subcategories[sub]; data
+  ["jackielives"] was nil -> indexing .subcategories on nil THREW. The throw was swallowed by
+  pcall(nsTick) with s.done already set -> silent: NativeSettings init line printed but NO [JackieLives]
+  line and no page. FIX: guard on the TAB path pathExists("/jackielives") only (handles missing tab
+  cleanly), pcall-wrapped. LESSON: pathExists is only safe on a sub-path once the tab already exists.
+  Also hit a shared-deploy clobber: a main deploy without the feature overwrote the test build in the
+  game's CET mods dir (one shared folder, last deploy wins) -> running mod had no menu code at all.
+
+PAGE CONTENTS (all persisted across saves):
+  - Relationship -> "Husbando mode" switch. OFF=Hermano (canon, with Misty); ON=Husbando (closer to V,
+    broke up with Misty). Sets JL.husbando. NOTHING READS IT YET — hook for future dialogue/venue work.
+  - Arrivals -> "Disable vehicle arrivals" switch. ON forces FOOT arrival. Wired at the ONE decision
+    point in runCallAction: bike = (Config.call.arrivalMethod=="bike") and not JL.disableVehicleArrivals.
+    Default OFF so it doesn't disturb the concurrent arrival-overhaul work. (Bike arrival often breaks.)
+  - Recovery -> "Go Home Jackie" button -> hardReset(): stop workspots, dismissAllJackies() (AMM-wide
+    despawn + orphan clear), wipe ALL transient state (idle wander/leave/pose/collision, dinner, secret,
+    call, branch/subtitle). Does NOT spawn (menu pauses game -> onUpdate frozen); primes JL.timer so the
+    next unpaused scheduleTick re-places one clean idle Jackie. Panic button for a bugged-out Jackie.
+
+PERSISTENCE: jlSaveSettings()/jlLoadSettings() — a tiny self-contained "key=true/false" store in
+jl_settings.txt in the mod folder. NO json dependency (relative io.open, same as the phone probes).
+Loaded in onInit; every switch callback saves. JL_SETTINGS_KEYS = the persisted flag list — ADD FUTURE
+TOGGLES THERE. nil flag == "not set" reads safely (e.g. `not JL.disableVehicleArrivals` -> bike allowed).
+
+OPEN THOUGHTS (decide next session):
+- Husbando mode flag exists but is INERT. Next: branch dialogue (endearments/couple banter, no Misty)
+  and an alternate venue schedule (Config.daySchedules) when JL.husbando is true. See TODO.
+- Suggested next Esc-menu toggles (all back onto existing systems): Schedule on/off + proximity slider,
+  Arrival-method dropdown (foot/bike), Companion auto-leave on/off + duration, Proximity barks on/off,
+  Dinner/Secret-cameo on/off, "Dismiss all Jackies" + "Reset settings to default" buttons, Debug
+  subcategory (probeNativePhone, Diagnostics). See TODO backlog.
+- In-code comments tag this work "v0.44–v0.51" but the live Config.version is driven by other sessions
+  (now 0.55). Comment tags are historical only; don't trust them for ordering.
+- NOT committed to git this session: the working tree is shared with a concurrent session (its WIP is
+  also uncommitted). Coordinate before committing so you don't capture half-finished cross-session work.
