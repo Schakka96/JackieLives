@@ -2,6 +2,33 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+> 📋 **Companion backlog & next-session plan:** see `List_of_companion_issues.md` (5-session division
+> for the unsolved companion issues — persistence/save, walk-away, dinner pathing, sit-coord persistence,
+> dialogue/subtitle polish). Created 2026-06-23.
+
+## 🆕 v0.65 — companion-issue triage: config tweaks + stuck-arrival rescue (DEPLOY + test, 2026-06-23)
+- **Phone unavailability → 4h/night, 02:00–06:00** (`Config.secret.startHour 0 → 2`; endHour stays 6).
+  Phone pickup is gated only by this window (`jackieAsleep`, init.lua:611).
+- **Default arrival method = bike** (`Config.call.arrivalMethod "foot" → "bike"`). The CET window reads
+  this value live (toggle at init.lua:4115), so bike is now the window default too.
+- **Bike stuck failsafe more lenient:** `Config.vehicle.stuckSustain 8 → 10` REAL seconds (a traffic
+  light can hold 7s+). `stuckGrace` (8s) and the slowDownDistance suppression unchanged.
+- **Arrival spawn delay kept at 2s** (`vehicleSpawnDelay = 2.0`; an earlier +6s was reverted).
+- **Stuck-arrival RESCUE-SPAWN (init.lua `maxSeconds` deadline handler).** Root cause of "after being
+  really really stuck he NEVER spawns": the 120s safety deadline called `promoteToCompanion`, which
+  silently no-ops when there's no Jackie handle (DES spawn failed / body lost) — and the old
+  AMM-spawn-near-V fallback was deleted in v0.50, so nothing re-spawned. Now: handle exists → force
+  handoff as before; NO handle → despawn orphans, reset state, **rescue-spawn a fresh companion at V**
+  (the main tick auto-promotes). Last-resort only (after full 120s), so no in-face pops in normal use.
+- [ ] **TEST:** (a) calls 02:00–06:00 ring out, calls outside that connect. (b) Arrivals default to bike
+      in the window. (c) Bike no longer bails to foot at a normal traffic light. (d) Force a stuck/failed
+      arrival → console shows `rescue-spawn at V` and Jackie appears at V instead of never showing.
+- [ ] **STILL TO DIAGNOSE:** when he "never spawns," is his handle nil (→ rescue branch) or is he
+      alive-but-stuck-MOUNTED (handle resolves, but catch-up teleport can't move a mounted NPC)? If the
+      latter, add a force-dismount-then-teleport to the `resolveJackieHandle()` branch. Report which
+      console line fires.
+
+
 ## 🆕 v0.64 — smile tuning + dinner objective = neon-left flash (DEPLOYED, awaiting test, 2026-06-19)
 - **Smile chance:** middle ground `0.025 -> 0.033`; new `Config.smile.dinnerChance = 0.04` used by
   `smileTick` whenever `JL.dinner.phase` is set (he smiles more on the dinner outing).
@@ -283,6 +310,11 @@ WolvenKit WAV extraction (1282 clips) ingested. Full pipeline + conventions now 
   ("So I went to your funeral", "my last call") — V-side audio, pick by player `v_gender`. Strong material
   for the retrieval/reunion beat. Not for Jackie's voice.
 - [ ] **Backlog:** tag/curate the 503 in the tagger; wire chosen ones (see category picks in `docs/VOICE_LINES.md`).
+- [ ] **(open, from v0.61 session)** Optional **SoundDB lookup helper**: now that every new line has its real
+  `string_id`, we can fetch canonical subtitle text / scene context / quests for the new pool by querying
+  SoundDB by String ID — replacing the ~90% Whisper guesses with CDPR-accurate metadata. Small `tools/` script
+  (reuse `scrape_jackie.py`'s API client: `https://sounddb.zhincore.eu/v1`). Antonia hadn't decided yes/no —
+  pick up next session if accurate transcripts for the new lines are wanted.
 
 ## 🆕 v0.47 — dinner dialogue refinements (DEPLOYED, awaiting test, 2026-06-18)
 - **Invite question** (`Config.date.inviteText`): "Hey - you hungry?..." → **"Wanna get something to eat?"**
