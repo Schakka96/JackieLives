@@ -186,9 +186,33 @@ route (Track B) is unnecessary.
   function plays a specific line by id. Only VO door is `PlayVoiceOver(context)` (game picks the
   line, auto-lips); `scnVoicesetComponent` has 1 script method; scene classes are native. Saved to
   memory `track-a-no-runtime-line-by-id`.
-- [ ] **DECIDE next path:** (B) author minimal `.scene` = exact line + baked lips (heavy);
-  (C) play the line's baked facial anim on `face_rig` + Audioware audio — we already have the anim
-  hash per line, lighter; or ship-hybrid (PlayVoiceOver contexts + cat-7 flap) for V1.
+- [x] **DECIDED (2026-06-23): Track C** — play each line's baked facial anim on `face_rig` +
+  our Audioware audio. (B scene-authoring shelved as too heavy; ship-hybrid = the fallback.)
+
+### ▶ NEXT SESSION — Track C: baked facial anim + Audioware audio (real per-line lips)
+**Idea:** our Audioware audio carries no facial data, but every line already has its baked
+facial-anim hash (`lines.json` `lipsync` field, == wem hash, e.g. `f_1ABF461C612D2000`).
+Jackie's `face_rig` is a live `entAnimatedComponent`. So: play the line's facial anim on the rig
+while the Audioware clip plays → real lips on our exact lines, no scene authoring. Test target:
+**"Ka-ching, baby!"** (`jl_1927336253241237504`, anim `f_1ABF461C612D2000`).
+Open tasks (in order):
+- [ ] **Locate the facial-anim resource** for a known hash in WolvenKit: where do per-line lipsync
+  anims live in the archive (likely `base\characters\...` facial `.anims`, or referenced from the
+  scene)? Confirm `f_1ABF461C612D2000` is a standalone-playable `.anim` vs embedded in a scene/setup.
+- [ ] **Extend the export wscript** (the audio one over `vo_wem`) to also export the matching facial
+  anim per line by its hash — or confirm we can play the in-archive anim directly without extracting.
+- [ ] **Find the play-anim API** on `entAnimatedComponent` / `AnimationControllerComponent`:
+  extend `JackieSceneProbe` to dump those two classes' methods and try playing ONE known facial
+  anim by name on `face_rig`. (Reflection dump pattern already in the probe.)
+- [ ] **Sync test:** fire the facial anim + the Audioware clip together on summoned Jackie; eyeball
+  lip sync on "Ka-ching, baby!". Tune offset if needed.
+- [ ] If standalone facial anims aren't playable on the rig → fall back to ship-hybrid for V1
+  (PlayVoiceOver contexts + cat-7 talking flap; both already work).
+- **Refs:** verdict in memory `track-a-no-runtime-line-by-id`; flap+voiceset recipe in
+  `jackie-facial-rig-runtime`; raw probe output lives in the deployed mod folder
+  (`...\mods\JackieSceneProbe\scene_full.txt`), regenerable via the probe's "1b) FULL dump".
+- **Distribution note:** per memory `nexus-publishing-constraints`, ship build scripts (export
+  wscript), NOT the extracted CDPR audio/anims.
 - Audio-only V1 export (wscript over `lines.json` `vo_wem`) is the separate, already-scoped path.
 
 ## 🆕 v0.55 — arrival/immersion tuning + asleep-no-pickup + ambient grunts + dinner gate ON (DEPLOYED, awaiting test, 2026-06-19)
