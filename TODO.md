@@ -6,6 +6,20 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > for the unsolved companion issues — persistence/save, walk-away, dinner pathing, sit-coord persistence,
 > dialogue/subtitle polish). Created 2026-06-23.
 
+### ▶️ NEXT SESSION — pick up these OPEN verification tasks (all DEPLOYED in v0.65, awaiting in-game test)
+- [ ] **Bike record (v0.65, top priority):** in CET → "Bike model test", click **B1/B2/B3** → report which
+      spawns Jackie's real (gold) Arch + the console `READ-BACK` appearance string. Then **lock that
+      record (+appearance) into the live arrival** (`spawnDynEntity` bike spawn; `Config.vehicle.bikeRecord`
+      /`.bikeAppearance` exist). If none match, use the read-back ids / "Dump appearances" / a full TweakDB
+      vehicle dump to find more candidates. See logbook "BIKE-RECORD HUNT".
+- [ ] **Main-quest ban (v0.62):** confirm "Main quest detected" flips **YES** during a real main quest and
+      stays **no** on side jobs / free-roam; that a companion Jackie then excuses himself + walks off; and
+      summon/call decline. If the journal reflection never flips, revisit `isMainQuestActive()` (API/enum).
+      Optional: give the main-quest exit a DEDICATED VO line (`Config.mainQuestExit`, currently the send-off line).
+- [ ] **Safety dismount (v0.62):** on a bike arrival where he used to stay seated, confirm the
+      `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
+- [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
+
 ## 🆕 v0.65 — bike-model test: try DIFFERENT records (the v0.63 record was wrong) (DEPLOYED, awaiting test, 2026-06-23)
 The v0.63 tester's 3 methods all used ONE record (`v_sportbike2_arch_jackie_player`) and ALL spawned the
 WRONG bike → that record doesn't give his Arch via DES on this build. Researched the actual records
@@ -167,9 +181,14 @@ route (Track B) is unnecessary.
   pattern (same one that cracked the phone system): reflection-dump scene/voiceset/dialog/VO
   classes → `scene_methods.txt`; placeholder "play the line" attempts → `scene_attempts.txt`.
   Test line: **"Ka-ching, baby!"** stringId `1927336253241237504`, lipsync `f_1ABF461C612D2000`.
-- [ ] **TEST:** deploy, summon Jackie, look at him, press "1) DUMP", paste `scene_methods.txt` back.
-- [ ] Wire the real play-by-stringId call from the dumped method names; retest A1/A2.
-- [ ] If no runtime door exists → fall back to Track B (author minimal `.scene` from a word spec).
+- [x] **TEST done (v2 full dump, 2026-06-23):** `scene_full.txt` — all 4380 globals + key classes.
+- [x] **VERDICT: Track A (runtime play-by-stringId) is NOT supported by the API.** No script
+  function plays a specific line by id. Only VO door is `PlayVoiceOver(context)` (game picks the
+  line, auto-lips); `scnVoicesetComponent` has 1 script method; scene classes are native. Saved to
+  memory `track-a-no-runtime-line-by-id`.
+- [ ] **DECIDE next path:** (B) author minimal `.scene` = exact line + baked lips (heavy);
+  (C) play the line's baked facial anim on `face_rig` + Audioware audio — we already have the anim
+  hash per line, lighter; or ship-hybrid (PlayVoiceOver contexts + cat-7 flap) for V1.
 - Audio-only V1 export (wscript over `lines.json` `vo_wem`) is the separate, already-scoped path.
 
 ## 🆕 v0.55 — arrival/immersion tuning + asleep-no-pickup + ambient grunts + dinner gate ON (DEPLOYED, awaiting test, 2026-06-19)

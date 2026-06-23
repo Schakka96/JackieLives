@@ -770,3 +770,58 @@ OPEN THOUGHTS (decide next session):
   (now 0.55). Comment tags are historical only; don't trust them for ordering.
 - NOT committed to git this session: the working tree is shared with a concurrent session (its WIP is
   also uncommitted). Coordinate before committing so you don't capture half-finished cross-session work.
+
+================================================================================
+v0.62–v0.65 — CET DECLUTTER + MAIN-QUEST BAN + SAFETY DISMOUNT + BIKE-RECORD HUNT (2026-06-23)
+================================================================================
+CET WINDOW CLEANUP (v0.62):
+- Disabled the VEHICLE + LIPSYNC standalone test windows by renaming their DEPLOYED init.lua ->
+  init.lua.disabled in the game's CET mods folder (CET skips a folder with no init.lua -> no window).
+  Source kept under mod/ so deploy_probe.ps1 -ModName JackieVehicleTest|JackieLipsync redeploys them.
+  (Honors the "no legacy folder" rule: source stays put + redeployable, only the live copy is off.)
+- Stripped debug UI from the main "Jackie Lives" window: push-subtitle test, native-phone test
+  (RING/CONNECT/END/hang-up), "Play branching dialogue" button, proximity-bark/bump sliders, the
+  "Arrival test modes" (BEHIND/foot-dist/arrive-dist) block, and the picker-styles (testV1/2/3) block.
+  ONLY the buttons were removed — the underlying systems (subtitles, native call, barks, branching,
+  picker) are intact and still used by the live flows. Kept the force-main-quest checkbox + a live
+  "Main quest detected" readout. (vc local dropped from the draw fn; pickerStyle default still 1.)
+
+MAIN-QUEST BAN — real detection (v0.62): isMainQuestActive() now reads the player's TRACKED journal
+quest via JournalManager:GetTrackedEntry, walks parents (GetParentEntry) up to the gameJournalQuest,
+and name-matches its GetType() against "Main". Cached ~0.5 s, fully pcall-guarded -> defaults to "not
+main" on any reflection hiccup so it can NEVER wrongly block/strand him. Already gated summon/call/
+arrival; NEW: a tagging-along Jackie now EXCUSES HIMSELF and walks off when a main quest goes active
+(onUpdate hook beside the companion-expiry exit; reuses startLeaving, which now takes an optional
+{text,sfx} override -> Config.mainQuestExit, currently the send-off line so VO+subtitle stay in sync).
+  ⚠️ UNVERIFIED IN-GAME: the exact journal API/enum spelling is best-effort. Confirm the "Main quest
+  detected" readout flips YES in an actual main quest and stays "no" on side jobs / free-roam.
+
+SAFETY DISMOUNT (v0.62): promoteToCompanion now calls isMounted(handle) (Game.GetMountingFacility():
+GetMountInfoSingle -> parentId defined?) and re-issues ONE unmountDriver if Jackie's still bike-seated
+at handoff. Gated on isMounted so a foot arrival / already-grounded Jackie never plays a phantom
+get-off. unmountDriver forward-declared (it's defined with the vehicle helpers, after promoteToCompanion).
+
+BIKE-RECORD HUNT (v0.63 -> v0.65) — STILL OPEN, awaiting in-game test:
+- PROBLEM: the bike arrival spawns the WRONG bike model. Live + old test both spawned
+  Vehicle.v_sportbike2_arch_jackie_player (string recordID + appearanceName="default").
+- v0.63 tester (M1/M2/M3) varied only the appearance HANDLING on that ONE record -> Antonia tested:
+  ALL THREE WRONG. Conclusion: the RECORD itself is wrong / unspawnable via DES on this build.
+- Research (CET vehicle list, redmodding wiki, game files): Jackie's Arch MODEL entity is
+  "v_sportbike2_arch_nemesis"; *_player records are garage wrappers. "La Chingona Dorada" is his GUN,
+  not the bike. Known Arch records: v_sportbike2_arch_player (standard), _jackie_player (wrong, tested),
+  _jackie_tuned_player (tuned). Appearance hints seen: "jackie_tuned_up", jackie_03 mlsetup.
+- v0.65 tester REBUILT: 3 buttons now spawn 3 DIFFERENT candidate records (BIKE_CANDIDATES table,
+  easily editable), each ~6 m in front + a console READ-BACK (record/appearance/class):
+    B1 Vehicle.v_sportbike2_arch_jackie_tuned_player  (most likely)
+    B2 Vehicle.v_sportbike2_arch_nemesis
+    B3 Vehicle.v_sportbike2_arch_player
+  "Dump appearances" now covers all three. Live arrival UNCHANGED until we know the winner.
+- NEXT: Antonia clicks B1/B2/B3, reports which is his real (gold) Arch + its READ-BACK appearance.
+  Then lock that record (+appearance if needed) into spawnDynEntity's bike spawn (Config.vehicle
+  .bikeRecord / .bikeAppearance already exist). If none match, pull more records from a full TweakDB
+  vehicle dump.
+
+GIT/VERSION NOTE: this conversation's commits (v0.62 855fb4a, v0.63 bb76119) were followed by OTHER
+sessions' commits (v0.64 smile-tuning 41a21b0, scene-probe-v2 2916af1, docs da1ec60) before this wrap-up.
+Repo HEAD/version is shared across sessions; bike-record rebuild shipped as v0.65 (12b715c). Untracked
+List_of_companion_issues.md is Antonia's (referenced by TODO) — left unstaged; she may git add it.
