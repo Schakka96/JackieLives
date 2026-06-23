@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.64"
+Config.version = "0.65"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -535,8 +535,8 @@ Config.call = {
   -- (Jackie spawns out at distance, never pops near V), and the slow all-the-way "walk" mode is gone
   -- (too slow). This is the big complexity collapse: one spawn backend (DES), one arrival tail.
   -- ============================================================================
-  arrivalMethod        = "foot",   -- "foot" | "bike"
-  vehicleSpawnDelay    = 2.0,   -- seconds after the call ends before the foot / bike Jackie spawns (v0.55: 2x; was 1.0)
+  arrivalMethod        = "bike",   -- "foot" | "bike" (default = bike, per Antonia)
+  vehicleSpawnDelay    = 2.0,   -- seconds after the call ends before the foot / bike Jackie spawns (back to 2.0 per Antonia)
   -- He spawns navmesh-snapped (NavigationSystem) so he never lands inside a wall/object, in the rear
   -- arc when `spawnBehind`. While approaching he is a PASSIVE DES NPC (no follower role) so the AMM
   -- companion catch-up TELEPORT can't yank him to V; he becomes a real companion only at `companionDistance`.
@@ -615,7 +615,7 @@ Config.vehicle = {
   -- stop was tripping it), and the timers doubled so a brief snag at a light no longer ditches the bike.
   stuckSpeed       = 1.0,    -- m/s; below this = likely stuck
   stuckGrace       = 8.0,    -- v0.52: seconds after mounting before stuck-detection starts (2x; was 4)
-  stuckSustain     = 8.0,    -- v0.52: seconds of crawling before he bails off the bike (2x; was 4)
+  stuckSustain     = 10.0,   -- REAL seconds of crawling before he bails off the bike (lenient — traffic lights hold 7s+)
   -- TWO independent safety timers (they fire at DIFFERENT times + do DIFFERENT things):
   --   maxSeconds (120) = LAST RESORT. Force the companion handoff in place (no respawn) — may use
   --                      AMM's catch-up teleport. Always armed.
@@ -911,7 +911,7 @@ Config.locations = {
 Config.secret = {
   locationKey = "secret",
   chance      = 0.20,    -- 20% per night
-  startHour   = 0,       -- sleep window (matches the daySchedules 00:00-06:00 asleep block)
+  startHour   = 2,       -- phone-unavailable window = 02:00–06:00 (4h/night; reduced from 0–6)
   endHour     = 6,
 }
 

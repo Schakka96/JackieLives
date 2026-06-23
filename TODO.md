@@ -6,6 +6,78 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > for the unsolved companion issues — persistence/save, walk-away, dinner pathing, sit-coord persistence,
 > dialogue/subtitle polish). Created 2026-06-23.
 
+## 🆕 v0.65 — bike-model test: try DIFFERENT records (the v0.63 record was wrong) (DEPLOYED, awaiting test, 2026-06-23)
+The v0.63 tester's 3 methods all used ONE record (`v_sportbike2_arch_jackie_player`) and ALL spawned the
+WRONG bike → that record doesn't give his Arch via DES on this build. Researched the actual records
+(CET vehicle list + redmodding wiki + game files): Jackie's Arch model lives under the entity
+`v_sportbike2_arch_nemesis`; the garage wrappers are `*_player` records. Rebuilt the "Bike model test"
+buttons to spawn 3 DIFFERENT candidate records (in `BIKE_CANDIDATES`, trivially editable):
+- **B1** `Vehicle.v_sportbike2_arch_jackie_tuned_player` — his TUNED Arch (Heroes reward; most likely).
+- **B2** `Vehicle.v_sportbike2_arch_nemesis` — the Arch model entity itself.
+- **B3** `Vehicle.v_sportbike2_arch_player` — standard Arch Nazaré (control).
+Each spawns ~6 m in front + logs a `READ-BACK` (record/appearance/class). "Dump appearances" now dumps
+all three candidates. Note: "La Chingona Dorada" is Jackie's GUN, not the bike — the bike is just his Arch.
+- [ ] **TEST:** click B1/B2/B3; tell me which is his real (gold) Arch + the READ-BACK appearance string.
+      Then I lock that record+appearance into the live `spawnDynEntity` bike spawn. If none look right,
+      the read-back record ids + appearance dump will point to the correct one.
+
+## 🗒️ Session 2026-06-23b — RELEASE PLANNING + init.lua module split (DISCUSSION ONLY, no code changed)
+No deploy this session. Two threads opened for later; nothing implemented yet.
+
+### Thread 1 — Nexus / mod-manager publishing (researched, NOT started)
+- **"Download with Mod Manager" is basically free** once the upload zip mirrors the game root. Vortex/MO2
+  already understand Cyberpunk's layout — no custom manifest needed. Zip internal structure must be:
+  - `bin/x64/plugins/cyber_engine_tweaks/mods/JackieLives/`  (init.lua, config.lua, README)
+  - `r6/audioware/JackieLives/`  (manifest + audio — but see copyright blocker)
+- **Dependencies = Requirements tab, NOT bundled:** RED4ext, CET, redscript, TweakXL, ArchiveXL, Codeware,
+  Audioware, AMM (if hard runtime dep). Pin game patch in the description (version drift = #1 breakage).
+- [ ] Write `package.ps1` that builds the Nexus-ready zip (mirror-root structure) — deferred.
+- [ ] Draft Nexus page text + requirements list — deferred.
+- **⚠️ COPYRIGHT BLOCKER (the real issue):** the Audioware bank ships Jackie's REAL CDPR voice lines
+  (940 MB of `.wav` in `audioware/JackieLives/`, already gitignored per `ASSETS_NOTICE.md`). **Cannot be
+  redistributed on Nexus — page would be taken down.** Three release options discussed:
+  - **A. Ship script, not audio** (repo is already built for this: `tools/scrape_jackie.py` +
+    `tools/convert_audio.py` rebuild the bank from the user's OWN game). Clean, standard Nexus pattern. ← recommended
+  - **B. Ship silent** (text/subtitles only). Cleanest, least immersive.
+  - **C. AI/TTS Jackie voice.** Legally grey (real VA Jason Hightower's voice) — many sites disallow.
+  - **Antonia is "working on a better way"** for voice distribution — PARKED pending her approach. Don't
+    package a release until the voice route is decided.
+
+### Thread 2 — split `init.lua` (4097 lines) into modules — AGREED in principle, leaf-first, NOT started
+Verdict: yes, modular is the pro/collaborator-friendly approach. Mechanism is LOW RISK — `require()`
+already works here (`init.lua:51` = `local Config = require("config")`; CET puts the mod folder on the Lua
+path). The one real obstacle: Lua `local`s don't cross files, and init.lua leans on forward-declared local
+upvalues. **Seam = the existing `JL` shared table** — promote cross-referenced locals onto `JL`, each module
+attaches there. Do it INCREMENTALLY, one commit per module (fits the commit-every-working-version rule),
+leaf modules first, central dialogue hub LAST.
+
+Proposed module map (line ranges approx, from this session's read):
+| Module → `modules/*.lua` | init.lua lines | priority |
+|---|---|---|
+| diag.lua (diagnostics + native-phone probes) | 208–257, 3483–3565 | 🟢 FIRST (proves pattern) |
+| voice.lua (Audioware playback) | 422–479, 1220–1296 | 🟢 |
+| ui.lua (ImGui window + seat tuner, onDraw) | 1427–1606, 3935–4236 | 🟢 (big readability win) |
+| holocall.lua (holocall + native phone) | 1714–2009 | 🟡 |
+| arrival.lua (navmesh, walk-in, bike state machine) | 2011–2975 | 🟡 (large) |
+| dinner.lua (dinner outing) | 1336–1426, 3097–3306 | 🟡 |
+| idle.lua (schedule, wander, poses) | 482–637, 2977–3479 | 🟡 |
+| dialogue.lua (runner + branching + choice box) | 638–1335, 1607–1713 | 🔴 LAST (central hub) |
+| core/utils (spawn, teleport, follow, time, subtitle) | scattered | extract as foundation |
+init.lua then = thin orchestrator: define `JL` → `require` each module → event/hotkey wiring (3727–4259).
+
+- [ ] **NEXT STEP (decide which first):** extract `modules/diag.lua` (lowest risk, proves the require
+      pipeline) OR `modules/ui.lua` (bigger readability win, still leaf-ish). Antonia to pick. Then deploy,
+      confirm in-game (diag prints / window opens), commit `refactor: extract <module>`, walk up the table.
+- [ ] Decide a module convention before the first extraction (everything public hangs off `JL`, modules
+      receive `JL`+`Config` and return/attach their public fns).
+
+### Reference fact (mod size without audio/labels)
+Code-only footprint (no audio, no line/label DBs): **~296 KB on disk, ~94 KB zipped.** init.lua=210 KB,
+config.lua=65 KB, rest ~20 KB. The 940 MB is ENTIRELY the `.wav` voice bank; `index.json`+`JackieLives.yml`
+labels add ~200 KB. A code-only release is effectively a sub-100 KB download.
+
+---
+
 ## 🆕 v0.65 — companion-issue triage: config tweaks + stuck-arrival rescue (DEPLOY + test, 2026-06-23)
 - **Phone unavailability → 4h/night, 02:00–06:00** (`Config.secret.startHour 0 → 2`; endHour stays 6).
   Phone pickup is gated only by this window (`jackieAsleep`, init.lua:611).
@@ -124,6 +196,13 @@ Batch of small polish + two new behaviours.
       (b) Be a companion <1 in-game h → no dinner invite; after 1 h it appears. (c) Hang around idle/
       companion Jackie a while → occasional casual grunt (console `Ambient: '...'`), never a pained one.
       (d) Foot arrival → he walks only the last ~14 m. (e) Post-call spawn wait feels ~2 s longer.
+- **Open thoughts (decide next session):**
+  - [ ] Ambient grunt pool is 7 calm events (greet/curious/huff/additional/laughs×3). Add effort/attack
+        variants for variety if it feels repetitive? (Excluded for now — they read as hurt/fighting when idle.)
+  - [ ] Dinner "out together for 1 h" = companion clock since join, which **resets on dismiss + re-summon**.
+        Confirm that's the intended reading (vs. cumulative lifetime); tune `Config.date.unlockAfterGameHours` if not.
+  - [ ] `jackieAsleep()` keys off the 00:00–06:00 sleep window only; "home but awake" blocks still let him
+        pick up. Probably fine — extend to any "unavailable" block only if Antonia wants stricter availability.
 
 ## 🆕 v0.52–v0.54 — arrival tuning: side spawn, bike park+walk, mount timing, fell-off, no face-teleport (DEPLOYED, awaiting test, 2026-06-19)
 Iterative polish on the v0.50 two-mode (foot/bike) arrival. See `docs/logbook.txt` "ARRIVAL OVERHAUL" for the full narrative.
