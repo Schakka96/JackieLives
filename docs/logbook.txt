@@ -825,3 +825,33 @@ GIT/VERSION NOTE: this conversation's commits (v0.62 855fb4a, v0.63 bb76119) wer
 sessions' commits (v0.64 smile-tuning 41a21b0, scene-probe-v2 2916af1, docs da1ec60) before this wrap-up.
 Repo HEAD/version is shared across sessions; bike-record rebuild shipped as v0.65 (12b715c). Untracked
 List_of_companion_issues.md is Antonia's (referenced by TODO) — left unstaged; she may git add it.
+
+================================================================================
+AUDIO/LIPSYNC SESSION (2026-06-23) — Track A probed & ruled out; Track C chosen
+================================================================================
+CONTEXT: heading to V1; needed to (a) script audio extraction from game archives,
+(b) decide how to get native lipsync on Jackie's lines.
+
+AUDIO EXTRACTION (answered, not yet built):
+- Scriptable YES. WolvenKit 8.18.1 ships GUI only (no WolvenKit.CLI.exe). Two routes:
+  (A) WolvenKit's built-in JS scripting (wkit API: GetFileFromArchive/ExportFiles) run from the
+      Script Manager — batch over all 1282 vo_wem paths, handles wem->wav/ogg decode. RECOMMENDED.
+  (B) CyberAudio (Python CLI) — bulk opuspak dump, but indexes by number (bad id mapping). Skip.
+- All 1282 lines in lines.json already carry vo_wem depot paths -> export wscript is unblocked.
+  Distribution: ship the wscript, NOT the CDPR audio (see memory nexus-publishing-constraints).
+
+LIPSYNC — TRACK A (runtime play-by-stringId) = RULED OUT:
+- Built CET probe mod/JackieSceneProbe/ + deploy_probe.ps1 (dump-first, same method that cracked
+  the phone). v2 dumped ALL 4380 globals + key classes -> scene_full.txt (in deployed mod folder).
+- VERDICT: no script function plays a specific line by VO string id. Only VO door is
+  gameObject::PlayVoiceOver(context) — game picks the line, auto-generates lips. scnVoicesetComponent
+  has 1 script method (IsGenericTalkInteractionEnabled); scene classes (scnSceneSystem,
+  scnDialogLineEvent) are native. Saved: memory track-a-no-runtime-line-by-id.
+
+DECISION: TRACK C — play each line's BAKED facial anim on face_rig (entAnimatedComponent) + our
+Audioware audio. We already have the anim hash per line (lines.json `lipsync` == wem hash). Lighter
+than authoring a .scene (Track B, shelved). Ship-hybrid (PlayVoiceOver contexts + cat-7 flap) = fallback.
+NEXT-SESSION open tasks are in TODO.md under "▶ NEXT SESSION — Track C". Test line: "Ka-ching, baby!"
+(jl_1927336253241237504, anim f_1ABF461C612D2000).
+
+COMMITS THIS SESSION: 8041352 (probe v1), 2916af1 (probe v2), 3d27bfe (verdict + Track C brief).
