@@ -72,6 +72,10 @@ local JL = {
   -- v0.67 keep-close: periodically re-assert our tight follow so AMM's long leash can't let him
   -- trail far behind V. Just a throttle timestamp.
   follow  = { lastAt = nil },
+  -- v0.72 companion PERSISTENCE: "is companion" is saved per-slot as the game fact
+  -- jackielives_companion. On a fresh load (Lua state wiped) or a load-screen fast-travel that
+  -- culled his entity, this re-spawns + re-promotes him at V. gapSince/lastRespawn are throttles.
+  persist = { gapSince = nil, lastRespawn = nil },
   -- v0.35 free-roam wander: placed=on a waypoint yet; phase=dwelling|walking; cur/tgtIdx=waypoints.
   -- v0.38 walk-away: leaving=true while he's strolling to a venue exit before despawning.
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
@@ -399,6 +403,7 @@ local function clearVehicleArrival()
 end
 
 local function dismissJackie()
+  setCompanionFlag(false)   -- v0.72: V let him go -> clear the persisted companion intent
   if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
   JL.summon.companionSinceGame, JL.summon.companionExpiresGame = nil, nil   -- v0.39: reset duration clock
@@ -412,6 +417,7 @@ end
 
 -- Despawn EVERY Jackie AMM knows about (clears orphans from failed dismisses / mod reloads).
 function dismissAllJackies()   -- global (not local): 200-local cap; see note at top
+  setCompanionFlag(false)   -- v0.72: a full wipe clears the persisted companion intent too
   local amm = getAMM()
   local n = 0
   if amm and amm.Spawn and amm.Spawn.spawnedNPCs then
@@ -2238,6 +2244,7 @@ local function leavingTick()
   local now = JL.clock or 0
   local far = d and d >= (D.despawnDistance or 30.0)
   if far or (JL.leaving.deadline and now >= JL.leaving.deadline) then
+    setCompanionFlag(false)   -- v0.72: he's finished walking off and despawned -> intent over
     ammDespawn(sp)
     pcall(hideSubtitle)                                  -- never leave the parting line on screen
     JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
@@ -2338,6 +2345,7 @@ local function promoteToCompanion()
                       (Config.call and Config.call.followDistance) or 1.6)
   JL.summon.companionSet, JL.summon.walkIn = true, false
   JL.summon.arrivalGreetPending = true   -- v0.46/v0.48/v0.52: say a fresh greeting LINE once he closes to arrivalGruntDistance
+  setCompanionFlag(true)                 -- v0.72: persist "is companion" in the save (survives reload / culling FT)
 end
 
 -- v0.50: the old AMM-spawn-near-V + HIDE + teleport "safe walk-in" (arrivalTick / arrivalMoveType)
@@ -3647,6 +3655,140 @@ local function nsTick()
   end
 end
 
+-- ===========================================================================
+-- RESTORED in v0.72: these three were accidentally dropped by the v0.69 dead-code
+-- sweep (the VO/probe deletions), but their CALL SITES survived (nsTick's switch
+-- callbacks + the "Go Home Jackie" button + onInit) — so settings persistence and the
+-- recovery button had been silently no-op'ing. Brought back verbatim, but as GLOBALS
+-- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
+-- ===========================================================================
+JL_SETTINGS_FILE = "jl_settings.txt"
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals" }  -- persisted JL.* boolean flags
+
+function jlSaveSettings()
+  local f = io.open(JL_SETTINGS_FILE, "w")
+  if not f then log("settings: could not write " .. JL_SETTINGS_FILE); return end
+  for _, k in ipairs(JL_SETTINGS_KEYS) do f:write(k .. "=" .. tostring(JL[k] == true) .. "\n") end
+  f:close()
+end
+
+function jlLoadSettings()
+  local f = io.open(JL_SETTINGS_FILE, "r")
+  if not f then return end
+  for line in f:lines() do
+    local k, v = line:match("^(%w+)=(%w+)$")
+    if k then
+      for _, want in ipairs(JL_SETTINGS_KEYS) do
+        if k == want then JL[k] = (v == "true") end
+      end
+    end
+  end
+  f:close()
+end
+
+-- Force-despawns EVERY Jackie (orphans included), wipes ALL transient state machines, then lets
+-- the next scheduleTick re-place a clean idle Jackie at his scheduled spot. Fired from the Esc ->
+-- Settings recovery button while the game is PAUSED (onUpdate frozen), so re-placement is left to
+-- the first unpaused tick (we just prime JL.timer to fire it ASAP).
+function hardReset()
+  -- get him out of any sit/lean workspot first so the despawn can't strand a posed body
+  pcall(function()
+    local ws = Game.GetWorkspotSystem()
+    if ws then
+      if JL.idle.spawn   and JL.idle.spawn.handle   then ws:StopInDevice(JL.idle.spawn.handle)   end
+      if JL.summon.spawn and JL.summon.spawn.handle then ws:StopInDevice(JL.summon.spawn.handle) end
+    end
+  end)
+  pcall(dismissAllJackies)   -- AMM-wide despawn + summon/idle/arrival/leaving/vehicle reset (clears the companion fact)
+  -- wipe the newer idle/dinner/secret/call/branch state dismissAllJackies doesn't cover
+  JL.idle.placed, JL.idle.phase, JL.idle.curIdx, JL.idle.tgtIdx = false, nil, nil, nil
+  JL.idle.leaving, JL.idle.leaveTarget, JL.idle.leaveDeadline, JL.idle.leaveReissue = false, nil, 0, 0
+  JL.idle.posed, JL.idle.pendingPose, JL.idle.pendingSit = false, nil, nil
+  JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
+  JL.dinner.phase, JL.dinner.dest, JL.dinner.mappinId = nil, nil, nil
+  JL.secret.decided, JL.secret.active = false, false
+  JL.call.ringingAt, JL.call.hangupAt, JL.call.hangupAction = nil, nil, nil
+  JL.leaving.subClearAt = nil
+  JL.persist.gapSince, JL.persist.lastRespawn = nil, nil   -- v0.72: don't immediately re-spawn after a manual reset
+  -- release any open conversation so the UI can't be stuck mid-dialogue
+  pcall(hideSubtitle)
+  if Branch then Branch.open, Branch.busy = false, false end
+  JL.timer = Config.scheduleCheckInterval or 0   -- fire scheduleTick on the very next (unpaused) tick
+  JL.ui.status = "Go Home Jackie: reset done. He'll return to his schedule shortly."
+  log("Hard reset: every Jackie despawned + state wiped; schedule will re-place a clean one.")
+end
+
+-- ===========================================================================
+-- COMPANION PERSISTENCE (v0.72) — see Config.persist / List_of_companion_issues Session 1.
+-- The "is companion" intent is stored as the per-save game fact jackielives_companion (mirrors
+-- retrieval.lua's stage fact), so it survives save/load and is automatically per-save-slot correct.
+-- Globals (no `local`) to respect the 200-local cap.
+-- ===========================================================================
+JL_COMPANION_FACT = "jackielives_companion"
+
+function setCompanionFlag(on)
+  pcall(function() Game.GetQuestsSystem():SetFactStr(JL_COMPANION_FACT, on and 1 or 0) end)
+end
+
+function companionFlagSet()
+  local v; local ok = pcall(function() v = Game.GetQuestsSystem():GetFactStr(JL_COMPANION_FACT) end)
+  return ok and v == 1
+end
+
+-- Bring Jackie back at V's side (the same instant AMM companion spawn `summonJackie` uses). Clears
+-- any stale/culled spawn first so we never leak or double up. The onUpdate promote block applies the
+-- follower role next frame; armCompanionTimer re-arms the duration clock fresh.
+function respawnCompanionAtV()
+  if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
+  JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
+  local spawn, err = ammSpawn(1)
+  if not spawn then log("Persist: respawn at V FAILED (" .. tostring(err) .. ") — will retry."); return false end
+  JL.summon.spawn, JL.summon.active, JL.summon.companionSet = spawn, true, false
+  log("Persist: companion flag set but Jackie was absent -> respawned him at V.")
+  return true
+end
+
+-- Per-frame guard: keep the saved companion fact in sync with reality, and if the save says Jackie
+-- should be with V but his body is gone (fresh load wiped Lua state, or a load-screen fast-travel
+-- culled him), bring him back. Reuses JL.clock for all timing (no dt needed).
+function companionPersistTick()
+  local P = Config.persist or {}
+  if P.enabled == false then return end
+  if not Retrieval.isUnlocked() then return end                 -- mod still gated -> no companion to keep
+  if (JL.clock or 0) < (P.startupGrace or 2.0) then return end   -- let the world finish loading first
+  if not playerPos() then return end                            -- player not in-world yet
+
+  -- Is a LIVE, settled companion actually present right now?
+  local live = false
+  if JL.summon.active and JL.summon.companionSet and JL.summon.spawn and JL.summon.spawn.handle then
+    local jp; pcall(function() jp = JL.summon.spawn.handle:GetWorldPosition() end)
+    live = (jp ~= nil)
+  end
+
+  if live then
+    if not companionFlagSet() then setCompanionFlag(true) end   -- self-heal: he's here, record it
+    JL.persist.gapSince = nil
+    return
+  end
+
+  -- No live companion. If the save doesn't claim him, there's nothing to restore.
+  if not companionFlagSet() then JL.persist.gapSince = nil; return end
+
+  -- He SHOULD be here. Don't fight a state machine that's already placing/removing him.
+  if (JL.varrival and JL.varrival.phase) or JL.leaving.phase or JL.dinner.phase or JL.summon.walkIn then
+    JL.persist.gapSince = nil; return
+  end
+
+  -- Require the gap to persist a beat (rides out a momentary stream/handle hiccup), then respawn
+  -- on a cooldown (which also covers the few frames a fresh spawn needs to resolve + promote).
+  local now = JL.clock or 0
+  JL.persist.gapSince = JL.persist.gapSince or now
+  if (now - JL.persist.gapSince) < (P.gapSustain or 1.5) then return end
+  if (now - (JL.persist.lastRespawn or -1e9)) < (P.cooldown or 5.0) then return end
+  JL.persist.gapSince, JL.persist.lastRespawn = nil, now
+  respawnCompanionAtV()
+end
+
 registerForEvent("onInit", function()
   pcall(function() math.randomseed((os.time and os.time() or 0)) end)  -- v0.36: random day-bag shuffle
   getAMM()
@@ -3814,6 +3956,7 @@ registerForEvent("onUpdate", function(dt)
       end
     end)
     JL.summon.companionSet = true
+    setCompanionFlag(true)   -- v0.72: persist "is companion" (this is the summon/respawn promote path)
     JL.ui.status = "Jackie is following."
     log("Companion role applied.")
   end
@@ -3844,6 +3987,7 @@ registerForEvent("onUpdate", function(dt)
   end
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
+  pcall(companionPersistTick)  -- v0.72: saved "is companion" but his body is gone (reload / culling FT) -> respawn at V
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
   pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap
 
@@ -4049,6 +4193,12 @@ registerForEvent("onDraw", function()
   if ImGui.Button("Summon Jackie (companion)") then summonJackie() end
   ImGui.SameLine()
   if ImGui.Button("Dismiss Jackie") then dismissJackie() end
+  -- v0.72 companion-persistence readout: the saved "is companion" fact survives save/load, so this
+  -- should read ON while he's with you and OFF after a dismiss/walk-off. Reload with it ON -> he
+  -- respawns at V. "Clear saved flag" is a test escape hatch (clears the fact without despawning).
+  ImGui.Text("Saved companion flag: " .. (companionFlagSet() and "ON (he returns on reload)" or "off"))
+  ImGui.SameLine()
+  if ImGui.SmallButton("Clear saved flag") then setCompanionFlag(false); log("Companion flag cleared (debug).") end
   if ImGui.Button("Call Jackie (holocall)") then startCall() end
   ImGui.SameLine()
   ImGui.TextWrapped("ring -> choices -> ask onto a gig -> he spawns at distance + walks in")

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.71"
+Config.version = "0.72"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -179,14 +179,29 @@ Config.companion = {
   autoLeaveOnExpiry = true,  -- when the clock runs out he walks off (reuses the send-off exit)
 }
 
+-- ---- companion PERSISTENCE (v0.72) ----------------------------------------
+-- "Is Jackie your companion right now?" is saved INSIDE each save slot as the game fact
+-- jackielives_companion (the same per-save fact mechanism the retrieval quest uses for its stage).
+-- Because it lives in the save (not a global file), loading an OLD save where Jackie WASN'T with you
+-- simply finds the fact unset -> he is NOT wrongly restored. companionPersistTick watches that fact:
+-- if it says "companion" but no live Jackie exists — a fresh load wiped the runtime state, or a
+-- load-screen fast-travel culled his body (the case Config.catchUp can't recover) — it re-spawns and
+-- re-promotes him at V's side. Set enabled=false to go back to "he's gone after a reload".
+Config.persist = {
+  enabled       = true,
+  startupGrace  = 2.0,   -- s after load before we act, so we never spawn into a loading screen
+  gapSustain    = 1.5,   -- s the "should be here but isn't" condition must hold (rides out stream hiccups)
+  cooldown      = 5.0,   -- s between respawn attempts (also covers the spawn->promote resolve window)
+}
+
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
 -- Once Jackie is a SETTLED companion (arrived, role applied, not dismissed/expired), if V gets far
 -- away — FAST-TRAVEL, a long sprint, or he just got left behind — he teleports back to V's SIDE.
 -- This is the immersive "a companion never gets lost" behaviour. It is DELIBERATELY off during the
 -- arrival walk-in / dinner / walk-off (those own his movement and must not be yanked). He always lands
 -- a few metres to V's side on the navmesh, never on top of her. Set enabled=false to turn it off.
--- CAVEAT: this only works while his runtime body still EXISTS. A load-screen fast-travel can cull a
--- spawned NPC entirely; surviving that needs the heavier persist-and-respawn work (TODO Session 1).
+-- NOTE: this only works while his runtime body still EXISTS. A load-screen fast-travel can cull a
+-- spawned NPC entirely — that case is now handled by Config.persist (companionPersistTick re-spawns him).
 Config.catchUp = {
   enabled        = true,
   distance       = 25.0,  -- metres from V beyond which he's considered "left behind"

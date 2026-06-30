@@ -32,6 +32,46 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
 
+## 🆕 v0.72 — COMPANION PERSISTENCE: Jackie survives save/load + culling fast-travel (2026-07-01, awaiting in-game test)
+List_of_companion_issues.md **Session 1** (the hardest cluster). Treats "is Jackie your companion" as
+authoritative state that rides inside the save.
+- **Storage = per-save GAME FACT `jackielives_companion`** (NOT a global file). Same mechanism the
+  retrieval quest uses for its stage, so it's automatically **per-save-slot correct**: loading an old
+  save where Jackie wasn't with you finds the fact unset → he is NOT wrongly restored. This sidesteps the
+  stale-restore caveat that made the backlog's "CET txt-file" option (#1) risky — game facts are the
+  better of the two storage options it listed, with no redscript needed.
+- **Mechanism = `companionPersistTick`** (new, in onUpdate next to `catchUpTick`). While the mod is
+  unlocked: if the fact says "companion" but no live Jackie body exists — a fresh load wiped the Lua
+  state, OR a load-screen fast-travel **culled his entity** (the exact case `Config.catchUp` can't
+  recover) — it **re-spawns + re-promotes him at V's side** via the existing `ammSpawn(1)` + promote
+  path. Self-healing: it also keeps the fact in sync with reality, guards a `startupGrace` so it never
+  spawns into a loading screen, rides out stream hiccups (`gapSustain`), and throttles respawns
+  (`cooldown`). Skips while an arrival / dinner / walk-off state machine already owns him.
+- **Flag lifecycle:** set ON at both companion-promote points (`promoteToCompanion` + the onUpdate summon
+  promote); cleared at every "no longer a companion" transition (`dismissJackie`, `dismissAllJackies`,
+  `leavingTick` despawn). Tunables in `Config.persist` (`enabled`/`startupGrace`/`gapSustain`/`cooldown`).
+- **CET window:** new "Saved companion flag: ON/off" readout + "Clear saved flag" test button under
+  Dismiss, so the persistence is observable in-game.
+- **🛠 Also fixed a v0.69 REGRESSION found while doing this:** the v0.69 dead-code sweep accidentally
+  deleted `jlSaveSettings`/`jlLoadSettings`/`hardReset` but left their call sites — so Esc-menu toggle
+  persistence (husbando / disable-vehicle-arrivals) AND the "Go Home Jackie" recovery button had been
+  silently no-op'ing since v0.69. Restored all three **as globals** (no new main-chunk locals → 200-cap
+  safe). `getTalkTarget` + `Config.probeNativePhone` remain the only known harmless leftovers.
+- Implemented with **zero new top-level `local`s** (globals + JL/Config table fields); all three files
+  still compile clean under the 200-local cap (`luajit -bl`). Version 0.71 → **0.72**.
+- [ ] **TEST (core):** summon Jackie → "Saved companion flag: ON". **Hard-save + reload** → within
+      ~3 s he reappears at V's side (console `Persist: ... respawned him at V`). Dismiss him → flag goes
+      **off** → reload → he stays gone.
+- [ ] **TEST (fast-travel cull):** as a companion, **fast-travel** (the load-screen kind). If the FT
+      culls his body, he should respawn at V within a few seconds (console `Persist: ...`). If his body
+      survives, `catchUpTick` handles it as before — either way he ends up next to V.
+- [ ] **TEST (regression fixes):** toggle "Husbando mode" / "Disable vehicle arrivals" in Esc→Settings,
+      reload → the toggle **sticks** (was broken since v0.69). "Go Home Jackie" button actually despawns
+      + resets him again.
+- [ ] **Open (intentional MVP scope):** the exact remaining companion *timer* is not persisted — on
+      reload the duration clock re-arms fresh (`Config.companion.maxGameHours`). Fine for now; persist the
+      remaining seconds later if it matters (facts are int, so store remaining-seconds at a save hook).
+
 ## 🆕 v0.71 — Vik tip = native lower-left TUTORIAL POPUP (Retrieval P2) (2026-07-01, awaiting in-game test)
 v0.69 confirmed the gate works in-game (entering Vik's clinic flips the stage to TIP and the blue band
 appeared). v0.71 replaces that plain blue on-screen band with the real **native lower-left tutorial

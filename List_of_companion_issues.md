@@ -1,16 +1,17 @@
 # List of Companion Issues — backlog & session plan
-
-Captured 2026-06-23. Source: Antonia's issue dump + investigation in this session. These are the
-**still-unsolved** items. Small config tweaks already applied this session are listed at the bottom
-under "Done this session" for context (they still need an in-game test).
-
-Suggested division: **5 sessions**, ordered by risk/dependency. Each session is meant to be a
-self-contained Claude pickup. Approach notes are starting points, not final designs — reality-check
-feasibility at the start of each session.
+Captured 2026-06-23.
 
 ---
 
 ## Session 1 — Companion persistence & "never get lost" (HARDEST — do first)
+
+> ✅ **DONE in v0.72 (2026-07-01), awaiting in-game test.** Persisted the INTENT via the per-save game
+> fact `jackielives_companion` — chose this over the txt-file option (#1 below) because game facts live
+> inside the save slot, so they're per-save correct and need no stale-restore guard. `companionPersistTick`
+> (init.lua onUpdate) re-spawns + re-promotes Jackie at V when the fact says "companion" but his body is
+> gone (fresh load OR a load-screen fast-travel that culled the entity). Covers all three issues below.
+> Tunables in `Config.persist`. The companion *timer* is intentionally NOT persisted yet (re-arms fresh on
+> reload). Bike-vs-foot default (open decision below) is still open.
 
 Treat "is companion" as **authoritative state** that survives save/load, fast-travel, and V leaving
 the map. This is the heaviest, riskiest cluster and several other issues depend on it.
@@ -20,8 +21,8 @@ the map. This is the heaviest, riskiest cluster and several other issues depend 
   nor auto save persists it. On reload, Jackie is simply gone.
 - **Fast-travel breaks him / he gets lost.** When he's a companion and V fast-travels or leaves the
   map temporarily (not dismissed, not expired), the mod must stay aware he's a companion and
-  re-spawn him nearby if necessary.
-- **Autosave-while-companion** is the same path as the above — fixing persistence fixes this too.
+  re-spawn him nearby if necessary. (fixed as of v0.7)
+- **Autosave-while-companion** is the same path as the above — fixing persistence fixes this too. (in progress)
 
 **Approach (feasibility: YES, the right way):**
 - Do **not** try to persist the entity itself — runtime-spawned NPCs aren't serialized and CET Lua
@@ -42,7 +43,7 @@ the map. This is the heaviest, riskiest cluster and several other issues depend 
 
 ---
 
-## Session 2 — Departure / walk-away behavior (state-machine rework)
+## Session 2 — Departure / walk-away behavior (state-machine rework) (work in progress for v0.71)
 
 One coherent rework of the dismiss/expiry walk-off (`leavingTick`, `Config.dismiss`,
 `Config.companion`).
@@ -55,6 +56,8 @@ One coherent rework of the dismiss/expiry walk-off (`leavingTick`, `Config.dismi
 - During the walk-away stage the **only** dialogue options should be the **dinner invite** and
   **"See ya later Jackie. Take care."** The convo then resolves to either: follow V for dinner, OR
   resume the walk-away state.
+- New issue unlocked after v0.7: When Jackie follows V after fast travel he becomes bugged out. 
+  He despawns and respawns when V looks at him, this happens only after fast travel. What could cause this?
 
 **Approach:**
 - `leavingTick` should re-issue the move command relative to V's live position each tick (offset
