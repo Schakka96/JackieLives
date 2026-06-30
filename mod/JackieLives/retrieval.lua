@@ -122,8 +122,52 @@ local function onscreen(text, duration)   -- native on-screen msg band (init.lua
   end)
 end
 
--- Show the tip via the bound tutorial popup if available, else the on-screen band.
+-- Native LOWER-LEFT tutorial popup (the "Dark Future" method): the game's own
+-- generic popup, driven by the UIGameData blackboard's Popup_Settings + Popup_Data
+-- fields (the same blackboard our subtitles use). Field/enum names confirmed against
+-- the game's reflection data (gamePopupData: title/message/isModal; gamePopupSettings:
+-- position/closeAtInput/pauseGame/hideInMenu; gamePopupPosition.LowerLeft = 3).
+-- Returns true only if the whole push succeeds, so showTip() can fall back cleanly.
+local function lowerLeftPosition()
+  -- Enum global is `gamePopupPosition`; tolerate a lowercase alias + a numeric last resort.
+  if gamePopupPosition and gamePopupPosition.LowerLeft ~= nil then return gamePopupPosition.LowerLeft end
+  if gamepopupPosition and gamepopupPosition.LowerLeft ~= nil then return gamepopupPosition.LowerLeft end
+  return 3   -- LowerLeft = 3 in the reflection data
+end
+
+local function tutorialPopup(title, text)
+  local ok = pcall(function()
+    local defs = GetAllBlackboardDefs()
+    local bb   = Game.GetBlackboardSystem():Get(defs.UIGameData)
+    if not bb then error("UIGameData blackboard nil") end
+    if not defs.UIGameData.Popup_Data or not defs.UIGameData.Popup_Settings then
+      error("Popup_Data / Popup_Settings field nil")
+    end
+
+    local data = gamePopupData.new()
+    data.title   = tostring(title or "")
+    data.message = tostring(text or "")
+    pcall(function() data.isModal = false end)
+
+    local settings = gamePopupSettings.new()
+    pcall(function() settings.position     = lowerLeftPosition() end)
+    pcall(function() settings.closeAtInput = true end)   -- player dismisses it, like a real tutorial card
+    pcall(function() settings.pauseGame    = false end)
+    pcall(function() settings.hideInMenu   = true end)
+    pcall(function() settings.fullscreen   = false end)
+
+    bb:SetVariant(defs.UIGameData.Popup_Settings, ToVariant(settings), true)
+    bb:SetVariant(defs.UIGameData.Popup_Data,     ToVariant(data),     true)
+    bb:SignalVariant(defs.UIGameData.Popup_Data)
+  end)
+  if not ok then log("tutorial popup push failed -> falling back to on-screen band") end
+  return ok
+end
+
+-- Show the tip via the native lower-left tutorial popup; fall back to an injected
+-- showTip helper (if init.lua ever binds one) and finally the on-screen band.
 local function showTip(title, text, duration)
+  if tutorialPopup(title, text) then return end
   if deps.showTip and pcall(deps.showTip, title, text) then return end
   onscreen(text, duration)
 end

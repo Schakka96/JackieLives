@@ -32,6 +32,30 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
 
+## 🆕 v0.71 — Vik tip = native lower-left TUTORIAL POPUP (Retrieval P2) (2026-07-01, awaiting in-game test)
+v0.69 confirmed the gate works in-game (entering Vik's clinic flips the stage to TIP and the blue band
+appeared). v0.71 replaces that plain blue on-screen band with the real **native lower-left tutorial
+popup** (the "Dark Future" method from Retrieval P2).
+- **Where:** implemented entirely inside `retrieval.lua` (its own Lua chunk → own local budget, so this
+  does NOT touch init.lua's 200-local cap). New self-contained `tutorialPopup(title,text)` primitive +
+  `lowerLeftPosition()` helper; `showTip()` now tries the native popup FIRST, then the (still-unbound)
+  injected `deps.showTip`, then the old on-screen band as a last-resort fallback. Nothing in init.lua
+  changed — no new bind needed.
+- **API (confirmed against the game's reflection data, not guessed):** the `UIGameData` blackboard (the
+  same one our subtitles use) → set `Popup_Settings` (`gamePopupSettings`: `position`,`closeAtInput`,
+  `pauseGame`,`hideInMenu`,`fullscreen`) + `Popup_Data` (`gamePopupData`: `title`,`message`,`isModal`)
+  → `bb:SignalVariant(Popup_Data)`. Position = `gamePopupPosition.LowerLeft` (=3). Every field assign is
+  pcall-guarded and the whole push is pcall-wrapped, so a build mismatch degrades to the on-screen band
+  instead of erroring.
+- **Behaviour:** the popup is `closeAtInput=true` / `pauseGame=false` — it sits lower-left like a real
+  tutorial card and the player dismisses it (no fixed timer). Both the Vik tip AND the Rocky Ridge shard
+  now render through it (both go via `showTip`). `tipDuration`/`shardDuration` only matter to the fallback.
+- Version 0.7 → **0.71**. `retrieval.lua` compiles clean (`luajit -bl`).
+- [ ] **TEST:** enter Vik's clinic (or CET → "Force tip") → a native popup appears LOWER-LEFT with the
+      "A message from Vik" title + tip text (not the blue band), dismissable with a keypress. Drive to
+      Rocky Ridge (or "Force shard") → the shard renders the same way. If it still shows as the blue band,
+      the console logged `tutorial popup push failed` — copy that line back.
+
 ## 🆕 v0.7 — CET live spacing tunables + subtitle non-issue cleanup (2026-07-01, awaiting in-game test)
 - **CET window: live companion-spacing sliders.** New "Companion spacing (live tuning)" section in the
   Jackie Lives overlay (inside `onDraw`, so NO new top-level locals — respects the 200-local cap):
@@ -97,6 +121,7 @@ New module `mod/JackieLives/retrieval.lua` + ~8 surgical init.lua hooks. Per-sav
 ### ▶ NEXT — Phases 2-4 (researched, ready)
 - **P2 Vik tip = native LEFT tutorial popup** (Dark Future method): `UIGameData` `Popup_Settings`+`Popup_Data`
   (`gamePopupData/Settings`, pos `LowerLeft`) → `SignalVariant(Popup_Data)`. Pure CET Lua, confirmed.
+  ✅ **DONE in v0.71** — `retrieval.lua` `tutorialPopup()`; both tip + shard use it. Awaiting in-game test.
 - **P3 one-time incoming call FROM Jackie** (mute monologue): no native path → wrapper sets `Branch.busy`,
   `JL.call.connectAt=clock+0.2`, `Branch.start(start, Config.retrievalCallTree)`; terminal node arms a foot arrival.
 - **P4 safe walk-in arrival** (`JL.varrival.at`, `useBike=false`) **+ reunion `Branch` tree**; choice labels
