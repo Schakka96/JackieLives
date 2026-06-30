@@ -36,6 +36,22 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
 
+## 🆕 v0.69 — reunion status line + dead-code cleanup (200-local headroom) (2026-07-01, awaiting in-game test)
+- **Status line** at the top of the CET window: `Reunion quest: <stage>` (blue). Player-facing stage names
+  in `retrieval.stageName()`: **Mod not yet available** / **V heard the rumor — find Jackie in the Badlands**
+  / **Jackie's note was read at Rocky Ridge — he's on his way** / **Jackie is back**.
+- **Dropped dead code (Antonia approved) → 196→183 locals (big headroom now):**
+  - VO-test trio `playNamedEvent`/`playVO`/`playRandomJackieEvent` + the "play random voice" debug hotkey
+    (`jl_votest`) — superseded by the dialogue/subtitle system.
+  - The entire native-phone PROBE subsystem (`PROBE_CANDIDATE_CLASSES`, `methodName`, `dumpPhoneReflection`,
+    `probeFire`, `setupNativePhoneProbe`) + its `Config.probeNativePhone` call — the phone system is solved.
+- **KEPT (was a false positive in my first list):** the native choice-box cluster (`showJackieChoiceBox` /
+  `hideJackieChoiceBox` / `buildJackieHub` / `choiceBox`) is **live** — it draws the "[F] Talk" prompt when
+  you look at Jackie (toggled by `Config.talk.useChoiceBox`). Not dead; left intact.
+- [ ] **Tiny leftover for the future cleanup pass:** `getTalkTarget` is now unused (was only called by the
+      deleted VO trio). Harmless; remove on the next sweep. `Config.probeNativePhone` flag also now unused.
+- [ ] **TEST:** mod still loads + behaves; the status line shows at the top of the window.
+
 ## 🛑 v0.68 — CRITICAL load-fix (200-local cap) + Retrieval quest Phase 1 (2026-07-01, awaiting in-game test)
 
 ### 🛑 CRITICAL — init.lua hasn't loaded since v0.66 (200-local-per-function cap)
