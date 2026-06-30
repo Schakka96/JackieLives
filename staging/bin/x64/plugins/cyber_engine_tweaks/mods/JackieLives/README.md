@@ -33,15 +33,30 @@ merging when prompted. The mod's files should end up at:
 
 ## How to use
 
-1. In-game, open the CET overlay (default key **`~`**). A **"Jackie Lives"** window appears.
-2. **Summon Jackie** — click the button; he spawns and follows/fights on your side.
-3. **Dismiss Jackie** — removes him.
-4. **Talk to Jackie** — bind a key in CET's **Bindings** tab, then look at him and press it; a
-   line plays as a subtitle.
-5. **Settings** — Esc → Settings → **Jackie Lives** (recovery button + toggles), via Native Settings UI.
+**Bring Jackie along on a gig.** Two ways:
+- **Call him** — phone Jackie's number; he takes the holocall and arrives to meet you.
+- **Find him in the world** — Jackie keeps a daily routine around his Heywood haunts (El Coyote
+  Cojo, Lizzie's Bar, the Afterlife, the noodle bar, Ginger Panda, Redwood Market, Misty's
+  Esoterica — which one depends on the time of day). Walk up and ask him to tag along.
 
-Note: summoning works immediately. His scheduled appearances at Heywood spots only activate once
-locations are captured in `config.lua` (advanced/optional).
+Either way he arrives from a distance and walks up — he never just pops in next to you — then
+follows and **fights at your side**. He'll come along on **side jobs only**: ask during a **main
+quest** and V refuses to drag him into it.
+
+**Dismiss Jackie.** Either tell him in conversation that you'll **head on alone**, or use the
+**Go Home Jackie** button in the mod settings menu (also the recovery option if he ever gets stuck).
+
+**Settings menu** — Esc → Settings → **Jackie Lives** (via Native Settings UI):
+- **Go Home Jackie** — send him home / full reset if anything goes wrong.
+- **Disable vehicle arrivals** — his bike arrival is a little less stable; turn this on and he'll
+  always arrive **on foot** instead.
+- Toggles persist across saves.
+
+**Talk to Jackie** — bind a key in CET's **Bindings** tab, then look at him and press it; he
+responds with a line (shown as a subtitle in this mute version).
+
+> Tip: open the CET overlay (default **`~`**) for the **Jackie Lives** debug window — extra summon/
+> arrival buttons and a status readout, handy if something misbehaves.
 
 ## Troubleshooting
 
