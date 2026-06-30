@@ -268,12 +268,13 @@ end
 -- ---------------------------------------------------------------------------
 function M.isUnlocked()    return getStage() >= REUNITED end
 function M.getStage()      return getStage() end
+-- Player-facing stage names (shown at the top of the CET window).
 function M.stageName()
   local s = getStage()
-  if s >= REUNITED then return "REUNITED (unlocked)" end
-  if s == SHARD    then return "SHARD read (" .. tostring(state.seq or "calling…") .. ")" end
-  if s == TIP      then return "TIP (pin placed)" end
-  return "LOCKED (gated)"
+  if s >= REUNITED then return "Jackie is back" end
+  if s == SHARD    then return "Jackie's note was read at Rocky Ridge — he's on his way" end
+  if s == TIP      then return "V heard the rumor — find Jackie in the Badlands" end
+  return "Jackie revival not yet available"
 end
 function M.unavailableMsg() return "Number disconnected." end
 function M.notifyUnavailable() onscreen(M.unavailableMsg(), 2.5) end   -- native band, no init.lua scope needed

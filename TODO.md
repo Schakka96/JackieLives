@@ -61,6 +61,11 @@ New module `mod/JackieLives/retrieval.lua` + ~8 surgical init.lua hooks. Per-sav
 - Debug UI: CET window → "Retrieval quest (Where's Jackie?)" → Force tip / Force shard / Quest probe / Reset.
 - [ ] **TEST Phase 1:** Force shard → ~1 s → stage REUNITED (schedule/calls come alive). Real flow: reach
       Vik (tip + Badlands pin) → drive to Rocky Ridge (shard) → ~1 s → unlock.
+- [ ] **Enable the real gate on "Playing for Time" (q101) — Antonia confirmed (2026-07-01).** After that
+      job completes, V can return to Vik and the tip/tutorial-overlay should become available. Steps: stand
+      at Vik post-q101 → click **Quest probe** → read the `[Retrieval]` console state for "Playing for Time"
+      → put that journal path into `retrieval` `gate.questPaths` and set `gate.mode = "quest"`. Until then it
+      ships OFF (fires on Vik proximity alone).
 
 ### ▶ NEXT — Phases 2-4 (researched, ready)
 - **P2 Vik tip = native LEFT tutorial popup** (Dark Future method): `UIGameData` `Popup_Settings`+`Popup_Data`

@@ -4153,6 +4153,12 @@ registerForEvent("onDraw", function()
   if not JL.ui.open then return end
   ImGui.Begin("Jackie Lives")
 
+  -- Reunion-quest status, always shown at the very top of the window.
+  ImGui.Text("Reunion quest: ")
+  ImGui.SameLine()
+  ImGui.TextColored(0.45, 0.85, 1.0, 1.0, Retrieval.stageName())
+  ImGui.Separator()
+
   local block, hour = currentScheduleBlock()
   ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
              "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
