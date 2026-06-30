@@ -49,6 +49,16 @@
 --]]
 
 local Config = require("config")
+-- ⚠️ GLOBAL (not `local`) ON PURPOSE — see the "200-LOCAL CEILING" note below. init.lua's main chunk
+-- is at Lua's hard 200-local-per-function limit; a new top-level `local` here would make the WHOLE file
+-- fail to load in CET. Globals don't count toward that limit. (The CET debug window calls Retrieval.*)
+Retrieval = require("retrieval")   -- "Where's Jackie?" questline + master mod gate (see retrieval.lua)
+-- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
+-- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
+-- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
+-- `local function` to plain `function` (globals): getAMMCharacters, discoverJackieFromSpawned,
+-- diagnostics, dismissAllJackies, capturePosition, probeChoiceBoxAPI. If you add more top-level
+-- locals, convert a few stable functions to globals OR extract a module (see retrieval.lua) to stay safe.
 
 local JL = {
   amm    = nil,
@@ -113,7 +123,7 @@ local function getAMM()
   return JL.amm
 end
 
-local function getAMMCharacters()
+function getAMMCharacters()   -- global (not local): keeps main chunk under Lua's 200-local cap; see note at top
   local amm = getAMM()
   if not amm or not amm.API or not amm.API.GetAMMCharacters then return nil end
   local ok, chars = pcall(function() return amm.API.GetAMMCharacters() end)
@@ -144,7 +154,7 @@ end
 
 -- Discover Jackie's record from NPCs already spawned through AMM's own menu.
 -- (AMM stores them in AMM.Spawn.spawnedNPCs, keyed by uniqueName, each with .name/.path.)
-local function discoverJackieFromSpawned(verbose)
+function discoverJackieFromSpawned(verbose)   -- global (not local): 200-local cap; see note at top
   local amm = getAMM()
   if not amm or not amm.Spawn or not amm.Spawn.spawnedNPCs then
     log("AMM.Spawn.spawnedNPCs not available."); return false
@@ -213,7 +223,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Diagnostics (dumps the exact shapes we need to see)
 -- ---------------------------------------------------------------------------
-local function diagnostics()
+function diagnostics()   -- global (not local): 200-local cap; see note at top
   log("----- DIAGNOSTICS -----")
   local amm = getAMM()
   log("AMM=" .. tostring(amm ~= nil) ..
@@ -365,6 +375,7 @@ end
 -- Summon / dismiss
 -- ---------------------------------------------------------------------------
 local function summonJackie()
+  if not Retrieval.isUnlocked() then JL.ui.status = Retrieval.unavailableMsg(); Retrieval.notifyUnavailable(); return end  -- gated until the retrieval quest is done
   if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
   if JL.summon.active then JL.ui.status = "Jackie is already with you."; return end
   local spawn, err = ammSpawn(1)
@@ -400,7 +411,7 @@ local function dismissJackie()
 end
 
 -- Despawn EVERY Jackie AMM knows about (clears orphans from failed dismisses / mod reloads).
-local function dismissAllJackies()
+function dismissAllJackies()   -- global (not local): 200-local cap; see note at top
   local amm = getAMM()
   local n = 0
   if amm and amm.Spawn and amm.Spawn.spawnedNPCs then
@@ -631,7 +642,7 @@ local function dist3(a, b)
   return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
 
-local function capturePosition()
+function capturePosition()   -- global (not local): 200-local cap; see note at top
   local p = Game.GetPlayer(); if not p then log("No player."); return end
   local pos = p:GetWorldPosition()
   local yaw = 0.0
@@ -862,7 +873,7 @@ local choiceBox = { shown = false, id = 7731, lastPush = -999 }
 
 -- Reconnaissance: confirm the CORRECT interaction structs + blackboard field exist
 -- in this build. Safe to run anytime; prints to console. Paste the lines to Claude.
-local function probeChoiceBoxAPI()
+function probeChoiceBoxAPI()   -- global (not local): 200-local cap; see note at top
   log("----- CHOICE-BOX PROBE v0.17 -----")
   local function tryNew(label, ctor)
     local ok = pcall(ctor)
@@ -1903,6 +1914,7 @@ end
 -- Begin a holocall. With useNativeWindow: fire the native RING (IncomingCall) now; callTick
 -- then aborts it (STOP) and switches to the CONNECT window before running our convo.
 local function startCall()
+  if not Retrieval.isUnlocked() then JL.ui.status = Retrieval.unavailableMsg(); Retrieval.notifyUnavailable(); return end  -- gated until the retrieval quest is done
   if Branch.open or Branch.busy or dlg.active then JL.ui.status = "Busy - finish the current talk first."; return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
   if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
@@ -1992,6 +2004,7 @@ end
 -- our flow: the native ring is already playing, so we just arm callTick (STOP -> CONNECT -> convo)
 -- without re-firing IncomingCall ourselves.
 local function onPlayerCalledJackie()
+  if not Retrieval.isUnlocked() then return end                -- gated: let the game's own call ring out (no hijack)
   if Branch.open or Branch.busy or dlg.active then return end   -- already talking
   if JL.summon.active then return end                          -- already with you
   if isMainQuestActive() then return end
@@ -3539,6 +3552,7 @@ end
 local function scheduleTick()
   if JL.idle.leaving then return end                 -- a departure is in progress; idleLeavingTick owns it
   if JL.summon.active then clearIdle(); return end
+  if not Retrieval.isUnlocked() then clearIdle(); return end   -- gated: Jackie stays "absent" until the retrieval quest is done
   if not Config.enableSchedule then clearIdle(); return end
 
   -- what location (if any) the schedule wants him at right now
@@ -3838,6 +3852,7 @@ registerForEvent("onInit", function()
   if Config.probeNativePhone then pcall(setupNativePhoneProbe) end
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
+  pcall(function() Retrieval.bind{ log = log } end)   -- retrieval questline: inject the logger (more helpers bound in Phases 2-4)
   log("Loaded v" .. tostring(Config.version or "?") .. ". AMM present: " .. tostring(JL.amm ~= nil))
 end)
 
@@ -3973,6 +3988,7 @@ end
 
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
+  pcall(function() Retrieval.tick(dt) end)   -- retrieval questline: gate + Vik tip + Badlands shard + call/arrival/reunion sequence
   pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
@@ -4240,6 +4256,18 @@ registerForEvent("onDraw", function()
   -- DEBUG: pretend a main quest is active so you can test Jackie declining / excusing himself.
   JL.ui.forceMainQuest = ImGui.Checkbox("Force main-quest active (test decline)", JL.ui.forceMainQuest)
   ImGui.Text("Main quest detected: " .. (isMainQuestActive() and "YES (Jackie won't follow)" or "no"))
+
+  ImGui.Separator()
+  -- Retrieval questline gate: stage readout + debug jumps (the "Where's Jackie?" quest).
+  if ImGui.CollapsingHeader("Retrieval quest (Where's Jackie?)") then
+    ImGui.Text("Stage: " .. Retrieval.stageName())
+    if ImGui.Button("Force tip (skip Vik)") then Retrieval.forceTip() end
+    ImGui.SameLine(); if ImGui.Button("Force shard read") then Retrieval.forceShard() end
+    if ImGui.Button("Probe quest gate (console)") then Retrieval.debugQuestState() end
+    ImGui.SameLine(); if ImGui.Button("Reset to LOCKED") then Retrieval.reset() end
+    ImGui.TextWrapped("Gate ships OFF: tip fires when you reach Vik (coords set). Flow: Vik's clinic -> " ..
+      "tip + Badlands pin -> Rocky Ridge garage -> shard -> ~1s -> unlock (Phases 3-4 add call/arrival/reunion).")
+  end
 
   ImGui.Separator()
   -- v0.63: BIKE-MODEL TEST — find the spawn method that reliably gives Jackie's REAL Arch. Each

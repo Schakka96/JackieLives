@@ -1,90 +1,98 @@
 --[[
-  retrieval.lua — "Where's Jackie?" RETRIEVAL QUESTLINE + mod gate  (v0.1, MVP)
+  retrieval.lua — "Where's Jackie?" RETRIEVAL QUESTLINE + mod gate  (v0.2)
   ============================================================================
   Self-contained module. init.lua couples to it in only a few one-line spots
-  (see PATCH LIST at the bottom of this file). Nothing here depends on init.lua
-  internals except an OPTIONAL injected logger + an OPTIONAL reunion spawner,
-  both passed via M.bind{} — so this file can't break the rest of the mod.
+  (see PATCH LIST at the bottom). Nothing here depends on init.lua internals
+  except OPTIONAL injected helpers (logger, tip popup, call/arrival/reunion
+  starters), all passed via M.bind{} — so this file can't break the rest of
+  the mod, and any unbound step gracefully no-ops (the quest still completes).
 
-  WHAT IT DOES
-    A 3-state quest that GATES the whole Jackie experience until V learns he's
-    alive and goes to find him in the Badlands:
+  THE QUEST (per-save game fact "jackielives_stage"):
 
-      0 hidden  (default) — Jackie is "dead": schedule OFF (he never appears),
-                            calling him = number disconnected. THE GATE.
-        │  V gets the tip at Vik's  (proximity to the clinic, OR debug button)
-      1 rumor             — Vik's "shard" line shows + a map pin drops on the
-                            Badlands hideout. Still gated (can't call / no schedule).
-        │  V reaches the pin
-      2 found             — at the spot: the info-shard text is read + (optional)
-                            Jackie is spawned for the reunion → flag set → MOD UNLOCKS.
+    0 LOCKED  (default) — Jackie is "dead": schedule OFF, calls disconnected.   <- THE GATE
+       │  precondition met (q101 "Playing for Time" done) AND V returns to Vik (4 m)
+    1 TIP               — "Oh, didn't you hear?" popup + map pin on the Badlands hideout.
+       │  V reaches the hideout (Rocky Ridge garage, 4 m)
+    2 SHARD             — info-shard read; 1 s later Jackie RINGS V (one-time mute call:
+       │                  "I made it / laid low / safe now / let's meet / wait there").
+       │  call ends -> safe walk-in arrival at the garage
+   (3 INCOMING)         — runtime-only sequence stage (not persisted; restarts on reload).
+       │  Jackie arrives -> first-sight reunion dialogue (V lies about the Relic).
+    4 REUNITED          — full mod UNLOCKED: schedule on, calls + summon work. Permanent.
 
-    Splitting "pick up shard" and "find Jackie" into two separate pins later is
-    trivial: add a stage 1.5 between rumor and found (see NOTE in tick()).
+  Stages 0/1/2/4 persist in the save; the call->arrival->reunion sequence runs
+  while the fact == 2 and is driven by in-memory `seq` (so a save/reload mid-
+  sequence just replays it cleanly rather than getting stuck half-done).
 
-  PERSISTENCE
-    State lives in a PER-SAVE game fact ("jackielives_stage") via QuestsSystem,
-    so it travels inside each save and does NOT leak across saves. If that API
-    ever misbehaves in-game, flip USE_GAME_FACT=false to fall back to an
-    in-session-only value (resets on game restart) — or wire init.lua's
-    jl_settings.txt store instead (note: that store is GLOBAL across all saves).
-
-  WolvenKit: NOT required. The "shard" is delivered as on-screen text, not a
-  real Shards/Codex menu entry (that would need TweakXL + localization).
+  WolvenKit: NOT required. The shard is on-screen text, not a real Codex entry.
 --]]
 
 local M = {}
 
 -- ---------------------------------------------------------------------------
--- TUNABLES — capture coords in-game with the CET window's "Capture position"
--- button, then paste them here. Vik coords are OPTIONAL (the debug button can
--- advance the quest without them); the Badlands spot is REQUIRED for arrival.
+-- TUNABLES
 -- ---------------------------------------------------------------------------
 M.Config = {
-  -- Vik's clinic (Misty's Esoterica / ripperdoc, Watson). Leave nil to disable
-  -- the proximity tip and use only the debug "Receive Vik's tip" button.
-  vikPos      = nil,                       -- e.g. { -1300.0, 1234.0, 12.3 }
-  vikRadius   = 8.0,                        -- metres; how close V must get to Vik
+  -- Vik's ripperdoc clinic (Misty's Esoterica, Watson). Captured in-game.
+  vikPos      = { -1546.551, 1229.270, 11.520 },   -- yaw 129.8
+  vikRadius   = 4.0,                                 -- "can't be missed" trigger zone
 
-  -- The Badlands hideout where Jackie is lying low + the shard is waiting.
-  hideoutPos  = nil,                        -- REQUIRED: { x, y, z }  (capture in-game)
-  hideoutYaw  = 0.0,                        -- facing for the reunion spawn
-  hideoutRadius = 12.0,                     -- metres; trigger radius (generous outdoors)
+  -- Rocky Ridge — abandoned-town garage in the Badlands, no hostiles. Captured in-game.
+  hideoutPos  = { 2575.852, 0.291, 80.871 },
+  hideoutYaw  = 129.8,
+  hideoutRadius = 4.0,
 
-  -- Vik's tip (shown when V gets near him / hits the debug button).
-  tipText     = "Vik: Oh — you didn't hear? Jackie made it out. He's layin' low "
-              .. "out in the Badlands. Sendin' you what I got.",
-  tipDuration = 9.0,
-
-  -- The info-shard's contents, read on reaching the hideout (joined into one
-  -- on-screen block for MVP; can be split into timed subtitle beats later).
-  shardLines  = {
-    "[SHARD — from Jackie]",
-    "If you're readin' this, mano, then you found me. Yeah. I made it.",
-    "Vik patched me up, smuggled me outta the city before Arasaka came lookin'.",
-    "I'm done with the merc life, V. Mama Welles'd kill me herself if I wasn't.",
-    "Come find me. We got a lotta catchin' up to do.",
+  -- PRECONDITION GATE: don't offer the tip until V is canonically post-heist
+  -- (Jackie dead + Vik patched V up + V left the clinic). That whole arc == the
+  -- main quest "Playing for Time" (q101) being COMPLETE.
+  --   mode = "off"    -> no precondition; tip fires on Vik proximity alone (TESTING).
+  --   mode = "quest"  -> require the journal quest below to be Succeeded.
+  -- Ships "off" so the chain is testable at Vik's without driving the prologue.
+  -- Use M.debugQuestState() in-game to confirm the path, then flip to "quest".
+  gate = {
+    mode       = "off",
+    questPaths = {            -- tried in order; first that resolves is used
+      "playing_for_time", "q101_playing_for_time",
+      "main_quests/prologue/q101_playing_for_time",
+    },
+    succeededOnly = true,     -- true = require Succeeded; false = Active-or-later also ok
   },
-  shardDuration = 13.0,
 
-  spawnReunion = true,   -- if a spawner is bound, place Jackie at the hideout on arrival
+  -- Vik's tip line (delivered via the tutorial popup if bound, else on-screen msg).
+  tipTitle    = "A message from Vik",
+  tipText     = "Oh — you didn't hear? Jackie made it out. Vik patched him up and got "
+              .. "him clear of the city before Arasaka came lookin'. He's layin' low out "
+              .. "in the Badlands. Sendin' you the coordinates — go find him.",
+  tipDuration = 10.0,
+
+  -- The info-shard contents, read on reaching the hideout (one on-screen block for MVP).
+  shardTitle  = "[ SHARD — Jackie Welles ]",
+  shardLines  = {
+    "If you're readin' this, mano, then you found me. Yeah. I made it.",
+    "Vik patched me up and smuggled me out before 'Saka came knockin'.",
+    "I'm done with the merc life, V — Mama Welles'd kill me herself if I wasn't.",
+    "Sit tight. I'm comin' out to see you.",
+  },
+  shardDuration = 12.0,
+
+  callDelay   = 1.0,          -- seconds after the shard is read before Jackie rings V
 }
 
 -- ---------------------------------------------------------------------------
--- Injected dependencies (all optional) + module state
+-- Stage constants + module state
 -- ---------------------------------------------------------------------------
+local LOCKED, TIP, SHARD, REUNITED = 0, 1, 2, 4   -- persisted; 3=INCOMING is runtime-only
 local USE_GAME_FACT = true
 local FACT_NAME     = "jackielives_stage"
 
-local deps  = { log = nil, spawnAt = nil }    -- bound from init.lua via M.bind{}
-local state = { fallbackStage = 0, mappinId = nil, lastStage = -1, vikFired = false }
+local deps  = {}              -- bound from init.lua: log, showTip, startCall, startArrival, startReunion, spawnAt
+local state = { fallbackStage = 0, mappinId = nil, lastStage = -1, vikFired = false,
+                clock = 0, callAt = nil, seq = nil }   -- seq: nil|"call"|"arrive"|"reunion"
 
-local function log(msg)
-  if deps.log then pcall(deps.log, "[Retrieval] " .. tostring(msg)) end
-end
+local function log(msg) if deps.log then pcall(deps.log, "[Retrieval] " .. tostring(msg)) end end
 
 -- ---------------------------------------------------------------------------
--- Small self-contained primitives (no init.lua locals needed)
+-- Self-contained primitives (no init.lua locals needed)
 -- ---------------------------------------------------------------------------
 local function playerPos()
   local p = Game.GetPlayer(); if not p then return nil end
@@ -92,9 +100,7 @@ local function playerPos()
   return ok and v or nil
 end
 
--- horizontal (XY) distance — forgiving for a large outdoor trigger; ignores
--- small Z differences between V's feet and a captured ground point.
-local function dist2(ax, ay, bx, by)
+local function dist2(ax, ay, bx, by)   -- horizontal distance (forgiving outdoors)
   local dx, dy = ax - bx, ay - by
   return math.sqrt(dx * dx + dy * dy)
 end
@@ -102,30 +108,32 @@ end
 local function nearPoint(pt, radius)
   if not pt then return false end
   local pp = playerPos(); if not pp then return false end
-  return dist2(pp.x, pp.y, pt[1], pt[2]) <= (radius or 8.0)
+  return dist2(pp.x, pp.y, pt[1], pt[2]) <= (radius or 4.0)
 end
 
--- the game's native on-screen message band (same path init.lua uses).
-local function onscreen(text, duration)
+local function onscreen(text, duration)   -- native on-screen msg band (init.lua's path)
   pcall(function()
     local defs = GetAllBlackboardDefs()
     local bb = Game.GetBlackboardSystem():Get(defs.UI_Notifications)
     if not bb then return end
     local msg = SimpleScreenMessage.new()
-    msg.isShown  = true
-    msg.duration = duration or 6.0
-    msg.message  = text
+    msg.isShown, msg.duration, msg.message = true, duration or 6.0, text
     bb:SetVariant(defs.UI_Notifications.OnscreenMessage, ToVariant(msg), true)
   end)
 end
 
+-- Show the tip via the bound tutorial popup if available, else the on-screen band.
+local function showTip(title, text, duration)
+  if deps.showTip and pcall(deps.showTip, title, text) then return end
+  onscreen(text, duration)
+end
+
 -- ---------------------------------------------------------------------------
--- State get/set (per-save game fact, with an in-session fallback)
+-- State (per-save game fact, with an in-session fallback)
 -- ---------------------------------------------------------------------------
 local function getStage()
   if USE_GAME_FACT then
-    local v
-    local ok = pcall(function() v = Game.GetQuestsSystem():GetFactStr(FACT_NAME) end)
+    local v; local ok = pcall(function() v = Game.GetQuestsSystem():GetFactStr(FACT_NAME) end)
     if ok and type(v) == "number" then return v end
   end
   return state.fallbackStage or 0
@@ -133,14 +141,54 @@ end
 
 local function setStage(n)
   state.fallbackStage = n
-  if USE_GAME_FACT then
-    pcall(function() Game.GetQuestsSystem():SetFactStr(FACT_NAME, n) end)
-  end
+  if USE_GAME_FACT then pcall(function() Game.GetQuestsSystem():SetFactStr(FACT_NAME, n) end) end
   log("stage -> " .. tostring(n))
 end
 
 -- ---------------------------------------------------------------------------
--- Map pin on the Badlands hideout (same mappin path as the dinner waypoint)
+-- Precondition: is V canonically post-heist (q101 done)?
+-- ---------------------------------------------------------------------------
+-- Best-effort journal lookup; fully guarded. Returns state string or nil.
+local function questState(path)
+  local result
+  pcall(function()
+    local jm = Game.GetJournalManager(); if not jm then return end
+    local entry
+    pcall(function() entry = jm:GetEntryByString(path) end)               -- common signature
+    if not entry then pcall(function() entry = jm:GetEntryByString(path, "gameJournalQuest") end) end
+    if not entry then return end
+    local st; pcall(function() st = jm:GetEntryState(entry) end)
+    if st ~= nil then result = tostring(st) end
+  end)
+  return result
+end
+
+local function preconditionMet()
+  local g = M.Config.gate or {}
+  if (g.mode or "off") ~= "quest" then return true end                    -- gate off -> always ok
+  for _, p in ipairs(g.questPaths or {}) do
+    local st = questState(p)
+    if st then
+      if st:find("Succeeded") then return true end
+      if not g.succeededOnly and (st:find("Active") or st:find("Succeeded")) then return true end
+      return false   -- the quest resolved but isn't done yet -> gate holds
+    end
+  end
+  return false       -- couldn't resolve any path -> gate holds (use debug to fix the path)
+end
+
+-- Print candidate quest states so we can lock the gate path in-game.
+function M.debugQuestState()
+  log("---- quest-gate probe ----")
+  for _, p in ipairs((M.Config.gate or {}).questPaths or {}) do
+    log("  '" .. p .. "' -> " .. tostring(questState(p)))
+  end
+  log("  preconditionMet = " .. tostring(preconditionMet()))
+  log("--------------------------")
+end
+
+-- ---------------------------------------------------------------------------
+-- Map pin on the hideout (same mappin path as the dinner waypoint)
 -- ---------------------------------------------------------------------------
 local function placePin()
   if state.mappinId or not M.Config.hideoutPos then return end
@@ -149,8 +197,7 @@ local function placePin()
     local pos  = ToVector4{ x = h[1], y = h[2], z = h[3], w = 1.0 }
     local data = NewObject("gamemappinsMappinData")
     data.mappinType = TweakDBID.new("Mappins.DefaultStaticMappin")
-    data.variant    = gamedataMappinVariant.CustomPositionVariant  -- proven in init.lua;
-                                                                   -- swap to QuestVariant for a quest look
+    data.variant    = gamedataMappinVariant.CustomPositionVariant
     state.mappinId  = Game.GetMappinSystem():RegisterMappin(data, pos)
   end)
   log("Badlands pin set (id=" .. tostring(state.mappinId) .. ")")
@@ -163,78 +210,117 @@ local function clearPin()
 end
 
 -- ---------------------------------------------------------------------------
+-- Post-shard sequence: call -> arrival -> reunion -> UNLOCK.
+-- Each step uses a bound starter if present, else immediately advances (so the
+-- quest always completes even before Phases 3-4 are wired).
+-- ---------------------------------------------------------------------------
+local onCallDone, onArrived, onReunionDone   -- forward decls
+
+local function startSequence()
+  if state.seq then return end                 -- already running
+  state.seq = "call"
+  log("post-shard: Jackie calls V")
+  if deps.startCall then pcall(deps.startCall, onCallDone) else onCallDone() end
+end
+
+onCallDone = function()
+  if state.seq ~= "call" then return end
+  state.seq = "arrive"
+  log("call done -> safe walk-in arrival")
+  if deps.startArrival then pcall(deps.startArrival, M.Config.hideoutPos, M.Config.hideoutYaw, onArrived)
+  else onArrived() end
+end
+
+onArrived = function()
+  if state.seq ~= "arrive" then return end
+  state.seq = "reunion"
+  log("arrived -> reunion dialogue")
+  if deps.startReunion then pcall(deps.startReunion, onReunionDone) else onReunionDone() end
+end
+
+onReunionDone = function()
+  state.seq = "done"
+  clearPin()
+  setStage(REUNITED)
+  log("REUNITED — mod unlocked.")
+end
+
+-- ---------------------------------------------------------------------------
 -- Quest transitions
 -- ---------------------------------------------------------------------------
--- hidden -> rumor : V learned Jackie's alive (proximity to Vik OR debug button).
-function M.giveTip()
-  if getStage() >= 1 then return false end
-  onscreen(M.Config.tipText, M.Config.tipDuration)
-  setStage(1)
+function M.giveTip()                                   -- LOCKED -> TIP
+  if getStage() >= TIP then return false end
+  showTip(M.Config.tipTitle, M.Config.tipText, M.Config.tipDuration)
+  setStage(TIP)
   return true
 end
 
--- rumor -> found : V reached the hideout; read the shard + optional reunion spawn.
-local function reachHideout()
-  if getStage() ~= 1 then return end
-  onscreen(table.concat(M.Config.shardLines, "\n"), M.Config.shardDuration)
+local function reachHideout()                          -- TIP -> SHARD
+  if getStage() ~= TIP then return end
+  showTip(M.Config.shardTitle, table.concat(M.Config.shardLines, "\n"), M.Config.shardDuration)
   log("Shard read at hideout.")
-  if M.Config.spawnReunion and deps.spawnAt and M.Config.hideoutPos then
-    pcall(deps.spawnAt, M.Config.hideoutPos, M.Config.hideoutYaw)   -- optional: see PATCH LIST #2
-  end
-  clearPin()
-  setStage(2)
+  setStage(SHARD)
+  state.callAt, state.seq = state.clock + (M.Config.callDelay or 1.0), nil
 end
 
 -- ---------------------------------------------------------------------------
--- Public API used by init.lua
+-- Public API
 -- ---------------------------------------------------------------------------
--- THE GATE. Everything else in the mod asks this before letting Jackie appear.
-function M.isUnlocked() return getStage() >= 2 end
-
-function M.getStage()  return getStage() end
+function M.isUnlocked()    return getStage() >= REUNITED end
+function M.getStage()      return getStage() end
 function M.stageName()
   local s = getStage()
-  return (s >= 2 and "found (unlocked)") or (s == 1 and "rumor (pin placed)") or "hidden (gated)"
+  if s >= REUNITED then return "REUNITED (unlocked)" end
+  if s == SHARD    then return "SHARD read (" .. tostring(state.seq or "calling…") .. ")" end
+  if s == TIP      then return "TIP (pin placed)" end
+  return "LOCKED (gated)"
 end
-
--- A friendly line for the call/summon gates when he's still "dead".
 function M.unavailableMsg() return "Number disconnected." end
+function M.notifyUnavailable() onscreen(M.unavailableMsg(), 2.5) end   -- native band, no init.lua scope needed
 
--- Inject init.lua helpers. spawnAt(pos, yaw) is OPTIONAL — without it the
--- reunion is text-only (still completes the quest).
+-- Inject init.lua helpers. ALL optional:
+--   log(msg)                              -- logger
+--   showTip(title, text) -> bool          -- native tutorial popup (Phase 2)
+--   startCall(onDone)                     -- one-time incoming call (Phase 3)
+--   startArrival(pos, yaw, onArrive)      -- safe walk-in (Phase 4)
+--   startReunion(onDone)                  -- first-sight dialogue (Phase 4)
 function M.bind(opts)
   opts = opts or {}
-  deps.log     = opts.log     or deps.log
-  deps.spawnAt = opts.spawnAt or deps.spawnAt
+  for _, k in ipairs({ "log", "showTip", "startCall", "startArrival", "startReunion", "spawnAt" }) do
+    if opts[k] ~= nil then deps[k] = opts[k] end
+  end
 end
 
--- Debug helper for the CET window.
-function M.reset()
-  clearPin(); state.vikFired = false; setStage(0)
-  log("reset to hidden.")
+function M.reset()                                     -- debug: back to LOCKED
+  clearPin(); state.vikFired, state.callAt, state.seq = false, nil, nil
+  setStage(LOCKED)
 end
 
--- Per-frame driver (call from init.lua's onUpdate). Cheap + fully guarded.
-function M.tick()
+-- Debug jumps for the CET window.
+function M.forceTip()   M.reset(); M.giveTip() end     -- skip the Vik proximity
+function M.forceShard() if getStage() < TIP then M.giveTip() end; reachHideout() end
+
+-- Per-frame driver (call from init.lua onUpdate with the frame delta).
+function M.tick(dt)
+  state.clock = state.clock + (dt or 0)
   local s = getStage()
 
-  -- one-shot side effects on a state change (also re-establishes the pin after a reload)
-  if s ~= state.lastStage then
-    if s == 1 then placePin() else clearPin() end
+  if s ~= state.lastStage then                         -- pin follows the stage (survives reloads)
+    if s == TIP then placePin() else clearPin() end
     state.lastStage = s
   end
 
-  if s == 0 then
-    -- learn he's alive by getting near Vik (debug button is the other route)
-    if M.Config.vikPos and not state.vikFired and nearPoint(M.Config.vikPos, M.Config.vikRadius) then
+  if s == LOCKED then
+    if not state.vikFired and preconditionMet()
+       and nearPoint(M.Config.vikPos, M.Config.vikRadius) then
       state.vikFired = true
       M.giveTip()
     end
-  elseif s == 1 then
+  elseif s == TIP then
     if not state.mappinId then placePin() end
-    -- NOTE: to split shard-pickup from finding Jackie, add a stage 1.5 here:
-    -- reach shard pin -> show shard text + move pin to Jackie -> on reaching THAT, spawn + found.
     if nearPoint(M.Config.hideoutPos, M.Config.hideoutRadius) then reachHideout() end
+  elseif s == SHARD then
+    if state.callAt and state.clock >= state.callAt then startSequence() end
   end
 end
 
@@ -242,48 +328,25 @@ return M
 
 --[[
   ============================================================================
-  PATCH LIST — apply these ~6 one-line touches to init.lua once it's free.
-  (Nothing here is destructive; each is an insert or a tiny guard.)
+  PATCH LIST for init.lua  (Phase 1 wiring — all surgical inserts)
   ============================================================================
-
-  1) REQUIRE the module (next to `local Config = require("config")`, ~line 51):
+  1) require (next to `local Config = require("config")`):
        local Retrieval = require("retrieval")
-
-  2) BIND helpers in onInit (~line 3801, near `pcall(jlLoadSettings)`).
-     `log` is the init.lua logger. spawnAt is OPTIONAL — pass a small spawner
-     only if you want Jackie physically waiting at the hideout (reuses ammSpawn):
-       pcall(function()
-         Retrieval.bind{
-           log = log,
-           spawnAt = function(pos, yaw)
-             -- minimal reunion spawn; promote/idle handling can be added later
-             local sp = ammSpawn(0)            -- passive idle Jackie
-             -- (optionally teleport sp.handle to pos/yaw here once spawned)
-           end,
-         }
-       end)
-
-  3) GATE the schedule (scheduleTick, ~line 3501, right after the `leaving` check):
+  2) onInit (near pcall(jlLoadSettings)):
+       pcall(function() Retrieval.bind{ log = log } end)
+  3) scheduleTick top (after the leaving check):
        if not Retrieval.isUnlocked() then clearIdle(); return end
-
-  4) GATE calling him — add at the TOP of each of:
-        summonJackie()            (~line 364)
-        startCall()               (~line 1889)
-        onPlayerCalledJackie()    (~line 1978)
-     the guard:
-       if not Retrieval.isUnlocked() then
-         showOnscreenMsg(Retrieval.unavailableMsg(), 2.5)   -- (skip showOnscreenMsg in onPlayerCalledJackie:
-         return                                              --  just `return` so the game's own call plays out)
-       end
-
-  5) DRIVE the quest — in onUpdate where `pcall(scheduleTick)` runs (~line 4000):
-       pcall(Retrieval.tick)
-
-  6) (OPTIONAL) CET debug UI — add a collapsing header in onDraw:
+  4) summonJackie / startCall — at the top:
+       if not Retrieval.isUnlocked() then showOnscreenMsg(Retrieval.unavailableMsg(), 2.5); return end
+     onPlayerCalledJackie — at the top (let the game's own call ring out):
+       if not Retrieval.isUnlocked() then return end
+  5) onUpdate (where pcall(scheduleTick) runs) — pass the frame delta:
+       pcall(function() Retrieval.tick(deltaTime) end)
+  6) (optional) CET debug UI:
        ImGui.Text("Retrieval: " .. Retrieval.stageName())
-       if ImGui.Button("Receive Vik's tip") then Retrieval.giveTip() end
-       if ImGui.Button("Reset quest")       then Retrieval.reset()   end
-
-  AFTER PATCHING: capture the Badlands spot in-game ("Capture position" button)
-  and paste it into M.Config.hideoutPos above (and optionally vikPos for Vik's clinic).
+       if ImGui.Button("Force tip")   then Retrieval.forceTip()   end
+       if ImGui.Button("Force shard") then Retrieval.forceShard() end
+       if ImGui.Button("Quest probe") then Retrieval.debugQuestState() end
+       if ImGui.Button("Reset quest") then Retrieval.reset()       end
+  Phases 2-4 add more Retrieval.bind{} helpers (showTip / startCall / startArrival / startReunion).
 --]]

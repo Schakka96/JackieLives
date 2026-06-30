@@ -36,6 +36,40 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
 
+## 🛑 v0.68 — CRITICAL load-fix (200-local cap) + Retrieval quest Phase 1 (2026-07-01, awaiting in-game test)
+
+### 🛑 CRITICAL — init.lua hasn't loaded since v0.66 (200-local-per-function cap)
+**v0.66 silently crossed Lua's HARD limit of 200 locals per function**, so the `init.lua` main chunk
+fails to compile: `main function has more than 200 local variables`. Confirmed on Mac with `luajit
+loadfile`: HEAD~2 (200) LOADS, **v0.66 (201) FAILS, v0.67 (202) FAILS** → the last two tags don't load
+in CET at all (both "awaiting test", so never caught in-game).
+- **Fix:** 6 ancient leaf helpers changed `local function` → plain `function` (globals; one-token each,
+  no call-site/behaviour change): `getAMMCharacters`, `discoverJackieFromSpawned`, `diagnostics`,
+  `dismissAllJackies`, `capturePosition`, `probeChoiceBoxAPI`. Now **196 locals (4 headroom)**. Header
+  note added in init.lua. **New top-level code must use globals or a module, never a main-chunk `local`.**
+- ⚠️ `staging/` copy is the broken v0.67 — mirror this fix + `retrieval.lua` when the mute release unparks.
+- [ ] **TEST:** reload CET → no red `init.lua` error (it loads at all). That alone confirms the fix.
+
+### 🆕 Retrieval questline ("Where's Jackie?") — Phase 1: gate + state machine (DEPLOYED, awaiting test)
+New module `mod/JackieLives/retrieval.lua` + ~8 surgical init.lua hooks. Per-save game fact
+`jackielives_stage` GATES the whole mod: LOCKED → TIP → SHARD → (call/arrival/reunion) → REUNITED.
+- Gate wired into `scheduleTick` (Jackie absent), `summonJackie`/`startCall` ("Number disconnected"),
+  `onPlayerCalledJackie` (rings out). Coords: Vik `{-1546.551,1229.270,11.520}` r4; Rocky Ridge garage
+  `{2575.852,0.291,80.871}` yaw 129.8 r4. Shard = on-screen text (no WolvenKit). Pin reuses dinner mappin.
+- Precondition (≈ q101 "Playing for Time" Succeeded) is configurable + `debugQuestState()`; **ships OFF**
+  so it's testable without the prologue — flip to `"quest"` after confirming the journal path in-game.
+- Debug UI: CET window → "Retrieval quest (Where's Jackie?)" → Force tip / Force shard / Quest probe / Reset.
+- [ ] **TEST Phase 1:** Force shard → ~1 s → stage REUNITED (schedule/calls come alive). Real flow: reach
+      Vik (tip + Badlands pin) → drive to Rocky Ridge (shard) → ~1 s → unlock.
+
+### ▶ NEXT — Phases 2-4 (researched, ready)
+- **P2 Vik tip = native LEFT tutorial popup** (Dark Future method): `UIGameData` `Popup_Settings`+`Popup_Data`
+  (`gamePopupData/Settings`, pos `LowerLeft`) → `SignalVariant(Popup_Data)`. Pure CET Lua, confirmed.
+- **P3 one-time incoming call FROM Jackie** (mute monologue): no native path → wrapper sets `Branch.busy`,
+  `JL.call.connectAt=clock+0.2`, `Branch.start(start, Config.retrievalCallTree)`; terminal node arms a foot arrival.
+- **P4 safe walk-in arrival** (`JL.varrival.at`, `useBike=false`) **+ reunion `Branch` tree**; choice labels
+  are plain strings so a **"Lie:"** prefix works (V lies re: the Relic). Reunion end → `setStage(REUNITED)`.
+
 ## 🆕 v0.67 — keep-close follow + subtitle debug + Bug-1 narrowed (DEPLOY + test, 2026-06-30)
 Follow-ups after the first v0.66 test pass.
 - **Keep-close follow (NEW).** Jackie trailed FAR behind V (AMM's long companion leash). New
