@@ -20,6 +20,24 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
 
+## 📦 Session 2026-06-30 — MUTE Nexus release packaging (staging tree added, no code changed)
+First-time release prep on a Mac clone (code/docs only; Windows machine does deploy + in-game test).
+- **Decision:** ship a **mute version (no voice audio)** — CDPR voice `.ogg`s can't be redistributed.
+- **Audio crash-check (mute, Audioware installed but no clips registered): PASS, no code change.**
+  Every audio entry point is `pcall`-guarded and degrades to subtitles + fallback timing:
+  `playVoice`/`voiceDuration` (init.lua ~1222/1229), `playEventOn` (~437), callers
+  `speakJackieLine`/`dialogueTick`. Safe whether Audioware is present, absent, or `GetAudioSystemExt()`
+  is nil; nothing touches audio at load.
+- **Added `staging/bin/x64/plugins/cyber_engine_tweaks/mods/JackieLives/`** = zip-ready CET mod folder
+  (`init.lua`, `config.lua`, + a clean **end-user README.md**). Excludes the dev probe mods and all audio.
+  On Windows: `git pull` → zip the `staging/bin` folder (root must be `bin\`) → upload as the Main file.
+- **Nexus requirements to list (mute):** CET 1.18.1+ · AMM · Codeware · Native Settings UI (mod 3518,
+  folder must be `nativeSettings`). NOT needed: Audioware, redscript, TweakXL, ArchiveXL.
+- [ ] **TODO:** keep `staging/` in sync with `mod/JackieLives/` on future code changes (or write a
+      `package.ps1` to build the zip from source instead of a checked-in staging copy).
+- [ ] **TODO:** trim the shipped README's old `deploy.ps1` reference is already removed in staging — but
+      the dev `mod/JackieLives/README.md` still documents deploy (intentional; dev-only).
+
 ## 🆕 v0.65 — bike-model test: try DIFFERENT records (the v0.63 record was wrong) (DEPLOYED, awaiting test, 2026-06-23)
 The v0.63 tester's 3 methods all used ONE record (`v_sportbike2_arch_jackie_player`) and ALL spawned the
 WRONG bike → that record doesn't give his Arch via DES on this build. Researched the actual records

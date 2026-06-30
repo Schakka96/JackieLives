@@ -52,6 +52,11 @@ desktop.ini
 *.log
 *.tmp
 
+# --- Local-only images (Nexus page art / refs; not source) -----------
+jackie.png
+mod_thumbnail.png
+Jackies_noodles.jpg
+
 # --- Tools (not source; downloaded locally) --------------------------
 WolvenKit-*/
 WolvenKit*.zip
