@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.67"
+Config.version = "0.7"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -12,11 +12,6 @@ Config.version = "0.67"
 -- CET console to see which methods drive the call (tells us if a native hook is viable).
 -- Turn OFF (false) once we're done investigating. See docs/native_phone_probes.md.
 Config.probeNativePhone      = true
--- DEBUG (v0.67): subtitles missing on a heavily-modded rig where our push does NOT log a failure.
--- Set true to confirm the push succeeds (logs "SUBTITLE push OK ...") AND mirror every spoken line to
--- the on-screen message band, so you see the text even if the bottom subtitle band is hidden/disabled
--- by another mod or by the game's subtitle setting. Turn OFF once the subtitle issue is resolved.
-Config.debugSubtitles        = false
 Config.enableSchedule        = true
 Config.scheduleCheckInterval = 2.0     -- seconds between schedule/proximity checks
 Config.proximityRadius       = 45.0    -- metres: idle Jackie appears when you're this close to his spot

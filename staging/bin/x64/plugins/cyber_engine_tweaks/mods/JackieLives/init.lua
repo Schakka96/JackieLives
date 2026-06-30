@@ -49,6 +49,16 @@
 --]]
 
 local Config = require("config")
+-- ⚠️ GLOBAL (not `local`) ON PURPOSE — see the "200-LOCAL CEILING" note below. init.lua's main chunk
+-- is at Lua's hard 200-local-per-function limit; a new top-level `local` here would make the WHOLE file
+-- fail to load in CET. Globals don't count toward that limit. (The CET debug window calls Retrieval.*)
+Retrieval = require("retrieval")   -- "Where's Jackie?" questline + master mod gate (see retrieval.lua)
+-- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
+-- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
+-- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
+-- `local function` to plain `function` (globals): getAMMCharacters, discoverJackieFromSpawned,
+-- diagnostics, dismissAllJackies, capturePosition, probeChoiceBoxAPI. If you add more top-level
+-- locals, convert a few stable functions to globals OR extract a module (see retrieval.lua) to stay safe.
 
 local JL = {
   amm    = nil,
@@ -113,7 +123,7 @@ local function getAMM()
   return JL.amm
 end
 
-local function getAMMCharacters()
+function getAMMCharacters()   -- global (not local): keeps main chunk under Lua's 200-local cap; see note at top
   local amm = getAMM()
   if not amm or not amm.API or not amm.API.GetAMMCharacters then return nil end
   local ok, chars = pcall(function() return amm.API.GetAMMCharacters() end)
@@ -144,7 +154,7 @@ end
 
 -- Discover Jackie's record from NPCs already spawned through AMM's own menu.
 -- (AMM stores them in AMM.Spawn.spawnedNPCs, keyed by uniqueName, each with .name/.path.)
-local function discoverJackieFromSpawned(verbose)
+function discoverJackieFromSpawned(verbose)   -- global (not local): 200-local cap; see note at top
   local amm = getAMM()
   if not amm or not amm.Spawn or not amm.Spawn.spawnedNPCs then
     log("AMM.Spawn.spawnedNPCs not available."); return false
@@ -213,7 +223,7 @@ end
 -- ---------------------------------------------------------------------------
 -- Diagnostics (dumps the exact shapes we need to see)
 -- ---------------------------------------------------------------------------
-local function diagnostics()
+function diagnostics()   -- global (not local): 200-local cap; see note at top
   log("----- DIAGNOSTICS -----")
   local amm = getAMM()
   log("AMM=" .. tostring(amm ~= nil) ..
@@ -365,6 +375,7 @@ end
 -- Summon / dismiss
 -- ---------------------------------------------------------------------------
 local function summonJackie()
+  if not Retrieval.isUnlocked() then JL.ui.status = Retrieval.unavailableMsg(); Retrieval.notifyUnavailable(); return end  -- gated until the retrieval quest is done
   if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
   if JL.summon.active then JL.ui.status = "Jackie is already with you."; return end
   local spawn, err = ammSpawn(1)
@@ -400,7 +411,7 @@ local function dismissJackie()
 end
 
 -- Despawn EVERY Jackie AMM knows about (clears orphans from failed dismisses / mod reloads).
-local function dismissAllJackies()
+function dismissAllJackies()   -- global (not local): 200-local cap; see note at top
   local amm = getAMM()
   local n = 0
   if amm and amm.Spawn and amm.Spawn.spawnedNPCs then
@@ -450,39 +461,6 @@ local function playEventOn(target, eventName, emitter)
   return ok, err
 end
 
--- Play a named WWise event on Jackie (or on V, if the debug toggle is set).
-local function playNamedEvent(name)
-  if not name or name == "" then JL.ui.status = "No event name."; return end
-  local emitter = (Config.talkTest and Config.talkTest.emitter) or ""
-  local target, src
-  if Config.talkTest and Config.talkTest.onPlayer then
-    target, src = Game.GetPlayer(), "V"
-  else
-    target, src = getTalkTarget()   -- summoned/idle Jackie, else look-at, else player
-  end
-  local ok, err = playEventOn(target, name, emitter)
-  if ok then
-    JL.ui.status = "Played '" .. name .. "' on " .. tostring(src) .. " - listen!"
-    log("VO: Play '" .. name .. "' on " .. tostring(src))
-  else
-    JL.ui.status = "VO failed: " .. tostring(err)
-    log("VO failed: " .. tostring(err))
-  end
-end
-
--- Play the event currently selected in the dropdown.
-local function playVO()
-  local list = Config.jackieEvents or {}
-  local name = list[(JL.ui.voIndex or 0) + 1] or (Config.talkTest and Config.talkTest.event)
-  playNamedEvent(name)
-end
-
-local function playRandomJackieEvent()
-  local list = Config.jackieEvents or {}
-  if #list == 0 then return end
-  JL.ui.voIndex = math.random(0, #list - 1)
-  playNamedEvent(list[JL.ui.voIndex + 1])
-end
 
 -- ---------------------------------------------------------------------------
 -- Time + position
@@ -631,7 +609,7 @@ local function dist3(a, b)
   return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
 
-local function capturePosition()
+function capturePosition()   -- global (not local): 200-local cap; see note at top
   local p = Game.GetPlayer(); if not p then log("No player."); return end
   local pos = p:GetWorldPosition()
   local yaw = 0.0
@@ -862,7 +840,7 @@ local choiceBox = { shown = false, id = 7731, lastPush = -999 }
 
 -- Reconnaissance: confirm the CORRECT interaction structs + blackboard field exist
 -- in this build. Safe to run anytime; prints to console. Paste the lines to Claude.
-local function probeChoiceBoxAPI()
+function probeChoiceBoxAPI()   -- global (not local): 200-local cap; see note at top
   log("----- CHOICE-BOX PROBE v0.17 -----")
   local function tryNew(label, ctor)
     local ok = pcall(ctor)
@@ -991,20 +969,7 @@ local function showSubtitle(text, speakerName, duration, speakerObj)
     -- so force it explicitly: array:scnDialogLineData (per the CET Lua kit ToVariant docs).
     bb:SetVariant(defs.UIGameData.ShowDialogLine, ToVariant({ line }, "array:scnDialogLineData"), true)
   end)
-  if ok then
-    subtitle.line = line
-    -- v0.67 DEBUG: when the push SUCCEEDS but nothing shows on screen, the blackboard write is fine
-    -- and the problem is downstream (subtitles disabled in Settings, or another mod hiding the band).
-    -- Flip Config.debugSubtitles=true to confirm: we log the success + ALSO mirror the line to the
-    -- on-screen message band, so you at least see the text and we know our text path works.
-    if Config.debugSubtitles then
-      log("SUBTITLE push OK (blackboard+field resolved, line set). If you see no bottom band, the band "
-          .. "is disabled/hidden, not our push. Mirroring to on-screen msg now.")
-      pcall(function() showOnscreenMsg(tostring(speakerName or "") .. ":   " .. tostring(text or ""),
-                                       (duration or 4.0) + 0.5) end)
-    end
-    return true
-  end
+  if ok then subtitle.line = line; return true end
   if not subtitle.warned then
     log("SUBTITLE push FAILED -> falling back to on-screen msg. Error: " .. tostring(err))
     subtitle.warned = true
@@ -1903,6 +1868,7 @@ end
 -- Begin a holocall. With useNativeWindow: fire the native RING (IncomingCall) now; callTick
 -- then aborts it (STOP) and switches to the CONNECT window before running our convo.
 local function startCall()
+  if not Retrieval.isUnlocked() then JL.ui.status = Retrieval.unavailableMsg(); Retrieval.notifyUnavailable(); return end  -- gated until the retrieval quest is done
   if Branch.open or Branch.busy or dlg.active then JL.ui.status = "Busy - finish the current talk first."; return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
   if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
@@ -1992,6 +1958,7 @@ end
 -- our flow: the native ring is already playing, so we just arm callTick (STOP -> CONNECT -> convo)
 -- without re-firing IncomingCall ourselves.
 local function onPlayerCalledJackie()
+  if not Retrieval.isUnlocked() then return end                -- gated: let the game's own call ring out (no hijack)
   if Branch.open or Branch.busy or dlg.active then return end   -- already talking
   if JL.summon.active then return end                          -- already with you
   if isMainQuestActive() then return end
@@ -3539,6 +3506,7 @@ end
 local function scheduleTick()
   if JL.idle.leaving then return end                 -- a departure is in progress; idleLeavingTick owns it
   if JL.summon.active then clearIdle(); return end
+  if not Retrieval.isUnlocked() then clearIdle(); return end   -- gated: Jackie stays "absent" until the retrieval quest is done
   if not Config.enableSchedule then clearIdle(); return end
 
   -- what location (if any) the schedule wants him at right now
@@ -3587,158 +3555,6 @@ end
 -- ---------------------------------------------------------------------------
 -- Events
 -- ---------------------------------------------------------------------------
--- DEBUG (Config.probeNativePhone). Two parts, both writing to files in the mod folder so the
--- output can be read back without OCR / fragile console copy:
---  1) dumpPhoneReflection() -> uses Codeware's Reflection to write the REAL method names of the
---     phone/holocall classes to  phone_methods.txt  (so we stop guessing method names).
---  2) hooks that, when they fire, append to  probe_fires.txt  (open phone, call Jackie -> we see
---     exactly which methods drive the call).
-local PROBE_CANDIDATE_CLASSES = {
-  "PhoneSystem", "HolocallSystem",
-  "PhoneDialerGameController", "PhoneDialerLogicController", "PhoneDialerNPCDataView",
-  "PhoneConversationManager", "PhoneMessagePopupGameController",
-  "gameuiHolocallReceiverGameController", "HolocallReceiverGameController",
-  "ContactsListItemVirtualController", "gameuiContactsListGameController",
-  "PhoneContactsManagerGameController", "JournalManager",
-}
-
-local function methodName(m)
-  local nm
-  pcall(function() nm = m:GetFullName() end)
-  if not nm then pcall(function() nm = m:GetName() end) end
-  return tostring(nm)
-end
-
-local function dumpPhoneReflection()
-  if not Reflection then log("PROBE: Codeware Reflection global missing — is Codeware loaded?"); return end
-  local out = {}
-  local function w(s) out[#out + 1] = tostring(s) end
-  for _, cn in ipairs(PROBE_CANDIDATE_CLASSES) do
-    local cls
-    pcall(function() cls = Reflection.GetClass(cn) end)
-    if not cls then
-      w("=== " .. cn .. " : CLASS NOT FOUND ===")
-    else
-      local parent = "?"
-      pcall(function() local p = cls:GetParent(); if p then parent = tostring(p:GetName()) end end)
-      w("=== " .. cn .. "  (parent: " .. parent .. ") ===")
-      local methods
-      pcall(function() methods = cls:GetMethods() end)
-      if not methods then pcall(function() methods = cls:GetFunctions() end) end
-      if methods then
-        for _, m in ipairs(methods) do w("    " .. methodName(m)) end
-      else
-        w("    (could not list methods)")
-      end
-    end
-    w("")
-  end
-  local f = io.open("phone_methods.txt", "w")
-  if f then f:write(table.concat(out, "\n")); f:close(); log("PROBE: wrote phone_methods.txt (" .. #out .. " lines).")
-  else log("PROBE: could not open phone_methods.txt for writing.") end
-end
-
-local function probeFire(tag, detail)
-  local line = tag .. (detail and ("  | " .. detail) or "")
-  log("PROBE FIRED  " .. line)
-  local f = io.open("probe_fires.txt", "a")
-  if f then f:write(("%.1f  %s\n"):format(JL.clock or 0, line)); f:close() end
-end
-
--- Real method names (from phone_methods.txt). argfmt(self, ...) -> a string of captured args,
--- so we learn e.g. Jackie's call CName passed to TriggerCall. Uses Observe (before-call).
-local function setupNativePhoneProbe()
-  pcall(dumpPhoneReflection)
-  local f = io.open("probe_fires.txt", "w")   -- truncate stale fires
-  if f then f:write("# probe fires (t  Class::Method | args) - open phone, call Jackie\n"); f:close() end
-
-  local function hook(cls, method, argfmt)
-    local cb = function(self, ...)
-      local detail
-      if argfmt then local ok, d = pcall(argfmt, self, ...); if ok then detail = d end end
-      probeFire(cls .. "::" .. method, detail)
-    end
-    pcall(function() Observe(cls, method, cb) end)
-  end
-
-  hook("PhoneSystem", "TriggerCall", function(self, a1, a2, a3, a4, a5, a6, a7, a8, a9)
-    return ("args: %s | %s | %s | %s | %s | %s | %s | %s | %s"):format(
-      tostring(a1), tostring(a2), tostring(a3), tostring(a4), tostring(a5),
-      tostring(a6), tostring(a7), tostring(a8), tostring(a9))
-  end)
-  hook("PhoneSystem", "OnPickupPhone")
-  hook("PhoneDialerGameController", "CallSelectedContact")
-  hook("PhoneMessagePopupGameController", "TryCallContact")
-  hook("PhoneMessagePopupGameController", "CallContact")
-  log("PROBE armed (real names). Open phone, call Jackie -> probe_fires.txt.")
-end
-
--- ---------------------------------------------------------------------------
--- v0.51 PERSISTENT Esc-menu settings. A tiny self-contained store (no json dependency): one
--- `key=true/false` per line in the mod folder (relative io.open writes here, like the phone probes).
--- Only the boolean toggles exposed in the Native Settings panel are persisted; they live on JL.* so
--- gameplay code can read them. Load once at onInit; save on every toggle change.
--- ---------------------------------------------------------------------------
-local JL_SETTINGS_FILE = "jl_settings.txt"
-local JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals" }  -- persisted JL.* boolean flags
-
-local function jlSaveSettings()
-  local f = io.open(JL_SETTINGS_FILE, "w")
-  if not f then log("settings: could not write " .. JL_SETTINGS_FILE); return end
-  for _, k in ipairs(JL_SETTINGS_KEYS) do f:write(k .. "=" .. tostring(JL[k] == true) .. "\n") end
-  f:close()
-end
-
-local function jlLoadSettings()
-  local f = io.open(JL_SETTINGS_FILE, "r")
-  if not f then return end
-  for line in f:lines() do
-    local k, v = line:match("^(%w+)%s*=%s*(%w+)")
-    if k then
-      for _, want in ipairs(JL_SETTINGS_KEYS) do
-        if k == want then JL[k] = (v == "true") end
-      end
-    end
-  end
-  f:close()
-  log("settings: loaded (husbando=" .. tostring(JL.husbando) ..
-      ", disableVehicleArrivals=" .. tostring(JL.disableVehicleArrivals) .. ").")
-end
-
--- ---------------------------------------------------------------------------
--- v0.44 "Go Home Jackie" — blunt recovery for a stuck/duplicated/missing Jackie.
--- Force-despawns EVERY Jackie (orphans included), wipes ALL transient state machines, then lets
--- the next scheduleTick re-place a clean idle Jackie at his scheduled spot. Deliberately does NOT
--- spawn here: it's fired from the Esc -> Settings panel while the game is PAUSED (onUpdate frozen),
--- so re-placement is left to the first unpaused tick (we just prime JL.timer to fire it ASAP).
--- ---------------------------------------------------------------------------
-local function hardReset()
-  -- get him out of any sit/lean workspot first so the despawn can't strand a posed body
-  pcall(function()
-    local ws = Game.GetWorkspotSystem()
-    if ws then
-      if JL.idle.spawn   and JL.idle.spawn.handle   then ws:StopInDevice(JL.idle.spawn.handle)   end
-      if JL.summon.spawn and JL.summon.spawn.handle then ws:StopInDevice(JL.summon.spawn.handle) end
-    end
-  end)
-  pcall(dismissAllJackies)   -- AMM-wide despawn + summon/idle/arrival/leaving/vehicle reset
-  -- wipe the newer (v0.35+) idle/dinner/secret/call/branch state dismissAllJackies doesn't cover
-  JL.idle.placed, JL.idle.phase, JL.idle.curIdx, JL.idle.tgtIdx = false, nil, nil, nil
-  JL.idle.leaving, JL.idle.leaveTarget, JL.idle.leaveDeadline, JL.idle.leaveReissue = false, nil, 0, 0
-  JL.idle.posed, JL.idle.pendingPose, JL.idle.pendingSit = false, nil, nil
-  JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
-  JL.dinner.phase, JL.dinner.dest, JL.dinner.mappinId = nil, nil, nil
-  JL.secret.decided, JL.secret.active = false, false
-  JL.call.ringingAt, JL.call.hangupAt, JL.call.hangupAction = nil, nil, nil
-  JL.leaving.subClearAt = nil
-  -- release any open conversation so the UI can't be stuck mid-dialogue
-  pcall(hideSubtitle)
-  if Branch then Branch.open, Branch.busy = false, false end
-  JL.timer = Config.scheduleCheckInterval or 0   -- fire scheduleTick on the very next (unpaused) tick
-  JL.ui.status = "Go Home Jackie: reset done. He'll return to his schedule shortly."
-  log("Hard reset: every Jackie despawned + state wiped; schedule will re-place a clean one.")
-end
-
 -- v0.44: register the "Jackie Lives" page in the Esc -> Settings screen via Native Settings UI.
 -- DEFERRED + RETRIED from onUpdate (see nsTick) rather than run once in onInit, because CET loads
 -- mods alphabetically: "JackieLives" initializes BEFORE "nativeSettings", so GetMod() is nil at our
@@ -3835,9 +3651,9 @@ registerForEvent("onInit", function()
   pcall(function() math.randomseed((os.time and os.time() or 0)) end)  -- v0.36: random day-bag shuffle
   getAMM()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
-  if Config.probeNativePhone then pcall(setupNativePhoneProbe) end
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
+  pcall(function() Retrieval.bind{ log = log } end)   -- retrieval questline: inject the logger (more helpers bound in Phases 2-4)
   log("Loaded v" .. tostring(Config.version or "?") .. ". AMM present: " .. tostring(JL.amm ~= nil))
 end)
 
@@ -3973,6 +3789,7 @@ end
 
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
+  pcall(function() Retrieval.tick(dt) end)   -- retrieval questline: gate + Vik tip + Badlands shard + call/arrival/reunion sequence
   pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
@@ -4137,6 +3954,12 @@ registerForEvent("onDraw", function()
   if not JL.ui.open then return end
   ImGui.Begin("Jackie Lives")
 
+  -- Reunion-quest status, always shown at the very top of the window.
+  ImGui.Text("Reunion quest: ")
+  ImGui.SameLine()
+  ImGui.TextColored(0.45, 0.85, 1.0, 1.0, Retrieval.stageName())
+  ImGui.Separator()
+
   local block, hour = currentScheduleBlock()
   ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
              "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
@@ -4192,6 +4015,19 @@ registerForEvent("onDraw", function()
   end
   ImGui.Separator()
 
+  -- v0.7: LIVE companion-spacing tunables. These edit Config.follow / Config.catchUp in place, and the
+  -- follow/catch-up ticks read them every frame, so dragging a slider changes his behaviour instantly —
+  -- no redeploy. (Live-only: they reset to the config.lua defaults on reload; once a value feels right,
+  -- tell Claude and we bake it into config.lua.) Follow gap = how far he trails V; catch-up trigger =
+  -- how far he can drift before he teleports back; catch-up drop = how far to V's side he lands.
+  if Config.follow and Config.catchUp then
+    ImGui.Text("Companion spacing (live tuning):")
+    Config.follow.distance       = ImGui.SliderFloat("Follow gap (m behind V)",      Config.follow.distance or 2.5,       1.0, 8.0)
+    Config.catchUp.distance      = ImGui.SliderFloat("Catch-up trigger (m from V)",  Config.catchUp.distance or 25.0,     8.0, 60.0)
+    Config.catchUp.placeDistance = ImGui.SliderFloat("Catch-up drop (m beside V)",   Config.catchUp.placeDistance or 3.0, 1.5, 8.0)
+    ImGui.Separator()
+  end
+
   -- DEBUG: force his schedule to a venue so you can go observe him (overrides time + secret).
   ImGui.Text("Force venue:  " .. (JL.ui.forceVenue and ("-> " .. tostring(JL.ui.forceVenue)) or "OFF (following schedule)"))
   local venueKeys = { "noodle", "misty", "coyote", "afterlife", "ginger", "redwood", "lizzies", "secret", "test" }
@@ -4240,6 +4076,18 @@ registerForEvent("onDraw", function()
   -- DEBUG: pretend a main quest is active so you can test Jackie declining / excusing himself.
   JL.ui.forceMainQuest = ImGui.Checkbox("Force main-quest active (test decline)", JL.ui.forceMainQuest)
   ImGui.Text("Main quest detected: " .. (isMainQuestActive() and "YES (Jackie won't follow)" or "no"))
+
+  ImGui.Separator()
+  -- Retrieval questline gate: stage readout + debug jumps (the "Where's Jackie?" quest).
+  if ImGui.CollapsingHeader("Retrieval quest (Where's Jackie?)") then
+    ImGui.Text("Stage: " .. Retrieval.stageName())
+    if ImGui.Button("Force tip (skip Vik)") then Retrieval.forceTip() end
+    ImGui.SameLine(); if ImGui.Button("Force shard read") then Retrieval.forceShard() end
+    if ImGui.Button("Probe quest gate (console)") then Retrieval.debugQuestState() end
+    ImGui.SameLine(); if ImGui.Button("Reset to LOCKED") then Retrieval.reset() end
+    ImGui.TextWrapped("Gate ships OFF: tip fires when you reach Vik (coords set). Flow: Vik's clinic -> " ..
+      "tip + Badlands pin -> Rocky Ridge garage -> shard -> ~1s -> unlock (Phases 3-4 add call/arrival/reunion).")
+  end
 
   ImGui.Separator()
   -- v0.63: BIKE-MODEL TEST — find the spawn method that reliably gives Jackie's REAL Arch. Each
@@ -4356,7 +4204,6 @@ registerHotkey("jl_dismiss", "Dismiss Jackie",           function() dismissJacki
 registerHotkey("jl_capture", "Capture position",         function() capturePosition() end)
 registerHotkey("jl_toggle",  "Show/Hide Jackie window",  function() JL.ui.open = not JL.ui.open end)
 registerHotkey("jl_diag",    "Jackie diagnostics",       function() diagnostics() end)
-registerHotkey("jl_votest",  "Jackie: play random voice", function() playRandomJackieEvent() end)
 
 -- Bind a key in CET -> Bindings for this. Look at Jackie + press it -> he talks.
 -- (Fallback key; CET can't bind F, so Antonia used "=". The OnAction hook below ALSO

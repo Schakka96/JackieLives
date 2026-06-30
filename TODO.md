@@ -18,10 +18,6 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
       `maxSeconds` force-handoff using AMM's catch-up). NEEDS: observe whether it happens on a *normal* call
       arrival or only after he gets *stuck approaching*; then offset those fallbacks the same way (place
       beside V, not on her) and/or reduce stuck-arrivals. See diagnosis 2026-06-30.
-- [ ] **Bug 2 — subtitles missing on the new (heavily-modded) rig.** `showSubtitle` pushes to the UIGameData
-      blackboard `ShowDialogLine`; it logs `SUBTITLE push FAILED -> ... Error: <x>` the first time it can't.
-      ACTION: on the rig, open CET console, trigger any Jackie line, and **grab that log line** — its text
-      decides the fix (game-2.3 blackboard change vs a mod clobbering the field vs Codeware/Audioware reds).
 - [ ] (prior v0.65 tasks below — all DEPLOYED in v0.65, awaiting in-game test)
 - [ ] **Bike record (v0.65, top priority):** in CET → "Bike model test", click **B1/B2/B3** → report which
       spawns Jackie's real (gold) Arch + the console `READ-BACK` appearance string. Then **lock that
@@ -35,6 +31,21 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 - [ ] **Safety dismount (v0.62):** on a bike arrival where he used to stay seated, confirm the
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
+
+## 🆕 v0.7 — CET live spacing tunables + subtitle non-issue cleanup (2026-07-01, awaiting in-game test)
+- **CET window: live companion-spacing sliders.** New "Companion spacing (live tuning)" section in the
+  Jackie Lives overlay (inside `onDraw`, so NO new top-level locals — respects the 200-local cap):
+  - **Follow gap (m behind V)** → `Config.follow.distance` (1–8 m)
+  - **Catch-up trigger (m from V)** → `Config.catchUp.distance` (8–60 m)
+  - **Catch-up drop (m beside V)** → `Config.catchUp.placeDistance` (1.5–8 m)
+  The follow/catch-up ticks read these every frame, so dragging a slider changes his behaviour instantly,
+  no redeploy. LIVE-ONLY (reset to config.lua defaults on reload) — once a value feels right, tell Claude
+  and we bake it into config.lua.
+- **Subtitle "bug" = NON-ISSUE.** Subtitles were just turned OFF in the game Settings on the rig. Removed
+  the v0.67 debug scaffolding (`Config.debugSubtitles` + the success-path mirror in `showSubtitle`) and all
+  the subtitle-bug notes. Antonia is adding "make sure in-game subtitles are enabled" to the Nexus page
+  (cyberpunk2077/mods/31042).
+- Version bumped 0.67 → **0.7**.
 
 ## 🆕 v0.69 — reunion status line + dead-code cleanup (200-local headroom) (2026-07-01, awaiting in-game test)
 - **Status line** at the top of the CET window: `Reunion quest: <stage>` (blue). Player-facing stage names
@@ -91,20 +102,13 @@ New module `mod/JackieLives/retrieval.lua` + ~8 surgical init.lua hooks. Per-sav
 - **P4 safe walk-in arrival** (`JL.varrival.at`, `useBike=false`) **+ reunion `Branch` tree**; choice labels
   are plain strings so a **"Lie:"** prefix works (V lies re: the Relic). Reunion end → `setStage(REUNITED)`.
 
-## 🆕 v0.67 — keep-close follow + subtitle debug + Bug-1 narrowed (DEPLOY + test, 2026-06-30)
+## 🆕 v0.67 — keep-close follow + Bug-1 narrowed (DEPLOY + test, 2026-06-30)
 Follow-ups after the first v0.66 test pass.
 - **Keep-close follow (NEW).** Jackie trailed FAR behind V (AMM's long companion leash). New
   `followKeepCloseTick` + `Config.follow` re-asserts our tight `AIFollowTargetCommand` every `interval`
   (1.5 s) at `distance` (2.5 m) while he's a settled companion — overriding AMM's leash. Tunable;
   set `enabled=false` or raise `interval` if it looks jittery. Tiers under catch-up (which owns >25 m).
   - [ ] TEST: he now holds ~2.5 m behind V on foot; no stutter/surge. Tune `Config.follow.distance` to taste.
-- **Subtitle debug (NEW).** On the rig, the push does NOT log a failure → the blackboard write succeeds,
-  so the band is hidden/disabled downstream, not our code. New `Config.debugSubtitles` (default false):
-  set true → logs `SUBTITLE push OK ...` + MIRRORS each line to the on-screen msg band so text is visible.
-  - [ ] TEST PLAN: (1) check Settings → Subtitles ON; (2) do NORMAL game subtitles (any NPC/quest VO) show?
-        If NO game subtitles anywhere → game setting / HUD mod globally. If game subs work but ours don't →
-        set `debugSubtitles=true`, redeploy, trigger a Jackie line: do you see `SUBTITLE push OK` + the
-        mirrored on-screen text? That confirms our push is fine and a mod is eating the bottom band.
 - **Bug 1 narrowed.** Reported on a NORMAL call (no visible struggle) → rules out the stuck-fallbacks.
   Arrival uses `spawnDynEntity` at the FAR navmesh point (50/60 m), never at V — so on this build the
   distance spawn isn't being honoured, OR `navmeshArrivalPoint` returned nil → `arrivalPoint()` fallback
@@ -114,8 +118,8 @@ Follow-ups after the first v0.66 test pass.
   save/load + load-screen fast-travel by re-spawning + re-promoting Jackie at V from a saved intent flag.
 
 ## 🆕 v0.66 — companion catch-up teleport (fast-travel "never get lost") (DEPLOY + test, 2026-06-30)
-Three returning bugs reported on the new gaming rig (game 2.31, CET 1.37.1, AMM 2.12.5, Codeware 1.20.3).
-Diagnosed all three from code; shipped the fix for #3.
+Returning bugs reported on the new gaming rig (game 2.31, CET 1.37.1, AMM 2.12.5, Codeware 1.20.3).
+Diagnosed from code; shipped the fast-travel fix.
 - **#3 FAST-TRAVEL / left-behind (FIXED in code, awaiting test).** Root cause: there was **never** a
   fast-travel handler (it's List_of_companion_issues.md Session 1 backlog — planned, not built). On top of
   that, the arrival design intentionally **suppresses** the catch-up teleport post-arrival ("teleport powers
@@ -129,10 +133,9 @@ Diagnosed all three from code; shipped the fix for #3.
   force-handoff (AMM catch-up to V's face) — which fire when he gets **stuck approaching**. Verdict: ~half AMM
   trait (companions stand very close + catch-up lands on target), ~half ours (we lean on at-V fallbacks). Needs
   in-game obs: normal arrival vs stuck-only? Then offset those fallbacks beside V too.
-- **#2 subtitles missing on the rig (DIAGNOSED, needs log).** `showSubtitle` pushes UIGameData blackboard
-  `ShowDialogLine`; it self-logs `SUBTITLE push FAILED -> ... Error:` the first time it can't. Need that console
-  line from the rig to pick the fix (2.3 blackboard change vs a mod clobbering the field). Distinct from the
-  Session-5 "sticky subtitles" item.
+- **#2 subtitles — NON-ISSUE (resolved 2026-07-01).** Subtitles were simply turned OFF in the game's
+  Settings on the rig; nothing wrong with our push. No code change. (End-user note "make sure subtitles are
+  enabled" is going on the Nexus page.)
 
 ## 📦 Session 2026-06-30 — MUTE Nexus release packaging (staging tree added, no code changed)
 First-time release prep on a Mac clone (code/docs only; Windows machine does deploy + in-game test).

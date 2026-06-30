@@ -969,20 +969,7 @@ local function showSubtitle(text, speakerName, duration, speakerObj)
     -- so force it explicitly: array:scnDialogLineData (per the CET Lua kit ToVariant docs).
     bb:SetVariant(defs.UIGameData.ShowDialogLine, ToVariant({ line }, "array:scnDialogLineData"), true)
   end)
-  if ok then
-    subtitle.line = line
-    -- v0.67 DEBUG: when the push SUCCEEDS but nothing shows on screen, the blackboard write is fine
-    -- and the problem is downstream (subtitles disabled in Settings, or another mod hiding the band).
-    -- Flip Config.debugSubtitles=true to confirm: we log the success + ALSO mirror the line to the
-    -- on-screen message band, so you at least see the text and we know our text path works.
-    if Config.debugSubtitles then
-      log("SUBTITLE push OK (blackboard+field resolved, line set). If you see no bottom band, the band "
-          .. "is disabled/hidden, not our push. Mirroring to on-screen msg now.")
-      pcall(function() showOnscreenMsg(tostring(speakerName or "") .. ":   " .. tostring(text or ""),
-                                       (duration or 4.0) + 0.5) end)
-    end
-    return true
-  end
+  if ok then subtitle.line = line; return true end
   if not subtitle.warned then
     log("SUBTITLE push FAILED -> falling back to on-screen msg. Error: " .. tostring(err))
     subtitle.warned = true
@@ -4027,6 +4014,19 @@ registerForEvent("onDraw", function()
     ImGui.Text(("Collision  setting: %s   |   live on Jackie: %s"):format(setting, live))
   end
   ImGui.Separator()
+
+  -- v0.7: LIVE companion-spacing tunables. These edit Config.follow / Config.catchUp in place, and the
+  -- follow/catch-up ticks read them every frame, so dragging a slider changes his behaviour instantly —
+  -- no redeploy. (Live-only: they reset to the config.lua defaults on reload; once a value feels right,
+  -- tell Claude and we bake it into config.lua.) Follow gap = how far he trails V; catch-up trigger =
+  -- how far he can drift before he teleports back; catch-up drop = how far to V's side he lands.
+  if Config.follow and Config.catchUp then
+    ImGui.Text("Companion spacing (live tuning):")
+    Config.follow.distance       = ImGui.SliderFloat("Follow gap (m behind V)",      Config.follow.distance or 2.5,       1.0, 8.0)
+    Config.catchUp.distance      = ImGui.SliderFloat("Catch-up trigger (m from V)",  Config.catchUp.distance or 25.0,     8.0, 60.0)
+    Config.catchUp.placeDistance = ImGui.SliderFloat("Catch-up drop (m beside V)",   Config.catchUp.placeDistance or 3.0, 1.5, 8.0)
+    ImGui.Separator()
+  end
 
   -- DEBUG: force his schedule to a venue so you can go observe him (overrides time + secret).
   ImGui.Text("Force venue:  " .. (JL.ui.forceVenue and ("-> " .. tostring(JL.ui.forceVenue)) or "OFF (following schedule)"))
