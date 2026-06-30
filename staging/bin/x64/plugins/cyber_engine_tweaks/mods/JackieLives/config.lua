@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.65"
+Config.version = "0.66"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -177,6 +177,22 @@ Config.mainQuestExit = {
 Config.companion = {
   maxGameHours      = 6.0,   -- in-game hours he'll tag along before heading home on his own
   autoLeaveOnExpiry = true,  -- when the clock runs out he walks off (reuses the send-off exit)
+}
+
+-- ---- companion catch-up teleport (v0.66) ----------------------------------
+-- Once Jackie is a SETTLED companion (arrived, role applied, not dismissed/expired), if V gets far
+-- away — FAST-TRAVEL, a long sprint, or he just got left behind — he teleports back to V's SIDE.
+-- This is the immersive "a companion never gets lost" behaviour. It is DELIBERATELY off during the
+-- arrival walk-in / dinner / walk-off (those own his movement and must not be yanked). He always lands
+-- a few metres to V's side on the navmesh, never on top of her. Set enabled=false to turn it off.
+-- CAVEAT: this only works while his runtime body still EXISTS. A load-screen fast-travel can cull a
+-- spawned NPC entirely; surviving that needs the heavier persist-and-respawn work (TODO Session 1).
+Config.catchUp = {
+  enabled        = true,
+  distance       = 25.0,  -- metres from V beyond which he's considered "left behind"
+  sustainSeconds = 2.0,   -- he must stay that far for this long (rides out a fast-travel/load gap)
+  cooldown       = 3.0,   -- minimum seconds between catch-up teleports (anti-thrash)
+  placeDistance  = 3.0,   -- metres to V's side he's dropped (navmesh-snapped; never ON V)
 }
 
 -- ---- ask Jackie to dinner / a date (v0.41 - restaurant walk) -------------

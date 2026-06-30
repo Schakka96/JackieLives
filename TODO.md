@@ -6,7 +6,23 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > for the unsolved companion issues — persistence/save, walk-away, dinner pathing, sit-coord persistence,
 > dialogue/subtitle polish). Created 2026-06-23.
 
-### ▶️ NEXT SESSION — pick up these OPEN verification tasks (all DEPLOYED in v0.65, awaiting in-game test)
+### ▶️ NEXT SESSION — pick up these OPEN verification tasks (awaiting in-game test)
+- [ ] **TEST: Companion catch-up teleport (v0.66, NEW).** While Jackie is a SETTLED companion (arrived,
+      not dismissed), **FAST-TRAVEL** away (or sprint >25 m off) and confirm he **teleports to V's side**
+      within ~2 s, landing a few m beside her (NEVER on top of V). Console logs `CatchUp: Jackie was N m
+      from V -> teleported to her side.` Tunables in `Config.catchUp` (distance/sustain/cooldown/placeDistance).
+      - Known limit: if a load-screen fast-travel **culls his entity** (handle nil), teleport can't help →
+        he's just gone. That's the heavier persist+respawn job (List_of_companion_issues.md Session 1).
+- [ ] **Bug 1 follow-up — "spawns inside V" on a FAILED approach.** The catch-up teleport now always lands
+      him *beside* V, but the original yank-onto-V comes from the **arrival fallbacks** (rescue-spawn at V /
+      `maxSeconds` force-handoff using AMM's catch-up). NEEDS: observe whether it happens on a *normal* call
+      arrival or only after he gets *stuck approaching*; then offset those fallbacks the same way (place
+      beside V, not on her) and/or reduce stuck-arrivals. See diagnosis 2026-06-30.
+- [ ] **Bug 2 — subtitles missing on the new (heavily-modded) rig.** `showSubtitle` pushes to the UIGameData
+      blackboard `ShowDialogLine`; it logs `SUBTITLE push FAILED -> ... Error: <x>` the first time it can't.
+      ACTION: on the rig, open CET console, trigger any Jackie line, and **grab that log line** — its text
+      decides the fix (game-2.3 blackboard change vs a mod clobbering the field vs Codeware/Audioware reds).
+- [ ] (prior v0.65 tasks below — all DEPLOYED in v0.65, awaiting in-game test)
 - [ ] **Bike record (v0.65, top priority):** in CET → "Bike model test", click **B1/B2/B3** → report which
       spawns Jackie's real (gold) Arch + the console `READ-BACK` appearance string. Then **lock that
       record (+appearance) into the live arrival** (`spawnDynEntity` bike spawn; `Config.vehicle.bikeRecord`
@@ -19,6 +35,27 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 - [ ] **Safety dismount (v0.62):** on a bike arrival where he used to stay seated, confirm the
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
+
+## 🆕 v0.66 — companion catch-up teleport (fast-travel "never get lost") (DEPLOY + test, 2026-06-30)
+Three returning bugs reported on the new gaming rig (game 2.31, CET 1.37.1, AMM 2.12.5, Codeware 1.20.3).
+Diagnosed all three from code; shipped the fix for #3.
+- **#3 FAST-TRAVEL / left-behind (FIXED in code, awaiting test).** Root cause: there was **never** a
+  fast-travel handler (it's List_of_companion_issues.md Session 1 backlog — planned, not built). On top of
+  that, the arrival design intentionally **suppresses** the catch-up teleport post-arrival ("teleport powers
+  only return when he's already next to V", see v0.50 notes), so a settled companion had **no** way to catch
+  up. New `catchUpTick` (init.lua) + `Config.catchUp`: while he's a settled, undismissed companion and NOT
+  mid-arrival/dinner/walk-off, if he's >`distance` (25 m) from V for >`sustainSeconds` (2 s) he's `aiTeleport`-ed
+  to a navmesh point `placeDistance` (3 m) to V's **side** — our own teleport, our chosen offset, so he never
+  lands on V. Limit: a load-screen FT that culls his entity (handle nil) still loses him → Session-1 persist+respawn.
+- **#1 "spawns inside V" (DIAGNOSED, partial).** The catch-up always lands him beside V now, but the original
+  yank-onto-V is from the **arrival FALLBACKS** — `rescue-spawn at V` (ammSpawn at V's pos) and the `maxSeconds`
+  force-handoff (AMM catch-up to V's face) — which fire when he gets **stuck approaching**. Verdict: ~half AMM
+  trait (companions stand very close + catch-up lands on target), ~half ours (we lean on at-V fallbacks). Needs
+  in-game obs: normal arrival vs stuck-only? Then offset those fallbacks beside V too.
+- **#2 subtitles missing on the rig (DIAGNOSED, needs log).** `showSubtitle` pushes UIGameData blackboard
+  `ShowDialogLine`; it self-logs `SUBTITLE push FAILED -> ... Error:` the first time it can't. Need that console
+  line from the rig to pick the fix (2.3 blackboard change vs a mod clobbering the field). Distinct from the
+  Session-5 "sticky subtitles" item.
 
 ## 📦 Session 2026-06-30 — MUTE Nexus release packaging (staging tree added, no code changed)
 First-time release prep on a Mac clone (code/docs only; Windows machine does deploy + in-game test).

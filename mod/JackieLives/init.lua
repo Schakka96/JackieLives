@@ -56,6 +56,9 @@ local JL = {
   ui     = { open = true, overlayOpen = false, lastCapture = nil, forceMainQuest = false, status = "",
              voIndex = 0, voText = "", forceVenue = nil },
   summon = { spawn = nil, active = false, companionSet = false, walkIn = false },
+  -- v0.66 companion catch-up: while he's a confirmed, undismissed companion, if V gets far
+  -- (fast-travel / ran off / he got left behind) he teleports back to V's SIDE (never onto V).
+  catchUp = { farSince = nil, lastAt = nil },
   -- v0.35 free-roam wander: placed=on a waypoint yet; phase=dwelling|walking; cur/tgtIdx=waypoints.
   -- v0.38 walk-away: leaving=true while he's strolling to a venue exit before despawning.
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
@@ -2940,6 +2943,48 @@ local function recruitIdleJackie()
   return true
 end
 
+-- v0.66 COMPANION CATCH-UP TELEPORT. The arrival sequence deliberately SUPPRESSES the catch-up
+-- teleport (spawn passive, promote at 5 m, follow with teleport=false) so he never yanks into V's
+-- face while walking in. But ONCE arrival is fully done and he's a confirmed companion, Antonia wants
+-- the opposite: if V FAST-TRAVELS, runs off, or otherwise leaves him behind, he should snap back to her
+-- side — exactly what a normal AMM companion does. We do it OURSELVES (our own aiTeleport, which the
+-- code proves actually relocates a spawned puppet) instead of relying on AMM's opaque catch-up, so we
+-- fully control WHERE he lands: a navmesh point a few metres to V's SIDE (Config.catchUp.placeDistance),
+-- NEVER on top of her. Gated to the settled companion state only (not mid-arrival/dinner/walk-off), so it
+-- can't reintroduce the arrival face-yank. NOTE: if a load-screen fast-travel CULLS his runtime entity
+-- (handle goes nil) this can't save him — that's the heavier "persist + respawn" task (see TODO Session 1).
+local function catchUpTick()
+  local C = Config.catchUp or {}
+  if C.enabled == false then return end
+  -- settled companion only: active + role applied, and NOT mid-arrival / dinner / walking-off.
+  if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince = nil; return end
+  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then
+    JL.catchUp.farSince = nil; return
+  end
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  if not h then JL.catchUp.farSince = nil; return end
+  local pp = playerPos(); if not pp then return end
+  local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
+  local now = JL.clock or 0
+  local d   = dist3(pp, jp)
+  if d <= (C.distance or 25.0) then JL.catchUp.farSince = nil; return end
+  -- he's far. Require it to PERSIST a beat (a fast-travel/load gap, not a momentary stream hiccup).
+  JL.catchUp.farSince = JL.catchUp.farSince or now
+  if (now - JL.catchUp.farSince) < (C.sustainSeconds or 2.0) then return end
+  if (now - (JL.catchUp.lastAt or -1e9)) < (C.cooldown or 3.0) then return end
+  -- land him a few metres to V's SIDE on the navmesh (never ON V), then re-assert follow so he settles.
+  local pt = navmeshArrivalPoint(C.placeDistance or 3.0) or arrivalPoint()
+  if not pt then return end
+  local yaw = 0.0
+  pcall(function() local f = Game.GetPlayer():GetWorldForward(); yaw = math.deg(math.atan2(f.y, f.x)) end)
+  aiTeleport(h, pt, yaw, false)
+  sendWalkToPlayer(h, (Config.call and Config.call.approachMovement) or "Run",
+                      (Config.call and Config.call.followDistance) or 1.6)
+  JL.catchUp.lastAt   = now
+  JL.catchUp.farSince = nil
+  log(("CatchUp: Jackie was %.0f m from V -> teleported to her side."):format(d))
+end
+
 -- stepped from onUpdate: (1) reveal the menu once Jackie's line has played; (2) after the
 -- player's chosen line has shown ~1s, advance to the next node or end the conversation.
 local function branchTick()
@@ -3941,6 +3986,7 @@ registerForEvent("onUpdate", function(dt)
     log("Main quest active -> Jackie excuses himself and heads out.")
     pcall(function() startLeaving(Config.mainQuestExit) end)
   end
+  pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
   pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap
 
