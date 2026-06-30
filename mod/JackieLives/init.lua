@@ -70,8 +70,10 @@ local JL = {
   -- (fast-travel / ran off / he got left behind) he teleports back to V's SIDE (never onto V).
   catchUp = { farSince = nil, lastAt = nil },
   -- v0.67 keep-close: periodically re-assert our tight follow so AMM's long leash can't let him
-  -- trail far behind V. Just a throttle timestamp.
-  follow  = { lastAt = nil },
+  -- trail far behind V. lastAt = throttle timestamp; cmd = the last AIFollowTargetCommand we issued,
+  -- kept so the walk-away / return-to-post can CANCEL it (v0.73) — otherwise it out-prioritises the
+  -- away move and he never actually leaves.
+  follow  = { lastAt = nil, cmd = nil },
   -- v0.72 companion PERSISTENCE: "is companion" is saved per-slot as the game fact
   -- jackielives_companion. On a fresh load (Lua state wiped) or a load-screen fast-travel that
   -- culled his entity, this re-spawns + re-promotes him at V. gapSince/lastRespawn are throttles.
@@ -2120,8 +2122,9 @@ end
 -- Set a COMPANION's continuous follow at `desiredDistance` (used after handoff so Jackie holds a
 -- gap and doesn't clip into V). AIFollowTargetCommand tracks the moving player; teleport=false.
 local function sendWalkToPlayer(handle, movementType, desiredDistance)
-  if not handle then return false end
-  return (pcall(function()
+  if not handle then return nil end
+  local outCmd                                    -- v0.73: hand the command back so callers can cancel it later
+  pcall(function()
     local cmd = NewObject('handle:AIFollowTargetCommand')
     cmd.target                     = Game.GetPlayer()
     cmd.desiredDistance            = desiredDistance or 1.6
@@ -2132,7 +2135,25 @@ local function sendWalkToPlayer(handle, movementType, desiredDistance)
     cmd.teleport                   = false        -- KEY: no command-level catch-up teleport
     cmd.lookAtTarget               = Game.GetPlayer()
     handle:GetAIControllerComponent():SendCommand(cmd)
-  end))
+    outCmd = cmd
+  end)
+  return outCmd
+end
+
+-- v0.73: cancel the lingering keep-close follow on a puppet. followKeepCloseTick re-issues a
+-- PERSISTENT AIFollowTargetCommand (stopWhenDestinationReached=false) every ~1.5 s to hold Jackie tight
+-- behind V. When we then dismiss him, OnRoleCleared drops AMM's companion role but does NOT cancel OUR
+-- follow command — and on the current game build a follow command out-prioritises the away AIMoveToCommand,
+-- so Jackie stayed glued to V and got force-despawned in her face at the maxSeconds deadline (the reported
+-- "hard-despawn"). Cancelling the stored command first lets the walk-away move actually carry him off.
+-- Global (not a main-chunk local) to respect the 200-local cap. Mirrors stopBikeVeh's StopExecutingCommand
+-- pattern; both receivers are tried + pcall-guarded, so it's a safe no-op if the build differs.
+function jlStopFollow(h)
+  local cmd = JL.follow.cmd
+  JL.follow.cmd = nil
+  if not (h and cmd) then return end
+  pcall(function() h:StopExecutingCommand(cmd, true) end)
+  pcall(function() h:GetAIControllerComponent():StopExecutingCommand(cmd, true) end)
 end
 
 -- Antonia's approach: command him to WALK TO V's CURRENT coordinates - a one-shot
@@ -2203,7 +2224,10 @@ startLeaving = function(opts)
   if not h then return end
   local D = Config.dismiss or {}
   opts = opts or {}
-  -- 1) clear the follower role so he becomes a passive NPC that obeys a plain move command
+  -- 1) clear the follower role so he becomes a passive NPC that obeys a plain move command, AND cancel
+  --    our own keep-close follow command (v0.73) — OnRoleCleared drops AMM's role but not the persistent
+  --    AIFollowTargetCommand we issued, which otherwise out-prioritises the away move and pins him to V.
+  jlStopFollow(h)
   pcall(function()
     local role = h:GetAIControllerComponent():GetAIRole()
     if role then role:OnRoleCleared(h) end
@@ -2253,7 +2277,7 @@ local function leavingTick()
     JL.ui.status = far and "Jackie headed off." or "Jackie's gone."
     log(("Dismiss: despawned (%s, d=%s m)."):format(far and "reached distance" or "deadline",
         d and ("%.1f"):format(d) or "?"))
-  elseif (now - (JL.leaving.lastReissue or 0)) >= 1.5 then
+  elseif (now - (JL.leaving.lastReissue or 0)) >= (D.reissueInterval or 0.6) then
     JL.leaving.lastReissue = now
     pcall(function() sendMoveToPoint(h, awayPoint(h, (D.despawnDistance or 30.0) + 8.0), D.movement or "Walk", 1.0) end)
     if d then log(("Dismiss: walking off... %.1f m from V."):format(d)) end
@@ -2996,7 +3020,7 @@ local function followKeepCloseTick()
   local pp = playerPos(); if not pp then return end
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
   if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end
-  sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)
+  JL.follow.cmd = sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)   -- v0.73: keep the handle so dismiss can cancel it
 end
 
 -- stepped from onUpdate: (1) reveal the menu once Jackie's line has played; (2) after the
@@ -3463,7 +3487,9 @@ returnToPost = function()
   local ref = jp or playerPos()
   local radius = (Config.transitions and Config.transitions.returnRadius) or 100.0
   if not ref or dist3(ref, anchor) > radius then return false end       -- too far -> normal dismiss
-  -- drop the follower role so the companion AI stops pulling him back (same as startLeaving)
+  -- drop the follower role so the companion AI stops pulling him back (same as startLeaving), and
+  -- cancel our keep-close follow (v0.73) so the walk-to-waypoint move below isn't out-prioritised by it
+  jlStopFollow(h)
   pcall(function()
     local role = h:GetAIControllerComponent():GetAIRole()
     if role then role:OnRoleCleared(h) end

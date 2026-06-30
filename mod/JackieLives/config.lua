@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.72"
+Config.version = "0.73"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -158,6 +158,8 @@ Config.dismiss = {
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
+  reissueInterval = 0.6,     -- v0.73: how often leavingTick re-asserts the away move. Lower = he wins
+                             -- the tug-of-war vs any residual follow faster (was a hard-coded 1.5 s).
 }
 
 -- ---- main-quest "excuse himself" exit (v0.62) ----------------------------

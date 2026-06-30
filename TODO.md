@@ -32,6 +32,33 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
 
+## 🆕 v0.73 — FIX: dismiss walk-away (Jackie was hard-despawning in V's face) (2026-07-01, awaiting in-game test)
+**Symptom (Antonia):** picking the in-dialogue "Head home, Jackie." used to make Jackie walk off toward a
+street and vanish out of sight; now he just hard-despawns right in front of V.
+**Root cause (diagnosed from code):** the walk-away (`startLeaving` → `leavingTick`) is unchanged, but the
+**v0.67 keep-close follow** (`followKeepCloseTick`) went live only in v0.68 (init.lua didn't load v0.66–v0.67
+due to the 200-local cap) — exactly when this broke. Keep-close re-issues a **persistent**
+`AIFollowTargetCommand` every ~1.5 s to hold him tight behind V. On dismiss, `OnRoleCleared` drops AMM's
+companion role but does **not** cancel *our own* follow command, and on the current build a follow command
+out-prioritises the away `AIMoveToCommand` — so he stayed glued to V, never reached `despawnDistance`, and the
+`maxSeconds` (30 s) safety despawn fired in V's face. Supporting evidence: the **idle** walk-away
+(`idleLeavingTick`, no keep-close) still works; the only two paths that `moveTo` a *keep-close* companion are
+the two dismiss paths (`startLeaving`, `returnToPost`); keep-close itself only works because a follow command
+beats AMM's leash — implying a plain `moveTo` cannot.
+**Fix:** `sendWalkToPlayer` now returns the command handle; `followKeepCloseTick` stores it in `JL.follow.cmd`;
+new global `jlStopFollow(h)` cancels it (`StopExecutingCommand`, mirroring the bike's `stopBikeVeh`, both
+receivers tried + pcall-guarded). `startLeaving` and `returnToPost` call `jlStopFollow` before the away move.
+Also dropped `leavingTick`'s re-issue interval from a hard-coded 1.5 s → `Config.dismiss.reissueInterval` (0.6 s)
+so the away move re-asserts faster against any residual pull. Global helper (not a main-chunk local) → cap
+unaffected; both files compile clean (`luajit -bl`).
+- [ ] **TEST:** summon Jackie → "Head home, Jackie." → he should say his line, **walk off ~30 m and vanish out
+      of sight**, not despawn at V's feet. Console should log `Dismiss: walking off... N m from V.` with N
+      *increasing*, then `Dismiss: despawned (reached distance, ...)` — NOT `(deadline, ...)`.
+- [ ] If he STILL hard-despawns: the console will show the deadline despawn / N not increasing. Fallbacks to try
+      in order: (a) CET sliders won't help here; set `Config.follow.enabled = false` to confirm keep-close is the
+      culprit; (b) if confirmed but the cancel didn't take, `StopExecutingCommand` may not exist for puppets on
+      this build → tell Claude (next lever: keep him as companion during the walk-off + redirect, like dinner).
+
 ## 🆕 v0.72 — COMPANION PERSISTENCE: Jackie survives save/load + culling fast-travel (2026-07-01, awaiting in-game test)
 List_of_companion_issues.md **Session 1** (the hardest cluster). Treats "is Jackie your companion" as
 authoritative state that rides inside the save.
