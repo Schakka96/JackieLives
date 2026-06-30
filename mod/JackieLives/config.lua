@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.66"
+Config.version = "0.67"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -12,6 +12,11 @@ Config.version = "0.66"
 -- CET console to see which methods drive the call (tells us if a native hook is viable).
 -- Turn OFF (false) once we're done investigating. See docs/native_phone_probes.md.
 Config.probeNativePhone      = true
+-- DEBUG (v0.67): subtitles missing on a heavily-modded rig where our push does NOT log a failure.
+-- Set true to confirm the push succeeds (logs "SUBTITLE push OK ...") AND mirror every spoken line to
+-- the on-screen message band, so you see the text even if the bottom subtitle band is hidden/disabled
+-- by another mod or by the game's subtitle setting. Turn OFF once the subtitle issue is resolved.
+Config.debugSubtitles        = false
 Config.enableSchedule        = true
 Config.scheduleCheckInterval = 2.0     -- seconds between schedule/proximity checks
 Config.proximityRadius       = 45.0    -- metres: idle Jackie appears when you're this close to his spot
@@ -193,6 +198,19 @@ Config.catchUp = {
   sustainSeconds = 2.0,   -- he must stay that far for this long (rides out a fast-travel/load gap)
   cooldown       = 3.0,   -- minimum seconds between catch-up teleports (anti-thrash)
   placeDistance  = 3.0,   -- metres to V's side he's dropped (navmesh-snapped; never ON V)
+}
+
+-- ---- keep-close follow (v0.67) --------------------------------------------
+-- After arrival we hand Jackie to AMM's companion follow, but AMM uses a LONG leash, so he trails
+-- far behind V. This re-asserts OUR tight follow on a throttle so he holds `distance` metres instead.
+-- `distance` is how far back he keeps (a few m — under your ~4 m target, with margin so he doesn't clip
+-- V when she stops). `interval` is how often we re-assert (lower = stickier/closer but more commands;
+-- raise it or set enabled=false if he ever looks jittery). Only runs while he's a settled companion.
+Config.follow = {
+  enabled  = true,
+  distance = 2.5,    -- metres he keeps behind V (your "<4 m" ask, with clip margin)
+  interval = 1.5,    -- seconds between follow re-asserts
+  movement = "Run",  -- "Walk" | "Run" | "Sprint" — how he closes the gap when he drifts back
 }
 
 -- ---- ask Jackie to dinner / a date (v0.41 - restaurant walk) -------------

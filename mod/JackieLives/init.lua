@@ -59,6 +59,9 @@ local JL = {
   -- v0.66 companion catch-up: while he's a confirmed, undismissed companion, if V gets far
   -- (fast-travel / ran off / he got left behind) he teleports back to V's SIDE (never onto V).
   catchUp = { farSince = nil, lastAt = nil },
+  -- v0.67 keep-close: periodically re-assert our tight follow so AMM's long leash can't let him
+  -- trail far behind V. Just a throttle timestamp.
+  follow  = { lastAt = nil },
   -- v0.35 free-roam wander: placed=on a waypoint yet; phase=dwelling|walking; cur/tgtIdx=waypoints.
   -- v0.38 walk-away: leaving=true while he's strolling to a venue exit before despawning.
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
@@ -988,7 +991,20 @@ local function showSubtitle(text, speakerName, duration, speakerObj)
     -- so force it explicitly: array:scnDialogLineData (per the CET Lua kit ToVariant docs).
     bb:SetVariant(defs.UIGameData.ShowDialogLine, ToVariant({ line }, "array:scnDialogLineData"), true)
   end)
-  if ok then subtitle.line = line; return true end
+  if ok then
+    subtitle.line = line
+    -- v0.67 DEBUG: when the push SUCCEEDS but nothing shows on screen, the blackboard write is fine
+    -- and the problem is downstream (subtitles disabled in Settings, or another mod hiding the band).
+    -- Flip Config.debugSubtitles=true to confirm: we log the success + ALSO mirror the line to the
+    -- on-screen message band, so you at least see the text and we know our text path works.
+    if Config.debugSubtitles then
+      log("SUBTITLE push OK (blackboard+field resolved, line set). If you see no bottom band, the band "
+          .. "is disabled/hidden, not our push. Mirroring to on-screen msg now.")
+      pcall(function() showOnscreenMsg(tostring(speakerName or "") .. ":   " .. tostring(text or ""),
+                                       (duration or 4.0) + 0.5) end)
+    end
+    return true
+  end
   if not subtitle.warned then
     log("SUBTITLE push FAILED -> falling back to on-screen msg. Error: " .. tostring(err))
     subtitle.warned = true
@@ -2985,6 +3001,29 @@ local function catchUpTick()
   log(("CatchUp: Jackie was %.0f m from V -> teleported to her side."):format(d))
 end
 
+-- v0.67 KEEP-CLOSE FOLLOW. After handoff we issue ONE tight follow (followDistance), but AMM's own
+-- companion follow then takes over with a much LONGER leash, so Jackie trails far behind V. This
+-- re-asserts our tight AIFollowTargetCommand on a throttle so he holds `Config.follow.distance` (a few
+-- metres) instead. Gated to the settled companion state only (not mid-arrival/dinner/walk-off) so it
+-- never fights the scripted movement. If it ever looks jittery in-game, raise `interval` or set
+-- enabled=false. Tiering: this owns ~handoff..catchUp.distance; catchUpTick teleports beyond that.
+local function followKeepCloseTick()
+  local F = Config.follow or {}
+  if F.enabled == false then return end
+  if not (JL.summon.active and JL.summon.companionSet) then return end
+  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return end
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  if not h then return end
+  local now = JL.clock or 0
+  if (now - (JL.follow.lastAt or -1e9)) < (F.interval or 1.5) then return end
+  JL.follow.lastAt = now
+  -- don't fight the catch-up teleport: if he's far enough for that to own him, leave it.
+  local pp = playerPos(); if not pp then return end
+  local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
+  if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end
+  sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)
+end
+
 -- stepped from onUpdate: (1) reveal the menu once Jackie's line has played; (2) after the
 -- player's chosen line has shown ~1s, advance to the next node or end the conversation.
 local function branchTick()
@@ -3986,6 +4025,7 @@ registerForEvent("onUpdate", function(dt)
     log("Main quest active -> Jackie excuses himself and heads out.")
     pcall(function() startLeaving(Config.mainQuestExit) end)
   end
+  pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
   pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap

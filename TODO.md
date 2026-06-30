@@ -36,6 +36,28 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
 
+## 🆕 v0.67 — keep-close follow + subtitle debug + Bug-1 narrowed (DEPLOY + test, 2026-06-30)
+Follow-ups after the first v0.66 test pass.
+- **Keep-close follow (NEW).** Jackie trailed FAR behind V (AMM's long companion leash). New
+  `followKeepCloseTick` + `Config.follow` re-asserts our tight `AIFollowTargetCommand` every `interval`
+  (1.5 s) at `distance` (2.5 m) while he's a settled companion — overriding AMM's leash. Tunable;
+  set `enabled=false` or raise `interval` if it looks jittery. Tiers under catch-up (which owns >25 m).
+  - [ ] TEST: he now holds ~2.5 m behind V on foot; no stutter/surge. Tune `Config.follow.distance` to taste.
+- **Subtitle debug (NEW).** On the rig, the push does NOT log a failure → the blackboard write succeeds,
+  so the band is hidden/disabled downstream, not our code. New `Config.debugSubtitles` (default false):
+  set true → logs `SUBTITLE push OK ...` + MIRRORS each line to the on-screen msg band so text is visible.
+  - [ ] TEST PLAN: (1) check Settings → Subtitles ON; (2) do NORMAL game subtitles (any NPC/quest VO) show?
+        If NO game subtitles anywhere → game setting / HUD mod globally. If game subs work but ours don't →
+        set `debugSubtitles=true`, redeploy, trigger a Jackie line: do you see `SUBTITLE push OK` + the
+        mirrored on-screen text? That confirms our push is fine and a mod is eating the bottom band.
+- **Bug 1 narrowed.** Reported on a NORMAL call (no visible struggle) → rules out the stuck-fallbacks.
+  Arrival uses `spawnDynEntity` at the FAR navmesh point (50/60 m), never at V — so on this build the
+  distance spawn isn't being honoured, OR `navmeshArrivalPoint` returned nil → `arrivalPoint()` fallback
+  (18 m fwd). NEEDS: console lines from that call — `Call: arrival navmesh point...` / `FootApproach:
+  spawned ~Nm` / `VehArrival:` — to see the actual spawn distance + whether the navmesh point was valid.
+- **NEXT (Antonia's call):** persist the companion flag (List_of_companion_issues.md Session 1) — survive
+  save/load + load-screen fast-travel by re-spawning + re-promoting Jackie at V from a saved intent flag.
+
 ## 🆕 v0.66 — companion catch-up teleport (fast-travel "never get lost") (DEPLOY + test, 2026-06-30)
 Three returning bugs reported on the new gaming rig (game 2.31, CET 1.37.1, AMM 2.12.5, Codeware 1.20.3).
 Diagnosed all three from code; shipped the fix for #3.
