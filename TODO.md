@@ -8,7 +8,17 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 
 ### 🐞 START HERE next session (updated 2026-07-01, end of session) — NEXT SESSION = BUG-FIXING SPRINT
 Antonia: "We have a ton of bugs on our hands. For the next session we have to start fixing those."
-v0.75 is DEPLOYED + PUSHED. What's DONE vs what's BROKEN:
+**v0.78 is DEPLOYED + PUSHED (tag v0.78).** Session 2026-07-01 (dismiss-despawn hunt) recap:
+- **Root cause of the dismiss "instant despawn" NAILED** (bug 2d): game 2.31 teleports a just-`OnRoleCleared`
+  puppet on its next `AIMoveToCommand`; the walk-off code was unchanged since v0.36. Not idle-departures/keep-close.
+- **Fix shipped, needs test** (bug 2e): walk-off now uses `jlRetreatFollow` (FollowTarget to a large distance),
+  no role-clear. **← first thing to verify next session** (watch `jackie_debug.log`).
+- **Diagnostics added:** `log()` now also writes `mods/JackieLives/jackie_debug.log` (fresh each load);
+  `jlDumpState()` + "Dump state (console)" CET button. Mouth flaps FIXED (bug 4). Follow gap set to 1.5 m.
+- **v0.73 keep-close-cancel fix was tried & reverted** (didn't help); persist still OFF (bug 1, crashes).
+- **Still open:** fast-travel despawn/respawn flicker (catch-up vs culling, bug 2/2c) + talk-then-dismiss CRASH
+  (stale handle) + arrivals "spawns at V" rescue path. See bugs below.
+What's DONE vs what's BROKEN:
 
 **✅ Working now (v0.75):**
 - **Tutorial popup FIXED.** All 5 probe variants rendered the same lower-left card, so the culprit was the
