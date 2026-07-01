@@ -6,7 +6,26 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > for the unsolved companion issues — persistence/save, walk-away, dinner pathing, sit-coord persistence,
 > dialogue/subtitle polish). Created 2026-06-23.
 
-### ▶️ NEXT SESSION — pick up these OPEN verification tasks (awaiting in-game test)
+### ⭐ START HERE next session (updated 2026-07-01, end of session) — everything below is DEPLOYED (v0.74) + PUSHED, awaiting Antonia's in-game test on the Windows rig
+1. **Tutorial popup is NOT working yet — run the probe.** CET window → "Tutorial popup probe (TEMP)" →
+   click **V1..V5**. Report which variant shows a real **lower-left** popup (not the blue band) + paste
+   the `[PopupProbe V#]` console lines. Then bake the winner into `retrieval.lua` `tutorialPopup()` and
+   **delete the probe** (the `jlPopupProbe` global + the window header). Full context: the **v0.74**
+   section below. The recipe is confirmed against the game's own `popupManager.script`; only the CET
+   struct→variant marshalling is unknown. (Antonia offered the Dark Future source as a backup reference.)
+2. **Test companion PERSISTENCE (v0.72).** Summon Jackie → CET shows "Saved companion flag: ON" →
+   hard-save + reload → he should respawn at V within ~3 s (console `Persist: ... respawned him at V`).
+   Dismiss → flag off → reload → stays gone. Also fast-travel-while-companion. See the **v0.72** section.
+3. **Test the v0.69 regression fixes (bundled into v0.72):** Esc→Settings toggles now persist across a
+   reload; the "Go Home Jackie" recovery button works again.
+4. **Then implement:** persist the companion **timer** too (not just the boolean) — spec in the v0.72
+   section's TODO bullet. Low risk, slots into `companionPersistTick` + `armCompanionTimer`.
+- Housekeeping when convenient: `getTalkTarget` + `Config.probeNativePhone` are known-harmless dead
+  leftovers (remove on a future sweep). `staging/` is still the parked broken v0.67 — do NOT sync it
+  until the mute release unparks. Current version = **0.74**. Git is clean + pushed to origin/main.
+  ⚠️ A second Claude session also commits to this same repo (it did v0.73) — always `git fetch` first.
+
+### ▶️ Older OPEN verification tasks (still awaiting in-game test)
 - [ ] **TEST: Companion catch-up teleport (v0.66, NEW).** While Jackie is a SETTLED companion (arrived,
       not dismissed), **FAST-TRAVEL** away (or sprint >25 m off) and confirm he **teleports to V's side**
       within ~2 s, landing a few m beside her (NEVER on top of V). Console logs `CatchUp: Jackie was N m
