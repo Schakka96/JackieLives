@@ -153,6 +153,24 @@ What's DONE vs what's BROKEN:
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
 
+## 🆕 v0.81 — dialogue polish: no (Leave), dismiss on main node only, randomized sign-offs (2026-07-01, awaiting in-game test)
+Follow-up to v0.80 (sticky-subtitle fix), all in `config.lua` + two small `init.lua` helpers.
+- **No more `(Leave)` menus.** Every `bye`/`care` terminal node dropped its `{ "(Leave)", to = nil }`
+  choice, so it's now a Jackie-only terminal node → `branchTick` plays his last line then **auto-closes
+  the box** (via `Branch.finish`). The player never clicks a dead "(Leave)"/"(close)" button.
+- **Dismiss (+ dinner invite) only on the MAIN node.** `withCompanionExtras` now injects the "Head home,
+  Jackie" / dinner-invite choices ONLY on the tree's START node. If V picks a sub-branch, it just plays
+  out and closes — to dismiss/invite again she re-opens the conversation (press F again). By design.
+- **Randomized sign-offs.** New `textPool` field on a choice: `openChoiceMenu` picks a random line from it
+  each time the menu opens (like Jackie's `jackiePool` replies shuffle). The two `everywhere`-tree
+  sign-offs ("Just checkin' in…" / "Catch you later…") became 4-line pools that better set up his reply —
+  left pool → his "you take it easy, rest up"; right pool → his "time we were on our way" ("We should get
+  movin'." / "Let's get goin', hermano." / …). Edit the pools freely in `config.lua`.
+- Zero new top-level locals; both files compile clean. Version 0.80 → **0.81**.
+- [ ] **TEST:** talk to a companion/idle Jackie → pick any sign-off → he says one line and the box closes
+      by itself (no "(Leave)"). Re-open a few times → the sign-off wording varies. As a companion, "Head
+      home, Jackie" shows on the FIRST menu only; dive into a sub-branch and it's gone until you re-open.
+
 ## 🆕 v0.79 — FIX: fast-travel "teleported to her side" but Jackie stays 1994 m away (2026-07-01, awaiting in-game test)
 **Symptom (Antonia):** after a fast-travel the console logs `CatchUp: Jackie was 1994 m from V -> teleported
 to her side.` yet Jackie is NOT with V — he's stuck ~2 km back. Fast-travelling BACK to where we came from

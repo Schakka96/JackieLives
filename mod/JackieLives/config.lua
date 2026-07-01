@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.80"
+Config.version = "0.81"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -354,9 +354,7 @@ Config.dialogueTree = {
     },
     bye = {
       jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-      choices = {
-        { text = "(Leave)", to = nil },
-      },
+      -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
     },
   },
 }
@@ -413,7 +411,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -454,7 +452,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -495,7 +493,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -535,7 +533,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -554,18 +552,31 @@ Config.locationDialogue = {
           { text = "V, how you feel? You all right?", sfx = "jl_1802590928224841728" },
           { text = "¿Qué onda?",                      sfx = "jl_2015561179233951744" },
         },
+        -- v0.81: each sign-off shows a RANDOM line from its textPool (re-rolled every open, like the
+        -- jackiePool above), so it never sounds canned. Left pool leads to his "you take it easy, rest
+        -- up" reply (`care`); right pool leads to his "time we were on our way" reply (`bye`).
         choices = {
-          { text = "Just checkin' in. Take it easy.", to = "care" },
-          { text = "Catch you later, hermano.",        to = "bye"  },
+          { textPool = {
+              "Just checkin' in on ya, hermano.",
+              "Take care of yourself, choom.",
+              "Look after yourself, yeah?",
+              "Get some rest, you earned it.",
+            }, to = "care" },
+          { textPool = {
+              "We should get movin'.",
+              "Let's get goin', hermano.",
+              "Alright, I'm headin' out.",
+              "Time to hit the road, choom.",
+            }, to = "bye"  },
         },
       },
       care = {
         jackie  = { text = "Thanks, I will! V, you take it easy, OK? Rest up a bit.", sfx = "jl_1993514843414274048" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },

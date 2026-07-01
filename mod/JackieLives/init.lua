@@ -1559,6 +1559,11 @@ local function withCompanionExtras(choices)
   if not JL.summon.active then return choices end
   if bstate.tree == Config.callTree then return choices end                 -- not on a call
   if Config.date and bstate.tree == Config.date.tree then return choices end -- and not mid-date (no recursion)
+  -- v0.81: dinner invite + "Head home, Jackie" only appear on the tree's START node (the MAIN talk). Once
+  -- V dives into a sub-branch the convo just plays out and closes; to dismiss/invite again she reopens the
+  -- conversation. Keeps sign-off branches clean and dismiss out of every follow-up node.
+  local t = bstate.tree
+  if not (t and t.nodes and bstate.node == t.nodes[t.start]) then return choices end
   local out = {}
   for _, c in ipairs(choices or {}) do out[#out + 1] = c end
   -- v0.39: dinner invite (gated by dateUnlocked; for now always shown). Starts the date tree.
@@ -1600,6 +1605,14 @@ local function withDateChoices(node, choices)
 end
 
 local function openChoiceMenu(choices, title)
+  -- v0.81: a choice may carry a `textPool` (array of V lines) -> display a RANDOM one, re-rolled every
+  -- time the menu opens (just like Jackie's jackiePool replies shuffle). Stops sign-offs sounding canned.
+  for _, c in ipairs(choices or {}) do
+    if c.textPool and #c.textPool > 0 then
+      local i = 1; pcall(function() i = math.random(1, #c.textPool) end)
+      c.text = c.textPool[i]
+    end
+  end
   menu.choices, menu.sel, menu.title = choices, 1, title or "Jackie"
   menu.shown, Branch.open = true, true
   log("Branch: menu open (" .. tostring(#choices) .. " choices). Cycle key=move, F=select.")
