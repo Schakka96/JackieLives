@@ -125,9 +125,12 @@ What's DONE vs what's BROKEN:
    else re-point to a facial mechanism that ships with base AMM. NOT related to the mute build (audio path
    is separate from the face feature).
 - Then (once #1 is stable): finish **persisting the companion TIMER** (spec in the v0.72 section).
-- Housekeeping: `getTalkTarget` + `Config.probeNativePhone` are harmless dead leftovers. `staging/` is the
-  parked broken v0.67 — do NOT sync until the mute release unparks. Version = **0.75**, git clean + pushed.
-  ⚠️ A second Claude session commits to this SAME repo (it did v0.73) — always `git fetch` first.
+- Housekeeping: `getTalkTarget` + `Config.probeNativePhone` are harmless dead leftovers. `staging/` was
+  **UNPARKED + synced to v0.83 for a Nexus release (2026-07-01)** — it now carries `init.lua` + `config.lua`
+  + **`retrieval.lua`** (the last was MISSING while parked at v0.67; `init.lua` `require`s it, so the old zip
+  would have crashed on load). Keep `staging/bin/.../mods/JackieLives/` in lockstep with `mod/JackieLives/`
+  on every code change (the 3 Lua files), or write `package.ps1` to build the zip from source instead.
+  ⚠️ A second Claude session commits to this SAME repo — always `git fetch` first.
 
 ### 📋 Companion backlog (merged 2026-07-01 from `List_of_companion_issues.md`, now deleted)
 The old 5-session backlog file was resolved + folded in here. **Resolved:** S1 persistence (v0.72/0.79/0.82),

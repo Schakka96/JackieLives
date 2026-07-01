@@ -68,10 +68,17 @@ local JL = {
   summon = { spawn = nil, active = false, companionSet = false, walkIn = false },
   -- v0.66 companion catch-up: while he's a confirmed, undismissed companion, if V gets far
   -- (fast-travel / ran off / he got left behind) he teleports back to V's SIDE (never onto V).
-  catchUp = { farSince = nil, lastAt = nil },
+  catchUp = { farSince = nil, lastAt = nil, teleTries = nil },
+  -- v0.82 respawn-settle: after a respawn-at-V (catch-up FT recovery / persist) hide Jackie + drop his
+  -- collision briefly so he doesn't visibly POP in or spawn into a wall, then reveal + re-collide by clock.
+  settle  = { hideUntil = nil, collideUntil = nil, handle = nil },
   -- v0.67 keep-close: periodically re-assert our tight follow so AMM's long leash can't let him
   -- trail far behind V. Just a throttle timestamp.
   follow  = { lastAt = nil },
+  -- v0.72 companion PERSISTENCE: "is companion" is saved per-slot as the game fact
+  -- jackielives_companion. On a fresh load (Lua state wiped) or a load-screen fast-travel that
+  -- culled his entity, this re-spawns + re-promotes him at V. gapSince/lastRespawn are throttles.
+  persist = { gapSince = nil, lastRespawn = nil },
   -- v0.35 free-roam wander: placed=on a waypoint yet; phase=dwelling|walking; cur/tgtIdx=waypoints.
   -- v0.38 walk-away: leaving=true while he's strolling to a venue exit before despawning.
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
@@ -113,7 +120,14 @@ local JL = {
   talkDone = {},     -- v0.32: [treeKey] = clock time a cooldown'd talk tree was finished
 }
 
-local function log(msg) print("[JackieLives] " .. tostring(msg)) end
+-- v0.76: log to the CET console AND append to jackie_debug.log in the mod folder (CET sandboxes io to
+-- the mod dir → .../mods/JackieLives/jackie_debug.log). Commit that file to share full logs — no more
+-- OCR'ing the console. Truncated fresh each load (see onInit). pcall'd so io being unavailable never breaks logging.
+local function log(msg)
+  local line = "[JackieLives] " .. tostring(msg)
+  print(line)
+  pcall(function() local f = io.open("jackie_debug.log", "a"); if f then f:write(line .. "\n"); f:close() end end)
+end
 
 -- ---------------------------------------------------------------------------
 -- AMM + Jackie record
@@ -399,6 +413,7 @@ local function clearVehicleArrival()
 end
 
 local function dismissJackie()
+  setCompanionFlag(false)   -- v0.72: V let him go -> clear the persisted companion intent
   if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
   JL.summon.companionSinceGame, JL.summon.companionExpiresGame = nil, nil   -- v0.39: reset duration clock
@@ -412,6 +427,7 @@ end
 
 -- Despawn EVERY Jackie AMM knows about (clears orphans from failed dismisses / mod reloads).
 function dismissAllJackies()   -- global (not local): 200-local cap; see note at top
+  setCompanionFlag(false)   -- v0.72: a full wipe clears the persisted companion intent too
   local amm = getAMM()
   local n = 0
   if amm and amm.Spawn and amm.Spawn.spawnedNPCs then
@@ -945,7 +961,9 @@ end
 -- Callback.reds -> hide). Replaces the on-screen NOTIFICATION (the blue objective-style
 -- field) for spoken dialogue, so lines render as proper subtitles at the bottom.
 -- ---------------------------------------------------------------------------
-local subtitle = { line = nil, seq = 700, warned = false }
+-- dueAt (v0.80): clock time when this line's on-screen time is up. subtitleWatchdogTick (onUpdate)
+-- uses it to GUARANTEE a dangling line gets wiped even if some branch forgot to call hideSubtitle.
+local subtitle = { line = nil, seq = 700, warned = false, dueAt = nil }
 
 -- Push a real subtitle to the bottom band. Logs the exact failure point the first time
 -- it can't (so we can pinpoint which CET call differs on this build).
@@ -969,7 +987,12 @@ local function showSubtitle(text, speakerName, duration, speakerObj)
     -- so force it explicitly: array:scnDialogLineData (per the CET Lua kit ToVariant docs).
     bb:SetVariant(defs.UIGameData.ShowDialogLine, ToVariant({ line }, "array:scnDialogLineData"), true)
   end)
-  if ok then subtitle.line = line; return true end
+  if ok then
+    subtitle.line  = line
+    -- when the watchdog is allowed to force-wipe this line if nothing else has (display time + grace)
+    subtitle.dueAt = (JL.clock or 0) + (duration or 4.0) + 0.75
+    return true
+  end
   if not subtitle.warned then
     log("SUBTITLE push FAILED -> falling back to on-screen msg. Error: " .. tostring(err))
     subtitle.warned = true
@@ -978,6 +1001,7 @@ local function showSubtitle(text, speakerName, duration, speakerObj)
 end
 
 local function hideSubtitle()
+  subtitle.dueAt = nil
   if not subtitle.line then return end
   local prev = subtitle.line
   subtitle.line = nil
@@ -1538,6 +1562,15 @@ local function withCompanionExtras(choices)
   if not JL.summon.active then return choices end
   if bstate.tree == Config.callTree then return choices end                 -- not on a call
   if Config.date and bstate.tree == Config.date.tree then return choices end -- and not mid-date (no recursion)
+  -- v0.83: NEVER offer "Head home, Jackie" during a dinner outing — dismissing a SEATED puppet (role
+  -- cleared, in a sit workspot) doesn't stand him up and crashes the game. The dinner "Enough chillin',
+  -- let's go" option (seatedTree) is the safe way to end the outing.
+  if JL.dinner.phase then return choices end
+  -- v0.81: dinner invite + "Head home, Jackie" only appear on the tree's START node (the MAIN talk). Once
+  -- V dives into a sub-branch the convo just plays out and closes; to dismiss/invite again she reopens the
+  -- conversation. Keeps sign-off branches clean and dismiss out of every follow-up node.
+  local t = bstate.tree
+  if not (t and t.nodes and bstate.node == t.nodes[t.start]) then return choices end
   local out = {}
   for _, c in ipairs(choices or {}) do out[#out + 1] = c end
   -- v0.39: dinner invite (gated by dateUnlocked; for now always shown). Starts the date tree.
@@ -1579,13 +1612,45 @@ local function withDateChoices(node, choices)
 end
 
 local function openChoiceMenu(choices, title)
-  menu.choices, menu.sel, menu.title = choices, 1, title or "Jackie"
+  -- Per-choice options, resolved once each time the menu opens:
+  --  • v0.83 `chance` (0..1): the choice only APPEARS with that probability (re-rolled per open) — used
+  --    for the random "get it off your chest" dinner topics. A choice with no `chance` always shows.
+  --  • v0.81 `textPool` (array): display a RANDOM line from it (like Jackie's jackiePool replies shuffle).
+  local shown = {}
+  for _, c in ipairs(choices or {}) do
+    local appear = true
+    if c.chance then local r = 1.0; pcall(function() r = math.random() end); appear = (r < c.chance) end
+    if appear then
+      if c.textPool and #c.textPool > 0 then
+        local i = 1; pcall(function() i = math.random(1, #c.textPool) end)
+        c.text = c.textPool[i]
+      end
+      shown[#shown + 1] = c
+    end
+  end
+  if #shown == 0 then shown = choices end   -- safety: never open an empty menu
+  menu.choices, menu.sel, menu.title = shown, 1, title or "Jackie"
   menu.shown, Branch.open = true, true
-  log("Branch: menu open (" .. tostring(#choices) .. " choices). Cycle key=move, F=select.")
+  log("Branch: menu open (" .. tostring(#shown) .. " choices). Cycle key=move, F=select.")
 end
 
 local function closeChoiceMenu()
   menu.shown, Branch.open, menu.choices = false, false, nil
+end
+
+-- Branch.finish (v0.80): the ONE authoritative "a conversation has ENDED" tool. Every path that ends a
+-- talk should funnel through here so the on-screen overlay/menu AND the bottom subtitle band are ALWAYS
+-- cleaned up together — no more per-branch bookkeeping. It's idempotent (safe to call twice) and is
+-- backed by subtitleWatchdogTick (onUpdate) as a guaranteed safety net for any path that still forgets.
+Branch.finish = function(reason)
+  closeChoiceMenu()                 -- close the ImGui choice picker + drop Branch.open
+  Branch.open, Branch.busy = false, false
+  pcall(hideJackieChoiceBox)        -- clear the native "[F] Talk" prompt
+  bstate.node, bstate.openAt = nil, nil
+  bstate.pending, bstate.pendingAt, bstate.pendingAction = nil, nil, nil
+  bstate.tree, bstate.talkCooldownKey = nil, nil
+  hideSubtitle()                    -- wipe the bottom band NOW (watchdog would catch it too)
+  if reason then JL.ui.status = reason end
 end
 
 -- Pick a line from a node's jackiePool. Entries may carry `chance` (0..1) = an independent roll
@@ -1660,6 +1725,10 @@ end
 -- place with its own tree (noodle/coyote/afterlife/misty...), use that; otherwise fall back
 -- to the short `everywhere` tree. Returns tree, key. Never nil if Config.locationDialogue.everywhere exists.
 local function currentTalkTree()
+  -- v0.83: seated at dinner -> casual small-talk tree (no dismiss; "Enough chillin'..." stands him up).
+  if JL.dinner.phase == "seated" and Config.date and Config.date.seatedTree then
+    return Config.date.seatedTree, "_dinner"
+  end
   local ld = Config.locationDialogue
   if ld then
     local key = JL.idle.locationKey                 -- nil when summoned/following or unscheduled
@@ -1841,6 +1910,12 @@ local function runCallAction(name)
   end
   if type(name) == "string" and name:sub(1, 5) == "dine:" then   -- v0.41: V picked a restaurant
     pcall(function() startDinnerWalk(name:sub(6)) end)
+    return
+  end
+  if name == "dinner_leave" then   -- v0.83: "Enough chillin', let's go" — after his reply, get up + re-follow.
+    -- dinnerTick's `seated` phase owns the stand-up (it has the workspot/collision helpers). We just flag
+    -- it; the flag also tells it NOT to re-speak getUpText (the seatedTree already said his parting line).
+    JL.dinner.leaveNow = true
     return
   end
   if name == "date_accept" then   -- legacy (pre-v0.41 date tree); harmless
@@ -2129,6 +2204,27 @@ local function sendWalkToPlayer(handle, movementType, desiredDistance)
   end))
 end
 
+-- v0.77 walk-OFF: the INVERSE of the keep-close follow — an AIFollowTargetCommand with a LARGE
+-- desiredDistance so the follow AI opens the gap and Jackie strolls AWAY from V until he's `distance`
+-- metres off (then leavingTick despawns him). We use a follow command (not AIMoveToCommand) because on
+-- game 2.31 a move-to-a-far-point instantly TELEPORTED a just-role-cleared puppet (confirmed via dumps);
+-- follow commands still walk smoothly (keep-close proves it). matchSpeed=false so he moves at his own
+-- pace instead of matching a standing V (which would leave him frozen). Global -> 200-local cap safe.
+function jlRetreatFollow(handle, movementType, distance)
+  if not handle then return end
+  pcall(function()
+    local cmd = NewObject('handle:AIFollowTargetCommand')
+    cmd.target                     = Game.GetPlayer()
+    cmd.desiredDistance            = distance or 30.0
+    cmd.tolerance                  = 2.0
+    cmd.stopWhenDestinationReached = false
+    cmd.matchSpeed                 = false
+    cmd.movementType               = resolveMoveType(movementType)
+    cmd.teleport                   = false
+    handle:GetAIControllerComponent():SendCommand(cmd)
+  end)
+end
+
 -- Antonia's approach: command him to WALK TO V's CURRENT coordinates - a one-shot
 -- AIMoveToCommand to a fixed WorldPosition. We re-issue it every ~2 s with V's latest position
 -- (see arrivalTick), a manual "follow" that uses NO follow/companion semantics -> no teleport.
@@ -2176,6 +2272,8 @@ end
 
 -- A point well past `reach` metres from V, in the direction from V to Jackie (so he keeps
 -- heading the way he's already facing, away from you). Falls back to +X if they overlap.
+-- A point well past `reach` metres from V, in the direction from V to Jackie (so he keeps
+-- heading the way he's already facing, away from you). Falls back to +X if they overlap.
 local function awayPoint(handle, reach)
   local pp = playerPos(); if not pp then return nil end
   local jp; pcall(function() jp = handle:GetWorldPosition() end)
@@ -2186,38 +2284,33 @@ local function awayPoint(handle, reach)
   return Vector4.new(pp.x + (dx / len) * reach, pp.y + (dy / len) * reach, jp.z, 1.0)
 end
 
--- v0.33: "send Jackie off". Drop his follower role (the same OnRoleCleared AMM uses) so the
--- companion AI stops pulling him back, say a parting line, then walk him away. leavingTick()
--- despawns him once he's far enough (or after maxSeconds). Forward-declared above the F hook.
--- opts (optional): { text=, sfx= } to override the parting line — e.g. the main-quest "excuse
--- himself" line. Defaults to the normal Config.dismiss send-off line.
+-- v0.33/v0.77: "send Jackie off". Say a parting line, then walk him AWAY from V and despawn once far
+-- (or after maxSeconds). v0.77: we NO LONGER OnRoleCleared here — on game 2.31 a just-role-cleared
+-- puppet's AIMoveToCommand teleported to its target (he snapped to the away-point and insta-despawned,
+-- confirmed via dumps). Instead we keep him a companion and drive the exit with jlRetreatFollow (a
+-- FollowTarget command set to a large desiredDistance) which the follow AI walks smoothly; leavingTick
+-- re-issues it so it overrides AMM's own follow. Forward-declared above the F hook.
+-- opts (optional): { text=, sfx= } to override the parting line — e.g. the main-quest "excuse himself".
 startLeaving = function(opts)
   local sp = JL.summon.spawn
   local h  = sp and sp.handle
   if not h then return end
   local D = Config.dismiss or {}
   opts = opts or {}
-  -- 1) clear the follower role so he becomes a passive NPC that obeys a plain move command
-  pcall(function()
-    local role = h:GetAIControllerComponent():GetAIRole()
-    if role then role:OnRoleCleared(h) end
-    h.isPlayerCompanionCached = false
-  end)
-  -- 2) parting line (real VO + subtitle), like any Jackie line. Capture its duration so we can
-  --    WIPE the subtitle afterwards - a one-off speakJackieLine has no follow-up hide, so the
-  --    parting line ("Time we were on our way, mamita") was sticking on screen forever.
+  -- 1) parting line (real VO + subtitle), like any Jackie line. Capture its duration so we can WIPE the
+  --    subtitle afterwards - a one-off speakJackieLine has no follow-up hide, so the line stuck forever.
   local secs = 4.0
   pcall(function() secs = speakJackieLine(opts.text or D.partingText, opts.sfx or D.partingSfx) or 4.0 end)
   JL.leaving.subClearAt = (JL.clock or 0) + secs + 0.8
-  -- 3) start walking away; leavingTick re-issues + despawns. Keep summon.active/companionSet so
-  --    the onUpdate "re-apply companion role" block stays OFF until he's actually gone.
-  local reach = (D.despawnDistance or 30.0) + 8.0
-  pcall(function() sendMoveToPoint(h, awayPoint(h, reach), D.movement or "Walk", 1.0) end)
+  -- 2) start walking away (retreat-follow to despawnDistance). Keep summon.active/companionSet so the
+  --    onUpdate "re-apply companion role" block stays OFF until he's actually gone; leavingTick re-issues.
+  pcall(function() jlRetreatFollow(h, D.movement or "Walk", (D.despawnDistance or 30.0) + 4.0) end)
   JL.leaving.phase       = "walking"
   JL.leaving.deadline    = (JL.clock or 0) + (D.maxSeconds or 30.0)
   JL.leaving.lastReissue = JL.clock or 0
   JL.ui.status = "Jackie's headin' out..."
-  log("Dismiss: Jackie walking away (despawn at " .. tostring(D.despawnDistance or 30.0) .. " m).")
+  pcall(function() jlDumpState("startLeaving") end)   -- v0.77 DEBUG: baseline; leavingTick logs his dist as he goes
+  log("Dismiss: Jackie walking away (retreat-follow; despawn at " .. tostring(D.despawnDistance or 30.0) .. " m).")
 end
 
 -- Stepped from onUpdate while Jackie is walking off: re-issue the move with the latest geometry
@@ -2238,6 +2331,7 @@ local function leavingTick()
   local now = JL.clock or 0
   local far = d and d >= (D.despawnDistance or 30.0)
   if far or (JL.leaving.deadline and now >= JL.leaving.deadline) then
+    setCompanionFlag(false)   -- v0.72: he's finished walking off and despawned -> intent over
     ammDespawn(sp)
     pcall(hideSubtitle)                                  -- never leave the parting line on screen
     JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
@@ -2248,7 +2342,7 @@ local function leavingTick()
         d and ("%.1f"):format(d) or "?"))
   elseif (now - (JL.leaving.lastReissue or 0)) >= 1.5 then
     JL.leaving.lastReissue = now
-    pcall(function() sendMoveToPoint(h, awayPoint(h, (D.despawnDistance or 30.0) + 8.0), D.movement or "Walk", 1.0) end)
+    pcall(function() jlRetreatFollow(h, D.movement or "Walk", (D.despawnDistance or 30.0) + 4.0) end)
     if d then log(("Dismiss: walking off... %.1f m from V."):format(d)) end
   end
 end
@@ -2338,6 +2432,7 @@ local function promoteToCompanion()
                       (Config.call and Config.call.followDistance) or 1.6)
   JL.summon.companionSet, JL.summon.walkIn = true, false
   JL.summon.arrivalGreetPending = true   -- v0.46/v0.48/v0.52: say a fresh greeting LINE once he closes to arrivalGruntDistance
+  setCompanionFlag(true)                 -- v0.72: persist "is companion" in the save (survives reload / culling FT)
 end
 
 -- v0.50: the old AMM-spawn-near-V + HIDE + teleport "safe walk-in" (arrivalTick / arrivalMoveType)
@@ -2940,9 +3035,9 @@ local function catchUpTick()
   local C = Config.catchUp or {}
   if C.enabled == false then return end
   -- settled companion only: active + role applied, and NOT mid-arrival / dinner / walking-off.
-  if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince = nil; return end
+  if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then
-    JL.catchUp.farSince = nil; return
+    JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then JL.catchUp.farSince = nil; return end
@@ -2950,12 +3045,31 @@ local function catchUpTick()
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
   local now = JL.clock or 0
   local d   = dist3(pp, jp)
-  if d <= (C.distance or 25.0) then JL.catchUp.farSince = nil; return end
+  -- back within range -> the last teleport (if any) took; clear the retry counter.
+  if d <= (C.distance or 25.0) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   -- he's far. Require it to PERSIST a beat (a fast-travel/load gap, not a momentary stream hiccup).
   JL.catchUp.farSince = JL.catchUp.farSince or now
   if (now - JL.catchUp.farSince) < (C.sustainSeconds or 2.0) then return end
   if (now - (JL.catchUp.lastAt or -1e9)) < (C.cooldown or 3.0) then return end
-  -- land him a few metres to V's SIDE on the navmesh (never ON V), then re-assert follow so he settles.
+
+  -- v0.79 ESCALATION. aiTeleport (AITeleportCommand) can only move his body while it's still streamed with
+  -- live AI. A load-screen fast-travel across DISTRICTS strands it far away, so the teleport silently no-ops
+  -- (the old build then LIED "teleported to her side" and left him behind, and travelling back never fixed it).
+  -- So: if he's beyond respawnDistance (obvious district-scale FT — skip the doomed teleport) OR a prior
+  -- teleport already failed to close the gap (teleTries reached maxTeleTries -> still this far after cooldown),
+  -- despawn the stranded body and respawn a fresh Jackie at V. Safe here: fires 2 s+ after the FT with V fully
+  -- in-world, unlike the persist-on-LOAD respawn (Config.persist) that crashes into a not-yet-streamed world.
+  local tries = JL.catchUp.teleTries or 0
+  if (C.respawnWhenStranded ~= false)
+     and (d >= (C.respawnDistance or 150.0) or tries >= (C.maxTeleTries or 1)) then
+    JL.catchUp.lastAt, JL.catchUp.farSince, JL.catchUp.teleTries = now, nil, nil
+    log(("CatchUp: Jackie stranded %.0f m from V (teleport can't cross) -> respawning at her side."):format(d))
+    pcall(respawnCompanionAtV)   -- despawns the orphaned body + spawns fresh at V; onUpdate re-promotes next frame
+    return
+  end
+
+  -- moderate gap, body still local: land him a few metres to V's SIDE on the navmesh (never ON V), then
+  -- re-assert follow. Count the attempt so a no-op teleport escalates to a respawn on the next eligible tick.
   local pt = navmeshArrivalPoint(C.placeDistance or 3.0) or arrivalPoint()
   if not pt then return end
   local yaw = 0.0
@@ -2963,9 +3077,10 @@ local function catchUpTick()
   aiTeleport(h, pt, yaw, false)
   sendWalkToPlayer(h, (Config.call and Config.call.approachMovement) or "Run",
                       (Config.call and Config.call.followDistance) or 1.6)
-  JL.catchUp.lastAt   = now
-  JL.catchUp.farSince = nil
-  log(("CatchUp: Jackie was %.0f m from V -> teleported to her side."):format(d))
+  JL.catchUp.lastAt    = now
+  JL.catchUp.farSince  = nil
+  JL.catchUp.teleTries = tries + 1
+  log(("CatchUp: Jackie was %.0f m from V -> teleported to her side (try %d)."):format(d, tries + 1))
 end
 
 -- v0.67 KEEP-CLOSE FOLLOW. After handoff we issue ONE tight follow (followDistance), but AMM's own
@@ -2989,6 +3104,28 @@ local function followKeepCloseTick()
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
   if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end
   sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)
+end
+
+-- v0.80: SUBTITLE WATCHDOG — the guaranteed cleanup. Stepped every frame from onUpdate. The old bug:
+-- subtitle cleanup lived on each individual dialogue path, so any branch that ended without hitting a
+-- hideSubtitle() (or a one-off line with no follow-up) left the bottom band stuck forever, because the
+-- native band doesn't reliably auto-expire on this build. This is the belt-and-braces fix: if a line is
+-- STILL showing past its own display time AND nothing owns the band right now (no talk / call / walk-off),
+-- force-clear it. It never fires mid-conversation (Branch.busy/open, dlg.active, a live call, or the
+-- leaving parting-line all keep it hands-off), so it can only ever wipe a genuinely orphaned subtitle.
+-- Global (not a top-level local) so the 200-local cap is unaffected.
+function subtitleWatchdogTick()
+  if not subtitle.line then return end                 -- nothing on the band
+  if not subtitle.dueAt then return end                -- its display time isn't tracked yet
+  if (JL.clock or 0) < subtitle.dueAt then return end  -- still within its intended time on screen
+  -- someone is actively driving the band? leave it alone.
+  if Branch.busy or Branch.open then return end
+  if dlg and dlg.active then return end
+  if JL.leaving and JL.leaving.phase == "walking" then return end   -- leavingTick owns its parting line
+  local c = JL.call
+  if c and (c.ringingAt or c.connectAt or c.hangupAt or c.watchdogAt or c.noAnswerAt) then return end
+  hideSubtitle()
+  log("Subtitle watchdog: cleared a dangling subtitle (no active conversation).")
 end
 
 -- stepped from onUpdate: (1) reveal the menu once Jackie's line has played; (2) after the
@@ -3031,14 +3168,16 @@ local function branchTick()
         end
         JL.ui.status = "Call wrapping up..."
       else
-        hideSubtitle()
-        JL.ui.status = "Dialogue ended."; log("Branch: end.")
-        -- v0.32: if this was a cooldown'd talk tree (the `everywhere` backup), stamp it DONE
-        -- now so further F presses just grunt until the cooldown expires.
-        if bstate.talkCooldownKey then
-          JL.talkDone[bstate.talkCooldownKey] = JL.clock or 0
-          log("Branch: '" .. tostring(bstate.talkCooldownKey) .. "' marked DONE; cooldown started.")
+        -- v0.32: if this was a cooldown'd talk tree (the `everywhere` backup), stamp it DONE now so
+        -- further F presses just grunt until the cooldown expires. Read it BEFORE Branch.finish (which
+        -- clears bstate.talkCooldownKey as part of the reset).
+        local cdKey = bstate.talkCooldownKey
+        if cdKey then
+          JL.talkDone[cdKey] = JL.clock or 0
+          log("Branch: '" .. tostring(cdKey) .. "' marked DONE; cooldown started.")
         end
+        Branch.finish("Dialogue ended.")   -- v0.80: authoritative close — overlay + subtitle, always
+        log("Branch: end.")
         if act == "recruit_here" then pcall(recruitIdleJackie)   -- v0.39: idle Jackie -> companion in place
         elseif act then pcall(function() runCallAction(act) end) end
       end
@@ -3251,17 +3390,21 @@ local function dinnerTick()
   end
 
   if D.phase == "seated" then
-    -- V walks off -> Jackie gets up, says a line, and re-joins as companion (stays JL.summon.active).
+    -- He stands up + re-joins as companion (stays JL.summon.active) when EITHER V walks off (>getUpRadius)
+    -- OR V ends the seated small-talk with "Enough chillin', let's go" (v0.83: D.leaveNow set by the action).
     local jp; pcall(function() jp = h:GetWorldPosition() end)
-    if pp and jp and dist3(pp, jp) >= (C.getUpRadius or 10.0) then
+    local viaMenu = D.leaveNow == true
+    if viaMenu or (pp and jp and dist3(pp, jp) >= (C.getUpRadius or 10.0)) then
+      D.leaveNow = nil
       pcall(function() stopWorkspotPose(h) end)
       setNpcCollision(h, true)                          -- v0.44: restore collision before he follows again
       D.collisionOff = false
-      pcall(function() speakJackieLine(C.getUpText, C.getUpSfx) end)
+      -- the menu path already spoke his parting line (seatedTree `leave` node) — don't double it up
+      if not viaMenu then pcall(function() speakJackieLine(C.getUpText, C.getUpSfx) end) end
       pcall(promoteToCompanion)                         -- re-add follower role + follow (also re-enables collision)
       D.phase, D.dest, D.satAt, D.seatDeadline, D.sitFireAt = nil, nil, nil, nil, nil
       JL.ui.status = "Jackie's back with you."
-      log("Dinner: V left; Jackie up + following again.")
+      log("Dinner: " .. (viaMenu and "'let's go' chosen" or "V left") .. "; Jackie up + following again.")
     end
     return
   end
@@ -3647,7 +3790,213 @@ local function nsTick()
   end
 end
 
+-- ===========================================================================
+-- RESTORED in v0.72: these three were accidentally dropped by the v0.69 dead-code
+-- sweep (the VO/probe deletions), but their CALL SITES survived (nsTick's switch
+-- callbacks + the "Go Home Jackie" button + onInit) — so settings persistence and the
+-- recovery button had been silently no-op'ing. Brought back verbatim, but as GLOBALS
+-- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
+-- ===========================================================================
+JL_SETTINGS_FILE = "jl_settings.txt"
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals" }  -- persisted JL.* boolean flags
+
+function jlSaveSettings()
+  local f = io.open(JL_SETTINGS_FILE, "w")
+  if not f then log("settings: could not write " .. JL_SETTINGS_FILE); return end
+  for _, k in ipairs(JL_SETTINGS_KEYS) do f:write(k .. "=" .. tostring(JL[k] == true) .. "\n") end
+  f:close()
+end
+
+function jlLoadSettings()
+  local f = io.open(JL_SETTINGS_FILE, "r")
+  if not f then return end
+  for line in f:lines() do
+    local k, v = line:match("^(%w+)=(%w+)$")
+    if k then
+      for _, want in ipairs(JL_SETTINGS_KEYS) do
+        if k == want then JL[k] = (v == "true") end
+      end
+    end
+  end
+  f:close()
+end
+
+-- Force-despawns EVERY Jackie (orphans included), wipes ALL transient state machines, then lets
+-- the next scheduleTick re-place a clean idle Jackie at his scheduled spot. Fired from the Esc ->
+-- Settings recovery button while the game is PAUSED (onUpdate frozen), so re-placement is left to
+-- the first unpaused tick (we just prime JL.timer to fire it ASAP).
+function hardReset()
+  -- get him out of any sit/lean workspot first so the despawn can't strand a posed body
+  pcall(function()
+    local ws = Game.GetWorkspotSystem()
+    if ws then
+      if JL.idle.spawn   and JL.idle.spawn.handle   then ws:StopInDevice(JL.idle.spawn.handle)   end
+      if JL.summon.spawn and JL.summon.spawn.handle then ws:StopInDevice(JL.summon.spawn.handle) end
+    end
+  end)
+  pcall(dismissAllJackies)   -- AMM-wide despawn + summon/idle/arrival/leaving/vehicle reset (clears the companion fact)
+  -- wipe the newer idle/dinner/secret/call/branch state dismissAllJackies doesn't cover
+  JL.idle.placed, JL.idle.phase, JL.idle.curIdx, JL.idle.tgtIdx = false, nil, nil, nil
+  JL.idle.leaving, JL.idle.leaveTarget, JL.idle.leaveDeadline, JL.idle.leaveReissue = false, nil, 0, 0
+  JL.idle.posed, JL.idle.pendingPose, JL.idle.pendingSit = false, nil, nil
+  JL.idle.collisionOff, JL.idle.collisionRestoreAt = false, nil
+  JL.dinner.phase, JL.dinner.dest, JL.dinner.mappinId = nil, nil, nil
+  JL.secret.decided, JL.secret.active = false, false
+  JL.call.ringingAt, JL.call.hangupAt, JL.call.hangupAction = nil, nil, nil
+  JL.leaving.subClearAt = nil
+  JL.persist.gapSince, JL.persist.lastRespawn = nil, nil   -- v0.72: don't immediately re-spawn after a manual reset
+  -- release any open conversation so the UI can't be stuck mid-dialogue
+  pcall(hideSubtitle)
+  if Branch then Branch.open, Branch.busy = false, false end
+  JL.timer = Config.scheduleCheckInterval or 0   -- fire scheduleTick on the very next (unpaused) tick
+  JL.ui.status = "Go Home Jackie: reset done. He'll return to his schedule shortly."
+  log("Hard reset: every Jackie despawned + state wiped; schedule will re-place a clean one.")
+end
+
+-- ===========================================================================
+-- COMPANION PERSISTENCE (v0.72) — see Config.persist / List_of_companion_issues Session 1.
+-- The "is companion" intent is stored as the per-save game fact jackielives_companion (mirrors
+-- retrieval.lua's stage fact), so it survives save/load and is automatically per-save-slot correct.
+-- Globals (no `local`) to respect the 200-local cap.
+-- ===========================================================================
+JL_COMPANION_FACT = "jackielives_companion"
+
+function setCompanionFlag(on)
+  pcall(function() Game.GetQuestsSystem():SetFactStr(JL_COMPANION_FACT, on and 1 or 0) end)
+end
+
+function companionFlagSet()
+  local v; local ok = pcall(function() v = Game.GetQuestsSystem():GetFactStr(JL_COMPANION_FACT) end)
+  return ok and v == 1
+end
+
+-- v0.76 DEBUG: dump Jackie's full runtime state to the console (bound to a CET button + called at the
+-- start/end of the dismiss walk-away so we can see WHY he vanishes). Global (no main-chunk local -> cap safe).
+-- Reports, for each system's entity: handle validity, world position, live distance to V, AMM companion
+-- caching + whether an AI role is attached — so a bogus position read or a stale handle is obvious.
+function jlDumpState(tag)
+  local function fmt(v) if not v then return "nil" end
+    local ok, s = pcall(function() return string.format("(%.1f,%.1f,%.1f)", v.x, v.y, v.z) end)
+    return ok and s or "?" end
+  local pp = playerPos()
+  local function info(sp)
+    if not sp then return "spawn=nil" end
+    if not sp.handle then return "spawn set, handle=NIL id=" .. tostring(sp.id) end
+    local jp; pcall(function() jp = sp.handle:GetWorldPosition() end)
+    local d = (pp and jp) and dist3(pp, jp) or nil
+    local comp, role
+    pcall(function() comp = sp.handle.isPlayerCompanionCached end)
+    pcall(function() role = (sp.handle:GetAIControllerComponent():GetAIRole() ~= nil) end)
+    return string.format("handle=ok pos=%s dist=%s companionCached=%s hasRole=%s",
+      fmt(jp), d and string.format("%.1f", d) or "nil", tostring(comp), tostring(role))
+  end
+  log("==== JACKIE STATE [" .. tostring(tag) .. "] ====")
+  log("V=" .. fmt(pp))
+  log("summon: active=" .. tostring(JL.summon.active) .. " companionSet=" .. tostring(JL.summon.companionSet)
+      .. " walkIn=" .. tostring(JL.summon.walkIn) .. " | " .. info(JL.summon.spawn))
+  log("idle: locKey=" .. tostring(JL.idle.locationKey) .. " | " .. info(JL.idle.spawn))
+  log("phases: varrival=" .. tostring(JL.varrival.phase) .. " leaving=" .. tostring(JL.leaving.phase)
+      .. " dinner=" .. tostring(JL.dinner.phase))
+  local flag; pcall(function() flag = companionFlagSet() end)
+  log("saveFlag=" .. tostring(flag) .. " catchUp=" .. tostring(Config.catchUp and Config.catchUp.enabled)
+      .. " follow=" .. tostring(Config.follow and Config.follow.enabled)
+      .. " persist=" .. tostring(Config.persist and Config.persist.enabled))
+  log("=====================================")
+end
+
+-- Bring Jackie back at V's side (the same instant AMM companion spawn `summonJackie` uses). Clears
+-- any stale/culled spawn first so we never leak or double up. The onUpdate promote block applies the
+-- follower role next frame; armCompanionTimer re-arms the duration clock fresh.
+function respawnCompanionAtV()
+  if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
+  JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
+  local spawn, err = ammSpawn(1)
+  if not spawn then log("Persist: respawn at V FAILED (" .. tostring(err) .. ") — will retry."); return false end
+  JL.summon.spawn, JL.summon.active, JL.summon.companionSet = spawn, true, false
+  -- v0.82: arm the settle window. He's freshly popped in at V (AMM drops him ~1 m from her); hide him +
+  -- drop collision for a beat so he doesn't visibly POP or clip into a wall, then settleTick reveals him +
+  -- restores collision by clock. handle may be nil this frame (DES resolves later) — settleTick re-hides
+  -- once it appears, so the reveal is always by TIME, never a one-shot that can miss the async handle.
+  local S = Config.respawnSettle or {}
+  if S.enabled ~= false then
+    local now = JL.clock or 0
+    JL.settle.hideUntil    = now + (S.hideSeconds or 2.0)
+    JL.settle.collideUntil = now + (S.collideSeconds or 4.0)
+    JL.settle.handle       = nil   -- resolved live in settleTick (spawn.handle isn't ready yet)
+  end
+  log("Persist: companion flag set but Jackie was absent -> respawned him at V.")
+  return true
+end
+
+-- v0.82 SETTLE TICK. During the brief window after a respawn-at-V, keep the fresh Jackie INVISIBLE (so V
+-- doesn't see him pop in beside her) and NON-COLLIDING (so he can't get shoved out of a wall/geometry he
+-- spawned against). Both are re-asserted every frame against the live handle (which resolves a frame or
+-- two after the spawn), then lifted by clock: reveal at hideUntil, re-collide at collideUntil. Hands-off
+-- once the window closes. Mirrors the arrival sequence's own hide-until-placed trick (setVisible/setNpcCollision).
+-- GLOBAL (not a top-level local): init.lua is at Lua's 200-local hard cap — see companionPersistTick etc.
+function settleTick()
+  local s = JL.settle
+  if not (s and (s.hideUntil or s.collideUntil)) then return end
+  local now = JL.clock or 0
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  -- still hiding? keep him invisible + collision-off (re-assert each frame; handle may have just resolved).
+  if s.hideUntil and now < s.hideUntil then
+    if h then setVisible(h, false) end
+  elseif s.hideUntil then
+    if h then setVisible(h, true) end     -- window's up -> reveal him where he settled
+    s.hideUntil = nil
+  end
+  if s.collideUntil and now < s.collideUntil then
+    if h then setNpcCollision(h, false) end
+  elseif s.collideUntil then
+    if h then setNpcCollision(h, true) end  -- restore collision (a follower must always collide)
+    s.collideUntil = nil
+  end
+end
+
+-- Per-frame guard: keep the saved companion fact in sync with reality, and if the save says Jackie
+-- should be with V but his body is gone (fresh load wiped Lua state, or a load-screen fast-travel
+-- culled him), bring him back. Reuses JL.clock for all timing (no dt needed).
+function companionPersistTick()
+  local P = Config.persist or {}
+  if P.enabled == false then return end
+  if not Retrieval.isUnlocked() then return end                 -- mod still gated -> no companion to keep
+  if (JL.clock or 0) < (P.startupGrace or 2.0) then return end   -- let the world finish loading first
+  if not playerPos() then return end                            -- player not in-world yet
+
+  -- Is a LIVE, settled companion actually present right now?
+  local live = false
+  if JL.summon.active and JL.summon.companionSet and JL.summon.spawn and JL.summon.spawn.handle then
+    local jp; pcall(function() jp = JL.summon.spawn.handle:GetWorldPosition() end)
+    live = (jp ~= nil)
+  end
+
+  if live then
+    if not companionFlagSet() then setCompanionFlag(true) end   -- self-heal: he's here, record it
+    JL.persist.gapSince = nil
+    return
+  end
+
+  -- No live companion. If the save doesn't claim him, there's nothing to restore.
+  if not companionFlagSet() then JL.persist.gapSince = nil; return end
+
+  -- He SHOULD be here. Don't fight a state machine that's already placing/removing him.
+  if (JL.varrival and JL.varrival.phase) or JL.leaving.phase or JL.dinner.phase or JL.summon.walkIn then
+    JL.persist.gapSince = nil; return
+  end
+
+  -- Require the gap to persist a beat (rides out a momentary stream/handle hiccup), then respawn
+  -- on a cooldown (which also covers the few frames a fresh spawn needs to resolve + promote).
+  local now = JL.clock or 0
+  JL.persist.gapSince = JL.persist.gapSince or now
+  if (now - JL.persist.gapSince) < (P.gapSustain or 1.5) then return end
+  if (now - (JL.persist.lastRespawn or -1e9)) < (P.cooldown or 5.0) then return end
+  JL.persist.gapSince, JL.persist.lastRespawn = nil, now
+  respawnCompanionAtV()
+end
+
 registerForEvent("onInit", function()
+  pcall(function() local f = io.open("jackie_debug.log", "w"); if f then f:close() end end)  -- v0.76: fresh log each load
   pcall(function() math.randomseed((os.time and os.time() or 0)) end)  -- v0.36: random day-bag shuffle
   getAMM()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
@@ -3794,6 +4143,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
   pcall(branchTick)
+  pcall(subtitleWatchdogTick)  -- v0.80: GUARANTEE no dialogue subtitle can stick after a talk ends
   pcall(flapTick)       -- lip-movement: shuffle talking faces while a Jackie line plays
   pcall(smileTick)      -- v0.53: low-chance brief smile when V catches his eye
   pcall(ambientGruntTick)  -- v0.55: rare non-pained "feel alive" grunt while he's around
@@ -3814,6 +4164,7 @@ registerForEvent("onUpdate", function(dt)
       end
     end)
     JL.summon.companionSet = true
+    setCompanionFlag(true)   -- v0.72: persist "is companion" (this is the summon/respawn promote path)
     JL.ui.status = "Jackie is following."
     log("Companion role applied.")
   end
@@ -3844,6 +4195,8 @@ registerForEvent("onUpdate", function(dt)
   end
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
+  pcall(companionPersistTick)  -- v0.72: saved "is companion" but his body is gone (reload / culling FT) -> respawn at V
+  pcall(settleTick)       -- v0.82: hide + no-collision for a beat after a respawn-at-V so he doesn't pop/clip in
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
   pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap
 
@@ -4049,6 +4402,14 @@ registerForEvent("onDraw", function()
   if ImGui.Button("Summon Jackie (companion)") then summonJackie() end
   ImGui.SameLine()
   if ImGui.Button("Dismiss Jackie") then dismissJackie() end
+  ImGui.SameLine()
+  if ImGui.Button("Dump state (console)") then pcall(function() jlDumpState("manual button") end) end   -- v0.76 DEBUG
+  -- v0.72 companion-persistence readout: the saved "is companion" fact survives save/load, so this
+  -- should read ON while he's with you and OFF after a dismiss/walk-off. Reload with it ON -> he
+  -- respawns at V. "Clear saved flag" is a test escape hatch (clears the fact without despawning).
+  ImGui.Text("Saved companion flag: " .. (companionFlagSet() and "ON (he returns on reload)" or "off"))
+  ImGui.SameLine()
+  if ImGui.SmallButton("Clear saved flag") then setCompanionFlag(false); log("Companion flag cleared (debug).") end
   if ImGui.Button("Call Jackie (holocall)") then startCall() end
   ImGui.SameLine()
   ImGui.TextWrapped("ring -> choices -> ask onto a gig -> he spawns at distance + walks in")
@@ -4088,6 +4449,7 @@ registerForEvent("onDraw", function()
     ImGui.TextWrapped("Gate ships OFF: tip fires when you reach Vik (coords set). Flow: Vik's clinic -> " ..
       "tip + Badlands pin -> Rocky Ridge garage -> shard -> ~1s -> unlock (Phases 3-4 add call/arrival/reunion).")
   end
+
 
   ImGui.Separator()
   -- v0.63: BIKE-MODEL TEST — find the spawn method that reliably gives Jackie's REAL Arch. Each

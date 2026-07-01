@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.7"
+Config.version = "0.83"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -179,20 +179,65 @@ Config.companion = {
   autoLeaveOnExpiry = true,  -- when the clock runs out he walks off (reuses the send-off exit)
 }
 
+-- ---- companion PERSISTENCE (v0.72) ----------------------------------------
+-- "Is Jackie your companion right now?" is saved INSIDE each save slot as the game fact
+-- jackielives_companion (the same per-save fact mechanism the retrieval quest uses for its stage).
+-- Because it lives in the save (not a global file), loading an OLD save where Jackie WASN'T with you
+-- simply finds the fact unset -> he is NOT wrongly restored. companionPersistTick watches that fact:
+-- if it says "companion" but no live Jackie exists — a fresh load wiped the runtime state, or a
+-- load-screen fast-travel culled his body (the case Config.catchUp can't recover) — it re-spawns and
+-- re-promotes him at V's side. Set enabled=false to go back to "he's gone after a reload".
+-- ⚠️ v0.74: enabled=false FOR NOW. The auto-respawn-on-load (companionPersistTick -> respawnCompanionAtV)
+-- CRASHES the game across a load on the live build — almost certainly ammSpawn firing too early / into a
+-- not-fully-streamed world, or an AMM call before AMM has re-initialised post-load. Disabled so the build
+-- is stable to keep testing everything else; the fact-tracking (setCompanionFlag on promote/dismiss) still
+-- runs, so nothing is lost — only the automatic bring-him-back is off. TOP bug to fix next session (see
+-- TODO v0.75): much longer/whole-frame-safe startup gate, verify AMM ready + player fully in-world before
+-- spawning, and consider a manual "he's back" trigger instead of an automatic one. Flip to true once safe.
+Config.persist = {
+  enabled       = false,  -- ⚠️ crashes on load right now — see the warning above; re-enable when fixed
+  startupGrace  = 2.0,    -- s after load before we act, so we never spawn into a loading screen (too short?)
+  gapSustain    = 1.5,    -- s the "should be here but isn't" condition must hold (rides out stream hiccups)
+  cooldown      = 5.0,    -- s between respawn attempts (also covers the spawn->promote resolve window)
+}
+
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
 -- Once Jackie is a SETTLED companion (arrived, role applied, not dismissed/expired), if V gets far
 -- away — FAST-TRAVEL, a long sprint, or he just got left behind — he teleports back to V's SIDE.
 -- This is the immersive "a companion never gets lost" behaviour. It is DELIBERATELY off during the
 -- arrival walk-in / dinner / walk-off (those own his movement and must not be yanked). He always lands
 -- a few metres to V's side on the navmesh, never on top of her. Set enabled=false to turn it off.
--- CAVEAT: this only works while his runtime body still EXISTS. A load-screen fast-travel can cull a
--- spawned NPC entirely; surviving that needs the heavier persist-and-respawn work (TODO Session 1).
+-- NOTE: this only works while his runtime body still EXISTS. A load-screen fast-travel can cull a
+-- spawned NPC entirely — that case is now handled by Config.persist (companionPersistTick re-spawns him).
+-- ⚠️ v0.79: the AITeleportCommand aiTeleport() uses can only relocate his body while it's still STREAMED
+-- and its AI is live. A load-screen fast-travel across DISTRICTS leaves his body stranded/unstreamed far
+-- away (his handle still resolves — that's how we read "1994 m" — but the teleport silently no-ops, so the
+-- old build logged "teleported to her side" while he stayed put; travelling back never recovered him).
+-- So: beyond respawnDistance, OR if a teleport already fired but failed to close the gap (maxTeleTries),
+-- catchUpTick DESPAWNS the stranded body and RESPAWNS a fresh Jackie at V (respawnCompanionAtV). This runs
+-- 2 s+ AFTER the fast-travel with V fully in-world, so it does NOT hit the persist-on-LOAD crash (Config.persist).
 Config.catchUp = {
+  enabled         = true,
+  distance        = 25.0,   -- metres from V beyond which he's considered "left behind"
+  sustainSeconds  = 2.0,    -- he must stay that far for this long (rides out a fast-travel/load gap)
+  cooldown        = 3.0,    -- minimum seconds between catch-up teleports (anti-thrash)
+  placeDistance   = 3.0,    -- metres to V's side he's dropped (navmesh-snapped; never ON V)
+  respawnWhenStranded = true,-- v0.79: fall back to despawn+respawn when a teleport can't reach him (set false to disable)
+  respawnDistance = 150.0,  -- metres beyond which we skip the doomed teleport and respawn immediately (district-scale FT)
+  maxTeleTries    = 1,      -- consecutive teleports that fail to close the gap before we escalate to a respawn
+}
+
+-- ---- respawn settle-in (v0.82) --------------------------------------------
+-- When catch-up (or persist) RESPAWNS Jackie at V after a fast-travel, AMM drops a fresh body ~1 m from
+-- her — which V sees POP into existence and which can spawn against a wall. settleTick hides him +
+-- disables his collision for a brief window right after the respawn, then reveals him where he settled and
+-- restores collision (a follower must always collide). Timings are seconds from the respawn. hideSeconds
+-- < collideSeconds so he's already visible while the extra collision-off grace lets him nudge free of any
+-- geometry. Set enabled=false to go back to an instant (popping) respawn.
+Config.respawnSettle = {
   enabled        = true,
-  distance       = 25.0,  -- metres from V beyond which he's considered "left behind"
-  sustainSeconds = 2.0,   -- he must stay that far for this long (rides out a fast-travel/load gap)
-  cooldown       = 3.0,   -- minimum seconds between catch-up teleports (anti-thrash)
-  placeDistance  = 3.0,   -- metres to V's side he's dropped (navmesh-snapped; never ON V)
+  hideSeconds    = 2.0,   -- keep him invisible this long after the respawn (hides the pop-in)
+  collideSeconds = 4.0,   -- keep his collision OFF this long (so he can't spawn stuck in a wall)
 }
 
 -- ---- keep-close follow (v0.67) --------------------------------------------
@@ -203,7 +248,7 @@ Config.catchUp = {
 -- raise it or set enabled=false if he ever looks jittery). Only runs while he's a settled companion.
 Config.follow = {
   enabled  = true,
-  distance = 2.5,    -- metres he keeps behind V (your "<4 m" ask, with clip margin)
+  distance = 1.5,    -- metres he keeps behind V (Antonia's tuned default, 2026-07-01)
   interval = 1.5,    -- seconds between follow re-asserts
   movement = "Run",  -- "Walk" | "Run" | "Sprint" — how he closes the gap when he drifts back
 }
@@ -288,6 +333,83 @@ Config.date = {
       },
     },
   },
+
+  -- v0.83: SEATED small-talk tree — used ONLY while Jackie is seated at dinner (JL.dinner.phase ==
+  -- "seated"; wired via currentTalkTree). Casual banter + a few random-chance "get it off your chest"
+  -- topics (each choice carries a `chance`, re-rolled every time the menu opens, so the options vary).
+  -- No dismiss option here (that crashes a seated puppet). "Enough chillin'..." runs action "dinner_leave"
+  -- AFTER his reply, which makes him stand + re-join as your companion (dinnerTick handles the stand-up).
+  -- These lines are text-only (no sfx yet) — they play the fallback grunt + subtitle on the mute build;
+  -- wire real jl_ clips later. Add/reword topics freely; every topic path ends back at "open" or "leave".
+  seatedTree = {
+    start = "open",
+    nodes = {
+      open = {
+        jackiePool = {
+          { text = "Man, this hits the spot. No gigs, no gunfire — just us." },
+          { text = "Could get used to this quiet-life thing, y'know?" },
+          { text = "Good to just sit a minute, huh, chica?" },
+          { text = "Anyway... what's on your mind, V?" },
+        },
+        choices = {
+          { text = "You ever miss the merc life, Jackie?",        to = "merc",      chance = 0.6 },
+          { text = "This city's been grindin' me down lately.",   to = "nightcity", chance = 0.6 },
+          { text = "Think Arasaka ever pays for what they did?",  to = "arasaka",   chance = 0.5 },
+          { text = "How're things with you and Misty?",           to = "misty",     chance = 0.6 },
+          { text = "Enough chillin', let's get movin'.",          to = "leave" },
+        },
+      },
+      merc = {
+        jackiePool = {
+          { text = "Miss it? Some days. The rush, the crew... but it took more than it gave, V. You know that better'n anyone." },
+          { text = "The life? Nah. The good runs, maybe. Not the endings — we both seen how those go." },
+        },
+        choices = {
+          { text = "Yeah. We made it out, though.", to = "open"  },
+          { text = "Let's get movin'.",             to = "leave" },
+        },
+      },
+      nightcity = {
+        jackiePool = {
+          { text = "Night City don't care if you live or die, chica. All you can do is find your people and hold on tight." },
+          { text = "This town chews everybody up. Trick's not lettin' it swallow ya whole. You got me, I got you — that's the trick." },
+        },
+        choices = {
+          { text = "Guess that's enough.", to = "open"  },
+          { text = "Let's get movin'.",    to = "leave" },
+        },
+      },
+      arasaka = {
+        jackiePool = {
+          { text = "'Saka? Heh. Big fish like that never pays, V. But we're still breathin' and they don't know our names. That's a win." },
+          { text = "Corpo rats always land on their feet. Best revenge's livin' good — like right now, full plate in front of us." },
+        },
+        choices = {
+          { text = "Livin' good. I'll drink to that.", to = "open"  },
+          { text = "Let's get movin'.",                to = "leave" },
+        },
+      },
+      misty = {
+        jackiePool = {
+          { text = "Misty's my anchor, V. Keeps me lookin' up when I wanna look down. Dunno what I'd be without her." },
+          { text = "Me an' Misty? Solid. She reads them cards, says the stars got a plan. I just tell her she's my plan." },
+        },
+        choices = {
+          { text = "She's good for you.", to = "open"  },
+          { text = "Let's get movin'.",   to = "leave" },
+        },
+      },
+      leave = {
+        -- terminal (no choices) + action -> after his line, dinnerTick stands him up + re-follows.
+        jackiePool = {
+          { text = "Heh, alright. Let's roll, chica." },
+          { text = "Yeah, we got a city to look after. Vamonos." },
+          { text = "Right behind ya, hermano. Let's move." },
+        },
+        action = "dinner_leave",
+      },
+    },
+  },
 }
 
 -- ---- branching dialogue tree (v0.23) -------------------------------------
@@ -322,9 +444,7 @@ Config.dialogueTree = {
     },
     bye = {
       jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-      choices = {
-        { text = "(Leave)", to = nil },
-      },
+      -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
     },
   },
 }
@@ -381,7 +501,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -422,7 +542,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -463,7 +583,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -503,7 +623,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -522,18 +642,31 @@ Config.locationDialogue = {
           { text = "V, how you feel? You all right?", sfx = "jl_1802590928224841728" },
           { text = "¿Qué onda?",                      sfx = "jl_2015561179233951744" },
         },
+        -- v0.81: each sign-off shows a RANDOM line from its textPool (re-rolled every open, like the
+        -- jackiePool above), so it never sounds canned. Left pool leads to his "you take it easy, rest
+        -- up" reply (`care`); right pool leads to his "time we were on our way" reply (`bye`).
         choices = {
-          { text = "Just checkin' in. Take it easy.", to = "care" },
-          { text = "Catch you later, hermano.",        to = "bye"  },
+          { textPool = {
+              "Just checkin' in on ya, hermano.",
+              "Take care of yourself, choom.",
+              "Look after yourself, yeah?",
+              "Get some rest, you earned it.",
+            }, to = "care" },
+          { textPool = {
+              "We should get movin'.",
+              "Let's get goin', hermano.",
+              "Alright, I'm headin' out.",
+              "Time to hit the road, choom.",
+            }, to = "bye"  },
         },
       },
       care = {
         jackie  = { text = "Thanks, I will! V, you take it easy, OK? Rest up a bit.", sfx = "jl_1993514843414274048" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        choices = { { text = "(Leave)", to = nil } },
+        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
