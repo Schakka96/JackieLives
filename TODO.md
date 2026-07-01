@@ -32,6 +32,24 @@ v0.75 is DEPLOYED + PUSHED. What's DONE vs what's BROKEN:
    `List_of_companion_issues.md` (Session 1 cluster / catch-up). May be `catchUpTick`'s teleport fighting
    the look-at/talk system, or the (now-disabled) persist respawn — re-check whether disabling persist
    (#1) changed it. Reproduce: be a companion → fast-travel → look straight at Jackie.
+   - **2c. IN-GAME EVIDENCE (2026-07-01 test on the reverted build) + v0.76 diagnostics added:**
+     - **Dismiss (fresh companion, no fast-travel):** console shows `Dismiss: Jackie walking away (despawn
+       at 30m)` then INSTANTLY `Dismiss: despawned (reached d=38 m)` — but he's still at V's side. **38 =
+       despawnDistance(30)+8 = the `awayPoint` target distance**, so `leavingTick` read a bogus far position
+       on the very first tick (almost certainly `OnRoleCleared` invalidating/relocating the handle) and
+       insta-despawned him. He never walks. → **v0.76 added:** (a) `jlDumpState()` global + a **"Dump state
+       (console)"** CET button; (b) dumps in `startLeaving` PRE/POST `OnRoleCleared` (to catch a position
+       jump) and at the `leavingTick` far-despawn; (c) a **`Config.dismiss.graceSeconds` (3 s) guard** so the
+       "far" despawn can't fire in the first few seconds (deadline still cleans up). NEXT TEST: dismiss and
+       read the PRE vs POST `dist=` — if POST jumps to ~38, `OnRoleCleared` is teleporting/culling him and
+       the real fix is to stop clearing the role that way (or move him first, clear role later).
+     - **Fast-travel:** with `catchUp` ON, Jackie despawns+respawns on a ~2.5 s timer (the `catchUpTick`
+       teleport fighting fast-travel entity culling — NOT triggered by looking at him). With
+       `catchUp.enabled=false`, he's culled and never returns (persist is off), yet `summon.active` stays
+       true so the phone summon is blocked ("already with you"). → the FT-culled companion needs its handle
+       validated + state cleared (or a proper re-spawn). Ties into Bug #1 (persist) + List_of_companion_issues S1.
+     - **Talk-then-dismiss = CRASH.** Likely `OnRoleCleared`/method calls on a stale/dead handle (native
+       crash, not pcall-catchable). The v0.76 dumps will show how far it gets before the crash.
    - **2b. DISMISS walk-away also hard-despawns him in V's face** (was the whole point of the walk-away —
      he should stroll off toward a street). **v0.73 tried & REVERTED (2026-07-01):** the theory that the
      keep-close follow (`followKeepCloseTick`) leaves a lingering `AIFollowTargetCommand` that out-prioritises
@@ -48,8 +66,10 @@ v0.75 is DEPLOYED + PUSHED. What's DONE vs what's BROKEN:
      to A/B whether the v0.66/v0.67 systems are involved.
 3. **The rest of the bug pile** — go through `List_of_companion_issues.md` (Sessions 1–5) + the many older
    "awaiting test" items below; Antonia to prioritise which bugs bite most in play.
-4. **Mouth flaps dead — Jackie's lips don't move while a subtitle line shows** (regressed; reported
-   2026-07-01). Should be an easy fix. The flap is `speakJackieLine` → `startFlap(secs)` → `flapTick` →
+4. ✅ **FIXED (2026-07-01) — Mouth flaps** work again after reverting v0.73 (the reverted build restored
+   them). No further action; leaving the notes below for reference in case they regress again.
+   ~~**Mouth flaps dead — Jackie's lips don't move while a subtitle line shows** (regressed; reported
+   2026-07-01). Should be an easy fix.~~ The flap is `speakJackieLine` → `startFlap(secs)` → `flapTick` →
    `applyTalkingFace` (AMM Expressions Overhaul "Talking" faces, FacialReaction **category 7**, idles
    231–266 skip 242) via `handle:GetAnimationControllerComponent():ApplyFeature("FacialReaction", …)`.
    `startFlap` is still called unconditionally (even mute — `secs` falls back to 3.0), so the trigger is

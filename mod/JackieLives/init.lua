@@ -2203,12 +2203,14 @@ startLeaving = function(opts)
   if not h then return end
   local D = Config.dismiss or {}
   opts = opts or {}
+  pcall(function() jlDumpState("startLeaving:PRE-roleclear") end)   -- v0.76 DEBUG
   -- 1) clear the follower role so he becomes a passive NPC that obeys a plain move command
   pcall(function()
     local role = h:GetAIControllerComponent():GetAIRole()
     if role then role:OnRoleCleared(h) end
     h.isPlayerCompanionCached = false
   end)
+  pcall(function() jlDumpState("startLeaving:POST-roleclear") end)  -- v0.76 DEBUG: did his pos jump?
   -- 2) parting line (real VO + subtitle), like any Jackie line. Capture its duration so we can
   --    WIPE the subtitle afterwards - a one-off speakJackieLine has no follow-up hide, so the
   --    parting line ("Time we were on our way, mamita") was sticking on screen forever.
@@ -2222,6 +2224,7 @@ startLeaving = function(opts)
   JL.leaving.phase       = "walking"
   JL.leaving.deadline    = (JL.clock or 0) + (D.maxSeconds or 30.0)
   JL.leaving.lastReissue = JL.clock or 0
+  JL.leaving.startedAt   = JL.clock or 0   -- v0.76: guard so a bogus first-tick far-read can't insta-despawn him
   JL.ui.status = "Jackie's headin' out..."
   log("Dismiss: Jackie walking away (despawn at " .. tostring(D.despawnDistance or 30.0) .. " m).")
 end
@@ -2242,8 +2245,17 @@ local function leavingTick()
   local jp; pcall(function() jp = h:GetWorldPosition() end)
   local d   = (pp and jp) and dist3(pp, jp) or nil
   local now = JL.clock or 0
-  local far = d and d >= (D.despawnDistance or 30.0)
+  -- v0.76 GUARD: ignore the "far" despawn for the first `graceSeconds` — a bogus first-tick position read
+  -- (seen in-game: d jumps to ~despawnDistance+8 the instant we clear the role, before he's actually moved)
+  -- was insta-despawning him at V's feet. The maxSeconds deadline still guarantees eventual cleanup.
+  local grace = D.graceSeconds or 3.0
+  local settled = (now - (JL.leaving.startedAt or 0)) >= grace
+  local far = settled and d and d >= (D.despawnDistance or 30.0)
+  if far and not JL.leaving.dumped then   -- v0.76 DEBUG: one dump the first time we'd despawn "far"
+    JL.leaving.dumped = true; pcall(function() jlDumpState("leavingTick:FAR despawn d=" .. tostring(d)) end)
+  end
   if far or (JL.leaving.deadline and now >= JL.leaving.deadline) then
+    JL.leaving.dumped = nil
     setCompanionFlag(false)   -- v0.72: he's finished walking off and despawned -> intent over
     ammDespawn(sp)
     pcall(hideSubtitle)                                  -- never leave the parting line on screen
@@ -3735,6 +3747,40 @@ function companionFlagSet()
   return ok and v == 1
 end
 
+-- v0.76 DEBUG: dump Jackie's full runtime state to the console (bound to a CET button + called at the
+-- start/end of the dismiss walk-away so we can see WHY he vanishes). Global (no main-chunk local -> cap safe).
+-- Reports, for each system's entity: handle validity, world position, live distance to V, AMM companion
+-- caching + whether an AI role is attached — so a bogus position read or a stale handle is obvious.
+function jlDumpState(tag)
+  local function fmt(v) if not v then return "nil" end
+    local ok, s = pcall(function() return string.format("(%.1f,%.1f,%.1f)", v.x, v.y, v.z) end)
+    return ok and s or "?" end
+  local pp = playerPos()
+  local function info(sp)
+    if not sp then return "spawn=nil" end
+    if not sp.handle then return "spawn set, handle=NIL id=" .. tostring(sp.id) end
+    local jp; pcall(function() jp = sp.handle:GetWorldPosition() end)
+    local d = (pp and jp) and dist3(pp, jp) or nil
+    local comp, role
+    pcall(function() comp = sp.handle.isPlayerCompanionCached end)
+    pcall(function() role = (sp.handle:GetAIControllerComponent():GetAIRole() ~= nil) end)
+    return string.format("handle=ok pos=%s dist=%s companionCached=%s hasRole=%s",
+      fmt(jp), d and string.format("%.1f", d) or "nil", tostring(comp), tostring(role))
+  end
+  log("==== JACKIE STATE [" .. tostring(tag) .. "] ====")
+  log("V=" .. fmt(pp))
+  log("summon: active=" .. tostring(JL.summon.active) .. " companionSet=" .. tostring(JL.summon.companionSet)
+      .. " walkIn=" .. tostring(JL.summon.walkIn) .. " | " .. info(JL.summon.spawn))
+  log("idle: locKey=" .. tostring(JL.idle.locationKey) .. " | " .. info(JL.idle.spawn))
+  log("phases: varrival=" .. tostring(JL.varrival.phase) .. " leaving=" .. tostring(JL.leaving.phase)
+      .. " dinner=" .. tostring(JL.dinner.phase))
+  local flag; pcall(function() flag = companionFlagSet() end)
+  log("saveFlag=" .. tostring(flag) .. " catchUp=" .. tostring(Config.catchUp and Config.catchUp.enabled)
+      .. " follow=" .. tostring(Config.follow and Config.follow.enabled)
+      .. " persist=" .. tostring(Config.persist and Config.persist.enabled))
+  log("=====================================")
+end
+
 -- Bring Jackie back at V's side (the same instant AMM companion spawn `summonJackie` uses). Clears
 -- any stale/culled spawn first so we never leak or double up. The onUpdate promote block applies the
 -- follower role next frame; armCompanionTimer re-arms the duration clock fresh.
@@ -4193,6 +4239,8 @@ registerForEvent("onDraw", function()
   if ImGui.Button("Summon Jackie (companion)") then summonJackie() end
   ImGui.SameLine()
   if ImGui.Button("Dismiss Jackie") then dismissJackie() end
+  ImGui.SameLine()
+  if ImGui.Button("Dump state (console)") then pcall(function() jlDumpState("manual button") end) end   -- v0.76 DEBUG
   -- v0.72 companion-persistence readout: the saved "is companion" fact survives save/load, so this
   -- should read ON while he's with you and OFF after a dismiss/walk-off. Reload with it ON -> he
   -- respawns at V. "Clear saved flag" is a test escape hatch (clears the fact without despawning).

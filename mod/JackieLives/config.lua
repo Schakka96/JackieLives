@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.75"
+Config.version = "0.76"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -158,6 +158,8 @@ Config.dismiss = {
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
+  graceSeconds    = 3.0,     -- v0.76: ignore the "reached distance" despawn for this long after dismiss, so a
+                             -- bogus first-tick position read can't insta-despawn him at V's feet (see TODO bug 2c)
 }
 
 -- ---- main-quest "excuse himself" exit (v0.62) ----------------------------
@@ -225,7 +227,7 @@ Config.catchUp = {
 -- raise it or set enabled=false if he ever looks jittery). Only runs while he's a settled companion.
 Config.follow = {
   enabled  = true,
-  distance = 2.5,    -- metres he keeps behind V (your "<4 m" ask, with clip margin)
+  distance = 1.3,    -- metres he keeps behind V (Antonia's tuned default, 2026-07-01)
   interval = 1.5,    -- seconds between follow re-asserts
   movement = "Run",  -- "Walk" | "Run" | "Sprint" — how he closes the gap when he drifts back
 }
