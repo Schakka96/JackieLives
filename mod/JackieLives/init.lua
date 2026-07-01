@@ -1562,6 +1562,10 @@ local function withCompanionExtras(choices)
   if not JL.summon.active then return choices end
   if bstate.tree == Config.callTree then return choices end                 -- not on a call
   if Config.date and bstate.tree == Config.date.tree then return choices end -- and not mid-date (no recursion)
+  -- v0.83: NEVER offer "Head home, Jackie" during a dinner outing — dismissing a SEATED puppet (role
+  -- cleared, in a sit workspot) doesn't stand him up and crashes the game. The dinner "Enough chillin',
+  -- let's go" option (seatedTree) is the safe way to end the outing.
+  if JL.dinner.phase then return choices end
   -- v0.81: dinner invite + "Head home, Jackie" only appear on the tree's START node (the MAIN talk). Once
   -- V dives into a sub-branch the convo just plays out and closes; to dismiss/invite again she reopens the
   -- conversation. Keeps sign-off branches clean and dismiss out of every follow-up node.
@@ -1608,17 +1612,26 @@ local function withDateChoices(node, choices)
 end
 
 local function openChoiceMenu(choices, title)
-  -- v0.81: a choice may carry a `textPool` (array of V lines) -> display a RANDOM one, re-rolled every
-  -- time the menu opens (just like Jackie's jackiePool replies shuffle). Stops sign-offs sounding canned.
+  -- Per-choice options, resolved once each time the menu opens:
+  --  • v0.83 `chance` (0..1): the choice only APPEARS with that probability (re-rolled per open) — used
+  --    for the random "get it off your chest" dinner topics. A choice with no `chance` always shows.
+  --  • v0.81 `textPool` (array): display a RANDOM line from it (like Jackie's jackiePool replies shuffle).
+  local shown = {}
   for _, c in ipairs(choices or {}) do
-    if c.textPool and #c.textPool > 0 then
-      local i = 1; pcall(function() i = math.random(1, #c.textPool) end)
-      c.text = c.textPool[i]
+    local appear = true
+    if c.chance then local r = 1.0; pcall(function() r = math.random() end); appear = (r < c.chance) end
+    if appear then
+      if c.textPool and #c.textPool > 0 then
+        local i = 1; pcall(function() i = math.random(1, #c.textPool) end)
+        c.text = c.textPool[i]
+      end
+      shown[#shown + 1] = c
     end
   end
-  menu.choices, menu.sel, menu.title = choices, 1, title or "Jackie"
+  if #shown == 0 then shown = choices end   -- safety: never open an empty menu
+  menu.choices, menu.sel, menu.title = shown, 1, title or "Jackie"
   menu.shown, Branch.open = true, true
-  log("Branch: menu open (" .. tostring(#choices) .. " choices). Cycle key=move, F=select.")
+  log("Branch: menu open (" .. tostring(#shown) .. " choices). Cycle key=move, F=select.")
 end
 
 local function closeChoiceMenu()
@@ -1712,6 +1725,10 @@ end
 -- place with its own tree (noodle/coyote/afterlife/misty...), use that; otherwise fall back
 -- to the short `everywhere` tree. Returns tree, key. Never nil if Config.locationDialogue.everywhere exists.
 local function currentTalkTree()
+  -- v0.83: seated at dinner -> casual small-talk tree (no dismiss; "Enough chillin'..." stands him up).
+  if JL.dinner.phase == "seated" and Config.date and Config.date.seatedTree then
+    return Config.date.seatedTree, "_dinner"
+  end
   local ld = Config.locationDialogue
   if ld then
     local key = JL.idle.locationKey                 -- nil when summoned/following or unscheduled
@@ -1893,6 +1910,12 @@ local function runCallAction(name)
   end
   if type(name) == "string" and name:sub(1, 5) == "dine:" then   -- v0.41: V picked a restaurant
     pcall(function() startDinnerWalk(name:sub(6)) end)
+    return
+  end
+  if name == "dinner_leave" then   -- v0.83: "Enough chillin', let's go" — after his reply, get up + re-follow.
+    -- dinnerTick's `seated` phase owns the stand-up (it has the workspot/collision helpers). We just flag
+    -- it; the flag also tells it NOT to re-speak getUpText (the seatedTree already said his parting line).
+    JL.dinner.leaveNow = true
     return
   end
   if name == "date_accept" then   -- legacy (pre-v0.41 date tree); harmless
@@ -3367,17 +3390,21 @@ local function dinnerTick()
   end
 
   if D.phase == "seated" then
-    -- V walks off -> Jackie gets up, says a line, and re-joins as companion (stays JL.summon.active).
+    -- He stands up + re-joins as companion (stays JL.summon.active) when EITHER V walks off (>getUpRadius)
+    -- OR V ends the seated small-talk with "Enough chillin', let's go" (v0.83: D.leaveNow set by the action).
     local jp; pcall(function() jp = h:GetWorldPosition() end)
-    if pp and jp and dist3(pp, jp) >= (C.getUpRadius or 10.0) then
+    local viaMenu = D.leaveNow == true
+    if viaMenu or (pp and jp and dist3(pp, jp) >= (C.getUpRadius or 10.0)) then
+      D.leaveNow = nil
       pcall(function() stopWorkspotPose(h) end)
       setNpcCollision(h, true)                          -- v0.44: restore collision before he follows again
       D.collisionOff = false
-      pcall(function() speakJackieLine(C.getUpText, C.getUpSfx) end)
+      -- the menu path already spoke his parting line (seatedTree `leave` node) — don't double it up
+      if not viaMenu then pcall(function() speakJackieLine(C.getUpText, C.getUpSfx) end) end
       pcall(promoteToCompanion)                         -- re-add follower role + follow (also re-enables collision)
       D.phase, D.dest, D.satAt, D.seatDeadline, D.sitFireAt = nil, nil, nil, nil, nil
       JL.ui.status = "Jackie's back with you."
-      log("Dinner: V left; Jackie up + following again.")
+      log("Dinner: " .. (viaMenu and "'let's go' chosen" or "V left") .. "; Jackie up + following again.")
     end
     return
   end

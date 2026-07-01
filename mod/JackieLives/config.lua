@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.82"
+Config.version = "0.83"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -330,6 +330,83 @@ Config.date = {
       decline = {
         jackie  = { text = "Why, what's the rush?", sfx = "jl_1989527454849245184" },
         choices = { { text = "(Maybe next time.)", to = nil } },
+      },
+    },
+  },
+
+  -- v0.83: SEATED small-talk tree — used ONLY while Jackie is seated at dinner (JL.dinner.phase ==
+  -- "seated"; wired via currentTalkTree). Casual banter + a few random-chance "get it off your chest"
+  -- topics (each choice carries a `chance`, re-rolled every time the menu opens, so the options vary).
+  -- No dismiss option here (that crashes a seated puppet). "Enough chillin'..." runs action "dinner_leave"
+  -- AFTER his reply, which makes him stand + re-join as your companion (dinnerTick handles the stand-up).
+  -- These lines are text-only (no sfx yet) — they play the fallback grunt + subtitle on the mute build;
+  -- wire real jl_ clips later. Add/reword topics freely; every topic path ends back at "open" or "leave".
+  seatedTree = {
+    start = "open",
+    nodes = {
+      open = {
+        jackiePool = {
+          { text = "Man, this hits the spot. No gigs, no gunfire — just us." },
+          { text = "Could get used to this quiet-life thing, y'know?" },
+          { text = "Good to just sit a minute, huh, chica?" },
+          { text = "Anyway... what's on your mind, V?" },
+        },
+        choices = {
+          { text = "You ever miss the merc life, Jackie?",        to = "merc",      chance = 0.6 },
+          { text = "This city's been grindin' me down lately.",   to = "nightcity", chance = 0.6 },
+          { text = "Think Arasaka ever pays for what they did?",  to = "arasaka",   chance = 0.5 },
+          { text = "How're things with you and Misty?",           to = "misty",     chance = 0.6 },
+          { text = "Enough chillin', let's get movin'.",          to = "leave" },
+        },
+      },
+      merc = {
+        jackiePool = {
+          { text = "Miss it? Some days. The rush, the crew... but it took more than it gave, V. You know that better'n anyone." },
+          { text = "The life? Nah. The good runs, maybe. Not the endings — we both seen how those go." },
+        },
+        choices = {
+          { text = "Yeah. We made it out, though.", to = "open"  },
+          { text = "Let's get movin'.",             to = "leave" },
+        },
+      },
+      nightcity = {
+        jackiePool = {
+          { text = "Night City don't care if you live or die, chica. All you can do is find your people and hold on tight." },
+          { text = "This town chews everybody up. Trick's not lettin' it swallow ya whole. You got me, I got you — that's the trick." },
+        },
+        choices = {
+          { text = "Guess that's enough.", to = "open"  },
+          { text = "Let's get movin'.",    to = "leave" },
+        },
+      },
+      arasaka = {
+        jackiePool = {
+          { text = "'Saka? Heh. Big fish like that never pays, V. But we're still breathin' and they don't know our names. That's a win." },
+          { text = "Corpo rats always land on their feet. Best revenge's livin' good — like right now, full plate in front of us." },
+        },
+        choices = {
+          { text = "Livin' good. I'll drink to that.", to = "open"  },
+          { text = "Let's get movin'.",                to = "leave" },
+        },
+      },
+      misty = {
+        jackiePool = {
+          { text = "Misty's my anchor, V. Keeps me lookin' up when I wanna look down. Dunno what I'd be without her." },
+          { text = "Me an' Misty? Solid. She reads them cards, says the stars got a plan. I just tell her she's my plan." },
+        },
+        choices = {
+          { text = "She's good for you.", to = "open"  },
+          { text = "Let's get movin'.",   to = "leave" },
+        },
+      },
+      leave = {
+        -- terminal (no choices) + action -> after his line, dinnerTick stands him up + re-follows.
+        jackiePool = {
+          { text = "Heh, alright. Let's roll, chica." },
+          { text = "Yeah, we got a city to look after. Vamonos." },
+          { text = "Right behind ya, hermano. Let's move." },
+        },
+        action = "dinner_leave",
       },
     },
   },

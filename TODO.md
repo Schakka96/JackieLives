@@ -2,9 +2,10 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
-> 📋 **Companion backlog & next-session plan:** see `List_of_companion_issues.md` (5-session division
-> for the unsolved companion issues — persistence/save, walk-away, dinner pathing, sit-coord persistence,
-> dialogue/subtitle polish). Created 2026-06-23.
+> 📋 **Companion backlog:** `List_of_companion_issues.md` was RESOLVED + MERGED into this file on
+> 2026-07-01 (v0.83) and deleted (git history keeps it). Done items: sticky subtitles (v0.80), no-(Leave)
+> auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
+> **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
 ### 🐞 START HERE next session (updated 2026-07-01, end of session) — NEXT SESSION = BUG-FIXING SPRINT
 Antonia: "We have a ton of bugs on our hands. For the next session we have to start fixing those."
@@ -128,6 +129,50 @@ What's DONE vs what's BROKEN:
   parked broken v0.67 — do NOT sync until the mute release unparks. Version = **0.75**, git clean + pushed.
   ⚠️ A second Claude session commits to this SAME repo (it did v0.73) — always `git fetch` first.
 
+### 📋 Companion backlog (merged 2026-07-01 from `List_of_companion_issues.md`, now deleted)
+The old 5-session backlog file was resolved + folded in here. **Resolved:** S1 persistence (v0.72/0.79/0.82),
+S5 sticky subtitles (v0.80) + no-(Leave) auto-close (v0.81), S2 walk-off-from-live-V-coords (v0.77/0.78
+retreat-follow). **Still open, grouped by area:**
+
+**🪑 Sitting positions & venues (Antonia does the coord capture; Claude wires it):**
+- [ ] **FIX THE SITTING POSITIONS MANUALLY (Antonia).** Several dinner/idle seats are off (wrong spot/height/
+      facing). Antonia will walk Jackie to each venue, use the in-game seat tuner to line him up, and send the
+      printed coords; Claude bakes them into `Config.date.restaurants` / `Config.locations`. **Blocked on**
+      the sit-coords-don't-persist bug below (the tuner's values must survive a reload to be usable).
+- [ ] **Sit coords don't persist on reload (old S4).** The in-game seat slider prints new coords to Lua but
+      the mod re-reads the OLD `Config` values on reload — a write-back step is missing. Add a write-back
+      (CET state file or a dedicated coords file) + make the re-seat path read the live value, so tuner
+      adjustments survive a reload and apply immediately. (Enables the manual fix above.)
+- [ ] **Venue interiors break the game (old S3), e.g. Lizzie's.** He tries to path INTO an interior and it
+      breaks. Keep every dinner seat at an exterior-reachable spot that never triggers an interior load; gate
+      any must-be-interior venue out of the picker until proven stable.
+
+**🍽️ Dinner outing polish (old S3):**
+- [ ] **Walk abreast, not trailing.** On the way to dinner Jackie should walk slightly ahead / right beside V
+      (offset from V's forward vector + small right offset), not behind on the long companion leash.
+
+**🚶 Walk-off / departure (old S2 leftovers):**
+- [ ] **Interrupt the walk-off for dinner.** If his timer expires and he's walking away, talking to him about
+      dinner should STOP the walk-off (halt the move + face V) and route into the dinner flow; otherwise the
+      sign-off lets him continue. During the walk-away the ONLY options should be the dinner invite + a
+      sign-off. (Partially eased by v0.78 retreat-follow, but the "stop & accept dinner" interrupt isn't built.)
+
+**💬 Dialogue content (old S5 leftover):**
+- [ ] **Lizzie's-entrance one-liner tree.** When Jackie idles at the spot near Lizzie's entrance, V gets ONE
+      option — *"Jackie, what you doin' here??"* — and he replies with one of the 2 "don't come here often"
+      lines, then a laugh WWise event right after. Add as a location-specific tree keyed to that idle spot.
+
+**🐞 NEW BUG (2026-07-01) — dinner dismiss crash → FIXED in v0.83 (interim done):**
+- [x] **Dismissing Jackie WHILE SEATED at dinner crashed the game** (he didn't get up; crash after a beat).
+      Cause: the seated puppet has its role cleared + is locked in a sit workspot, so `startLeaving` couldn't
+      move him. **v0.83 removed the "Head home, Jackie" option during any dinner outing** (`withCompanionExtras`
+      now bails when `JL.dinner.phase` is set); use the new seated **"Enough chillin', let's go"** (stands him
+      up + re-follows) to end a dinner. [ ] TEST: at dinner, confirm there's NO "Head home" option and the
+      game doesn't crash; ending via "let's go" works.
+
+**🔧 Open decision (old S1):** default arrival = **bike** — confirm it holds up now that arrival is more
+robust, or revert to foot (`Config.call.arrivalMethod`).
+
 ### ▶️ Older OPEN verification tasks (still awaiting in-game test)
 - [ ] **TEST: Companion catch-up teleport (v0.66, NEW).** While Jackie is a SETTLED companion (arrived,
       not dismissed), **FAST-TRAVEL** away (or sprint >25 m off) and confirm he **teleports to V's side**
@@ -152,7 +197,28 @@ What's DONE vs what's BROKEN:
       Optional: give the main-quest exit a DEDICATED VO line (`Config.mainQuestExit`, currently the send-off line).
 - [ ] **Safety dismount (v0.62):** on a bike arrival where he used to stay seated, confirm the
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
-- [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
+- [x] Housekeeping: `List_of_companion_issues.md` resolved + merged into this file and deleted (v0.83).
+
+## 🆕 v0.83 — dinner SEATED small-talk tree + dinner-dismiss crash fix (2026-07-01, awaiting in-game test)
+Two conversation fixes in the dinner area (config.lua tree + small init.lua wiring).
+- **Seated small-talk tree.** While Jackie is SEATED at dinner (`JL.dinner.phase == "seated"`), talking to
+  him now uses a dedicated `Config.date.seatedTree` (wired via `currentTalkTree`) instead of the generic
+  companion tree: casual openers (`jackiePool`) + a few **random-chance** "get it off your chest" topics —
+  merc life, Night City, Arasaka, Jackie & Misty. Each topic choice carries a `chance` (new per-choice
+  field, re-rolled every menu open via `openChoiceMenu`), so the options vary each time.
+- **"Enough chillin', let's go" → stand up + re-follow.** A always-present sign-off runs action
+  `dinner_leave`, which (after his reply line) sets `JL.dinner.leaveNow`; `dinnerTick`'s seated phase then
+  runs the SAME stand-up + `promoteToCompanion` path it already used when V walks away — so he gets up and
+  re-joins as companion. Clean reuse of tested code; no new movement logic.
+- **Dinner-dismiss CRASH fixed.** `withCompanionExtras` now bails whenever `JL.dinner.phase` is set, so the
+  "Head home, Jackie" option no longer appears during a dinner outing. Dismissing a seated (role-cleared,
+  workspot-locked) puppet was the crash. End a dinner with "let's go" instead. (See the backlog NEW BUG item.)
+- New dinner lines are **text-only** (no sfx yet) → fallback grunt + subtitle on the mute build; wire real
+  `jl_` clips later. Zero new top-level locals; both files compile clean. Version 0.82 → **0.83**.
+- [ ] **TEST:** start a dinner → once he's SEATED, talk to him → you get casual small talk + varying topic
+      options (NOT the "Head home" dismiss). Pick a topic → he gives a thoughtful reply. Pick "Enough
+      chillin', let's go" → he says a line, **stands up, and follows again** (no crash). Re-open a few times
+      → the topic options vary. Confirm dismissing at dinner is impossible (no crash).
 
 ## 🆕 v0.82 — POLISH: no pop-in / no wall-clip on the fast-travel respawn (2026-07-01, awaiting in-game test)
 **Follows v0.79 (which fixed the actual "stranded 1994 m" bug — CONFIRMED FIXED in-game by Antonia).**
