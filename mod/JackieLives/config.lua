@@ -158,8 +158,6 @@ Config.dismiss = {
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
-  reissueInterval = 0.6,     -- v0.73: how often leavingTick re-asserts the away move. Lower = he wins
-                             -- the tug-of-war vs any residual follow faster (was a hard-coded 1.5 s).
 }
 
 -- ---- main-quest "excuse himself" exit (v0.62) ----------------------------
