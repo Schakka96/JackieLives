@@ -3789,56 +3789,6 @@ function companionPersistTick()
   respawnCompanionAtV()
 end
 
--- ===========================================================================
--- TUTORIAL-POPUP PROBE (v0.74, TEMPORARY) — the native lower-left popup push in retrieval.lua falls
--- back to the blue band on the live build, and I can't observe why from the dev machine. The game's
--- own popupManager.script confirms the recipe (UIGameData blackboard: set Popup_Settings + Popup_Data
--- structs -> a DELAYED listener on Popup_Data fires ShowTutorial), so the failure is in HOW CET
--- marshals the structs into the variant. Each variant below tries a different marshalling; run them
--- in-game and report which shows a LOWER-LEFT popup. Every step logs pass/fail so a total failure
--- still tells us the exact line. Delete this + the window buttons once the winner is baked in.
--- ===========================================================================
-function jlPopupProbe(variant)
-  local typed   = (variant ~= 1)     -- V1 untyped ToVariant; the rest pass the explicit struct type
-  local useNew  = (variant == 5)     -- V5 builds the structs with NewObject() instead of .new()
-  local signal  = (variant == 3)     -- V3 also SignalVariant(Popup_Data) after setting it
-  local isShown = (variant == 4)     -- V4 also raises Popup_IsShown before setting the data
-  local steps = {}
-  local function step(name, fn)
-    local ok, err = pcall(fn)
-    steps[#steps + 1] = name .. (ok and " OK" or (" ERR<" .. tostring(err) .. ">"))
-    return ok
-  end
-  local defs, bb, data, settings, vd, vs
-  step("defs",     function() defs = GetAllBlackboardDefs() end)
-  step("bb",       function() bb = Game.GetBlackboardSystem():Get(defs.UIGameData) end)
-  step("fields",   function()
-    assert(defs.UIGameData.Popup_Data,     "Popup_Data field nil")
-    assert(defs.UIGameData.Popup_Settings, "Popup_Settings field nil")
-  end)
-  step("mk data",  function() data     = useNew and NewObject("gamePopupData")     or gamePopupData.new() end)
-  step("mk set",   function() settings = useNew and NewObject("gamePopupSettings") or gamePopupSettings.new() end)
-  step("fill",     function()
-    data.title   = "Jackie Lives — popup probe V" .. tostring(variant)
-    data.message = "If you can read THIS in the lower-left, variant " .. tostring(variant) .. " works."
-    pcall(function() data.isModal = false end)
-    settings.position     = (gamePopupPosition and gamePopupPosition.LowerLeft) or 3
-    settings.closeAtInput = true
-    settings.pauseGame    = false
-    settings.hideInMenu   = true
-    settings.fullscreen   = false
-  end)
-  step("toVariant", function()
-    if typed then vs = ToVariant(settings, "gamePopupSettings"); vd = ToVariant(data, "gamePopupData")
-    else          vs = ToVariant(settings);                      vd = ToVariant(data) end
-  end)
-  step("set Settings", function() bb:SetVariant(defs.UIGameData.Popup_Settings, vs, true) end)
-  if isShown then step("set IsShown", function() bb:SetBool(defs.UIGameData.Popup_IsShown, true, true) end) end
-  step("set Data",     function() bb:SetVariant(defs.UIGameData.Popup_Data, vd, true) end)
-  if signal then step("signal Data", function() bb:SignalVariant(defs.UIGameData.Popup_Data) end) end
-  log("[PopupProbe V" .. tostring(variant) .. "] " .. table.concat(steps, " | "))
-end
-
 registerForEvent("onInit", function()
   pcall(function() math.randomseed((os.time and os.time() or 0)) end)  -- v0.36: random day-bag shuffle
   getAMM()
@@ -4289,17 +4239,6 @@ registerForEvent("onDraw", function()
       "tip + Badlands pin -> Rocky Ridge garage -> shard -> ~1s -> unlock (Phases 3-4 add call/arrival/reunion).")
   end
 
-  ImGui.Separator()
-  -- v0.74 TEMP: find the CET marshalling the native lower-left popup actually accepts on this build.
-  if ImGui.CollapsingHeader("Tutorial popup probe (TEMP — find the working call)") then
-    ImGui.TextWrapped("Click each button, then tell me which one makes a popup appear in the LOWER-LEFT " ..
-      "(the real tutorial card), NOT the blue band. The console logs every step's OK/ERR for each variant.")
-    if ImGui.Button("V1 untyped")        then jlPopupProbe(1) end
-    ImGui.SameLine(); if ImGui.Button("V2 typed") then jlPopupProbe(2) end
-    ImGui.SameLine(); if ImGui.Button("V3 typed+signal") then jlPopupProbe(3) end
-    if ImGui.Button("V4 typed+IsShown")  then jlPopupProbe(4) end
-    ImGui.SameLine(); if ImGui.Button("V5 NewObject")     then jlPopupProbe(5) end
-  end
 
   ImGui.Separator()
   -- v0.63: BIKE-MODEL TEST — find the spawn method that reliably gives Jackie's REAL Arch. Each

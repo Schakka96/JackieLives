@@ -58,20 +58,23 @@ M.Config = {
     succeededOnly = true,     -- true = require Succeeded; false = Active-or-later also ok
   },
 
-  -- Vik's tip line (delivered via the tutorial popup if bound, else on-screen msg).
-  tipTitle    = "A message from Vik",
-  tipText     = "Oh — you didn't hear? Jackie made it out. Vik patched him up and got "
-              .. "him clear of the city before Arasaka came lookin'. He's layin' low out "
-              .. "in the Badlands. Sendin' you the coordinates — go find him.",
+  -- Vik's tip — the reveal, shown as the lower-left tutorial popup when V returns to the clinic.
+  tipTitle    = "Viktor Vektor",
+  tipText     = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
+              .. "my table that night. I got a pulse back, called in a favor, and moved him out "
+              .. "before Arasaka came lookin' for the body. He's alive, V. Layin' low out in the "
+              .. "Badlands — and it's gotta stay that way. He's been waitin' on you. I'm markin' "
+              .. "the spot on your map. Go bring him home.",
   tipDuration = 10.0,
 
-  -- The info-shard contents, read on reaching the hideout (one on-screen block for MVP).
-  shardTitle  = "[ SHARD — Jackie Welles ]",
+  -- Jackie's note — read on reaching the Badlands hideout (Rocky Ridge garage).
+  shardTitle  = "Shard — Jackie Welles",
   shardLines  = {
-    "If you're readin' this, mano, then you found me. Yeah. I made it.",
-    "Vik patched me up and smuggled me out before 'Saka came knockin'.",
-    "I'm done with the merc life, V — Mama Welles'd kill me herself if I wasn't.",
-    "Sit tight. I'm comin' out to see you.",
+    "If you're readin' this, mano, then the doc kept his word and you made it out here. It's me. I'm alive.",
+    "Vik patched me up and smuggled me out 'fore 'Saka could stamp my name on a slab. Been layin' low ever since.",
+    "Mama Welles won't let me run the streets again — and this time, maybe she's got the right of it.",
+    "I'm done with the merc life, V. For real. But I couldn't let you go on thinkin' you buried me.",
+    "Sit tight, hermano. I'm comin' out to see you. — Jackie",
   },
   shardDuration = 12.0,
 
@@ -156,9 +159,12 @@ local function tutorialPopup(title, text)
     pcall(function() settings.hideInMenu   = true end)
     pcall(function() settings.fullscreen   = false end)
 
-    bb:SetVariant(defs.UIGameData.Popup_Settings, ToVariant(settings), true)
-    bb:SetVariant(defs.UIGameData.Popup_Data,     ToVariant(data),     true)
-    bb:SignalVariant(defs.UIGameData.Popup_Data)
+    bb:SetVariant(defs.UIGameData.Popup_Settings, ToVariant(settings, "gamePopupSettings"), true)
+    bb:SetVariant(defs.UIGameData.Popup_Data,     ToVariant(data,     "gamePopupData"),     true)
+    -- NO SignalVariant here: popupManager.script registers a DELAYED listener on Popup_Data, so the
+    -- SetVariant above already fires ShowTutorial() next frame. On the live build SignalVariant THREW,
+    -- which failed this whole pcall and (wrongly) fell back to the blue band even though the popup had
+    -- shown. The v0.74 in-game probe confirmed all marshalling variants render the same lower-left card.
   end)
   if not ok then log("tutorial popup push failed -> falling back to on-screen band") end
   return ok

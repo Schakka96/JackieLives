@@ -6,24 +6,38 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > for the unsolved companion issues — persistence/save, walk-away, dinner pathing, sit-coord persistence,
 > dialogue/subtitle polish). Created 2026-06-23.
 
-### ⭐ START HERE next session (updated 2026-07-01, end of session) — everything below is DEPLOYED (v0.74) + PUSHED, awaiting Antonia's in-game test on the Windows rig
-1. **Tutorial popup is NOT working yet — run the probe.** CET window → "Tutorial popup probe (TEMP)" →
-   click **V1..V5**. Report which variant shows a real **lower-left** popup (not the blue band) + paste
-   the `[PopupProbe V#]` console lines. Then bake the winner into `retrieval.lua` `tutorialPopup()` and
-   **delete the probe** (the `jlPopupProbe` global + the window header). Full context: the **v0.74**
-   section below. The recipe is confirmed against the game's own `popupManager.script`; only the CET
-   struct→variant marshalling is unknown. (Antonia offered the Dark Future source as a backup reference.)
-2. **Test companion PERSISTENCE (v0.72).** Summon Jackie → CET shows "Saved companion flag: ON" →
-   hard-save + reload → he should respawn at V within ~3 s (console `Persist: ... respawned him at V`).
-   Dismiss → flag off → reload → stays gone. Also fast-travel-while-companion. See the **v0.72** section.
-3. **Test the v0.69 regression fixes (bundled into v0.72):** Esc→Settings toggles now persist across a
-   reload; the "Go Home Jackie" recovery button works again.
-4. **Then implement:** persist the companion **timer** too (not just the boolean) — spec in the v0.72
-   section's TODO bullet. Low risk, slots into `companionPersistTick` + `armCompanionTimer`.
-- Housekeeping when convenient: `getTalkTarget` + `Config.probeNativePhone` are known-harmless dead
-  leftovers (remove on a future sweep). `staging/` is still the parked broken v0.67 — do NOT sync it
-  until the mute release unparks. Current version = **0.74**. Git is clean + pushed to origin/main.
-  ⚠️ A second Claude session also commits to this same repo (it did v0.73) — always `git fetch` first.
+### 🐞 START HERE next session (updated 2026-07-01, end of session) — NEXT SESSION = BUG-FIXING SPRINT
+Antonia: "We have a ton of bugs on our hands. For the next session we have to start fixing those."
+v0.75 is DEPLOYED + PUSHED. What's DONE vs what's BROKEN:
+
+**✅ Working now (v0.75):**
+- **Tutorial popup FIXED.** All 5 probe variants rendered the same lower-left card, so the culprit was the
+  `SignalVariant` call throwing (it made the whole push report failure → blue-band fallback). Baked the
+  clean version into `retrieval.lua` `tutorialPopup()` — typed `ToVariant`, **no SignalVariant** (the
+  popupManager's DELAYED listener fires on `SetVariant` alone). **Probe fully removed** (`jlPopupProbe` +
+  window header gone).
+- **Both shard messages written** (`retrieval.lua` Config): Vik's reveal (`tipText`, title "Viktor
+  Vektor") + Jackie's Rocky Ridge note (`shardLines`, title "Shard — Jackie Welles"). In-character;
+  tweak the prose freely.
+
+**🐞 KNOWN BUGS — fix these next session (highest first):**
+1. **CRASH: companion persistence across a load.** The v0.72 auto-respawn (`companionPersistTick` →
+   `respawnCompanionAtV`) **crashes the game on load**. → **Mitigated for now: `Config.persist.enabled =
+   false`** so the build is stable (fact-tracking still runs; only auto-bring-him-back is off). FIX:
+   almost certainly `ammSpawn` firing too early / into a not-fully-streamed world, or an AMM call before
+   AMM re-inits post-load. Try a much longer/whole-frame-safe startup gate, verify AMM-ready + player
+   fully in-world before spawning, or switch to a MANUAL "he's back" trigger. See `config.lua`
+   `Config.persist` warning + init.lua `companionPersistTick`/`respawnCompanionAtV`.
+2. **Jackie despawns/respawns when V LOOKS AT him after a fast-travel.** Reported again; it's in
+   `List_of_companion_issues.md` (Session 1 cluster / catch-up). May be `catchUpTick`'s teleport fighting
+   the look-at/talk system, or the (now-disabled) persist respawn — re-check whether disabling persist
+   (#1) changed it. Reproduce: be a companion → fast-travel → look straight at Jackie.
+3. **The rest of the bug pile** — go through `List_of_companion_issues.md` (Sessions 1–5) + the many older
+   "awaiting test" items below; Antonia to prioritise which bugs bite most in play.
+- Then (once #1 is stable): finish **persisting the companion TIMER** (spec in the v0.72 section).
+- Housekeeping: `getTalkTarget` + `Config.probeNativePhone` are harmless dead leftovers. `staging/` is the
+  parked broken v0.67 — do NOT sync until the mute release unparks. Version = **0.75**, git clean + pushed.
+  ⚠️ A second Claude session commits to this SAME repo (it did v0.73) — always `git fetch` first.
 
 ### ▶️ Older OPEN verification tasks (still awaiting in-game test)
 - [ ] **TEST: Companion catch-up teleport (v0.66, NEW).** While Jackie is a SETTLED companion (arrived,
@@ -122,6 +136,18 @@ authoritative state that rides inside the save.
       persistence respawn set `JL.summon.companionExpiresGame` from that fact instead of re-arming. Watch
       the int32 range (in-game seconds can get large on long saves — store remaining-seconds-from-now if it
       overflows). Low risk; slots straight into `companionPersistTick` + `armCompanionTimer`.
+
+## 🆕 v0.75 — tutorial popup FIXED + both shard messages written; persistence DISABLED (crashes on load) (2026-07-01)
+- **Popup fixed.** Probe result: all 5 variants gave the same lower-left window → the original failure was
+  the `SignalVariant` call throwing (failing the pcall → blue-band fallback). `retrieval.lua`
+  `tutorialPopup()` now does typed `ToVariant` + `SetVariant` for Popup_Settings/Popup_Data and **no
+  SignalVariant** (the popupManager listener is delayed and fires on the SetVariant). Probe removed.
+- **Shard text written** (`retrieval.lua`): `tipTitle`/`tipText` = Vik's reveal ("Viktor Vektor"),
+  `shardTitle`/`shardLines` = Jackie's Rocky Ridge note. Both in-character; edit prose to taste.
+- **⚠️ Companion persistence (v0.72) DISABLED** — `Config.persist.enabled = false` — because the
+  respawn-on-load **crashes the game**. Fact-tracking still runs; only auto-respawn is off. See the
+  START-HERE bug list at the top; this is the #1 fix for next session.
+- Version 0.74 → **0.75**. All three files compile clean (`luajit -bl`), still under the 200-local cap.
 
 ## 🆕 v0.74 — tutorial popup NOT working yet → in-game PROBE to find the right CET call (2026-07-01)
 The v0.71 native-popup push still falls back to the **blue band** on the live build. Root-caused as far

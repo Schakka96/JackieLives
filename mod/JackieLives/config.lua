@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.74"
+Config.version = "0.75"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -187,11 +187,18 @@ Config.companion = {
 -- if it says "companion" but no live Jackie exists — a fresh load wiped the runtime state, or a
 -- load-screen fast-travel culled his body (the case Config.catchUp can't recover) — it re-spawns and
 -- re-promotes him at V's side. Set enabled=false to go back to "he's gone after a reload".
+-- ⚠️ v0.74: enabled=false FOR NOW. The auto-respawn-on-load (companionPersistTick -> respawnCompanionAtV)
+-- CRASHES the game across a load on the live build — almost certainly ammSpawn firing too early / into a
+-- not-fully-streamed world, or an AMM call before AMM has re-initialised post-load. Disabled so the build
+-- is stable to keep testing everything else; the fact-tracking (setCompanionFlag on promote/dismiss) still
+-- runs, so nothing is lost — only the automatic bring-him-back is off. TOP bug to fix next session (see
+-- TODO v0.75): much longer/whole-frame-safe startup gate, verify AMM ready + player fully in-world before
+-- spawning, and consider a manual "he's back" trigger instead of an automatic one. Flip to true once safe.
 Config.persist = {
-  enabled       = true,
-  startupGrace  = 2.0,   -- s after load before we act, so we never spawn into a loading screen
-  gapSustain    = 1.5,   -- s the "should be here but isn't" condition must hold (rides out stream hiccups)
-  cooldown      = 5.0,   -- s between respawn attempts (also covers the spawn->promote resolve window)
+  enabled       = false,  -- ⚠️ crashes on load right now — see the warning above; re-enable when fixed
+  startupGrace  = 2.0,    -- s after load before we act, so we never spawn into a loading screen (too short?)
+  gapSustain    = 1.5,    -- s the "should be here but isn't" condition must hold (rides out stream hiccups)
+  cooldown      = 5.0,    -- s between respawn attempts (also covers the spawn->promote resolve window)
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
