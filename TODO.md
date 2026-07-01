@@ -95,11 +95,36 @@ authoritative state that rides inside the save.
 - [ ] **TEST (regression fixes):** toggle "Husbando mode" / "Disable vehicle arrivals" in Esc→Settings,
       reload → the toggle **sticks** (was broken since v0.69). "Go Home Jackie" button actually despawns
       + resets him again.
-- [ ] **Open (intentional MVP scope):** the exact remaining companion *timer* is not persisted — on
-      reload the duration clock re-arms fresh (`Config.companion.maxGameHours`). Fine for now; persist the
-      remaining seconds later if it matters (facts are int, so store remaining-seconds at a save hook).
+- [ ] **TODO — persist the companion TIMER too (Antonia asked, 2026-07-01).** Right now only the
+      boolean intent persists; on reload the duration clock re-arms fresh (`Config.companion.maxGameHours`),
+      so a companion who was 5 h 55 m in gets a full 6 h again. Plan: game facts are int, so at the point
+      we know the remaining time, store it — e.g. write `jackielives_companion_expires` as an absolute
+      in-game-second stamp (`JL.summon.companionExpiresGame`) whenever it's armed/changed, and on the
+      persistence respawn set `JL.summon.companionExpiresGame` from that fact instead of re-arming. Watch
+      the int32 range (in-game seconds can get large on long saves — store remaining-seconds-from-now if it
+      overflows). Low risk; slots straight into `companionPersistTick` + `armCompanionTimer`.
 
-## 🆕 v0.71 — Vik tip = native lower-left TUTORIAL POPUP (Retrieval P2) (2026-07-01, awaiting in-game test)
+## 🆕 v0.74 — tutorial popup NOT working yet → in-game PROBE to find the right CET call (2026-07-01)
+The v0.71 native-popup push still falls back to the **blue band** on the live build. Root-caused as far
+as the dev machine allows: the game's own `popupManager.script` **confirms the recipe** — the
+always-present popup manager registers a DELAYED listener on the `UIGameData` blackboard's `Popup_Data`
+and its `OnUpdateData` → `ShowTutorial()` builds the lower-left `TutorialPopupData`. Names all verified:
+blackboard = `UIGameData` (same one our WORKING subtitles use), fields `Popup_Data`/`Popup_Settings`, both
+`import struct` (so `.new()` is correct) with fields `title`/`message`/`isModal` + `position`/`closeAtInput`/
+`pauseGame`/`fullscreen`/`hideInMenu`. So the failure is in **how CET marshals the struct into the
+variant** (our subtitle code already needs an explicit `ToVariant(x, "type")` for its array — the popup
+likely needs the same, or the `SignalVariant` call is the thing that throws).
+- **New in-game probe:** CET window → "Tutorial popup probe (TEMP)" → **V1..V5** buttons. Each sets the
+  blackboard a different way and logs every step's OK/ERR to the console:
+  - V1 untyped `ToVariant` · V2 **typed** `ToVariant(x,"gamePopupData/Settings")` · V3 typed + `SignalVariant`
+    · V4 typed + raise `Popup_IsShown` · V5 build structs with `NewObject` instead of `.new()`.
+- [ ] **TEST:** click V1→V5, tell me **which one shows a real lower-left popup** (not the blue band), and
+      paste the `[PopupProbe V#]` console lines. Then I bake the winner into `retrieval.lua` `tutorialPopup()`
+      and delete the probe.
+- Version 0.73 → **0.74**. (Offer still open: I can pull the Dark Future mod source as a reference if the
+  probe doesn't crack it — but popupManager.script is the authoritative source and I have it.)
+
+## 🆕 v0.71 — Vik tip = native lower-left TUTORIAL POPUP (Retrieval P2) (2026-07-01, ⚠️ NOT working yet — see v0.74)
 v0.69 confirmed the gate works in-game (entering Vik's clinic flips the stage to TIP and the blue band
 appeared). v0.71 replaces that plain blue on-screen band with the real **native lower-left tutorial
 popup** (the "Dark Future" method from Retrieval P2).
