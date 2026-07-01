@@ -69,6 +69,9 @@ local JL = {
   -- v0.66 companion catch-up: while he's a confirmed, undismissed companion, if V gets far
   -- (fast-travel / ran off / he got left behind) he teleports back to V's SIDE (never onto V).
   catchUp = { farSince = nil, lastAt = nil, teleTries = nil },
+  -- v0.82 respawn-settle: after a respawn-at-V (catch-up FT recovery / persist) hide Jackie + drop his
+  -- collision briefly so he doesn't visibly POP in or spawn into a wall, then reveal + re-collide by clock.
+  settle  = { hideUntil = nil, collideUntil = nil, handle = nil },
   -- v0.67 keep-close: periodically re-assert our tight follow so AMM's long leash can't let him
   -- trail far behind V. Just a throttle timestamp.
   follow  = { lastAt = nil },
@@ -3883,8 +3886,45 @@ function respawnCompanionAtV()
   local spawn, err = ammSpawn(1)
   if not spawn then log("Persist: respawn at V FAILED (" .. tostring(err) .. ") — will retry."); return false end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet = spawn, true, false
+  -- v0.82: arm the settle window. He's freshly popped in at V (AMM drops him ~1 m from her); hide him +
+  -- drop collision for a beat so he doesn't visibly POP or clip into a wall, then settleTick reveals him +
+  -- restores collision by clock. handle may be nil this frame (DES resolves later) — settleTick re-hides
+  -- once it appears, so the reveal is always by TIME, never a one-shot that can miss the async handle.
+  local S = Config.respawnSettle or {}
+  if S.enabled ~= false then
+    local now = JL.clock or 0
+    JL.settle.hideUntil    = now + (S.hideSeconds or 2.0)
+    JL.settle.collideUntil = now + (S.collideSeconds or 4.0)
+    JL.settle.handle       = nil   -- resolved live in settleTick (spawn.handle isn't ready yet)
+  end
   log("Persist: companion flag set but Jackie was absent -> respawned him at V.")
   return true
+end
+
+-- v0.82 SETTLE TICK. During the brief window after a respawn-at-V, keep the fresh Jackie INVISIBLE (so V
+-- doesn't see him pop in beside her) and NON-COLLIDING (so he can't get shoved out of a wall/geometry he
+-- spawned against). Both are re-asserted every frame against the live handle (which resolves a frame or
+-- two after the spawn), then lifted by clock: reveal at hideUntil, re-collide at collideUntil. Hands-off
+-- once the window closes. Mirrors the arrival sequence's own hide-until-placed trick (setVisible/setNpcCollision).
+-- GLOBAL (not a top-level local): init.lua is at Lua's 200-local hard cap — see companionPersistTick etc.
+function settleTick()
+  local s = JL.settle
+  if not (s and (s.hideUntil or s.collideUntil)) then return end
+  local now = JL.clock or 0
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  -- still hiding? keep him invisible + collision-off (re-assert each frame; handle may have just resolved).
+  if s.hideUntil and now < s.hideUntil then
+    if h then setVisible(h, false) end
+  elseif s.hideUntil then
+    if h then setVisible(h, true) end     -- window's up -> reveal him where he settled
+    s.hideUntil = nil
+  end
+  if s.collideUntil and now < s.collideUntil then
+    if h then setNpcCollision(h, false) end
+  elseif s.collideUntil then
+    if h then setNpcCollision(h, true) end  -- restore collision (a follower must always collide)
+    s.collideUntil = nil
+  end
 end
 
 -- Per-frame guard: keep the saved companion fact in sync with reality, and if the save says Jackie
@@ -4129,6 +4169,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
   pcall(companionPersistTick)  -- v0.72: saved "is companion" but his body is gone (reload / culling FT) -> respawn at V
+  pcall(settleTick)       -- v0.82: hide + no-collision for a beat after a respawn-at-V so he doesn't pop/clip in
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
   pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap
 

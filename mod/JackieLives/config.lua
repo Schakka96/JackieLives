@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.81"
+Config.version = "0.82"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -225,6 +225,19 @@ Config.catchUp = {
   respawnWhenStranded = true,-- v0.79: fall back to despawn+respawn when a teleport can't reach him (set false to disable)
   respawnDistance = 150.0,  -- metres beyond which we skip the doomed teleport and respawn immediately (district-scale FT)
   maxTeleTries    = 1,      -- consecutive teleports that fail to close the gap before we escalate to a respawn
+}
+
+-- ---- respawn settle-in (v0.82) --------------------------------------------
+-- When catch-up (or persist) RESPAWNS Jackie at V after a fast-travel, AMM drops a fresh body ~1 m from
+-- her — which V sees POP into existence and which can spawn against a wall. settleTick hides him +
+-- disables his collision for a brief window right after the respawn, then reveals him where he settled and
+-- restores collision (a follower must always collide). Timings are seconds from the respawn. hideSeconds
+-- < collideSeconds so he's already visible while the extra collision-off grace lets him nudge free of any
+-- geometry. Set enabled=false to go back to an instant (popping) respawn.
+Config.respawnSettle = {
+  enabled        = true,
+  hideSeconds    = 2.0,   -- keep him invisible this long after the respawn (hides the pop-in)
+  collideSeconds = 4.0,   -- keep his collision OFF this long (so he can't spawn stuck in a wall)
 }
 
 -- ---- keep-close follow (v0.67) --------------------------------------------

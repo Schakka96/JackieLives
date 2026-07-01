@@ -42,11 +42,12 @@ What's DONE vs what's BROKEN:
    `List_of_companion_issues.md` (Session 1 cluster / catch-up). May be `catchUpTick`'s teleport fighting
    the look-at/talk system, or the (now-disabled) persist respawn — re-check whether disabling persist
    (#1) changed it. Reproduce: be a companion → fast-travel → look straight at Jackie.
-   - **2f. FIX SHIPPED (2026-07-01, v0.79) — AWAITING IN-GAME TEST.** The "`CatchUp: was 1994 m -> teleported
+   - **2f. ✅ FIXED (2026-07-01, v0.79 — CONFIRMED in-game by Antonia).** The "`CatchUp: was 1994 m -> teleported
      to her side` but he's still 2 km back, and travelling back doesn't fix it" case. `catchUpTick` logged
      success without verifying the `AITeleportCommand` landed; across a district-scale FT his body is stranded
      unstreamed so the teleport no-ops. Catch-up now escalates to `respawnCompanionAtV` beyond
      `Config.catchUp.respawnDistance` (150 m) or after a teleport fails to close the gap. See v0.79 section below.
+     **v0.82** then removed the visible pop-in / wall-clip on that respawn (hide 2 s + collision-off 4 s; see v0.82).
    - **2e. FIX ATTEMPT SHIPPED (2026-07-01, v0.78) — AWAITING IN-GAME TEST.** Reworked the walk-off
      (`startLeaving`/`leavingTick`) per 2d: **no more `OnRoleCleared` + far `AIMoveToCommand`** (the teleport
      trigger). New global `jlRetreatFollow(h, mv, dist)` issues an `AIFollowTargetCommand` with a LARGE
@@ -152,6 +153,23 @@ What's DONE vs what's BROKEN:
 - [ ] **Safety dismount (v0.62):** on a bike arrival where he used to stay seated, confirm the
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
+
+## 🆕 v0.82 — POLISH: no pop-in / no wall-clip on the fast-travel respawn (2026-07-01, awaiting in-game test)
+**Follows v0.79 (which fixed the actual "stranded 1994 m" bug — CONFIRMED FIXED in-game by Antonia).**
+**Antonia's ask:** the respawn works, but Jackie visibly POPS in before settling after a fast-travel — hide
+him ~2 s, and turn his collision off ~4 s so he can't respawn into a wall.
+**Fix:** `respawnCompanionAtV` now arms a settle window (`JL.settle.hideUntil`/`collideUntil`); new
+`settleTick` (onUpdate, GLOBAL fn — 200-cap safe) keeps the fresh body INVISIBLE + NON-COLLIDING and
+re-asserts both every frame against the live handle (which resolves a frame or two after the spawn, so a
+one-shot would miss it), then reveals him at `hideSeconds` and restores collision at `collideSeconds`. Reuses
+the arrival sequence's own `setVisible`/`setNpcCollision` helpers; the respawn promote path never flips
+visibility so nothing fights it. Applies to BOTH respawn callers (catch-up FT + persist). Tunables in
+`Config.respawnSettle` (`enabled`/`hideSeconds`=2/`collideSeconds`=4). Both files `luajit -bl` clean. 0.81 → **0.82**.
+- [ ] **TEST:** be a companion → fast-travel far → he should FADE/appear in place at V (no pop beside her)
+      and never end up stuck in a wall. Console still logs the v0.79 `CatchUp: ... respawning at her side.`
+- Note: v0.79's escalation is what actually recovers him; this only smooths the visual. If he ever falls
+      through the floor during the collision-off window, drop `collideSeconds` (collision-off is the same
+      trick idle/dinner already use safely, so unlikely).
 
 ## 🆕 v0.81 — dialogue polish: no (Leave), dismiss on main node only, randomized sign-offs (2026-07-01, awaiting in-game test)
 Follow-up to v0.80 (sticky-subtitle fix), all in `config.lua` + two small `init.lua` helpers.
