@@ -32,8 +32,34 @@ v0.75 is DEPLOYED + PUSHED. What's DONE vs what's BROKEN:
    `List_of_companion_issues.md` (Session 1 cluster / catch-up). May be `catchUpTick`'s teleport fighting
    the look-at/talk system, or the (now-disabled) persist respawn — re-check whether disabling persist
    (#1) changed it. Reproduce: be a companion → fast-travel → look straight at Jackie.
+   - **2b. DISMISS walk-away also hard-despawns him in V's face** (was the whole point of the walk-away —
+     he should stroll off toward a street). **v0.73 tried & REVERTED (2026-07-01):** the theory that the
+     keep-close follow (`followKeepCloseTick`) leaves a lingering `AIFollowTargetCommand` that out-prioritises
+     the away move was wrong — cancelling it (`jlStopFollow` + faster `leavingTick` re-issue) did NOT help and
+     may have worsened arrivals, so it was reverted (commit `5183dfe`). ⇒ the walk-away code itself is fine;
+     the despawn is being forced by something ELSE. **DIAGNOSTIC (do first, cheap):** dismiss via "Head home,
+     Jackie." and read the `[JackieLives]` console — the path self-identifies: `Dismiss: Jackie walking away…`
+     then repeated `Dismiss: walking off… N m from V.` If **N stays ~2–3 m** he isn't moving (AMM re-follow on
+     the new build / role-clear not releasing him → he hits the 30 s `maxSeconds` deadline and despawns where
+     he stands). If it logs `RETURN TO POST` he went to the idle system and `scheduleTick`'s `clearIdle` may be
+     insta-removing him. If it logs `Dismissed.` you hit the instant button/hotkey path, not the walk-away.
+     Likely same family as #2 (a NEW per-frame relocation/removal force, or an AMM/game-2.31 companion-release
+     change), NOT the walk-away logic. Toggle `Config.catchUp.enabled=false` + `Config.follow.enabled=false`
+     to A/B whether the v0.66/v0.67 systems are involved.
 3. **The rest of the bug pile** — go through `List_of_companion_issues.md` (Sessions 1–5) + the many older
    "awaiting test" items below; Antonia to prioritise which bugs bite most in play.
+4. **Mouth flaps dead — Jackie's lips don't move while a subtitle line shows** (regressed; reported
+   2026-07-01). Should be an easy fix. The flap is `speakJackieLine` → `startFlap(secs)` → `flapTick` →
+   `applyTalkingFace` (AMM Expressions Overhaul "Talking" faces, FacialReaction **category 7**, idles
+   231–266 skip 242) via `handle:GetAnimationControllerComponent():ApplyFeature("FacialReaction", …)`.
+   `startFlap` is still called unconditionally (even mute — `secs` falls back to 3.0), so the trigger is
+   intact. Suspects, in order: (a) **AMM Expressions Overhaul / Extra Expressions not installed** on the
+   current rig → category-7 faces absent → `ApplyFeature` no-ops (the code says it degrades silently);
+   (b) game 2.31 changed the `AnimFeature_FacialReaction` API / category id; (c) `dialogueTarget()` returns
+   nil at line time (it shouldn't for a present companion). FIX PLAN: add a one-off debug log inside
+   `applyTalkingFace` (did `anim` resolve? did `ApplyFeature` run?), confirm the expressions mod is present,
+   else re-point to a facial mechanism that ships with base AMM. NOT related to the mute build (audio path
+   is separate from the face feature).
 - Then (once #1 is stable): finish **persisting the companion TIMER** (spec in the v0.72 section).
 - Housekeeping: `getTalkTarget` + `Config.probeNativePhone` are harmless dead leftovers. `staging/` is the
   parked broken v0.67 — do NOT sync until the mute release unparks. Version = **0.75**, git clean + pushed.
