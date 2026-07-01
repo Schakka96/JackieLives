@@ -68,7 +68,7 @@ local JL = {
   summon = { spawn = nil, active = false, companionSet = false, walkIn = false },
   -- v0.66 companion catch-up: while he's a confirmed, undismissed companion, if V gets far
   -- (fast-travel / ran off / he got left behind) he teleports back to V's SIDE (never onto V).
-  catchUp = { farSince = nil, lastAt = nil },
+  catchUp = { farSince = nil, lastAt = nil, teleTries = nil },
   -- v0.67 keep-close: periodically re-assert our tight follow so AMM's long leash can't let him
   -- trail far behind V. Just a throttle timestamp.
   follow  = { lastAt = nil },
@@ -2973,9 +2973,9 @@ local function catchUpTick()
   local C = Config.catchUp or {}
   if C.enabled == false then return end
   -- settled companion only: active + role applied, and NOT mid-arrival / dinner / walking-off.
-  if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince = nil; return end
+  if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then
-    JL.catchUp.farSince = nil; return
+    JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then JL.catchUp.farSince = nil; return end
@@ -2983,12 +2983,31 @@ local function catchUpTick()
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
   local now = JL.clock or 0
   local d   = dist3(pp, jp)
-  if d <= (C.distance or 25.0) then JL.catchUp.farSince = nil; return end
+  -- back within range -> the last teleport (if any) took; clear the retry counter.
+  if d <= (C.distance or 25.0) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   -- he's far. Require it to PERSIST a beat (a fast-travel/load gap, not a momentary stream hiccup).
   JL.catchUp.farSince = JL.catchUp.farSince or now
   if (now - JL.catchUp.farSince) < (C.sustainSeconds or 2.0) then return end
   if (now - (JL.catchUp.lastAt or -1e9)) < (C.cooldown or 3.0) then return end
-  -- land him a few metres to V's SIDE on the navmesh (never ON V), then re-assert follow so he settles.
+
+  -- v0.79 ESCALATION. aiTeleport (AITeleportCommand) can only move his body while it's still streamed with
+  -- live AI. A load-screen fast-travel across DISTRICTS strands it far away, so the teleport silently no-ops
+  -- (the old build then LIED "teleported to her side" and left him behind, and travelling back never fixed it).
+  -- So: if he's beyond respawnDistance (obvious district-scale FT — skip the doomed teleport) OR a prior
+  -- teleport already failed to close the gap (teleTries reached maxTeleTries -> still this far after cooldown),
+  -- despawn the stranded body and respawn a fresh Jackie at V. Safe here: fires 2 s+ after the FT with V fully
+  -- in-world, unlike the persist-on-LOAD respawn (Config.persist) that crashes into a not-yet-streamed world.
+  local tries = JL.catchUp.teleTries or 0
+  if (C.respawnWhenStranded ~= false)
+     and (d >= (C.respawnDistance or 150.0) or tries >= (C.maxTeleTries or 1)) then
+    JL.catchUp.lastAt, JL.catchUp.farSince, JL.catchUp.teleTries = now, nil, nil
+    log(("CatchUp: Jackie stranded %.0f m from V (teleport can't cross) -> respawning at her side."):format(d))
+    pcall(respawnCompanionAtV)   -- despawns the orphaned body + spawns fresh at V; onUpdate re-promotes next frame
+    return
+  end
+
+  -- moderate gap, body still local: land him a few metres to V's SIDE on the navmesh (never ON V), then
+  -- re-assert follow. Count the attempt so a no-op teleport escalates to a respawn on the next eligible tick.
   local pt = navmeshArrivalPoint(C.placeDistance or 3.0) or arrivalPoint()
   if not pt then return end
   local yaw = 0.0
@@ -2996,9 +3015,10 @@ local function catchUpTick()
   aiTeleport(h, pt, yaw, false)
   sendWalkToPlayer(h, (Config.call and Config.call.approachMovement) or "Run",
                       (Config.call and Config.call.followDistance) or 1.6)
-  JL.catchUp.lastAt   = now
-  JL.catchUp.farSince = nil
-  log(("CatchUp: Jackie was %.0f m from V -> teleported to her side."):format(d))
+  JL.catchUp.lastAt    = now
+  JL.catchUp.farSince  = nil
+  JL.catchUp.teleTries = tries + 1
+  log(("CatchUp: Jackie was %.0f m from V -> teleported to her side (try %d)."):format(d, tries + 1))
 end
 
 -- v0.67 KEEP-CLOSE FOLLOW. After handoff we issue ONE tight follow (followDistance), but AMM's own

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.78"
+Config.version = "0.79"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -209,12 +209,22 @@ Config.persist = {
 -- a few metres to V's side on the navmesh, never on top of her. Set enabled=false to turn it off.
 -- NOTE: this only works while his runtime body still EXISTS. A load-screen fast-travel can cull a
 -- spawned NPC entirely — that case is now handled by Config.persist (companionPersistTick re-spawns him).
+-- ⚠️ v0.79: the AITeleportCommand aiTeleport() uses can only relocate his body while it's still STREAMED
+-- and its AI is live. A load-screen fast-travel across DISTRICTS leaves his body stranded/unstreamed far
+-- away (his handle still resolves — that's how we read "1994 m" — but the teleport silently no-ops, so the
+-- old build logged "teleported to her side" while he stayed put; travelling back never recovered him).
+-- So: beyond respawnDistance, OR if a teleport already fired but failed to close the gap (maxTeleTries),
+-- catchUpTick DESPAWNS the stranded body and RESPAWNS a fresh Jackie at V (respawnCompanionAtV). This runs
+-- 2 s+ AFTER the fast-travel with V fully in-world, so it does NOT hit the persist-on-LOAD crash (Config.persist).
 Config.catchUp = {
-  enabled        = true,
-  distance       = 25.0,  -- metres from V beyond which he's considered "left behind"
-  sustainSeconds = 2.0,   -- he must stay that far for this long (rides out a fast-travel/load gap)
-  cooldown       = 3.0,   -- minimum seconds between catch-up teleports (anti-thrash)
-  placeDistance  = 3.0,   -- metres to V's side he's dropped (navmesh-snapped; never ON V)
+  enabled         = true,
+  distance        = 25.0,   -- metres from V beyond which he's considered "left behind"
+  sustainSeconds  = 2.0,    -- he must stay that far for this long (rides out a fast-travel/load gap)
+  cooldown        = 3.0,    -- minimum seconds between catch-up teleports (anti-thrash)
+  placeDistance   = 3.0,    -- metres to V's side he's dropped (navmesh-snapped; never ON V)
+  respawnWhenStranded = true,-- v0.79: fall back to despawn+respawn when a teleport can't reach him (set false to disable)
+  respawnDistance = 150.0,  -- metres beyond which we skip the doomed teleport and respawn immediately (district-scale FT)
+  maxTeleTries    = 1,      -- consecutive teleports that fail to close the gap before we escalate to a respawn
 }
 
 -- ---- keep-close follow (v0.67) --------------------------------------------

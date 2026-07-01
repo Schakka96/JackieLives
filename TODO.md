@@ -42,6 +42,11 @@ What's DONE vs what's BROKEN:
    `List_of_companion_issues.md` (Session 1 cluster / catch-up). May be `catchUpTick`'s teleport fighting
    the look-at/talk system, or the (now-disabled) persist respawn — re-check whether disabling persist
    (#1) changed it. Reproduce: be a companion → fast-travel → look straight at Jackie.
+   - **2f. FIX SHIPPED (2026-07-01, v0.79) — AWAITING IN-GAME TEST.** The "`CatchUp: was 1994 m -> teleported
+     to her side` but he's still 2 km back, and travelling back doesn't fix it" case. `catchUpTick` logged
+     success without verifying the `AITeleportCommand` landed; across a district-scale FT his body is stranded
+     unstreamed so the teleport no-ops. Catch-up now escalates to `respawnCompanionAtV` beyond
+     `Config.catchUp.respawnDistance` (150 m) or after a teleport fails to close the gap. See v0.79 section below.
    - **2e. FIX ATTEMPT SHIPPED (2026-07-01, v0.78) — AWAITING IN-GAME TEST.** Reworked the walk-off
      (`startLeaving`/`leavingTick`) per 2d: **no more `OnRoleCleared` + far `AIMoveToCommand`** (the teleport
      trigger). New global `jlRetreatFollow(h, mv, dist)` issues an `AIFollowTargetCommand` with a LARGE
@@ -147,6 +152,41 @@ What's DONE vs what's BROKEN:
 - [ ] **Safety dismount (v0.62):** on a bike arrival where he used to stay seated, confirm the
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [ ] Housekeeping: `git add List_of_companion_issues.md` (referenced here, currently untracked).
+
+## 🆕 v0.79 — FIX: fast-travel "teleported to her side" but Jackie stays 1994 m away (2026-07-01, awaiting in-game test)
+**Symptom (Antonia):** after a fast-travel the console logs `CatchUp: Jackie was 1994 m from V -> teleported
+to her side.` yet Jackie is NOT with V — he's stuck ~2 km back. Fast-travelling BACK to where we came from
+doesn't recover him either. (Bug #2 / catch-up cluster.)
+**Root cause (diagnosed from code + the console line):** `catchUpTick` fired `aiTeleport()` (an
+`AITeleportCommand` through Jackie's `AIControllerComponent`) and then **logged "teleported to her side"
+unconditionally — it never verified the command moved him.** A load-screen fast-travel across DISTRICTS
+leaves his body stranded in an unstreamed region: the handle still resolves (that's how catch-up read
+`1994 m` from `GetWorldPosition`), but his AI won't execute a teleport across that streaming gap, so the
+command **silently no-ops** and he stays put. The old "known limit" guard only caught `handle == nil` (fully
+culled); "handle resolves but is stranded far" slipped through. `Config.persist` (which *would* respawn him)
+is both disabled AND explicitly skips whenever a live handle-with-position exists — so nothing recovered him.
+**Fix (init.lua `catchUpTick` + `Config.catchUp`):** `aiTeleport` can't cross a district-scale gap, so
+catch-up now ESCALATES to a **despawn + respawn-fresh-at-V** (`respawnCompanionAtV`, the same call the persist
+path uses) when either (a) he's beyond `Config.catchUp.respawnDistance` (150 m — obvious FT, skip the doomed
+teleport) or (b) a teleport already fired but failed to close the gap (`teleTries` reached `maxTeleTries`, i.e.
+he's still far after the cooldown — self-verifying, catches stranded-but-under-150 m and any no-op). The retry
+counter clears the moment he's back within range. **Why this is safe when persist-on-load isn't:** it fires
+2 s+ AFTER the fast-travel with V fully streamed in-world, not during the load event — so it dodges the
+`ammSpawn`-into-a-not-yet-streamed-world crash that keeps `Config.persist` off. After respawn, the existing
+onUpdate promote block (`SetNPCAsCompanion` at init.lua ~4007) re-applies the follower role next frame, and
+keep-close/catch-up resume. Independent of `Config.persist.enabled`, so it works with persist still off.
+Zero new top-level `local`s (function-internal `tries` + `JL.catchUp.teleTries`/`Config.catchUp` fields only);
+both files compile clean under the 200-local cap (`luajit -bl`). Version 0.78 → **0.79**.
+- [ ] **TEST (core):** be a settled companion → **fast-travel far** (across districts). Within a few seconds
+      console should log `CatchUp: Jackie stranded N m from V (teleport can't cross) -> respawning at her
+      side.` and he reappears at V, follower role re-applied (`Companion role applied.`). No more "teleported"
+      line that leaves him behind.
+- [ ] **TEST (moderate gap):** sprint 30–100 m off (same district, no load). He should still slide over via
+      the cheap teleport (`... -> teleported to her side (try 1).`), NOT respawn-pop.
+- [ ] **Tunables** in `Config.catchUp`: `respawnDistance` (150), `maxTeleTries` (1), `respawnWhenStranded`
+      (set false to go back to teleport-only). If the respawn ever lands him too close to V, that's the shared
+      `ammSpawn`/`respawnCompanionAtV` placement (TODO bug #1 follow-up "spawns inside V") — offset it there so
+      BOTH the persist and catch-up respawns benefit.
 
 ## 🆕 v0.73 — FIX: dismiss walk-away (Jackie was hard-despawning in V's face) (2026-07-01, awaiting in-game test)
 **Symptom (Antonia):** picking the in-dialogue "Head home, Jackie." used to make Jackie walk off toward a
