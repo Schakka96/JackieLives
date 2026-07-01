@@ -32,6 +32,22 @@ v0.75 is DEPLOYED + PUSHED. What's DONE vs what's BROKEN:
    `List_of_companion_issues.md` (Session 1 cluster / catch-up). May be `catchUpTick`'s teleport fighting
    the look-at/talk system, or the (now-disabled) persist respawn — re-check whether disabling persist
    (#1) changed it. Reproduce: be a companion → fast-travel → look straight at Jackie.
+   - **2d. ROOT CAUSE CONFIRMED (2026-07-01, v0.77).** The dismiss log (`console_log_dismiss_1.txt`) +
+     history dig settle it: `startLeaving`/`leavingTick`/`awayPoint`/`sendMoveToPoint` are **byte-identical
+     to v0.36** (where the walk-off was born; v0.30 had none), so the departure CODE never changed. The
+     `startLeaving` dumps prove `OnRoleCleared` does NOT move him (PRE and POST both `dist=1.5`). But by the
+     next `leavingTick` he's at `(-1540.2,1247.3)` = **exactly `awayPoint` (V + despawnDistance+8 = 38 m)** →
+     the `AIMoveToCommand` **teleported** him to the target instead of walking, so he instantly hit the ≥30 m
+     "reached distance" despawn. The ONLY thing unique to dismiss vs the (still-working) arrival walk-in /
+     idle wander — both of which use the same `sendMoveToPoint` — is that dismiss **clears the companion role
+     first**. So on game 2.31 a just-`OnRoleCleared` puppet's move executes as an instant teleport-to-target.
+     NOT the idle-departure system, NOT a random away-point, NOT keep-close. **FIX DIRECTION:** stop relying
+     on `OnRoleCleared` + far `AIMoveToCommand`. Best candidate = drive the walk-off with an
+     `AIFollowTargetCommand` (target=V, `desiredDistance`=despawnDistance, `matchSpeed=false`, Walk) — the
+     command type that provably WALKS on 2.31 (keep-close uses it) — so he "keeps his distance from V and
+     walks off" (Antonia's remembered behaviour). RISK: if the follow AI only closes gaps (never retreats),
+     he won't move → pivot to keeping the role + suppressing AMM's follow another way. Reverted the v0.76 hop
+     experiment (Antonia: too clunky); walk-off code is back to the clean v0.36 baseline + diagnostics kept.
    - **2c. IN-GAME EVIDENCE (2026-07-01 test on the reverted build) + v0.76 diagnostics added:**
      - **Dismiss (fresh companion, no fast-travel):** console shows `Dismiss: Jackie walking away (despawn
        at 30m)` then INSTANTLY `Dismiss: despawned (reached d=38 m)` — but he's still at V's side. **38 =

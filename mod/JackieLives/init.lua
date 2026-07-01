@@ -117,7 +117,14 @@ local JL = {
   talkDone = {},     -- v0.32: [treeKey] = clock time a cooldown'd talk tree was finished
 }
 
-local function log(msg) print("[JackieLives] " .. tostring(msg)) end
+-- v0.76: log to the CET console AND append to jackie_debug.log in the mod folder (CET sandboxes io to
+-- the mod dir → .../mods/JackieLives/jackie_debug.log). Commit that file to share full logs — no more
+-- OCR'ing the console. Truncated fresh each load (see onInit). pcall'd so io being unavailable never breaks logging.
+local function log(msg)
+  local line = "[JackieLives] " .. tostring(msg)
+  print(line)
+  pcall(function() local f = io.open("jackie_debug.log", "a"); if f then f:write(line .. "\n"); f:close() end end)
+end
 
 -- ---------------------------------------------------------------------------
 -- AMM + Jackie record
@@ -2182,6 +2189,8 @@ end
 
 -- A point well past `reach` metres from V, in the direction from V to Jackie (so he keeps
 -- heading the way he's already facing, away from you). Falls back to +X if they overlap.
+-- A point well past `reach` metres from V, in the direction from V to Jackie (so he keeps
+-- heading the way he's already facing, away from you). Falls back to +X if they overlap.
 local function awayPoint(handle, reach)
   local pp = playerPos(); if not pp then return nil end
   local jp; pcall(function() jp = handle:GetWorldPosition() end)
@@ -2224,7 +2233,6 @@ startLeaving = function(opts)
   JL.leaving.phase       = "walking"
   JL.leaving.deadline    = (JL.clock or 0) + (D.maxSeconds or 30.0)
   JL.leaving.lastReissue = JL.clock or 0
-  JL.leaving.startedAt   = JL.clock or 0   -- v0.76: guard so a bogus first-tick far-read can't insta-despawn him
   JL.ui.status = "Jackie's headin' out..."
   log("Dismiss: Jackie walking away (despawn at " .. tostring(D.despawnDistance or 30.0) .. " m).")
 end
@@ -2245,17 +2253,8 @@ local function leavingTick()
   local jp; pcall(function() jp = h:GetWorldPosition() end)
   local d   = (pp and jp) and dist3(pp, jp) or nil
   local now = JL.clock or 0
-  -- v0.76 GUARD: ignore the "far" despawn for the first `graceSeconds` — a bogus first-tick position read
-  -- (seen in-game: d jumps to ~despawnDistance+8 the instant we clear the role, before he's actually moved)
-  -- was insta-despawning him at V's feet. The maxSeconds deadline still guarantees eventual cleanup.
-  local grace = D.graceSeconds or 3.0
-  local settled = (now - (JL.leaving.startedAt or 0)) >= grace
-  local far = settled and d and d >= (D.despawnDistance or 30.0)
-  if far and not JL.leaving.dumped then   -- v0.76 DEBUG: one dump the first time we'd despawn "far"
-    JL.leaving.dumped = true; pcall(function() jlDumpState("leavingTick:FAR despawn d=" .. tostring(d)) end)
-  end
+  local far = d and d >= (D.despawnDistance or 30.0)
   if far or (JL.leaving.deadline and now >= JL.leaving.deadline) then
-    JL.leaving.dumped = nil
     setCompanionFlag(false)   -- v0.72: he's finished walking off and despawned -> intent over
     ammDespawn(sp)
     pcall(hideSubtitle)                                  -- never leave the parting line on screen
@@ -3836,6 +3835,7 @@ function companionPersistTick()
 end
 
 registerForEvent("onInit", function()
+  pcall(function() local f = io.open("jackie_debug.log", "w"); if f then f:close() end end)  -- v0.76: fresh log each load
   pcall(function() math.randomseed((os.time and os.time() or 0)) end)  -- v0.36: random day-bag shuffle
   getAMM()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
