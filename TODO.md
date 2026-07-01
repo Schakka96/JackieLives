@@ -7,6 +7,18 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-01 (research + new test mod)
+- **Jackie as PASSENGER in V's car** — feasibility researched → `docs/research/vehicle_passenger_research.md`.
+  Verdict: **Easy–Moderate** (easier than the driver case — no vehicle AI). Same `AIMountCommand`+
+  `MountEventData` recipe as `JackieVehicleTest/mountJackie()`, just `slotName="seat_front_right"` into
+  V's own car (`GetPlayer():GetQuickSlotsManager():GetVehicleObject()`). Reuse AMM Assign-Seats / copy
+  "The Passenger" (Nexus 10731) persistence rules. NEXT: add a "Seat Jackie as passenger" button to
+  JackieVehicleTest to prove it in-game.
+- **Jackie body-animation library builder** — new standalone `mod/JackieAnimTest/`. Random/next/replay
+  buttons play an AMM `Poses` animation on the looked-at Jackie, print `[JKAnim]` name to console, and
+  "Save to library" appends good ones to `jackie_anim_library.txt`. Drives AMM.Poses:GetAllAnimations()
+  + PlayAnimationOnTarget (workspot system). `- [ ] TEST:` deploy via
+  `.\deploy_probe.ps1 -ModName JackieAnimTest`, confirm anims play + names log + saves land.
 
 Update the shard text a bit:
   tipText     = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
