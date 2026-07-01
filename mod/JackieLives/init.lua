@@ -2142,6 +2142,27 @@ local function sendWalkToPlayer(handle, movementType, desiredDistance)
   end))
 end
 
+-- v0.77 walk-OFF: the INVERSE of the keep-close follow — an AIFollowTargetCommand with a LARGE
+-- desiredDistance so the follow AI opens the gap and Jackie strolls AWAY from V until he's `distance`
+-- metres off (then leavingTick despawns him). We use a follow command (not AIMoveToCommand) because on
+-- game 2.31 a move-to-a-far-point instantly TELEPORTED a just-role-cleared puppet (confirmed via dumps);
+-- follow commands still walk smoothly (keep-close proves it). matchSpeed=false so he moves at his own
+-- pace instead of matching a standing V (which would leave him frozen). Global -> 200-local cap safe.
+function jlRetreatFollow(handle, movementType, distance)
+  if not handle then return end
+  pcall(function()
+    local cmd = NewObject('handle:AIFollowTargetCommand')
+    cmd.target                     = Game.GetPlayer()
+    cmd.desiredDistance            = distance or 30.0
+    cmd.tolerance                  = 2.0
+    cmd.stopWhenDestinationReached = false
+    cmd.matchSpeed                 = false
+    cmd.movementType               = resolveMoveType(movementType)
+    cmd.teleport                   = false
+    handle:GetAIControllerComponent():SendCommand(cmd)
+  end)
+end
+
 -- Antonia's approach: command him to WALK TO V's CURRENT coordinates - a one-shot
 -- AIMoveToCommand to a fixed WorldPosition. We re-issue it every ~2 s with V's latest position
 -- (see arrivalTick), a manual "follow" that uses NO follow/companion semantics -> no teleport.
@@ -2201,40 +2222,33 @@ local function awayPoint(handle, reach)
   return Vector4.new(pp.x + (dx / len) * reach, pp.y + (dy / len) * reach, jp.z, 1.0)
 end
 
--- v0.33: "send Jackie off". Drop his follower role (the same OnRoleCleared AMM uses) so the
--- companion AI stops pulling him back, say a parting line, then walk him away. leavingTick()
--- despawns him once he's far enough (or after maxSeconds). Forward-declared above the F hook.
--- opts (optional): { text=, sfx= } to override the parting line — e.g. the main-quest "excuse
--- himself" line. Defaults to the normal Config.dismiss send-off line.
+-- v0.33/v0.77: "send Jackie off". Say a parting line, then walk him AWAY from V and despawn once far
+-- (or after maxSeconds). v0.77: we NO LONGER OnRoleCleared here — on game 2.31 a just-role-cleared
+-- puppet's AIMoveToCommand teleported to its target (he snapped to the away-point and insta-despawned,
+-- confirmed via dumps). Instead we keep him a companion and drive the exit with jlRetreatFollow (a
+-- FollowTarget command set to a large desiredDistance) which the follow AI walks smoothly; leavingTick
+-- re-issues it so it overrides AMM's own follow. Forward-declared above the F hook.
+-- opts (optional): { text=, sfx= } to override the parting line — e.g. the main-quest "excuse himself".
 startLeaving = function(opts)
   local sp = JL.summon.spawn
   local h  = sp and sp.handle
   if not h then return end
   local D = Config.dismiss or {}
   opts = opts or {}
-  pcall(function() jlDumpState("startLeaving:PRE-roleclear") end)   -- v0.76 DEBUG
-  -- 1) clear the follower role so he becomes a passive NPC that obeys a plain move command
-  pcall(function()
-    local role = h:GetAIControllerComponent():GetAIRole()
-    if role then role:OnRoleCleared(h) end
-    h.isPlayerCompanionCached = false
-  end)
-  pcall(function() jlDumpState("startLeaving:POST-roleclear") end)  -- v0.76 DEBUG: did his pos jump?
-  -- 2) parting line (real VO + subtitle), like any Jackie line. Capture its duration so we can
-  --    WIPE the subtitle afterwards - a one-off speakJackieLine has no follow-up hide, so the
-  --    parting line ("Time we were on our way, mamita") was sticking on screen forever.
+  -- 1) parting line (real VO + subtitle), like any Jackie line. Capture its duration so we can WIPE the
+  --    subtitle afterwards - a one-off speakJackieLine has no follow-up hide, so the line stuck forever.
   local secs = 4.0
   pcall(function() secs = speakJackieLine(opts.text or D.partingText, opts.sfx or D.partingSfx) or 4.0 end)
   JL.leaving.subClearAt = (JL.clock or 0) + secs + 0.8
-  -- 3) start walking away; leavingTick re-issues + despawns. Keep summon.active/companionSet so
-  --    the onUpdate "re-apply companion role" block stays OFF until he's actually gone.
-  local reach = (D.despawnDistance or 30.0) + 8.0
-  pcall(function() sendMoveToPoint(h, awayPoint(h, reach), D.movement or "Walk", 1.0) end)
+  -- 2) start walking away (retreat-follow to despawnDistance). Keep summon.active/companionSet so the
+  --    onUpdate "re-apply companion role" block stays OFF until he's actually gone; leavingTick re-issues.
+  pcall(function() jlRetreatFollow(h, D.movement or "Walk", (D.despawnDistance or 30.0) + 4.0) end)
   JL.leaving.phase       = "walking"
   JL.leaving.deadline    = (JL.clock or 0) + (D.maxSeconds or 30.0)
   JL.leaving.lastReissue = JL.clock or 0
   JL.ui.status = "Jackie's headin' out..."
-  log("Dismiss: Jackie walking away (despawn at " .. tostring(D.despawnDistance or 30.0) .. " m).")
+  pcall(function() jlDumpState("startLeaving") end)   -- v0.77 DEBUG: baseline; leavingTick logs his dist as he goes
+  log("Dismiss: Jackie walking away (retreat-follow; despawn at " .. tostring(D.despawnDistance or 30.0) .. " m).")
 end
 
 -- Stepped from onUpdate while Jackie is walking off: re-issue the move with the latest geometry
@@ -2266,7 +2280,7 @@ local function leavingTick()
         d and ("%.1f"):format(d) or "?"))
   elseif (now - (JL.leaving.lastReissue or 0)) >= 1.5 then
     JL.leaving.lastReissue = now
-    pcall(function() sendMoveToPoint(h, awayPoint(h, (D.despawnDistance or 30.0) + 8.0), D.movement or "Walk", 1.0) end)
+    pcall(function() jlRetreatFollow(h, D.movement or "Walk", (D.despawnDistance or 30.0) + 4.0) end)
     if d then log(("Dismiss: walking off... %.1f m from V."):format(d)) end
   end
 end

@@ -32,6 +32,17 @@ v0.75 is DEPLOYED + PUSHED. What's DONE vs what's BROKEN:
    `List_of_companion_issues.md` (Session 1 cluster / catch-up). May be `catchUpTick`'s teleport fighting
    the look-at/talk system, or the (now-disabled) persist respawn — re-check whether disabling persist
    (#1) changed it. Reproduce: be a companion → fast-travel → look straight at Jackie.
+   - **2e. FIX ATTEMPT SHIPPED (2026-07-01, v0.78) — AWAITING IN-GAME TEST.** Reworked the walk-off
+     (`startLeaving`/`leavingTick`) per 2d: **no more `OnRoleCleared` + far `AIMoveToCommand`** (the teleport
+     trigger). New global `jlRetreatFollow(h, mv, dist)` issues an `AIFollowTargetCommand` with a LARGE
+     `desiredDistance` (despawnDistance+4) and `matchSpeed=false`, re-issued every 1.5 s by `leavingTick`, so
+     the follow AI walks him AWAY to ~30 m (then despawn). He stays a companion during the stroll (role not
+     cleared) so nothing snaps him. `startLeaving` logs a `jlDumpState("startLeaving")` baseline and
+     `leavingTick` logs `walking off... N m` each re-issue.
+     - [ ] **TEST:** summon → "Head home, Jackie." → he should **walk away and get distance**, N climbing in
+       `jackie_debug.log`, then `despawned (reached distance…)`. If **N stays flat** (~1.5 m), the follow AI
+       won't open a gap → tell Claude; fallback = keep role-clear but drive movement a non-teleporting way
+       (e.g. short re-issued moves, or an AITeleport-free patrol). Grab `mods/JackieLives/jackie_debug.log`.
    - **2d. ROOT CAUSE CONFIRMED (2026-07-01, v0.77).** The dismiss log (`console_log_dismiss_1.txt`) +
      history dig settle it: `startLeaving`/`leavingTick`/`awayPoint`/`sendMoveToPoint` are **byte-identical
      to v0.36** (where the walk-off was born; v0.30 had none), so the departure CODE never changed. The
