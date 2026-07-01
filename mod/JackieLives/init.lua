@@ -958,7 +958,9 @@ end
 -- Callback.reds -> hide). Replaces the on-screen NOTIFICATION (the blue objective-style
 -- field) for spoken dialogue, so lines render as proper subtitles at the bottom.
 -- ---------------------------------------------------------------------------
-local subtitle = { line = nil, seq = 700, warned = false }
+-- dueAt (v0.80): clock time when this line's on-screen time is up. subtitleWatchdogTick (onUpdate)
+-- uses it to GUARANTEE a dangling line gets wiped even if some branch forgot to call hideSubtitle.
+local subtitle = { line = nil, seq = 700, warned = false, dueAt = nil }
 
 -- Push a real subtitle to the bottom band. Logs the exact failure point the first time
 -- it can't (so we can pinpoint which CET call differs on this build).
@@ -982,7 +984,12 @@ local function showSubtitle(text, speakerName, duration, speakerObj)
     -- so force it explicitly: array:scnDialogLineData (per the CET Lua kit ToVariant docs).
     bb:SetVariant(defs.UIGameData.ShowDialogLine, ToVariant({ line }, "array:scnDialogLineData"), true)
   end)
-  if ok then subtitle.line = line; return true end
+  if ok then
+    subtitle.line  = line
+    -- when the watchdog is allowed to force-wipe this line if nothing else has (display time + grace)
+    subtitle.dueAt = (JL.clock or 0) + (duration or 4.0) + 0.75
+    return true
+  end
   if not subtitle.warned then
     log("SUBTITLE push FAILED -> falling back to on-screen msg. Error: " .. tostring(err))
     subtitle.warned = true
@@ -991,6 +998,7 @@ local function showSubtitle(text, speakerName, duration, speakerObj)
 end
 
 local function hideSubtitle()
+  subtitle.dueAt = nil
   if not subtitle.line then return end
   local prev = subtitle.line
   subtitle.line = nil
@@ -1599,6 +1607,21 @@ end
 
 local function closeChoiceMenu()
   menu.shown, Branch.open, menu.choices = false, false, nil
+end
+
+-- Branch.finish (v0.80): the ONE authoritative "a conversation has ENDED" tool. Every path that ends a
+-- talk should funnel through here so the on-screen overlay/menu AND the bottom subtitle band are ALWAYS
+-- cleaned up together — no more per-branch bookkeeping. It's idempotent (safe to call twice) and is
+-- backed by subtitleWatchdogTick (onUpdate) as a guaranteed safety net for any path that still forgets.
+Branch.finish = function(reason)
+  closeChoiceMenu()                 -- close the ImGui choice picker + drop Branch.open
+  Branch.open, Branch.busy = false, false
+  pcall(hideJackieChoiceBox)        -- clear the native "[F] Talk" prompt
+  bstate.node, bstate.openAt = nil, nil
+  bstate.pending, bstate.pendingAt, bstate.pendingAction = nil, nil, nil
+  bstate.tree, bstate.talkCooldownKey = nil, nil
+  hideSubtitle()                    -- wipe the bottom band NOW (watchdog would catch it too)
+  if reason then JL.ui.status = reason end
 end
 
 -- Pick a line from a node's jackiePool. Entries may carry `chance` (0..1) = an independent roll
@@ -3044,6 +3067,28 @@ local function followKeepCloseTick()
   sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)
 end
 
+-- v0.80: SUBTITLE WATCHDOG — the guaranteed cleanup. Stepped every frame from onUpdate. The old bug:
+-- subtitle cleanup lived on each individual dialogue path, so any branch that ended without hitting a
+-- hideSubtitle() (or a one-off line with no follow-up) left the bottom band stuck forever, because the
+-- native band doesn't reliably auto-expire on this build. This is the belt-and-braces fix: if a line is
+-- STILL showing past its own display time AND nothing owns the band right now (no talk / call / walk-off),
+-- force-clear it. It never fires mid-conversation (Branch.busy/open, dlg.active, a live call, or the
+-- leaving parting-line all keep it hands-off), so it can only ever wipe a genuinely orphaned subtitle.
+-- Global (not a top-level local) so the 200-local cap is unaffected.
+function subtitleWatchdogTick()
+  if not subtitle.line then return end                 -- nothing on the band
+  if not subtitle.dueAt then return end                -- its display time isn't tracked yet
+  if (JL.clock or 0) < subtitle.dueAt then return end  -- still within its intended time on screen
+  -- someone is actively driving the band? leave it alone.
+  if Branch.busy or Branch.open then return end
+  if dlg and dlg.active then return end
+  if JL.leaving and JL.leaving.phase == "walking" then return end   -- leavingTick owns its parting line
+  local c = JL.call
+  if c and (c.ringingAt or c.connectAt or c.hangupAt or c.watchdogAt or c.noAnswerAt) then return end
+  hideSubtitle()
+  log("Subtitle watchdog: cleared a dangling subtitle (no active conversation).")
+end
+
 -- stepped from onUpdate: (1) reveal the menu once Jackie's line has played; (2) after the
 -- player's chosen line has shown ~1s, advance to the next node or end the conversation.
 local function branchTick()
@@ -3084,14 +3129,16 @@ local function branchTick()
         end
         JL.ui.status = "Call wrapping up..."
       else
-        hideSubtitle()
-        JL.ui.status = "Dialogue ended."; log("Branch: end.")
-        -- v0.32: if this was a cooldown'd talk tree (the `everywhere` backup), stamp it DONE
-        -- now so further F presses just grunt until the cooldown expires.
-        if bstate.talkCooldownKey then
-          JL.talkDone[bstate.talkCooldownKey] = JL.clock or 0
-          log("Branch: '" .. tostring(bstate.talkCooldownKey) .. "' marked DONE; cooldown started.")
+        -- v0.32: if this was a cooldown'd talk tree (the `everywhere` backup), stamp it DONE now so
+        -- further F presses just grunt until the cooldown expires. Read it BEFORE Branch.finish (which
+        -- clears bstate.talkCooldownKey as part of the reset).
+        local cdKey = bstate.talkCooldownKey
+        if cdKey then
+          JL.talkDone[cdKey] = JL.clock or 0
+          log("Branch: '" .. tostring(cdKey) .. "' marked DONE; cooldown started.")
         end
+        Branch.finish("Dialogue ended.")   -- v0.80: authoritative close — overlay + subtitle, always
+        log("Branch: end.")
         if act == "recruit_here" then pcall(recruitIdleJackie)   -- v0.39: idle Jackie -> companion in place
         elseif act then pcall(function() runCallAction(act) end) end
       end
@@ -4016,6 +4063,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
   pcall(branchTick)
+  pcall(subtitleWatchdogTick)  -- v0.80: GUARANTEE no dialogue subtitle can stick after a talk ends
   pcall(flapTick)       -- lip-movement: shuffle talking faces while a Jackie line plays
   pcall(smileTick)      -- v0.53: low-chance brief smile when V catches his eye
   pcall(ambientGruntTick)  -- v0.55: rare non-pained "feel alive" grunt while he's around

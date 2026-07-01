@@ -106,9 +106,12 @@ Both are movement / coordinate work.
 ## Session 5 — Dialogue & subtitle polish (LIGHTEST — mostly data edits)
 
 **Issues:**
-- **Sticky subtitles** — they still stick sometimes (e.g. right on "chica" after the dinner invite).
-  Need a secure timer-based wipe. NOTE: we tried this before and it didn't hold — investigate WHY the
-  prior method fails before re-adding (don't just re-apply the same approach).
+- **Sticky subtitles** — ✅ **FIXED in v0.80 (2026-07-01), awaiting in-game test.** Root cause: cleanup
+  was per-code-path (`hideSubtitle` on each branch end) and the native band doesn't reliably auto-expire
+  on this build, so any end path that skipped the hide stuck. The prior one-off timer
+  (`leavingTick.subClearAt`) only covered ONE path. New fix = a universal `subtitleWatchdogTick`
+  (onUpdate): every line records a `dueAt`; if a line outlives it while NO conversation owns the band, it
+  force-clears — so no path can leak. Plus a new `Branch.finish()` authoritative close tool. See TODO v0.80.
 - **"Catch you later, hermano" / "Catch you later" should END the conversation** — no trailing
   `(Leave)` menu and no `(close)` option after it; it should just close itself. (Multiple trees have
   a `bye` node ending in `{ text = "(Leave)", to = nil }` — these need an auto-close terminal.)
