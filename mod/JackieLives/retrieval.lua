@@ -62,19 +62,20 @@ M.Config = {
   tipTitle    = "Viktor Vektor",
   tipText     = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
               .. "my table that night. I got a pulse back, called in a favor, and moved him out "
-              .. "before Arasaka came lookin' for the body. He's alive, V. Layin' low out in the "
-              .. "Badlands — and it's gotta stay that way. He's been waitin' on you. I'm markin' "
-              .. "the spot on your map. Go bring him home.",
+              .. "before Arasaka came lookin' for the body. It just wasn't safe before to tell you, V. "
+              .. "He's alive, V. Layin' low out in the Badlands — and it's gotta stay that way. "
+              .. "He's been waitin' on you. I'm markin' the spot on your map. Go bring him home.",
   tipDuration = 10.0,
 
   -- Jackie's note — read on reaching the Badlands hideout (Rocky Ridge garage).
   shardTitle  = "Shard — Jackie Welles",
   shardLines  = {
-    "If you're readin' this, mano, then the doc kept his word and you made it out here. It's me. I'm alive.",
-    "Vik patched me up and smuggled me out 'fore 'Saka could stamp my name on a slab. Been layin' low ever since.",
-    "Mama Welles won't let me run the streets again — and this time, maybe she's got the right of it.",
-    "I'm done with the merc life, V. For real. But I couldn't let you go on thinkin' you buried me.",
-    "Sit tight, hermano. I'm comin' out to see you. — Jackie",
+    "If you're readin' this, V, then the doc kept his word and you made it out here. It's me. I'm alive.",
+    "Vik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.",
+    "Mama Welles was so mad when she heard. Think she'd kill me if I went back runnin' the streets again "
+      .. "— and this time, maybe she's right. I'm done with the merc life, V. For real. But I couldn't "
+      .. "let you go on thinkin' you buried me.",
+    "Give me a call when you read this. — Jackie",
   },
   shardDuration = 12.0,
 

@@ -12,6 +12,7 @@
     4) Make the bike DRIVE to a captured coordinate / to you.
     5) Unmount Jackie (get off the bike).
     6) Spawn Jackie on the bike AT DISTANCE and have him drive up to you.
+    7) PASSENGER: seat Jackie in V's OWN car (front passenger) + drive around (mirror of driving).
 
   HOW THE PIECES WORK (verified against decompiled scripts + AMM source, patch 2.x):
     * Spawn      : Game.GetDynamicEntitySystem():CreateEntity(DynamicEntitySpec) - same path
@@ -67,6 +68,8 @@ local V = {
   arrival = { phase = nil, at = 0 },  -- tiny state machine for step 6 (spawn -> settle -> mount -> drive)
   -- ride-in machine: drive (slow) -> dismount+stop at DISMOUNT_DIST -> sprint -> walk -> stop near V
   ride = { phase = nil, lastReissue = -999, sprintAt = 0, cmd = nil },
+  seatInstant = false,            -- step 7: false = play get-in anim (car stopped); true = teleport into seat
+  seatUsed = nil,                 -- which passenger seat we last put Jackie in (for unmount)
   clock = 0,
 }
 
@@ -270,6 +273,98 @@ local function unmountJackie()
   log(V.status)
 end
 
+-- ── PASSENGER: seat Jackie in V's OWN car (front passenger) ───────────────────
+-- Same AIMountCommand recipe as mountJackie, but the mount parent is V's CURRENT vehicle and
+-- the seat is a passenger slot. Verified in docs/research/vehicle_passenger_research.md
+-- (AMM Scan:AssignSeats + Util:GetMountedVehicleTarget + VehicleComponent::HasSlot).
+local function playerVehicle()
+  local qm; pcall(function() qm = player():GetQuickSlotsManager() end)
+  local veh; if qm then pcall(function() veh = qm:GetVehicleObject() end) end
+  return veh
+end
+
+local function hasSeat(veh, cname)
+  local ok = false
+  pcall(function()
+    ok = Game['VehicleComponent::HasSlot;GameInstanceVehicleObjectCName'](veh, CName.new(cname))
+  end)
+  return ok
+end
+
+-- Front passenger preferred, then the back seats (4-seaters only). nil if none exist.
+local PASSENGER_SEATS = { "seat_front_right", "seat_back_left", "seat_back_right" }
+local function freePassengerSeat(veh)
+  for _, c in ipairs(PASSENGER_SEATS) do if hasSeat(veh, c) then return c end end
+  return nil
+end
+
+-- Jackie handle to seat: prefer the one THIS mod spawned (1b), else the NPC you're looking at
+-- (so it also works on an AMM-summoned Jackie).
+local function jackieForSeat()
+  if V.jackie.handle then return V.jackie.handle end
+  local p = player(); if not p then return nil end
+  local t
+  pcall(function()
+    local ts = Game.GetTargetingSystem()
+    if ts then t = ts:GetLookAtObject(p, false, false) end
+  end)
+  return t
+end
+
+local function seatJackieInPlayerCar()
+  local jh  = jackieForSeat()
+  local veh = playerVehicle()
+  if not jh  then V.status = "No Jackie — spawn him (1b) or look at a summoned Jackie."; log(V.status); return end
+  if not veh then V.status = "You're not in a vehicle — get in your car first."; log(V.status); return end
+  local seat = freePassengerSeat(veh)
+  if not seat then V.status = "No free passenger seat on this vehicle (2-seater full?)."; log(V.status); return end
+  setFriendly(jh)
+  local ok, err = pcall(function()
+    local cmd = newCmd('AIMountCommand')
+    local md  = MountEventData.new()
+    md.mountParentEntityId = veh:GetEntityID()
+    md.isInstant = V.seatInstant                 -- false = get-in anim (stop first); true = teleport
+    md.setEntityVisibleWhenMountFinish = true
+    md.removePitchRollRotationOnDismount = false
+    md.ignoreHLS = false
+    md.mountEventOptions = NewObject('handle:gameMountEventOptions')
+    md.mountEventOptions.silentUnmount   = false
+    md.mountEventOptions.entityID        = veh:GetEntityID()
+    md.mountEventOptions.alive           = true
+    md.mountEventOptions.occupiedByNeutral = true
+    md.slotName = seat
+    cmd.mountData = md
+    cmd = cmd:Copy()
+    jh:GetAIControllerComponent():SendCommand(cmd)
+  end)
+  V.seatUsed = seat
+  V.status = "Seat Jackie (" .. seat .. ") -> " .. (ok and "sent (look to your right)." or ("FAILED: " .. tostring(err)))
+  log(V.status)
+end
+
+local function unmountPassenger()
+  local jh  = jackieForSeat()
+  local veh = playerVehicle() or V.bike.handle
+  if not jh then V.status = "No Jackie handle."; log(V.status); return end
+  local ok, err = pcall(function()
+    local cmd = newCmd('AIUnmountCommand')
+    local md  = MountEventData.new()
+    if veh then md.mountParentEntityId = veh:GetEntityID() end
+    md.isInstant = false
+    md.setEntityVisibleWhenMountFinish = true
+    md.mountEventOptions = NewObject('handle:gameMountEventOptions')
+    md.mountEventOptions.silentUnmount = false
+    if veh then md.mountEventOptions.entityID = veh:GetEntityID() end
+    md.mountEventOptions.alive = true
+    md.slotName = V.seatUsed or "seat_front_right"
+    cmd.mountData = md
+    cmd = cmd:Copy()
+    jh:GetAIControllerComponent():SendCommand(cmd)
+  end)
+  V.status = "Unmount passenger (" .. (V.seatUsed or "seat_front_right") .. ") -> " .. (ok and "sent." or ("FAILED: " .. tostring(err)))
+  log(V.status)
+end
+
 -- ── engine ────────────────────────────────────────────────────────────────────
 local function engine(on)
   local vh = V.bike.handle
@@ -469,6 +564,10 @@ local function probe()
   ctor("AIVehicleFollowCommand", function() return newCmd('AIVehicleFollowCommand') end)
   ctor("AINPCCommandEvent",  function() return NewObject('handle:AINPCCommandEvent') end)
   ctor("Vector3",            function() return Vector3.new(0, 0, 0) end)
+  -- passenger (step 7) API
+  log("QuickSlotsManager   : " .. tostring((function() local q; pcall(function() q = player():GetQuickSlotsManager() end); return q ~= nil end)()))
+  log("VehicleComponent::HasSlot : " .. tostring(Game['VehicleComponent::HasSlot;GameInstanceVehicleObjectCName'] ~= nil))
+  log("player vehicle now  : " .. tostring(playerVehicle() ~= nil) .. " (get in a car to make this true)")
   V.status = "Probe done - paste the [JKVeh] lines to Claude (OK/MISSING tells us what works)."
   log("===== END PROBE =====")
 end
@@ -618,6 +717,17 @@ registerForEvent("onDraw", function()
   if ImGui.Button("6) Spawn at distance + ride in + dismount + walk") then arrivalAtDistance() end
   ImGui.Separator()
 
+  ImGui.Text("STEP 7 - Jackie as PASSENGER in YOUR car:")
+  local myVeh = playerVehicle()
+  ImGui.Text("  In a vehicle: " .. (myVeh and "yes" or "no - get in your car") ..
+             (V.seatUsed and ("   last seat: " .. V.seatUsed) or ""))
+  V.seatInstant = ImGui.Checkbox("instant seat (teleport - use if seating while moving)", V.seatInstant)
+  ImGui.TextWrapped("(unchecked = he plays the get-in animation; stop the car first for that)")
+  if ImGui.Button("7a) Seat Jackie as passenger") then seatJackieInPlayerCar() end
+  ImGui.SameLine()
+  if ImGui.Button("7b) Unmount passenger") then unmountPassenger() end
+  ImGui.Separator()
+
   if ImGui.Button("DESPAWN bike + Jackie") then despawnAll() end
   if V.status ~= "" then ImGui.TextWrapped("> " .. V.status) end
   ImGui.End()
@@ -632,4 +742,6 @@ registerHotkey("jkv_onbike",    "Vehicle: spawn Jackie on bike", function() spaw
 registerHotkey("jkv_drive",     "Vehicle: ride to me (full)",  function() startRideIn() end)
 registerHotkey("jkv_unmount",   "Vehicle: unmount Jackie",     function() unmountJackie() end)
 registerHotkey("jkv_arrive",    "Vehicle: arrive at distance", function() arrivalAtDistance() end)
+registerHotkey("jkv_seat",      "Vehicle: seat Jackie passenger", function() seatJackieInPlayerCar() end)
+registerHotkey("jkv_unseat",    "Vehicle: unmount passenger",     function() unmountPassenger() end)
 registerHotkey("jkv_despawn",   "Vehicle: despawn all",        function() despawnAll() end)
