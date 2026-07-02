@@ -70,6 +70,11 @@ local V = {
   ride = { phase = nil, lastReissue = -999, sprintAt = 0, cmd = nil },
   seatInstant = false,            -- step 7: false = play get-in anim (car stopped); true = teleport into seat
   seatUsed = nil,                 -- which passenger seat we last put Jackie in (for unmount)
+  seatedJackie = nil,             -- the Jackie HANDLE we actually seated (so unmount works w/o look-at)
+  seatedVeh = nil,                -- the vehicle handle he was seated in (V's car, remembered for unmount)
+  ourSeating = true,              -- MASTER toggle for our passenger-seat code. Turn OFF to test whether
+                                  --   AMM's own companion behaviour already seats/dismounts him -> if so,
+                                  --   our code is redundant and can be deleted.
   clock = 0,
 }
 
@@ -312,6 +317,7 @@ local function jackieForSeat()
 end
 
 local function seatJackieInPlayerCar()
+  if not V.ourSeating then V.status = "Our seating is OFF (AMM should handle it)."; log(V.status); return end
   local jh  = jackieForSeat()
   local veh = playerVehicle()
   if not jh  then V.status = "No Jackie — spawn him (1b) or look at a summoned Jackie."; log(V.status); return end
@@ -338,14 +344,18 @@ local function seatJackieInPlayerCar()
     jh:GetAIControllerComponent():SendCommand(cmd)
   end)
   V.seatUsed = seat
+  if ok then V.seatedJackie, V.seatedVeh = jh, veh end   -- remember for unmount (works from driving cam)
   V.status = "Seat Jackie (" .. seat .. ") -> " .. (ok and "sent (look to your right)." or ("FAILED: " .. tostring(err)))
   log(V.status)
 end
 
 local function unmountPassenger()
-  local jh  = jackieForSeat()
-  local veh = playerVehicle() or V.bike.handle
-  if not jh then V.status = "No Jackie handle."; log(V.status); return end
+  if not V.ourSeating then V.status = "Our seating is OFF (AMM should handle it)."; log(V.status); return end
+  -- Prefer the handle we actually seated (V's driving camera has no look-at target, so
+  -- jackieForSeat() would return nil here — that was the "No Jackie handle" bug).
+  local jh  = V.seatedJackie or jackieForSeat()
+  local veh = V.seatedVeh or playerVehicle() or V.bike.handle
+  if not jh then V.status = "No seated Jackie to dismount."; log(V.status); return end
   local ok, err = pcall(function()
     local cmd = newCmd('AIUnmountCommand')
     local md  = MountEventData.new()
@@ -363,6 +373,7 @@ local function unmountPassenger()
   end)
   V.status = "Unmount passenger (" .. (V.seatUsed or "seat_front_right") .. ") -> " .. (ok and "sent." or ("FAILED: " .. tostring(err)))
   log(V.status)
+  if ok then V.seatedJackie, V.seatedVeh, V.seatUsed = nil, nil, nil end
 end
 
 -- ── engine ────────────────────────────────────────────────────────────────────
@@ -721,6 +732,13 @@ registerForEvent("onDraw", function()
   local myVeh = playerVehicle()
   ImGui.Text("  In a vehicle: " .. (myVeh and "yes" or "no - get in your car") ..
              (V.seatUsed and ("   last seat: " .. V.seatUsed) or ""))
+  -- MASTER TOGGLE: does AMM already seat/dismount a summoned Jackie on its own? Flip this OFF and
+  -- ride around with a summoned Jackie: if he STILL gets in/out, AMM handles it and our code is dead.
+  if ImGui.Button(V.ourSeating and "Our seating: ON  (click to test AMM-only)" or "Our seating: OFF (AMM handles it?)") then
+    V.ourSeating = not V.ourSeating
+    V.status = V.ourSeating and "Our passenger code ON." or "Our passenger code OFF - AMM should seat/dismount him."
+    log(V.status)
+  end
   V.seatInstant = ImGui.Checkbox("instant seat (teleport - use if seating while moving)", V.seatInstant)
   ImGui.TextWrapped("(unchecked = he plays the get-in animation; stop the car first for that)")
   if ImGui.Button("7a) Seat Jackie as passenger") then seatJackieInPlayerCar() end
