@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.84"
+Config.version = "0.85"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -953,6 +953,161 @@ Config.firstCallTree = {
         { text = "Heh. Knew it. Bring her round and come see me, yeah? We got a lotta catchin' up to do." },
       },
       action = "return_bike",
+    },
+  },
+}
+
+-- ============================================================================
+-- REUNION (v0.85) — the retrieval quest's emotional payoff.
+-- Flow: read the Rocky Ridge shard -> stage AWAITING_CALL (Jackie has no world
+-- presence yet + ALWAYS answers, never "asleep") -> V calls him -> this long call
+-- plays -> it ends with Jackie coming over -> he walks in on foot -> the SHORT
+-- reunionMeetTree plays face-to-face -> mod fully unlocks (schedule/calls/summon).
+-- Text-only lines (like seatedTree/firstCallTree) — add `sfx="jl_<id>"` to voice
+-- any line later. Emotion cues in (parens) are shown in the subtitle.
+-- reunionCallTree supersedes firstCallTree (the bike-back beat is folded in here).
+-- ============================================================================
+Config.reunionCallTree = {
+  start = "pickup",
+  nodes = {
+    pickup = {
+      jackiePool = {
+        { text = "...V? (a breath) Dios mío, it's really you. Been starin' at this phone for weeks wonderin' if you'd ever ring it." },
+      },
+      choices = {
+        { text = "You son of a bitch. You're ALIVE?",        to = "alive" },
+        { text = "Jackie. I buried you. I MOURNED you.",     to = "alive" },
+      },
+    },
+    alive = {
+      jackiePool = {
+        { text = "(sigh) Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us." },
+      },
+      choices = {
+        { text = "Weeks, Jackie. You let me think you were GONE.",       to = "outrage" },
+        { text = "I'm so mad at you I can't— (breathe) you're okay?",    to = "outrage" },
+      },
+    },
+    outrage = {
+      jackiePool = {
+        { text = "I know. I KNOW. Scream at me all you want, mano, I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh." },
+      },
+      choices = {
+        { text = "...You really scared me, choom.", to = "whatyou" },
+      },
+    },
+    whatyou = {
+      jackiePool = {
+        { text = "So talk to me. What'd I miss? What you been up to out there, huh — runnin' 'round Night City without your best choom watchin' your back?" },
+      },
+      choices = {
+        { text = "It's... complicated. Long story.",                  to = "deflect" },
+        { text = "(hesitates) You wouldn't believe me if I told you.", to = "deflect" },
+      },
+    },
+    deflect = {
+      jackiePool = {
+        { text = "(hmm) ...Complicated. Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now." },
+      },
+      choices = {
+        { text = "So what about YOU — done hidin'? Or you livin' in that crusty desert forever?", to = "hiding" },
+      },
+    },
+    hiding = {
+      jackiePool = {
+        { text = "(sigh) Honest? Layin' low out here's wearin' me down to nothin', V. Miss the city. The lights, the noise, Mama's cookin'. I wanna come home. But it ain't that simple." },
+      },
+      choices = {
+        { text = "Why not? What's keepin' you stuck out there?", to = "daemon" },
+      },
+    },
+    daemon = {
+      jackiePool = {
+        { text = "That chip they jammed in me... whatever got left behind's still runnin'. Some daemon, pingin' out where I am like a beacon. That's how 'Saka'd find me — why I gotta stay outta range. Vik tried to cut it. Couldn't." },
+      },
+      choices = {
+        { text = "Then we find someone who CAN. A netrunner, a ripper — anyone.", to = "quest" },
+        { text = "We'll get it out of you. I'm not losin' you twice, Jackie.",     to = "quest" },
+      },
+    },
+    quest = {
+      jackiePool = {
+        { text = "(a small laugh) You'd really do that. 'Course you would. A'ight, chica. We find someone who can pull this thing outta my skull... maybe I get my life back." },
+      },
+      choices = {
+        { text = "We'll get it done. No worries. I got your back till then.", to = "gigs" },
+      },
+    },
+    gigs = {
+      jackiePool = {
+        { text = "(quieter) An' V... gotta be straight with ya. After what happened, I can't be runnin' serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried." },
+      },
+      choices = {
+        { text = "Nobody's askin' you to. We keep it low. Deal?",   to = "askbike" },
+        { text = "Good. You've bled enough for this city, hermano.", to = "askbike" },
+      },
+    },
+    askbike = {
+      jackiePool = {
+        { text = "Deal. ...An' V? (a beat) There's one more thing I gotta ask ya." },
+      },
+      choices = {
+        { text = "Yeah? What is it now?", to = "bike" },
+      },
+    },
+    bike = {
+      jackiePool = {
+        { text = "(nervous) My Arch. My girl. Vik said you been holdin' onto her for me. She... she still with you? She okay?" },
+      },
+      choices = {
+        { text = "(laughs) THAT's what you're nervous about?", to = "bikesafe" },
+      },
+    },
+    bikesafe = {
+      jackiePool = {
+        { text = "Hey, don't laugh! I swear to hell, V — if my baby ain't purrin', if there's one scratch on her tank when I get there, I'm gonna be SO mad, choom. I mean it—" },
+      },
+      choices = {
+        { text = "Relax, hermano. She's safe and sound. Come pick her up.", to = "coming" },
+      },
+    },
+    coming = {
+      -- terminal -> reunion_arrival: give the Arch back + Jackie walks in on foot -> first meeting.
+      jackiePool = {
+        { text = "(exhales, laughs soft) ...You got no idea what that means to me, V. Where you at? Nah — don't move. I'm already on my way to ya. Hang tight, chica. I'll be right there." },
+      },
+      action = "reunion_arrival",
+    },
+  },
+}
+
+-- The SHORT face-to-face first meeting, played when the walked-in Jackie reaches V.
+Config.reunionMeetTree = {
+  start = "seeya",
+  nodes = {
+    seeya = {
+      jackiePool = {
+        { text = "(quiet) ...Look at you. In the flesh. Thought I'd never see that mug again, chica." },
+      },
+      choices = {
+        { text = "You've looked better yourself, choom.",     to = "used" },
+        { text = "(just look at him a moment) ...It's you.",  to = "used" },
+      },
+    },
+    used = {
+      jackiePool = {
+        { text = "(laughs) Yeah, yeah. Desert don't do wonders for a man's looks. You picked up some new miles too, V. Suits ya, though." },
+      },
+      choices = {
+        { text = "We're both still standin'. That's what counts.", to = "leave" },
+      },
+    },
+    leave = {
+      -- terminal -> reunion_complete: unlock the whole mod (schedule + calls + summon).
+      jackiePool = {
+        { text = "That we are, hermano. (claps V on the shoulder) Now c'mon — let's get the hell outta this sandy hellhole 'fore I sprout a cactus. Take me home." },
+      },
+      action = "reunion_complete",
     },
   },
 }

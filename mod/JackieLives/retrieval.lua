@@ -119,7 +119,9 @@ M.Config = {
 -- ---------------------------------------------------------------------------
 -- Stage constants + module state
 -- ---------------------------------------------------------------------------
-local LOCKED, TIP, SHARD, REUNITED = 0, 1, 2, 4   -- persisted; 3=INCOMING is runtime-only
+-- v0.85: AWAITING(3) is now a REAL persisted stage — shard read, Jackie has no world presence yet
+-- and ALWAYS answers V's call; the reunion call + walk-in drive the jump to REUNITED.
+local LOCKED, TIP, SHARD, AWAITING, REUNITED = 0, 1, 2, 3, 4
 local USE_GAME_FACT = true
 local FACT_NAME     = "jackielives_stage"
 
@@ -340,12 +342,14 @@ function M.giveTip()                                   -- LOCKED -> TIP
   return true
 end
 
-local function reachHideout()                          -- TIP -> SHARD
+local function reachHideout()                          -- TIP -> AWAITING_CALL
   if getStage() ~= TIP then return end
   showTip(M.Config.shardTitle, table.concat(M.Config.shardLines, "\n"), M.Config.shardDuration)
-  log("Shard read at hideout.")
-  setStage(SHARD)
-  state.callAt, state.seq = state.clock + (M.Config.callDelay or 1.0), nil
+  log("Shard read at hideout -> AWAITING_CALL (V must call Jackie; he always answers now).")
+  -- v0.85: no more auto-ring. Jackie now WAITS for V to call him (he always picks up in this
+  -- stage — no schedule, never 'asleep'). init.lua plays Config.reunionCallTree, whose ending
+  -- walks him in on foot; the first-meeting dialogue then calls M.completeReunion() -> REUNITED.
+  setStage(AWAITING)
 end
 
 -- ---------------------------------------------------------------------------
@@ -388,10 +392,20 @@ end
 -- ---------------------------------------------------------------------------
 function M.isUnlocked()    return getStage() >= REUNITED end
 function M.getStage()      return getStage() end
+-- v0.85: true once the shard's read and before the reunion completes. init.lua uses this to let
+-- V call Jackie (he ALWAYS answers — no schedule/asleep gate) and to pick Config.reunionCallTree.
+function M.isAwaitingCall() return getStage() == AWAITING end
+-- Called by init.lua when the first-meeting dialogue ends: unlock the whole mod. Permanent.
+function M.completeReunion()
+  clearPin()
+  setStage(REUNITED)
+  log("REUNITED — mod fully unlocked (schedule + calls + summon live).")
+end
 -- Player-facing stage names (shown at the top of the CET window).
 function M.stageName()
   local s = getStage()
   if s >= REUNITED then return "Jackie is back" end
+  if s == AWAITING then return "Jackie's alive — CALL him (he's waitin')" end
   if s == SHARD    then return "Jackie's note was read at Rocky Ridge — he's on his way" end
   if s == TIP      then return "V heard the rumor — find Jackie in the Badlands" end
   return "Mod not yet available"
@@ -419,7 +433,9 @@ end
 
 -- Debug jumps for the CET window.
 function M.forceTip()   M.reset(); M.giveTip() end     -- skip the Vik proximity
-function M.forceShard() if getStage() < TIP then M.giveTip() end; reachHideout() end
+function M.forceShard() if getStage() < TIP then M.giveTip() end; reachHideout() end  -- -> AWAITING_CALL
+function M.forceAwaiting() M.reset(); setStage(AWAITING) end  -- jump straight to "call Jackie"
+function M.forceReunion()  M.completeReunion() end            -- skip to REUNITED (unlock)
 
 -- Per-frame driver (call from init.lua onUpdate with the frame delta).
 function M.tick(dt)
@@ -440,9 +456,9 @@ function M.tick(dt)
   elseif s == TIP then
     if not state.mappinId then placePin() end
     if nearPoint(M.Config.hideoutPos, M.Config.hideoutRadius) then reachHideout() end
-  elseif s == SHARD then
-    if state.callAt and state.clock >= state.callAt then startSequence() end
   end
+  -- s == AWAITING: nothing to poll here — the reunion is driven by V calling Jackie
+  -- (init.lua: always-answer + Config.reunionCallTree -> walk-in -> M.completeReunion()).
 
   postShardTick()   -- v0.84: Misty / Mama Welles notes, once Jackie's back
 end

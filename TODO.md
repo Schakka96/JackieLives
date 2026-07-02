@@ -55,6 +55,32 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
   ON while walking, drag the dial/radius until he walks nicely alongside, then tell Claude the index+radius
   to bake in + wire into the dinner walk (backlog item below).
 
+**v0.85 REUNION RESTRUCTURE 2026-07-02 (AWAITING IN-GAME TEST — big flow change):**
+- 🐛→✅ **BUG FIX: reunion call went to voicemail when Jackie was asleep/busy.** New persisted stage
+  **AWAITING_CALL (3)** between SHARD and REUNITED: shard read → Jackie has NO world presence yet (no
+  schedule) and **ALWAYS answers** V's call (bypasses the asleep/busy/"disconnected" gates). Reading the
+  shard no longer auto-rings — **V must call him**.
+- 💬 **New reunion CALL** (`Config.reunionCallTree`, long + emotional, rewritten from Antonia's beats):
+  V's outrage he's alive → Jackie asks what V's been up to (V deflects) → "you done hidin'?" → Jackie
+  wants back in the city BUT the Relic left a **tracking daemon** 'Saka can follow (→ launches a
+  find-a-netrunner/ripper quest; Vik couldn't cut it) → V: we'll fix it, I've got your back → Jackie
+  admits no more serious gigs (Mama'd kill him, chuckle) → the nervous **bike** ask (folds in the
+  bike-back beat) → ends with "I'm on my way." Emotion cues in (parens).
+- 🚶 **Ends with a FOOT walk-in** (reuses the standard foot arrival) → when he reaches V the SHORT
+  `Config.reunionMeetTree` plays (teasing they look "used", "take me home") → its end calls
+  `Retrieval.completeReunion()` → **REUNITED / full unlock**. Bike is returned + fact `jackielives_daemon`
+  set during the walk-in arming.
+- Wiring: `startCall`/`onPlayerCalledJackie` allow+always-connect in AWAITING; `callTick` picks
+  `reunionCallTree`; new `reunion_arrival`/`reunion_complete` actions; `arrivalGreetTick` plays the meet
+  tree; `wasCall`/`withCompanionExtras` know the new trees. Text-only lines (add `sfx` to voice later).
+  → **TEST (CET Retrieval debug):** "Force AWAITING" → "Call Jackie now" → does the long reunion call
+  play (even if he'd be asleep)? Does he walk in on foot? Does the short first-meeting play + unlock the
+  mod? Safety nets: "Force REUNITED (skip)" if the flow snags. Watch `[Retrieval]` / call logs.
+- 🆕 **NEW QUEST TO BUILD: remove Jackie's tracking daemon.** The reunion call launches it (sets
+  `jackielives_daemon=1`) but it's a **stub** — no objective/quest content yet. Design: V + Jackie seek a
+  netrunner/ripperdoc to extract the Relic daemon so he can safely return to the city. Add proper
+  quest steps, dialogue, and a resolution. (Ties into why he must "stay out of range" for now.)
+
 **v0.84 immersion pass 2026-07-02 (AWAITING IN-GAME TEST):**
 - 🏍️ **"Wants his bike back" reunion beat.** The FIRST holocall after Jackie's back now plays
   `Config.firstCallTree` (relieved greeting → he asks for his Arch → V agrees) instead of the normal

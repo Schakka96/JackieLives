@@ -1563,8 +1563,10 @@ end
 -- you anyway) - guarded by JL.summon.active + the tree not being the call tree.
 local function withCompanionExtras(choices)
   if not JL.summon.active then return choices end
-  if bstate.tree == Config.callTree or bstate.tree == Config.firstCallTree then return choices end  -- not on a call
+  if bstate.tree == Config.callTree or bstate.tree == Config.firstCallTree
+     or bstate.tree == Config.reunionCallTree then return choices end  -- not on a call
   if Config.date and bstate.tree == Config.date.tree then return choices end -- and not mid-date (no recursion)
+  if bstate.tree == Config.reunionMeetTree then return choices end  -- v0.85: no "send off" during the first meeting
   -- v0.83: NEVER offer "Head home, Jackie" during a dinner outing — dismissing a SEATED puppet (role
   -- cleared, in a sit workspot) doesn't stand him up and crashes the game. The dinner "Enough chillin',
   -- let's go" option (seatedTree) is the safe way to end the outing.
@@ -1926,6 +1928,23 @@ local function runCallAction(name)
     JL.ui.status = "Gave Jackie his Arch back."
     return
   end
+  if name == "reunion_arrival" then   -- v0.85: the reunion CALL ended -> he comes to V on foot
+    if jlReturnJackiesBike then pcall(jlReturnJackiesBike) end                 -- his Arch is his again
+    pcall(function() Game.GetQuestsSystem():SetFactStr("jackielives_daemon", 1) end)  -- launch daemon-removal quest (stub)
+    local delay = (Config.call and Config.call.vehicleSpawnDelay) or 2.0
+    JL.varrival.at      = (JL.clock or 0) + delay
+    JL.varrival.useBike = false          -- FOOT walk-in (reuse the standard foot arrival)
+    JL.reunionPending   = true           -- arrivalGreetTick plays reunionMeetTree instead of a greeting
+    JL.ui.status = "Jackie's on his way in..."
+    log("Reunion: bike returned + FOOT walk-in armed; reunionMeet pending.")
+    return
+  end
+  if name == "reunion_complete" then   -- v0.85: first-meeting dialogue ended -> UNLOCK the mod
+    pcall(function() Retrieval.completeReunion() end)
+    JL.ui.status = "Jackie's back. Mod unlocked."
+    log("Reunion: complete -> REUNITED.")
+    return
+  end
   if name == "date_accept" then   -- legacy (pre-v0.41 date tree); harmless
     local ext = (Config.date and Config.date.resetCompanionHours) or 6.0
     armCompanionTimer(ext)
@@ -1951,7 +1970,10 @@ end
 -- Begin a holocall. With useNativeWindow: fire the native RING (IncomingCall) now; callTick
 -- then aborts it (STOP) and switches to the CONNECT window before running our convo.
 local function startCall()
-  if not Retrieval.isUnlocked() then JL.ui.status = Retrieval.unavailableMsg(); Retrieval.notifyUnavailable(); return end  -- gated until the retrieval quest is done
+  -- v0.85: in AWAITING_CALL (shard read, reunion not done) V CAN call — Jackie always answers.
+  if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then
+    JL.ui.status = Retrieval.unavailableMsg(); Retrieval.notifyUnavailable(); return       -- gated until the retrieval quest is done
+  end
   if Branch.open or Branch.busy or dlg.active then JL.ui.status = "Busy - finish the current talk first."; return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
   if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
@@ -1964,7 +1986,7 @@ local function startCall()
     triggerNativeCall(id, "IncomingCall", 1)   -- native ring (avatar + ringtone)
   end
   -- v0.55: if Jackie's asleep he doesn't pick up — ring out, then auto hang up (no connect, no convo).
-  if jackieAsleep() then
+  if jackieAsleep() and not Retrieval.isAwaitingCall() then   -- v0.85: reunion call always connects
     local rs = (Config.call and Config.call.asleepRingSeconds) or 7.0
     showOnscreenMsg("Calling Jackie...", rs + 0.5)
     JL.call.noAnswerAt = (JL.clock or 0) + rs
@@ -2015,10 +2037,12 @@ local function callTick()
     if native then openNativeCallWindow() end     -- CONNECT: empty transparent window stays up
     JL.call.watchdogAt = now + 300                -- safety net (force-end if a call never completes)
     Branch.busy = false                           -- Branch.start re-sets it
-    -- v0.84: the FIRST call after he's back is the reunion beat (he asks for his Arch back);
-    -- every call after that is the normal callTree.
+    -- v0.85: in AWAITING_CALL this is THE reunion call (long, emotional, ends with him walking in).
+    -- v0.84: else the first call after he's back is the bike-back beat; every call after = normal tree.
     local tree = Config.callTree
-    if Config.bikeReturn and Config.bikeReturn.enabled and Config.firstCallTree
+    if Retrieval.isAwaitingCall() and Config.reunionCallTree then
+      tree = Config.reunionCallTree
+    elseif Config.bikeReturn and Config.bikeReturn.enabled and Config.firstCallTree
        and jlBikeReturned and not jlBikeReturned() then
       tree = Config.firstCallTree
     end
@@ -2047,13 +2071,13 @@ end
 -- our flow: the native ring is already playing, so we just arm callTick (STOP -> CONNECT -> convo)
 -- without re-firing IncomingCall ourselves.
 local function onPlayerCalledJackie()
-  if not Retrieval.isUnlocked() then return end                -- gated: let the game's own call ring out (no hijack)
+  if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then return end  -- gated: let the game's own call ring out (no hijack)
   if Branch.open or Branch.busy or dlg.active then return end   -- already talking
   if JL.summon.active then return end                          -- already with you
   if isMainQuestActive() then return end
   -- v0.55: asleep -> DON'T hijack. The game's own ring just plays out and auto-hangs-up; Jackie
   -- never "picks up" (our connect hook never arms). Matches "rings until it auto hangs up".
-  if jackieAsleep() then
+  if jackieAsleep() and not Retrieval.isAwaitingCall() then   -- v0.85: reunion call always connects
     JL.ui.status = "Jackie's not pickin' up (asleep)."
     log("Hijack: player called Jackie while asleep -> left it ringing (no pickup).")
     return
@@ -3203,13 +3227,14 @@ local function branchTick()
       Branch.start(nxt)
     else
       Branch.busy = false
-      local wasCall = (bstate.tree == Config.callTree or bstate.tree == Config.firstCallTree)
+      local wasCall = (bstate.tree == Config.callTree or bstate.tree == Config.firstCallTree
+                       or bstate.tree == Config.reunionCallTree)
       bstate.tree = nil
       local act = bstate.pendingAction; bstate.pendingAction = nil
       if wasCall then
         hideSubtitle()
-        if act == "summon_arrival" then
-          -- v0.33e: Jackie already agreed to the gig - a V sign-off here ("...don't keep me
+        if act == "summon_arrival" or act == "reunion_arrival" then
+          -- v0.33e: Jackie already agreed to come - a V sign-off here ("...don't keep me
           -- waitin'") reads awkward. Skip it; just hang up after a short beat.
           JL.call.hangupAction = act
           JL.call.hangupAt = (JL.clock or 0) + 0.4
@@ -4212,6 +4237,12 @@ local function arrivalGreetTick()
   if d <= ((Config.call and Config.call.arrivalGruntDistance) or 4.0) then
     if Branch.open or Branch.busy or (dlg and dlg.active) then return end  -- don't talk over a convo; retry next tick
     JL.summon.arrivalGreetPending = false
+    if JL.reunionPending then   -- v0.85: the FIRST-EVER meeting -> play the short reunion dialogue, then unlock
+      JL.reunionPending = false
+      pcall(function() Branch.start(Config.reunionMeetTree and Config.reunionMeetTree.start or nil, Config.reunionMeetTree) end)
+      log("Reunion: first-meeting dialogue started (reunionMeetTree).")
+      return
+    end
     local e = pickArrivalGreetLine(JL.clock or 0)
     if e then
       pcall(function() speakJackieLine(e.text, e.sfx) end)
@@ -4583,8 +4614,16 @@ registerForEvent("onDraw", function()
     ImGui.SameLine(); if ImGui.Button("Force shard read") then Retrieval.forceShard() end
     if ImGui.Button("Probe quest gate (console)") then Retrieval.debugQuestState() end
     ImGui.SameLine(); if ImGui.Button("Reset to LOCKED") then Retrieval.reset() end
-    ImGui.TextWrapped("Gate ships OFF: tip fires when you reach Vik (coords set). Flow: Vik's clinic -> " ..
-      "tip + Badlands pin -> Rocky Ridge garage -> shard -> ~1s -> unlock (Phases 3-4 add call/arrival/reunion).")
+    ImGui.TextWrapped("v0.85 flow: Vik's clinic -> tip + Badlands pin -> Rocky Ridge shard -> AWAITING " ..
+      "(CALL Jackie, he always answers) -> long reunion call -> he walks in -> short first-meeting -> UNLOCK.")
+
+    ImGui.Separator()
+    ImGui.Text("v0.85 reunion flow test:")
+    if ImGui.Button("Force AWAITING (then call Jackie)") then Retrieval.forceAwaiting() end
+    ImGui.SameLine(); if ImGui.Button("Call Jackie now") then startCall() end
+    ImGui.TextWrapped("  In AWAITING, press 'Call Jackie now' (or use the phone) -> the reunion call plays; " ..
+      "its end walks him in on foot -> the first-meeting dialogue -> mod unlocks.")
+    if ImGui.Button("Force REUNITED (skip, unlock)") then Retrieval.forceReunion() end
 
     ImGui.Separator()
     ImGui.Text("v0.84 reunion beats:")
