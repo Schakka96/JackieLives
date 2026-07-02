@@ -1,70 +1,113 @@
-# Jackie Lives
+# Jackie Lives — CET prototype mod (MVP)
 
-Bring Jackie Welles back to Night City as a summonable companion and a living presence around
-his old Heywood haunts. Summon him to fight at your side on side jobs — but try it during a main
-quest and V will refuse to drag him into it.
-
-> **Mute version.** This release has **no voice audio** — Jackie's lines appear as on-screen
-> subtitles. (His real voice can't be redistributed for copyright reasons.) Everything else works.
+A Cyber Engine Tweaks mod that summons Jackie as a combat companion, declines the summon during main
+quests, and gives him a simple daily schedule at his Heywood spots. Spawn + combat AI are delegated to
+**AppearanceMenuMod (AMM)**; this mod owns the trigger / schedule / ban logic.
 
 ## Requirements
+- Cyber Engine Tweaks (**1.18.1+** — required by Native Settings UI)
+- AppearanceMenuMod (AMM)
+- Codeware
+- **Native Settings UI** (`nativeSettings`) — adds the in-game **Esc → Settings → Jackie Lives**
+  page (the "Go Home Jackie" recovery button). Get it from
+  [Nexus mod 3518](https://www.nexusmods.com/cyberpunk2077/mods/3518).
+  - ⚠️ **The folder MUST be named exactly `nativeSettings`** under
+    `...\cyber_engine_tweaks\mods\`. `GetMod("nativeSettings")` looks it up *by folder name*; if a
+    download extracts to `CP77_nativeSettings-…` or similar, the lookup returns nil, the page never
+    appears, and Native Settings' own panel shows *"No mods using native settings installed!"* (that
+    message means Native Settings loaded fine but no mod registered with it). Rename the folder if so.
+  - ℹ️ **Load order is handled in code, not by you.** CET loads mods alphabetically, so `JackieLives`
+    initializes before `nativeSettings`. Rather than register in `onInit` (where
+    `GetMod("nativeSettings")` could still be nil), we retry from `onUpdate` (`nsTick`) until it's
+    available, then register once. No manual load-order/priority setup is needed — just install the
+    dependency. If the page still doesn't show, check the CET console for the `[JackieLives]` line:
+    `…panel registered` (success), `…registration FAILED: <err>` (API error — send to Claude), or
+    `…not found after retries` (the `nativeSettings` folder is missing/misnamed — see the warning above).
 
-Install these first (all from Nexus Mods):
+## Install / update (one command)
+From the project root (`...\Cyberpunk_modding`), in PowerShell:
 
-- **Cyber Engine Tweaks (CET)** — version **1.18.1 or newer**
-- **AppearanceMenuMod (AMM)** — handles Jackie's spawning and combat AI
-- **Codeware**
-- **Native Settings UI** — adds the in-game settings page (Esc → Settings → Jackie Lives)
-  - ⚠️ Its folder **must** be named exactly `nativeSettings` inside
-    `…\cyber_engine_tweaks\mods\`. If your download extracted to something like
-    `CP77_nativeSettings-…`, rename the folder to `nativeSettings` or this mod's settings page
-    won't appear.
-
-## Install
-
-**With a mod manager (Vortex / MO2):** download the zip and install it like any other mod — it
-unpacks into the correct game folders automatically.
-
-**Manually:** open the zip and copy the `bin` folder into your Cyberpunk 2077 install directory,
-merging when prompted. The mod's files should end up at:
+```powershell
+.\deploy.ps1
 ```
-…\Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\JackieLives\
-```
 
-## How to use
+This copies `mod\JackieLives` into the game's CET mods folder
+(`...\Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\JackieLives`). If it can't auto-find the
+game, run `.\deploy.ps1 -GameDir "X:\path\to\Cyberpunk 2077"`.
 
-**Bring Jackie along on a gig.** Two ways:
-- **Call him** — phone Jackie's number; he takes the holocall and arrives to meet you.
-- **Find him in the world** — Jackie keeps a daily routine around his Heywood haunts (El Coyote
-  Cojo, Lizzie's Bar, the Afterlife, the noodle bar, Ginger Panda, Redwood Market, Misty's
-  Esoterica — which one depends on the time of day). Walk up and ask him to tag along.
+**Fast iteration (no exe restart):** run `.\deploy.ps1` anytime (main menu, in-game, or alt-tabbed —
+files aren't locked), then open the CET overlay and click **"Reload all mods"** (main CET window, near
+the Console/Bindings tabs). Confirm it took: console prints `[JackieLives] Loaded vX`. You still need to
+**load a save to test spawning** (no world at the main menu). If a hot-reload acts weird, do a full
+restart to clear state.
 
-Either way he arrives from a distance and walks up — he never just pops in next to you — then
-follows and **fights at your side**. He'll come along on **side jobs only**: ask during a **main
-quest** and V refuses to drag him into it.
+## Use it
+1. In-game, open the CET overlay (default `~`). The **"Jackie Lives"** window appears — it shows *only*
+   while the overlay is open and closes with it (the "Hide window" button / toggle key hides just it).
+2. **Summon Jackie (companion):** click the button → Jackie spawns and should follow + fight on your side.
+3. **Dismiss Jackie:** removes the companion.
+4. **Test the main-quest decline:** tick **"Force main-quest active"**, then Summon → V declines instead.
+5. **Bind keys** in CET's **Bindings** tab: Summon / Dismiss / Capture / Show-Hide window / VO test, and
+   **"Talk to Jackie"**.
 
-**Dismiss Jackie.** Either tell him in conversation that you'll **head on alone**, or use the
-**Go Home Jackie** button in the mod settings menu (also the recovery option if he ever gets stuck).
+### Talk to Jackie
+Bind **"Talk to Jackie"** (CET → Bindings), then **look at Jackie and press it** → he plays a random line
+(greeting after a 60s+ gap, else conversational; with a cooldown so he doesn't repeat). Tune
+`Config.talk` (range / cooldown / chance) and fill `Config.talkLines` with his event ids.
+- Want a native feel? You *can* bind "Talk to Jackie" to the same key you use to interact. A truly native
+  dialogue-choice prompt (like vendors) is a heavier future upgrade, not this.
+- No voice yet? The pools use a placeholder event; real Jackie audio depends on the VO playback test
+  (Route A native event ids vs Route B Audioware).
 
-**Settings menu** — Esc → Settings → **Jackie Lives** (via Native Settings UI):
-- **Go Home Jackie** — send him home / full reset if anything goes wrong.
-- **Disable vehicle arrivals** — his bike arrival is a little less stable; turn this on and he'll
-  always arrive **on foot** instead.
-- Toggles persist across saves.
+### Call Jackie onto a gig (arrival)
+Click **"Call Jackie (holocall)"** → a short call plays; ask him along and he ARRIVES from a distance and
+walks up as your companion (he never just pops in next to you). Two modes, toggled live in the window
+with **"Arrival method"** (and **"Test arrival now"** fires one without a call):
+- **FOOT** (default) — spawns ~50 m off to one side of you, sprints in, walks the last stretch.
+- **BIKE** — spawns ~60 m back on his Arch, rides in, parks on the road ~20 m out, walks the rest.
 
-**Talk to Jackie** — bind a key in CET's **Bindings** tab, then look at him and press it; he
-responds with a line (shown as a subtitle in this mute version).
+He spawns on a valid street at *your* height (not a roof/other floor), and if he ever can't path to you
+he respawns a little closer until he reaches you. Tuning lives in `Config.call` + `Config.vehicle`
+(spawn distances, where he becomes a companion, bike park distance, etc. — all commented). The CET
+console logs his distance every few seconds (`riding in... 44 m to V`) so you can see what he's doing.
 
-> Tip: open the CET overlay (default **`~`**) for the **Jackie Lives** debug window — extra summon/
-> arrival buttons and a status readout, handy if something misbehaves.
+## Capture his locations (needed for the schedule)
+The schedule only spawns idle Jackie at spots whose coordinates you've captured.
+1. Walk to the exact spot (e.g. the noodle stand in front of MB8).
+2. In the "Jackie Lives" window, click **"Capture current position"**.
+3. A line like `pos = { 123.456, -78.900, 12.300 }, yaw = 90.0` is shown and printed to the CET console.
+4. Paste it into the matching entry in `config.lua` (e.g. `noodle = { name = "...", pos = { ... }, yaw = ... }`).
+5. Repeat for **coyote** (El Coyote Cojo) and **afterlife** (Afterlife).
+6. Re-deploy (`.\deploy.ps1`) and reload mods.
+
+Once captured, walk near a spot during its time block and Jackie appears; leave and he despawns.
+Schedule (game-time): 08–14 noodle · 14–20 Coyote Cojo · 20–02 Afterlife · 02–08 asleep/unavailable.
+
+### Fine-tune his seats (the seat tuner)
+AMM's sit animation is freestanding (invisible chair), so a captured spot rarely lands him perfectly on
+a real stool/chair the first time. The **"Seat position tuner"** panel (in the Jackie Lives window) lets
+you nudge a seat live until it's right:
+1. In the tuner, click the **Venue** you want (only venues with a sit spot are listed) — this also sends
+   Jackie there. Walk over to him.
+2. Slide **X / Y / Z** (position) and **Yaw** (which way he faces) — with **Live** ticked he re-seats as
+   you go. Yaw is what fixes a seat that faces the wrong way; it's now consistent no matter how he arrived.
+3. If a venue has more than one stool, use **`< prev seat / next seat >`** to choose which one you're editing.
+4. Click **"Print coords → config.lua"**. The line appears in the console + the "Last capture" box. Paste
+   it to Claude (or into the venue's `waypoints` entry yourself) to make it permanent.
+
+Collision note: idle Jackie's collision is dropped while he's at a venue (so chairs can't block/shove
+him) — the window's **"Collision … live on Jackie"** line confirms it's off. Toggle with the
+**"Idle Jackie: collisions OFF"** checkbox.
 
 ## Troubleshooting
+- Open the CET overlay; the console shows lines starting with `[JackieLives]`. **Red errors → send them
+  to Claude.** Common ones the status line will tell you: "AMM Spawn module not available" (AMM not
+  loaded), "Jackie record not found" (AMM character DB issue).
+- If Jackie spawns but doesn't follow/fight, that's the companion hedge not catching — tell Claude; it's
+  a known iteration point.
+- Exact placement: idle Jackie spawns when you reach his spot (within `proximityRadius`) and walks to his
+  waypoint. To dial a seat onto a real stool/chair, use the **seat tuner** (see "Fine-tune his seats").
 
-Open the CET overlay; the console shows lines starting with `[JackieLives]`.
-- *"AMM Spawn module not available"* → AppearanceMenuMod isn't installed/loaded.
-- Settings page missing → check the `nativeSettings` folder name (see Requirements).
-
-## Credits & notice
-
-Fan-made mod for **Cyberpunk 2077**. Not affiliated with or endorsed by CD PROJEKT RED. All game
-content remains the property of CD PROJEKT RED. Requires a legally owned copy of the game.
+## Files
+- `init.lua` — all logic (summon, schedule, ban, capture, UI).
+- `config.lua` — **the file you edit**: locations, schedule, ban list, decline line.

@@ -2490,13 +2490,13 @@ local function vehCfg() return Config.vehicle or {} end
 -- Spawn any record via the dynamic entity system (the path AMM wraps; used here for BOTH the bike
 -- and Jackie - same as the validated JackieVehicleTest harness). Returns the entity id; the handle
 -- resolves a few frames later via Game.FindEntityByID.
-local function spawnDynEntity(recordStr, pos, yawDeg, tag)
+local function spawnDynEntity(recordStr, pos, yawDeg, tag, appearance)
   local des = Game.GetDynamicEntitySystem(); if not des or not pos then return nil end
   local id
   local ok, err = pcall(function()
     local spec = DynamicEntitySpec.new()
     spec.recordID      = recordStr
-    spec.appearanceName = "default"
+    spec.appearanceName = appearance or "default"   -- v0.85: lockable (bike passes Config.vehicle.bikeAppearance)
     spec.position      = pos
     pcall(function() spec.orientation = EulerAngles.new(0.0, 0.0, yawDeg or 0.0):ToQuat() end)
     spec.persistState  = false
@@ -2814,7 +2814,10 @@ local function vehicleArrivalTick()
     local yaw = yawToward(va.pt, pp)                                    -- face V (the way he'll ride)
     va.pingAt, va.slowedLogged = 0, false                              -- arm the 3s ping + "easing off" one-shot
     -- bike + Jackie spawn together behind V (local mount).
-    va.bikeId  = spawnDynEntity(c.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", va.pt, yaw, "JackieLives_bike")
+    -- LOCK to Jackie's real Arch (record + appearance). Same record the JackieVehicleTest harness
+    -- confirmed spawns his correct gold Arch — never a random bike.
+    va.bikeId  = spawnDynEntity(c.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", va.pt, yaw,
+                                "JackieLives_bike", c.bikeAppearance or "default")
     local jpos = snapToNavmesh(Vector4.new(va.pt.x + 1.5, va.pt.y, va.pt.z, 1.0)) or va.pt
     local jid  = spawnDynEntity(Config.jackieRecord or "Character.Jackie", jpos, yaw, "JackieLives_jackie")
     if not va.bikeId or not jid then
@@ -3074,7 +3077,8 @@ local function catchUpTick()
   if C.enabled == false then return end
   -- settled companion only: active + role applied, and NOT mid-arrival / dinner / walking-off.
   if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
-  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then
+  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
+     or (jlCruise and jlCruise.active) then   -- v0.85: don't teleport him off his cruising bike
     JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -3168,7 +3172,8 @@ local function followKeepCloseTick()
   -- v0.85b: abreast owns positioning ONLY while V walks; at jog/sprint the trail takes back over.
   if Config.abreast and Config.abreast.enabled and jlVWalking() then return end
   if not (JL.summon.active and JL.summon.companionSet) then return end
-  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return end
+  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
+     or (jlCruise and jlCruise.active) then return end   -- v0.85: leave him on his cruising bike
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
   local now = JL.clock or 0
@@ -3201,6 +3206,7 @@ function abreastTick()
   local A = Config.abreast or {}
   if not A.enabled or not (JL.summon.active and JL.summon.companionSet)
      or JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
+     or (jlCruise and jlCruise.active)                      -- v0.85: not while cruising on his bike
      or not jlVWalking() then
     JL.abreast.smFwdX = nil   -- reset the heading EMA so it re-seeds cleanly when abreast resumes
     return
@@ -4068,6 +4074,105 @@ function jlRestoreJackiesBike()
   log("Bike return: RESTORED '" .. rec .. "' to V (reset the one-time flag).")
 end
 
+-- ===========================================================================
+-- BIKE CRUISE (v0.85) — companion Jackie trails V on his Arch while V rides a BIKE.
+-- AIVehicleFollowCommand + useKinematic (the AMM bike-follow recipe proven in JackieVehicleTest).
+-- Globals (no main-chunk `local` -> 200-cap safe); reuses the local helpers spawnDynEntity /
+-- mountAsDriver / unmountDriver / deleteEntityById / promoteToCompanion / playerPos / yawToward /
+-- snapToNavmesh, all defined earlier in this chunk. The keep-close / catch-up / abreast ticks are
+-- gated on jlCruise.active so they don't drag him off the bike. Ghost-trail was NOT shipped.
+-- ===========================================================================
+jlCruise = { active = false, bikeId = nil, bikeHandle = nil, mountAt = nil, lastReissue = -999 }
+
+function jlPlayerVehicleObj()
+  local qm; pcall(function() qm = Game.GetPlayer():GetQuickSlotsManager() end)
+  local veh; if qm then pcall(function() veh = qm:GetVehicleObject() end) end
+  return veh
+end
+
+function jlIsBikeVeh(veh)
+  if not veh then return false end
+  local cn = ""; pcall(function() cn = tostring(veh:GetClassName()) end)
+  cn = cn:lower()
+  return (cn:find("bike") ~= nil) or (cn:find("motorcycle") ~= nil)
+end
+
+-- (Re)issue the follow command onto Jackie's Arch so it trails V's bike.
+function jlCruiseFollow()
+  local bh, p = jlCruise.bikeHandle, Game.GetPlayer()
+  if not (bh and p) then return end
+  local C = Config.cruise or {}
+  pcall(function() bh:TurnVehicleOn(true) end)
+  pcall(function()
+    local cmd = NewObject('handle:AIVehicleFollowCommand')
+    cmd.target = p                                   -- V's PLAYER object (tracks his bike)
+    cmd.distanceMin = C.followDistMin or 6.0
+    cmd.distanceMax = C.followDistMax or 10.0
+    cmd.stopWhenTargetReached = false
+    cmd.useTraffic = false
+    cmd.useKinematic = true                          -- bike-safe: no wobble / topple
+    pcall(function() cmd.needDriver = true end)
+    cmd = cmd:Copy()
+    local evt = NewObject('handle:AINPCCommandEvent'); evt.command = cmd
+    bh:QueueEvent(evt)                               -- queue to the VEHICLE, not the driver
+  end)
+  jlCruise.lastReissue = JL.clock or 0
+end
+
+function jlCruiseStart()
+  if jlCruise.active then return end
+  local jh = JL.summon and JL.summon.spawn and JL.summon.spawn.handle
+  if not jh then return end
+  local pp = playerPos(); if not pp then return end
+  local C = Config.cruise or {}
+  local behind = C.spawnBehind or 8.0
+  local fwd; pcall(function() fwd = Game.GetPlayer():GetWorldForward() end)
+  local pt = fwd and Vector4.new(pp.x - fwd.x * behind, pp.y - fwd.y * behind, pp.z, 1.0) or pp
+  pt = snapToNavmesh(pt) or pt
+  local bid = spawnDynEntity(C.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", pt,
+                             yawToward(pt, pp), "JackieLives_cruisebike", C.bikeAppearance or "default")
+  if not bid then log("Cruise: Arch spawn failed."); return end
+  jlCruise.active, jlCruise.bikeId, jlCruise.bikeHandle = true, bid, nil
+  jlCruise.mountAt, jlCruise.lastReissue = (JL.clock or 0) + 1.2, -999
+  log("Cruise: spawning Jackie's Arch to trail V.")
+end
+
+function jlCruiseStop()
+  if not jlCruise.active then return end
+  local jh = JL.summon and JL.summon.spawn and JL.summon.spawn.handle
+  if jh and unmountDriver then pcall(function() unmountDriver(jh, jlCruise.bikeHandle) end) end
+  if jlCruise.bikeId then pcall(function() deleteEntityById(jlCruise.bikeId) end) end
+  jlCruise.active, jlCruise.bikeId, jlCruise.bikeHandle, jlCruise.mountAt = false, nil, nil, nil
+  pcall(promoteToCompanion)                          -- resume normal on-foot follow
+  log("Cruise: ended -> Jackie back on foot.")
+end
+
+function jlCruiseTick()
+  local C = Config.cruise or {}
+  if C.enabled == false then if jlCruise.active then jlCruiseStop() end; return end
+  local companion = JL.summon and JL.summon.active and JL.summon.spawn and JL.summon.spawn.handle
+  -- only cruise a SETTLED companion (not mid-arrival / dinner / walk-off)
+  local settled = companion and JL.summon.companionSet
+    and not (JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase))
+  local onBike = settled and jlIsBikeVeh(jlPlayerVehicleObj())
+  if onBike and not jlCruise.active then jlCruiseStart()
+  elseif jlCruise.active and not onBike then jlCruiseStop() end
+  if not jlCruise.active then return end
+  if jlCruise.bikeId and not jlCruise.bikeHandle then
+    pcall(function() jlCruise.bikeHandle = Game.FindEntityByID(jlCruise.bikeId) end)
+  end
+  if jlCruise.mountAt and (JL.clock or 0) >= jlCruise.mountAt and jlCruise.bikeHandle then
+    local jh = JL.summon.spawn.handle
+    if jh and mountAsDriver then pcall(function() mountAsDriver(jh, jlCruise.bikeHandle) end) end
+    jlCruise.mountAt, jlCruise.lastReissue = nil, -999
+    log("Cruise: Jackie mounted his Arch; following V.")
+  end
+  if not jlCruise.mountAt and jlCruise.bikeHandle
+     and ((JL.clock or 0) - (jlCruise.lastReissue or -999)) >= (C.reissue or 5.0) then
+    jlCruiseFollow()
+  end
+end
+
 -- v0.76 DEBUG: dump Jackie's full runtime state to the console (bound to a CET button + called at the
 -- start/end of the dismiss walk-away so we can see WHY he vanishes). Global (no main-chunk local -> cap safe).
 -- Reports, for each system's entity: handle validity, world position, live distance to V, AMM companion
@@ -4415,6 +4520,7 @@ registerForEvent("onUpdate", function(dt)
     log("Main quest active -> Jackie excuses himself and heads out.")
     pcall(function() startLeaving(Config.mainQuestExit) end)
   end
+  pcall(jlCruiseTick)     -- v0.85: V on a BIKE -> Jackie trails on his Arch (gated before the foot ticks)
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(abreastTick)      -- v0.84: OR (when enabled) hold him beside/ahead of V instead of trailing
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
@@ -4701,6 +4807,21 @@ registerForEvent("onDraw", function()
     ImGui.TextWrapped("  In AWAITING, press 'Call Jackie now' (or use the phone) -> the reunion call plays; " ..
       "its end walks him in on foot -> the first-meeting dialogue -> mod unlocks.")
     if ImGui.Button("Force REUNITED (skip, unlock)") then Retrieval.forceReunion() end
+
+    ImGui.Separator()
+    ImGui.Text("v0.85 bike CRUISE (companion + V on a bike -> Jackie trails on his Arch):")
+    ImGui.Text("  enabled: " .. tostring((Config.cruise or {}).enabled) .. "   active: " .. tostring(jlCruise and jlCruise.active))
+    if ImGui.Button((Config.cruise and Config.cruise.enabled == false) and "Cruise: OFF (enable)" or "Cruise: ON (disable)") then
+      Config.cruise = Config.cruise or {}
+      Config.cruise.enabled = (Config.cruise.enabled == false)
+      if not Config.cruise.enabled and jlCruise and jlCruise.active then jlCruiseStop() end
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Force start cruise") then jlCruiseStart() end
+    ImGui.SameLine()
+    if ImGui.Button("Force stop") then jlCruiseStop() end
+    ImGui.TextWrapped("  Be his companion, then get on a BIKE -> his Arch spawns + he trails you (AI follow). " ..
+      "In a CAR, AMM seats him as passenger. Set Config.cruise.enabled=false to disable entirely.")
 
     ImGui.Separator()
     ImGui.Text("v0.84 reunion beats:")

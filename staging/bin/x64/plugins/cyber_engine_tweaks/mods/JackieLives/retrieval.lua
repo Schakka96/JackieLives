@@ -62,29 +62,66 @@ M.Config = {
   tipTitle    = "Viktor Vektor",
   tipText     = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
               .. "my table that night. I got a pulse back, called in a favor, and moved him out "
-              .. "before Arasaka came lookin' for the body. He's alive, V. Layin' low out in the "
-              .. "Badlands — and it's gotta stay that way. He's been waitin' on you. I'm markin' "
-              .. "the spot on your map. Go bring him home.",
+              .. "before Arasaka came lookin' for the body. It just wasn't safe before to tell you, V. "
+              .. "He's alive, V. Layin' low out in the Badlands — and it's gotta stay that way. "
+              .. "He's been waitin' on you. I'm markin' the spot on your map. Go bring him home.",
   tipDuration = 10.0,
 
   -- Jackie's note — read on reaching the Badlands hideout (Rocky Ridge garage).
   shardTitle  = "Shard — Jackie Welles",
   shardLines  = {
-    "If you're readin' this, mano, then the doc kept his word and you made it out here. It's me. I'm alive.",
-    "Vik patched me up and smuggled me out 'fore 'Saka could stamp my name on a slab. Been layin' low ever since.",
-    "Mama Welles won't let me run the streets again — and this time, maybe she's got the right of it.",
-    "I'm done with the merc life, V. For real. But I couldn't let you go on thinkin' you buried me.",
-    "Sit tight, hermano. I'm comin' out to see you. — Jackie",
+    "If you're readin' this, V, then the doc kept his word and you made it out here. It's me. I'm alive.",
+    "Vik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.",
+    "Mama Welles was so mad when she heard. Think she'd kill me if I went back runnin' the streets again "
+      .. "— and this time, maybe she's right. I'm done with the merc life, V. For real. But I couldn't "
+      .. "let you go on thinkin' you buried me.",
+    "Give me a call when you read this. — Jackie",
   },
   shardDuration = 12.0,
 
   callDelay   = 1.0,          -- seconds after the shard is read before Jackie rings V
+
+  -- POST-REUNION shards (v0.84). Once Jackie's back (REUNITED), V comes across notes from the two
+  -- people who took his "death" hardest — Misty and Mama Welles. These REPLACE the mourning
+  -- conversations (see TODO: those base-game/mourning dialogue options are to be blocked). Each
+  -- shard shows ONCE, on proximity to that person's spot, persisted via its own game fact.
+  -- Coords: Misty's Esoterica + El Coyote Cojo, lifted from Config.locations (misty/coyote).
+  postShards = {
+    {
+      fact  = "jackielives_shard_misty",
+      pos   = { -1541.777, 1196.792, 15.905 }, radius = 8.0,
+      title = "Shard — Misty",
+      lines = {
+        "I keep the Death card turned face-down now. Couldn't look at it — for months it was all I saw when I shut my eyes.",
+        "When Vik told me he'd made it, that he was out there breathin' in the Badlands, I sat down on the shop floor and cried till the incense burned out.",
+        "I won't pretend I'm only happy, V. Some nights I'm so angry I could scream. He walked into that heist knowin' the risk. He almost left us. Almost left me.",
+        "But the cards weren't wrong. His thread didn't cut. It just frayed... and held.",
+        "Go easy on him. And thank you — for goin' to bring him home. — Misty",
+      },
+      duration = 15.0,
+    },
+    {
+      fact  = "jackielives_shard_mama",
+      pos   = { -1262.463, -1002.345, 12.037 }, radius = 9.0,
+      title = "Shard — Mama Welles",
+      lines = {
+        "So. My Jackie is alive, and I am the last to hear of it. You wait until you are a mother, V, and someone keeps a thing like this from you — then we will talk about forgiveness.",
+        "I lit a candle for that boy every single day. I cooked for a ghost. And all the while he is out in the dust, breathin', lettin' me grieve. Dios mío.",
+        "And yet — he is ALIVE. My boy is alive. I have not stopped thankin' the Virgin since I heard. My knees are sore from it.",
+        "But hear me once, V: if he ever takes a gig like that heist again — risks his life for eddies and glory one more time — I will not wait for this city to take him. I will kill him myself.",
+        "Bring him to my table. There is a plate waitin'. There has always been a plate waitin'. — Mama Welles",
+      },
+      duration = 15.0,
+    },
+  },
 }
 
 -- ---------------------------------------------------------------------------
 -- Stage constants + module state
 -- ---------------------------------------------------------------------------
-local LOCKED, TIP, SHARD, REUNITED = 0, 1, 2, 4   -- persisted; 3=INCOMING is runtime-only
+-- v0.85: AWAITING(3) is now a REAL persisted stage — shard read, Jackie has no world presence yet
+-- and ALWAYS answers V's call; the reunion call + walk-in drive the jump to REUNITED.
+local LOCKED, TIP, SHARD, AWAITING, REUNITED = 0, 1, 2, 3, 4
 local USE_GAME_FACT = true
 local FACT_NAME     = "jackielives_stage"
 
@@ -305,12 +342,49 @@ function M.giveTip()                                   -- LOCKED -> TIP
   return true
 end
 
-local function reachHideout()                          -- TIP -> SHARD
+local function reachHideout()                          -- TIP -> AWAITING_CALL
   if getStage() ~= TIP then return end
   showTip(M.Config.shardTitle, table.concat(M.Config.shardLines, "\n"), M.Config.shardDuration)
-  log("Shard read at hideout.")
-  setStage(SHARD)
-  state.callAt, state.seq = state.clock + (M.Config.callDelay or 1.0), nil
+  log("Shard read at hideout -> AWAITING_CALL (V must call Jackie; he always answers now).")
+  -- v0.85: no more auto-ring. Jackie now WAITS for V to call him (he always picks up in this
+  -- stage — no schedule, never 'asleep'). init.lua plays Config.reunionCallTree, whose ending
+  -- walks him in on foot; the first-meeting dialogue then calls M.completeReunion() -> REUNITED.
+  setStage(AWAITING)
+end
+
+-- ---------------------------------------------------------------------------
+-- Post-reunion shards (Misty / Mama Welles) — one-time each, on proximity
+-- ---------------------------------------------------------------------------
+local function factNum(name)
+  local v; pcall(function() v = Game.GetQuestsSystem():GetFactStr(name) end)
+  return (type(v) == "number") and v or 0
+end
+local function setFactNum(name, n)
+  pcall(function() Game.GetQuestsSystem():SetFactStr(name, n) end)
+end
+
+local function postShardTick()
+  if getStage() < REUNITED then return end             -- only after Jackie's back
+  for _, sh in ipairs(M.Config.postShards or {}) do
+    if sh.fact and factNum(sh.fact) < 1 and nearPoint(sh.pos, sh.radius or 8.0) then
+      showTip(sh.title, table.concat(sh.lines or {}, "\n"), sh.duration or 14.0)
+      setFactNum(sh.fact, 1)
+      log("Post-shard shown: " .. tostring(sh.title))
+    end
+  end
+end
+
+-- Debug: clear the post-shard flags so they can be re-triggered by walking up again.
+function M.resetPostShards()
+  for _, sh in ipairs(M.Config.postShards or {}) do if sh.fact then setFactNum(sh.fact, 0) end end
+  log("Post-shard flags reset (walk up to Misty / El Coyote to re-read).")
+end
+
+-- Debug: show both post-reunion shards right now (regardless of location / flags).
+function M.debugPostShards()
+  for _, sh in ipairs(M.Config.postShards or {}) do
+    showTip(sh.title, table.concat(sh.lines or {}, "\n"), sh.duration or 14.0)
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -318,10 +392,20 @@ end
 -- ---------------------------------------------------------------------------
 function M.isUnlocked()    return getStage() >= REUNITED end
 function M.getStage()      return getStage() end
+-- v0.85: true once the shard's read and before the reunion completes. init.lua uses this to let
+-- V call Jackie (he ALWAYS answers — no schedule/asleep gate) and to pick Config.reunionCallTree.
+function M.isAwaitingCall() return getStage() == AWAITING end
+-- Called by init.lua when the first-meeting dialogue ends: unlock the whole mod. Permanent.
+function M.completeReunion()
+  clearPin()
+  setStage(REUNITED)
+  log("REUNITED — mod fully unlocked (schedule + calls + summon live).")
+end
 -- Player-facing stage names (shown at the top of the CET window).
 function M.stageName()
   local s = getStage()
   if s >= REUNITED then return "Jackie is back" end
+  if s == AWAITING then return "Jackie's alive — CALL him (he's waitin')" end
   if s == SHARD    then return "Jackie's note was read at Rocky Ridge — he's on his way" end
   if s == TIP      then return "V heard the rumor — find Jackie in the Badlands" end
   return "Mod not yet available"
@@ -349,7 +433,9 @@ end
 
 -- Debug jumps for the CET window.
 function M.forceTip()   M.reset(); M.giveTip() end     -- skip the Vik proximity
-function M.forceShard() if getStage() < TIP then M.giveTip() end; reachHideout() end
+function M.forceShard() if getStage() < TIP then M.giveTip() end; reachHideout() end  -- -> AWAITING_CALL
+function M.forceAwaiting() M.reset(); setStage(AWAITING) end  -- jump straight to "call Jackie"
+function M.forceReunion()  M.completeReunion() end            -- skip to REUNITED (unlock)
 
 -- Per-frame driver (call from init.lua onUpdate with the frame delta).
 function M.tick(dt)
@@ -370,9 +456,11 @@ function M.tick(dt)
   elseif s == TIP then
     if not state.mappinId then placePin() end
     if nearPoint(M.Config.hideoutPos, M.Config.hideoutRadius) then reachHideout() end
-  elseif s == SHARD then
-    if state.callAt and state.clock >= state.callAt then startSequence() end
   end
+  -- s == AWAITING: nothing to poll here — the reunion is driven by V calling Jackie
+  -- (init.lua: always-answer + Config.reunionCallTree -> walk-in -> M.completeReunion()).
+
+  postShardTick()   -- v0.84: Misty / Mama Welles notes, once Jackie's back
 end
 
 return M

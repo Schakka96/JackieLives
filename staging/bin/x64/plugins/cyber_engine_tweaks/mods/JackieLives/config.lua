@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.85b"
+Config.version = "0.9"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -935,6 +935,21 @@ Config.bikeReturn = {
   bikeRecord = "Vehicle.v_sportbike2_arch_jackie_player",  -- Jackie's Arch (same record the arrival uses)
   fact       = "jackielives_bikeback",
   -- keyItem  = "Items.SomeBikeKey",   -- optional: vanilla 2.x has no bike-"key" item, so leave unset
+}
+
+-- ---- BIKE CRUISE (v0.85) ---------------------------------------------------
+-- When Jackie is your COMPANION and V rides a BIKE, Jackie summons his Arch and trails behind V
+-- (AIVehicleFollowCommand + useKinematic — the AMM bike-follow recipe, proven in JackieVehicleTest).
+-- On foot he follows normally; in a CAR, AMM's own companion behaviour seats him as a passenger, so
+-- there's nothing to do there. Set enabled=false to turn the whole feature off if it ever misbehaves.
+Config.cruise = {
+  enabled        = true,
+  bikeRecord     = "Vehicle.v_sportbike2_arch_jackie_player",  -- his real Arch (test-confirmed)
+  bikeAppearance = "default",
+  spawnBehind    = 8.0,     -- metres behind V his Arch spawns when cruise starts
+  followDistMin  = 6.0,     -- trail gap (min)
+  followDistMax  = 10.0,    -- trail gap (max)
+  reissue        = 5.0,     -- re-issue the follow command every N seconds (keeps him locked on)
 }
 
 -- The one-time reunion call. Same node format as Config.callTree. Text-only Jackie lines are fine
