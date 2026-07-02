@@ -45,15 +45,16 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 - 🐞 **Persistence across a load — TESTED, STILL BROKEN → re-DISABLED, deferred.** The v0.84 re-enable
   crashed the save (Jackie pops in V's face frame 1, then crash). Full diagnosis + next ideas in KNOWN BUG
   #1 below. `Config.persist.enabled` is back to `false`; the build is stable.
-- 🔧 **Walk-abreast v0.84b — smoothing + aggressive get-into-position (AWAITING RE-TEST).** First test was
-  jaggy (anchor snapped to V's instant heading) and he trailed forever (never got ahead of a walking V).
-  Fixes: (a) V's heading is now an **EMA over `smoothSeconds` (~2 s)** so the anchor drifts, not snaps;
-  (b) when **out of position** he's driven with **Sprint + tight tolerance** to get into the pocket, then
-  eases to Run to hold it; (c) the CET **Position** slider is now **fractional** (+ a live *Heading
-  smoothing* slider). → **TEST + TUNE:** Antonia found only near-front is useful — **try angleIndex
-  0.4 / 0.7 (right-of-ahead) or 11.2 / 11.5 (left-of-ahead)**; adjust radius + smoothing to taste, then tell
-  Claude the values to bake in. If it feels good: **replace keep-close-follow with abreast everywhere and
-  comment out the old close-follow code** (Antonia's call, long-term).
+- ✅ **Walk-abreast — DONE + tuned, now the DEFAULT companion behaviour (v0.85b, 2026-07-02).** Antonia:
+  "amazing." Baked-in defaults: `angleRight = 0.85`, `angleLeft = 11.25`, `radius = 3.5`,
+  `smoothSeconds = 3.3`, `enabled = true`. Behaviour: smoothed heading (no jitter); **closest-side pick**
+  (right vs left, with hysteresis) so he doesn't cut across V; **walk-only** — abreast while V WALKS, normal
+  trail when she jogs/sprints (V has 3 speeds, Jackie 2; thresholds `walkMaxSpeed`/`jogMinSpeed`); gentler
+  **Run** catch-up (was Sprint), eases to **Walk** to hold. Applies to the companion everywhere, not just
+  dinner. CET tuner has right/left/radius/smoothing sliders + a live "V walking/side" readout.
+  - ▶ **LONG-TERM (Antonia's call, when ready):** if it keeps feeling great, **retire keep-close-follow** —
+    fold any remaining trail need into abreast and comment out `followKeepCloseTick`. Not done yet (trail is
+    still the jog/sprint fallback, so keep it for now).
 
 **v0.85 REUNION RESTRUCTURE 2026-07-02 (AWAITING IN-GAME TEST — big flow change):**
 - 🐛→✅ **BUG FIX: reunion call went to voicemail when Jackie was asleep/busy.** New persisted stage
@@ -260,11 +261,9 @@ retreat-follow). **Still open, grouped by area:**
       any must-be-interior venue out of the picker until proven stable.
 
 **🍽️ Dinner outing polish (old S3):**
-- [~] **Walk abreast, not trailing.** MECHANISM BUILT + live tuner shipped (v0.84, 2026-07-02): `Config.abreast`
-      + `abreastTick` hold Jackie at a polar offset from V's forward vector; CET "Companion spacing" panel has a
-      **Walk abreast** toggle + 12-position dial (0=ahead/3=right/6=back/9=left) + radius slider. **Remaining:**
-      Antonia tunes the index+radius in-game → Claude bakes the values into `Config.abreast` and **wires abreast
-      ON during the dinner walk** (currently a global toggle, not yet auto-enabled for the walk-to-dinner leg).
+- [x] **Walk abreast, not trailing.** DONE + tuned + ON by default for the companion everywhere (v0.85b,
+      2026-07-02) — not just the dinner walk. Closest-side pick, smoothed heading, walk-only (trails at
+      jog/sprint). Defaults baked into `Config.abreast`. See the v0.85b entry in the START-HERE section.
 
 **🚶 Walk-off / departure (old S2 leftovers):**
 - [ ] **Interrupt the walk-off for dinner.** If his timer expires and he's walking away, talking to him about

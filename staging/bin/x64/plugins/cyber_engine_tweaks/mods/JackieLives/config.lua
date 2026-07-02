@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.85"
+Config.version = "0.85b"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -202,29 +202,34 @@ Config.persist = {
   cooldown      = 5.0,    -- s between respawn attempts (also covers the spawn->promote resolve window)
 }
 
--- ---- walk-abreast (v0.84) -------------------------------------------------
--- When ON, a settled companion Jackie holds a spot BESIDE / slightly AHEAD of V (offset from V's forward
--- vector) instead of trailing behind on the keep-close leash — for the "walk next to me to dinner" feel.
--- Tune it LIVE from the CET "Walk abreast" panel: `angleIndex` is a clock position around V (of `positions`
--- steps) — 0 = dead ahead, 3 = V's right, 6 = behind, 9 = left; `radius` is how far out. When enabled it
--- REPLACES followKeepCloseTick (they'd fight otherwise). Starts OFF so nothing changes until you toggle it.
--- Once a spot feels right in-game, tell Claude the index+radius to bake here and wire into the dinner walk.
--- v0.84b tuning: heading is SMOOTHED (EMA over smoothSeconds) so the anchor drifts instead of snapping
--- when V turns; and when Jackie is OUT of position he's driven with catchUpMovement (Sprint) + a tight
--- tolerance so he actually gets AHEAD of a walking V instead of trailing forever. Only near-front angles
--- read as "abreast" (Antonia): try angleIndex 0.4 / 0.7 (right-of-ahead) or 11.2 / 11.5 (left-of-ahead).
+-- ---- walk-abreast (v0.85b) — DEFAULT companion behaviour ------------------
+-- A settled companion Jackie holds a spot BESIDE / slightly AHEAD of V instead of trailing — the "walk
+-- next to me" feel, everywhere (not just the dinner outing). Tuned in-game by Antonia and now ON by default.
+-- How it behaves:
+--  * WALK-ONLY. Only active while V WALKS (her slow toggle). At jog/sprint he falls back to the normal
+--    trail (V has 3 speeds, Jackie 2 — he can't out-pace a jogging V). Thresholds: walkMaxSpeed/jogMinSpeed.
+--  * CLOSEST SIDE. `angleRight` / `angleLeft` are the two near-front anchors; he takes whichever is closer
+--    to him (with `sideHysteresis` stickiness) so he doesn't cut across in front of V.
+--  * SMOOTH heading (EMA over `smoothSeconds`) so the anchor drifts, never snaps on a camera twitch.
+--  * When OUT of position (>`catchUpDist`) he moves in at `catchUpMovement` (Run), then eases to `movement`
+--    (Walk, matching V's walk) to hold the pocket.
+-- All live-tunable from the CET "Walk abreast" panel. Angle values are FRACTIONAL dial steps (of `positions`).
 Config.abreast = {
-  enabled        = false,   -- toggled live from CET; off = normal trailing keep-close follow
-  positions      = 12,      -- steps in the full dial the slider spans (angleIndex is FRACTIONAL)
-  angleIndex     = 0.5,     -- default ~15° right of dead-ahead; slider overrides live (0.4/0.7/11.2/11.5)
-  radius         = 2.0,     -- metres from V he holds
-  smoothSeconds  = 2.0,     -- EMA time-constant for V's heading (higher = smoother/laggier anchor)
+  enabled        = true,    -- v0.85b: ON by default for a companion (Antonia confirmed it feels great)
+  positions      = 12,      -- steps in the full dial the fractional angles are measured in
+  angleRight     = 0.85,    -- near-front on V's RIGHT (Antonia's tuned value)
+  angleLeft      = 11.25,   -- near-front on V's LEFT  (Antonia's tuned value)
+  sideHysteresis = 0.6,     -- m the other side must be closer by before he switches sides (anti-flip-flop)
+  radius         = 3.5,     -- metres from V he holds (Antonia's tuned value)
+  smoothSeconds  = 3.3,     -- EMA time-constant for V's heading (Antonia's tuned value)
   interval       = 0.3,     -- s between re-issues of the move-to-anchor command (short = tracks the drift)
-  movement       = "Run",   -- how he moves while HOLDING position (in the pocket)
+  movement       = "Walk",  -- how he moves while HOLDING position (matches V's walk)
   tolerance      = 0.5,     -- desiredDistanceFromTarget while holding
-  catchUpDist    = 2.0,     -- m from the anchor beyond which he's "out of position" -> aggressive catch-up
-  catchUpMovement= "Sprint",-- how he moves to GET into position (fast, so he can get ahead of a walking V)
-  catchUpTolerance = 0.2,   -- tighter target distance while catching up (so he reaches the exact spot)
+  catchUpDist    = 2.0,     -- m from the anchor beyond which he's "out of position"
+  catchUpMovement= "Run",   -- how he moves to GET into position (Run — gentle; he still out-paces a walking V)
+  catchUpTolerance = 0.35,  -- target distance while moving in
+  walkMaxSpeed   = 2.0,     -- m/s at/below which V counts as WALKING (abreast on)
+  jogMinSpeed    = 2.8,     -- m/s above which V counts as jogging/sprinting (trail); band = hysteresis
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
@@ -1050,7 +1055,7 @@ Config.reunionCallTree = {
     },
     gigs = {
       jackiePool = {
-        { text = "(quieter) An' V... gotta be straight with ya. After what happened, I can't be runnin' serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried." },
+        { text = "(quieter) Gotta be straight with ya, choom. After what happened... I can't be runnin' serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried." },
       },
       choices = {
         { text = "Nobody's askin' you to. We keep it low. Deal?",   to = "askbike" },
@@ -1075,16 +1080,24 @@ Config.reunionCallTree = {
     },
     bikesafe = {
       jackiePool = {
-        { text = "Hey, don't laugh! I swear to hell, V — if my baby ain't purrin', if there's one scratch on her tank when I get there, I'm gonna be SO mad, choom. I mean it—" },
+        { text = "(a nervous laugh) C'mon, don't tease me — that bike's the one piece o' the old me I got left. Just tell me straight, V. Is she okay?" },
       },
       choices = {
         { text = "Relax, hermano. She's safe and sound. Come pick her up.", to = "coming" },
       },
     },
     coming = {
+      jackiePool = {
+        { text = "(lets out a breath) ...Gracias, V. You got no idea what that means to me. Where you at? Nah — don't move, I'm already headed your way. Hang tight, chica." },
+      },
+      choices = {
+        { text = "Okay. I'll be right here. Hurry up, hermano.", to = "onmyway" },
+      },
+    },
+    onmyway = {
       -- terminal -> reunion_arrival: give the Arch back + Jackie walks in on foot -> first meeting.
       jackiePool = {
-        { text = "(exhales, laughs soft) ...You got no idea what that means to me, V. Where you at? Nah — don't move. I'm already on my way to ya. Hang tight, chica. I'll be right there." },
+        { text = "Countin' on it. See you real soon, V." },
       },
       action = "reunion_arrival",
     },
@@ -1109,13 +1122,21 @@ Config.reunionMeetTree = {
         { text = "(laughs) Yeah, yeah. Desert don't do wonders for a man's looks. You picked up some new miles too, V. Suits ya, though." },
       },
       choices = {
-        { text = "We're both still standin'. That's what counts.", to = "leave" },
+        { text = "We're both still standin'. That's what counts.", to = "bikeask" },
+      },
+    },
+    bikeask = {
+      jackiePool = {
+        { text = "That we are, hermano. ...So. Where is she? My Arch. Tell me you really kept my girl in one piece." },
+      },
+      choices = {
+        { text = "Safe and sound, choom. Waitin' right where you left her.", to = "leave" },
       },
     },
     leave = {
       -- terminal -> reunion_complete: unlock the whole mod (schedule + calls + summon).
       jackiePool = {
-        { text = "That we are, hermano. (claps V on the shoulder) Now c'mon — let's get the hell outta this sandy hellhole 'fore I sprout a cactus. Take me home." },
+        { text = "(grins) Then what're we waitin' for? C'mon — let's get the hell outta this sandy hellhole 'fore I sprout a cactus. Take me home, V." },
       },
       action = "reunion_complete",
     },

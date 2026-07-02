@@ -3121,6 +3121,41 @@ local function catchUpTick()
   log(("CatchUp: Jackie was %.0f m from V -> teleported to her side (try %d)."):format(d, tries + 1))
 end
 
+-- v0.85b: is V currently WALKING (her slow toggle) vs jogging/sprinting? V has 3 speeds, Jackie only 2,
+-- so walk-abreast (which relies on Jackie out-pacing V) only holds up while V WALKS; at jog/sprint he
+-- falls back to the normal trail. We read V's horizontal speed from her per-frame position delta (robust,
+-- no velocity API) with light smoothing, and apply HYSTERESIS (walk below walkMaxSpeed, jog above
+-- jogMinSpeed) so it doesn't flip-flop at the boundary. Cached per frame (JL.clock) so calling it from
+-- both follow ticks does the work once. Global -> 200-local cap safe.
+function jlVWalking()
+  local A  = Config.abreast or {}
+  local st = JL.abreast
+  local now = JL.clock or 0
+  if st.spdFrame ~= now then                    -- compute once per frame
+    st.spdFrame = now
+    local pp = playerPos()
+    if pp then
+      if st.spdPX then
+        local dt = now - (st.spdT or now)
+        if dt > 1e-4 then
+          local dx, dy = pp.x - st.spdPX, pp.y - st.spdPY
+          local inst = math.sqrt(dx * dx + dy * dy) / dt
+          local a = math.min(dt / 0.25, 1.0)     -- ~0.25 s smoothing on the speed signal
+          st.vSpeed = (st.vSpeed or inst) + a * (inst - (st.vSpeed or inst))
+        end
+      end
+      st.spdPX, st.spdPY, st.spdT = pp.x, pp.y, now
+    end
+    local spd = st.vSpeed or 0.0
+    local walking = st.walking
+    if walking == nil then walking = spd <= (A.walkMaxSpeed or 2.0) end
+    if walking and spd > (A.jogMinSpeed or 2.8) then walking = false end        -- sped up -> trail
+    if (not walking) and spd < (A.walkMaxSpeed or 2.0) then walking = true end  -- slowed to a walk -> abreast
+    st.walking = walking
+  end
+  return st.walking
+end
+
 -- v0.67 KEEP-CLOSE FOLLOW. After handoff we issue ONE tight follow (followDistance), but AMM's own
 -- companion follow then takes over with a much LONGER leash, so Jackie trails far behind V. This
 -- re-asserts our tight AIFollowTargetCommand on a throttle so he holds `Config.follow.distance` (a few
@@ -3130,7 +3165,8 @@ end
 local function followKeepCloseTick()
   local F = Config.follow or {}
   if F.enabled == false then return end
-  if Config.abreast and Config.abreast.enabled then return end   -- v0.84: abreast mode owns positioning instead
+  -- v0.85b: abreast owns positioning ONLY while V walks; at jog/sprint the trail takes back over.
+  if Config.abreast and Config.abreast.enabled and jlVWalking() then return end
   if not (JL.summon.active and JL.summon.companionSet) then return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -3145,23 +3181,27 @@ local function followKeepCloseTick()
   sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)
 end
 
--- v0.84 WALK-ABREAST. Instead of trailing behind V (keep-close), hold Jackie at a point OFFSET from V —
--- beside / slightly ahead — computed from V's forward vector, so on the way to dinner he walks next to
--- her, not on the long companion leash. The offset is polar in V's own frame: `angleIndex` picks a spot
--- around V (0 = dead ahead, +90° = V's right, 180° = behind, -90° = left; FRACTIONS allowed) at `radius` m.
+-- v0.85b WALK-ABREAST. Instead of trailing behind V (keep-close), hold Jackie at a point OFFSET from V —
+-- beside / slightly ahead — computed from V's forward vector, so he walks next to her, not on the long
+-- companion leash. Offsets are polar in V's own frame (`angleRight`/`angleLeft`, fractional dial steps of
+-- `positions`; 0 = dead ahead, 3 = V's right, 9 = V's left) at `radius` m.
 --
--- v0.84b tuning (Antonia's feedback):
---  * SMOOTH heading. Using V's INSTANT forward made the anchor snap every time V twitched the camera, so
---    Jackie jittered. We keep an exponential-moving-average of V's forward (time-constant `smoothSeconds`,
---    ~2 s) updated EVERY frame, and place the anchor off the SMOOTHED heading — so it drifts, never snaps.
---  * GET INTO POSITION aggressively. A gentle move to a point that's ahead of a walking V never catches up
---    (he trails forever). So when he's OUT of position (>`catchUpDist` from the anchor) we drive him with
---    `catchUpMovement` (Sprint) + a tight tolerance until he's there, then ease to `movement` to hold it.
+-- v0.85b tuning (Antonia's in-game feedback — this is now the DEFAULT companion behaviour):
+--  * SMOOTH heading. V's INSTANT forward made the anchor snap on every camera twitch -> jitter. We EMA V's
+--    forward (time-constant `smoothSeconds`) each frame and place the anchor off the SMOOTHED heading.
+--  * CLOSEST SIDE. Two candidate anchors — `angleRight` and `angleLeft` (near-front on each side). Jackie
+--    takes whichever is closer to where he already is, with a small stickiness margin, so he doesn't cut
+--    across in front of V. He holds that side until the other is clearly closer.
+--  * GET INTO POSITION, gently. When OUT of position (>`catchUpDist`) he moves at `catchUpMovement` (Run)
+--    to close in, then eases to `movement` (Walk, matching V's walk pace) to hold the pocket.
+--  * WALK-ONLY. Only active while V WALKS (jlVWalking); at jog/sprint abreastTick yields and the trail
+--    (followKeepCloseTick) takes over — V has 3 speeds, Jackie 2, so he can't out-pace a jogging V.
 -- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
 function abreastTick()
   local A = Config.abreast or {}
   if not A.enabled or not (JL.summon.active and JL.summon.companionSet)
-     or JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then
+     or JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
+     or not jlVWalking() then
     JL.abreast.smFwdX = nil   -- reset the heading EMA so it re-seeds cleanly when abreast resumes
     return
   end
@@ -3180,30 +3220,42 @@ function abreastTick()
   local now = JL.clock or 0
   local dt  = now - (JL.abreast.lastFrame or now); JL.abreast.lastFrame = now
   if not JL.abreast.smFwdX then JL.abreast.smFwdX, JL.abreast.smFwdY = fx, fy end
-  local tau   = A.smoothSeconds or 2.0
+  local tau   = A.smoothSeconds or 3.3
   local alpha = (tau > 0) and math.min(math.max(dt / tau, 0.0), 1.0) or 1.0
   local sx = JL.abreast.smFwdX + alpha * (fx - JL.abreast.smFwdX)
   local sy = JL.abreast.smFwdY + alpha * (fy - JL.abreast.smFwdY)
   local sm = math.sqrt(sx * sx + sy * sy); if sm > 1e-4 then sx, sy = sx / sm, sy / sm end
   JL.abreast.smFwdX, JL.abreast.smFwdY = sx, sy
 
-  -- --- anchor point off the smoothed heading -------------------------------------------------------
+  -- --- two candidate anchors off the smoothed heading; pick the side closest to Jackie --------------
+  local rad  = A.radius or 3.5
+  local pos  = A.positions or 12
   local rx, ry = sy, -sx                                    -- right vector (smoothed forward rotated -90°)
-  local ang = math.rad((A.angleIndex or 0.5) * (360.0 / (A.positions or 12)))
-  local ca, sa = math.cos(ang), math.sin(ang)
-  local dirx = sx * ca + rx * sa
-  local diry = sy * ca + ry * sa
-  local rad  = A.radius or 2.0
-  local tx, ty = pp.x + dirx * rad, pp.y + diry * rad
+  local function anchor(idx)
+    local ang = math.rad(idx * (360.0 / pos))
+    local ca, sa = math.cos(ang), math.sin(ang)
+    return pp.x + (sx * ca + rx * sa) * rad, pp.y + (sy * ca + ry * sa) * rad
+  end
+  local rX, rY = anchor(A.angleRight or 0.85)              -- V's right-of-ahead
+  local lX, lY = anchor(A.angleLeft or 11.25)             -- V's left-of-ahead
+  local function d2(ax, ay) return math.sqrt((jp.x - ax) ^ 2 + (jp.y - ay) ^ 2) end
+  local gapR, gapL = d2(rX, rY), d2(lX, lY)
+  -- sticky closest-side: keep the current side unless the other is closer by > sideHysteresis.
+  local side = JL.abreast.side
+  if side ~= "R" and side ~= "L" then side = (gapR <= gapL) and "R" or "L" end
+  local m = A.sideHysteresis or 0.6
+  if side == "R" and gapL < gapR - m then side = "L"
+  elseif side == "L" and gapR < gapL - m then side = "R" end
+  JL.abreast.side = side
+  local tx, ty, gap = (side == "R") and rX or lX, (side == "R") and rY or lY, (side == "R") and gapR or gapL
   local dest = Vector4.new(tx, ty, pp.z, 1.0)
 
-  -- --- issue on a short throttle; sprint when out of position, ease when holding it ----------------
+  -- --- issue on a short throttle; move in when out of position, ease when holding it ---------------
   if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 0.3) then return end
   JL.abreast.lastAt = now
-  local gap = math.sqrt((jp.x - tx) * (jp.x - tx) + (jp.y - ty) * (jp.y - ty))
   local outOfPos = gap > (A.catchUpDist or 2.0)
-  local mv  = outOfPos and (A.catchUpMovement or "Sprint") or (A.movement or "Run")
-  local tol = outOfPos and (A.catchUpTolerance or 0.2) or (A.tolerance or 0.5)
+  local mv  = outOfPos and (A.catchUpMovement or "Run") or (A.movement or "Walk")
+  local tol = outOfPos and (A.catchUpTolerance or 0.35) or (A.tolerance or 0.5)
   sendMoveToPoint(h, dest, mv, tol)
 end
 
@@ -4552,24 +4604,24 @@ registerForEvent("onDraw", function()
     ImGui.Separator()
   end
 
-  -- v0.84: WALK-ABREAST test + live tuner. Toggle ON to make a settled companion walk BESIDE/AHEAD of V
-  -- instead of trailing. The 12-position dial picks a clock spot around V (0 = dead ahead, 3 = V's right,
-  -- 6 = behind, 9 = left); "Radius" is how far out. Drag while walking to find the spot, then tell Claude
-  -- the index+radius to bake into config.lua / wire into the dinner walk. (Live-only; resets on reload.)
+  -- v0.85b: WALK-ABREAST live tuner (now ON by default for a companion). He walks beside V when she WALKS,
+  -- trails when she jogs/sprints, and takes whichever near-front side (right/left) is closest to him. The
+  -- two Position sliders are the right/left anchors (fractional dial steps); Radius = how far out; Smoothing
+  -- = heading lag. Live-only (resets to config.lua defaults on reload) — tell Claude any value to bake in.
   if Config.abreast then
     local A = Config.abreast
-    if ImGui.Button("Walk abreast: " .. (A.enabled and "ON (beside V)" or "OFF (trails behind)")) then
+    if ImGui.Button("Walk abreast: " .. (A.enabled and "ON (beside V when walking)" or "OFF (always trails)")) then
       A.enabled = not A.enabled
-      JL.abreast.lastAt = nil   -- re-issue immediately on toggle
+      JL.abreast.lastAt, JL.abreast.side = nil, nil   -- re-issue + re-pick side immediately on toggle
       log("Walk-abreast -> " .. (A.enabled and "ON" or "OFF"))
     end
     if A.enabled then
-      -- FRACTIONAL positions (Antonia: only near-front is useful — try 0.4 / 0.7 / 11.2 / 11.5).
-      -- Slider wraps the full dial 0..positions; the fine range around 0/12 is what reads as "ahead".
-      A.angleIndex = ImGui.SliderFloat("Position (0=ahead 3=right 6=back 9=left)", A.angleIndex or 0.5, 0.0, (A.positions or 12))
-      A.radius     = ImGui.SliderFloat("Abreast radius (m from V)", A.radius or 2.0, 1.0, 6.0)
-      A.smoothSeconds = ImGui.SliderFloat("Heading smoothing (s)", A.smoothSeconds or 2.0, 0.2, 5.0)
-      ImGui.Text(("Angle = %.0f° from V's forward"):format((A.angleIndex or 0.5) * (360.0 / (A.positions or 12))))
+      A.angleRight = ImGui.SliderFloat("Right position (near-front)", A.angleRight or 0.85, 0.0, 3.0)
+      A.angleLeft  = ImGui.SliderFloat("Left position (near-front)",  A.angleLeft or 11.25, 9.0, (A.positions or 12))
+      A.radius     = ImGui.SliderFloat("Abreast radius (m from V)",   A.radius or 3.5, 1.0, 6.0)
+      A.smoothSeconds = ImGui.SliderFloat("Heading smoothing (s)",    A.smoothSeconds or 3.3, 0.2, 6.0)
+      ImGui.Text(("Live: V %s | side=%s"):format(jlVWalking() and "WALKING (abreast)" or "jog/sprint (trailing)",
+        tostring(JL.abreast.side or "-")))
     end
     ImGui.Separator()
   end
