@@ -32,8 +32,25 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
   + PlayAnimationOnTarget (workspot system). `- [ ] TEST:` deploy via
   `.\deploy_probe.ps1 -ModName JackieAnimTest`, confirm anims play + names log + saves land.
 
-### 🟢 START HERE next session (updated 2026-07-02) — bug sprint mostly CLEARED
-**The 2026-07-01 bug pile is essentially closed** (Antonia tested + confirmed 2026-07-02). Cleared this pass:
+### 🟢 START HERE next session (updated 2026-07-02, end of session) — SUCCESSFUL SESSION
+**Session 2026-07-02 recap:** the 2026-07-01 bug pile is closed, **walk-abreast landed and tested great**
+(now the default companion behaviour), and this build is being **PUBLISHED TO NEXUS** (v0.85b — `staging/`
+tree is in lockstep). Only one deferred bug remains open (persist-across-save) plus polish backlog.
+
+**✅ Confirmed working this session:**
+- **Walk-abreast (v0.85b)** — Antonia: "amazing," tested in-game. Default ON; closest-side pick; walk-only
+  (trails at jog/sprint); tuned defaults baked in. See the v0.85b entry below.
+
+**⏳ Still open (next session picks up here):**
+- 🐞 **Persist-across-save** — DEFERRED, disabled (KNOWN BUG #1 below has the full diagnosis + fix ideas).
+- ⏳ **Dinner-seated dismiss** (v0.83 fix) — still not verified in-game.
+- ▶ **Retire keep-close-follow** (optional, Antonia's call) — fold trail into abreast + comment it out, once
+  abreast has proven itself over more play.
+- 📋 **Polish backlog** below: sit-coords-don't-persist (blocks the manual seat fixes), venue-interior crash
+  gate, dinner walk-off interrupt, Lizzie one-liner, bike-record hunt, main-quest ban / safety-dismount tests.
+
+---
+**Bug pile cleared (Antonia tested + confirmed 2026-07-02):**
 - ✅ **Jackie walks off on dismiss** (bugs 2b/2e) — CONFIRMED working. The v0.78 `jlRetreatFollow` retreat is good.
 - ✅ **Talk-then-dismiss CRASH** — never re-occurred; CONFIRMED solved.
 - ✅ **Fast-travel look-at despawn/respawn flicker** (bug 2/2c) — CONFIRMED solved + tested.
