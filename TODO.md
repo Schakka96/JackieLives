@@ -17,11 +17,15 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
     `unmountPassenger()` + `playerVehicle()`/`freePassengerSeat()` (runtime `VehicleComponent::HasSlot`
     seat enumeration). Buttons "7a) Seat Jackie as passenger" / "7b) Unmount passenger", instant-seat
     toggle, and hotkeys. PROBE now also reports QuickSlotsManager / HasSlot / current-vehicle.
-  - `- [ ] TEST:` deploy `.\deploy_probe.ps1 -ModName JackieVehicleTest`, spawn Jackie (1b), get in a
-    car, press 7a → does he appear in the passenger seat? Drive around → does he stay seated through
-    turns / camera / a district change? 7b → clean exit? Test a 2-seater AND a 4-seater.
-  - Once proven, port into JackieLives as a summon option (mind the 200-locals cap → new module or
-    inside an existing function).
+  - ✅ **TESTED 2026-07-02:** 7a seats him perfectly WITH the walk-to-door + get-in animation. Dismount
+    fixed (was "No Jackie handle": seating an AMM-summoned Jackie via look-at left no handle once in the
+    driving cam → now we remember the seated handle+vehicle). Added `V.ourSeating` MASTER toggle.
+  - 🔎 **LIKELY REDUNDANT — AMM already does this.** Antonia saw a *summoned* Jackie auto-get-in/out of
+    cars on his own (the pushed build's 7a/7b are manual-only, so that auto behaviour is pure AMM
+    companion logic). → **TEST:** flip "Our seating: OFF" and ride around with a summoned Jackie; if he
+    still seats/dismounts, **delete our step-7 code** and just rely on AMM. Known gap either way: his
+    **mouth-flaps don't work while seated in the car** (talk-to-him VO — log under bugs).
+  - Only if AMM does NOT handle it: port `seatJackieInPlayerCar` into JackieLives (mind 200-locals cap).
 - **Jackie body-animation library builder** — new standalone `mod/JackieAnimTest/`. Random/next/replay
   buttons play an AMM `Poses` animation on the looked-at Jackie, print `[JKAnim]` name to console, and
   "Save to library" appends good ones to `jackie_anim_library.txt`. Drives AMM.Poses:GetAllAnimations()
@@ -68,8 +72,21 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
   `Config.postShards`, proximity-triggered, persisted (`jackielives_shard_misty`/`_mama`). → **TEST:** CET
   debug "Show Misty + Mama shards" / "Reset post-shard flags" under the Retrieval header, or walk up to
   each spot after Jackie's back.
+- 🏍️ **STEP 8 bike CRUISE** in `JackieVehicleTest` (Jackie rides his Arch behind V). Research overturned
+  the old "AI can't ride bikes" premise: **`AIVehicleFollowCommand` + `useKinematic=true`** is AMM's
+  shipping bike-follow (`Scan:SetDriverVehicleToFollow`) — kinematic bikes follow without toppling. Built
+  two modes: **AI FOLLOW** (proper; `target = Game.GetPlayer()`, `useTraffic=false`, queued to the bike)
+  and **GHOST TRAIL** (per-frame teleport his bike behind V — passes THROUGH traffic). Full write-up:
+  `docs/research/bike_cruise_research.md`. ⚠️ **A vehicle hitbox CANNOT be disabled from CET on 2.x**
+  (only `PhysicalMeshComponent.ToggleCollision` exists; the chassis collider has no Lua disable) — so the
+  requested "disable hitbox" = the ghost-trail workaround. → **TEST:** STEP 3 (Jackie on his Arch) → get
+  on your bike → START cruise. AI-follow first: does his Arch trail you through streets? If it snags/won't
+  move, flip to GHOST TRAIL. Report which works so we lock one in + port to JackieLives.
 
 **📌 TO ADD / DO (from Antonia 2026-07-02) — not yet built:**
+- ⏳ **Mouth-flaps while seated in a car.** Talking to Jackie when he's a passenger doesn't move his
+  mouth (VO/lipsync). Investigate whether the in-car workspot/mount state blocks the facial path used
+  elsewhere (see `JackieLipsync`); low priority.
 - ⏳ **Disable the Mama Welles ofrenda invitation + that whole ofrenda quest.** The base-game "Heroes"
   ofrenda arc (Mama Welles invites V to Jackie's ofrenda, the wake at El Coyote, placing his guns/photo)
   makes no sense once he's alive. Block/short-circuit that quest so it never offers/fires. Needs

@@ -13,6 +13,7 @@
     5) Unmount Jackie (get off the bike).
     6) Spawn Jackie on the bike AT DISTANCE and have him drive up to you.
     7) PASSENGER: seat Jackie in V's OWN car (front passenger) + drive around (mirror of driving).
+    8) CRUISE: Jackie rides his Arch behind you (AI follow w/ useKinematic, or ghost-trail teleport).
 
   HOW THE PIECES WORK (verified against decompiled scripts + AMM source, patch 2.x):
     * Spawn      : Game.GetDynamicEntitySystem():CreateEntity(DynamicEntitySpec) - same path
@@ -75,6 +76,9 @@ local V = {
   ourSeating = true,              -- MASTER toggle for our passenger-seat code. Turn OFF to test whether
                                   --   AMM's own companion behaviour already seats/dismounts him -> if so,
                                   --   our code is redundant and can be deleted.
+  -- STEP 8 bike cruise: Jackie's mounted Arch trails behind V.
+  cruise = { on = false, mode = "follow", lastReissue = -999, cmd = nil },  -- mode: "follow" | "trail"
+  cruiseTrailDist = 8.0,          -- ghost-trail mode: metres his bike stays behind V's vehicle
   clock = 0,
 }
 
@@ -376,6 +380,90 @@ local function unmountPassenger()
   if ok then V.seatedJackie, V.seatedVeh, V.seatUsed = nil, nil, nil end
 end
 
+-- ── STEP 8: bike CRUISE — Jackie's mounted Arch trails behind V ───────────────
+-- PRIMARY = AI follow with useKinematic=true (AMM's Scan:SetDriverVehicleToFollow recipe): the
+-- engine's own "bikes can't be physics-driven" workaround — a kinematic bike follows without wobble.
+-- FALLBACK = ghost trail: teleport his bike to a point behind V's vehicle each frame (passes THROUGH
+-- traffic, since collision never resolves — a vehicle hitbox CANNOT be disabled from CET on 2.x).
+local function bikeFollowV()
+  local bh = V.bike.handle
+  local p  = player()
+  if not (bh and p) then V.status = "No Jackie-bike (spawn Jackie on bike, step 3, first)."; log(V.status); return false end
+  pcall(function() bh:TurnVehicleOn(true) end)
+  local ok, err = pcall(function()
+    local cmd = newCmd('AIVehicleFollowCommand')
+    cmd.target = p                          -- V's PLAYER object (tracks his bike), NOT the vehicle
+    cmd.distanceMin = 6.0
+    cmd.distanceMax = 10.0
+    pcall(function() cmd.secureTimeOut = 5.0 end)
+    cmd.stopWhenTargetReached = false       -- keep cruising, never "arrive & park"
+    cmd.useTraffic  = false                 -- don't lane-lock / wait at lights
+    cmd.useKinematic = true                 -- KEY: bypass bike physics -> no wobble / fall
+    pcall(function() cmd.needDriver = true end)
+    cmd = cmd:Copy()
+    V.cruise.cmd = cmd
+    local evt = NewObject('handle:AINPCCommandEvent')
+    evt.command = cmd
+    bh:QueueEvent(evt)                       -- queue to the VEHICLE, not the driver
+  end)
+  if not ok then log("bikeFollowV FAILED: " .. tostring(err)) end
+  return ok
+end
+
+-- Ghost-trail fallback: place his bike ~cruiseTrailDist m behind V's vehicle, matching V's heading.
+-- Teleport the BIKE (mount parent) — the mounted Jackie rides along (OnTeleport doesn't eject him).
+local function trailBehindV()
+  local bh   = V.bike.handle
+  local vVeh = playerVehicle()
+  if not (bh and vVeh) then return end
+  local pos, fwd
+  pcall(function() pos = vVeh:GetWorldPosition() end)
+  pcall(function() fwd = vVeh:GetWorldForward() end)
+  if not (pos and fwd) then return end
+  local d = V.cruiseTrailDist or 8.0
+  local trail = Vector4.new(pos.x - fwd.x * d, pos.y - fwd.y * d, pos.z, 1.0)  -- behind V
+  local yaw = math.deg(math.atan2(fwd.y, fwd.x)) - 90.0
+  pcall(function() bh:TurnEngineOn(false) end)          -- reduce physics fighting the teleport
+  pcall(function() Game.GetTeleportationFacility():Teleport(bh, trail, EulerAngles.new(0, 0, yaw)) end)
+end
+
+local function startCruise()
+  if not V.bike.handle then V.status = "No Jackie-bike — spawn Jackie on his bike (STEP 3) first."; log(V.status); return end
+  V.cruise.on, V.cruise.lastReissue = true, -999
+  if V.cruise.mode == "follow" then
+    bikeFollowV()
+    V.status = "Cruise ON (AI follow + useKinematic). Get on your bike + ride — does his Arch trail you?"
+  else
+    V.status = "Cruise ON (ghost trail — his bike teleports behind you, through traffic)."
+  end
+  log(V.status)
+end
+
+local function stopCruise()
+  V.cruise.on = false
+  local bh = V.bike.handle
+  if bh then
+    pcall(function() if V.cruise.cmd then bh:StopExecutingCommand(V.cruise.cmd, true) end end)
+    pcall(function() bh:TurnEngineOn(false) end)
+  end
+  V.cruise.cmd = nil
+  V.status = "Cruise OFF."
+  log(V.status)
+end
+
+-- Stepped from onUpdate.
+local function cruiseTick()
+  if not V.cruise.on or not V.bike.handle then return end
+  if V.cruise.mode == "follow" then
+    if (V.clock - V.cruise.lastReissue) >= 5.0 then    -- re-issue occasionally in case it drops
+      V.cruise.lastReissue = V.clock
+      bikeFollowV()
+    end
+  else
+    trailBehindV()                                     -- every frame
+  end
+end
+
 -- ── engine ────────────────────────────────────────────────────────────────────
 local function engine(on)
   local vh = V.bike.handle
@@ -545,6 +633,7 @@ local function despawnAll()
   V.bike.id, V.bike.handle = nil, nil
   V.arrival.phase = nil
   V.ride.phase, V.ride.cmd = nil, nil
+  V.cruise.on, V.cruise.cmd = false, nil   -- stop cruise so no orphaned ghost-bike (Follower Jackster bug)
   V.status = "Despawned bike + Jackie."
   log(V.status)
 end
@@ -657,6 +746,7 @@ registerForEvent("onUpdate", function(dt)
     end
   end
   pcall(rideTick)
+  pcall(cruiseTick)
 end)
 
 registerForEvent("onShutdown", function() pcall(despawnAll) end)
@@ -746,6 +836,24 @@ registerForEvent("onDraw", function()
   if ImGui.Button("7b) Unmount passenger") then unmountPassenger() end
   ImGui.Separator()
 
+  ImGui.Text("STEP 8 - CRUISE: Jackie rides his Arch behind you:")
+  ImGui.TextWrapped("First mount Jackie on his Arch (STEP 3). Then get on YOUR bike and START cruise.")
+  if ImGui.Button("Cruise mode: " ..
+      (V.cruise.mode == "follow" and "AI FOLLOW (useKinematic)" or "GHOST TRAIL (through traffic)")) then
+    V.cruise.mode = (V.cruise.mode == "follow") and "trail" or "follow"
+  end
+  ImGui.TextWrapped("AI follow = proper AMM bike-follow (kinematic; may snag in heavy traffic). " ..
+    "Ghost trail = teleports his bike behind you every frame -> passes THROUGH traffic (can jitter).")
+  if V.cruise.mode == "trail" then
+    V.cruiseTrailDist = ImGui.SliderFloat("trail distance (m)", V.cruiseTrailDist, 4.0, 15.0)
+  end
+  if ImGui.Button(V.cruise.on and "STOP cruise" or "START cruise") then
+    if V.cruise.on then stopCruise() else startCruise() end
+  end
+  ImGui.TextWrapped("NOTE: a vehicle's hitbox CANNOT be disabled from CET on 2.x (engine limit). " ..
+    "Ghost-trail is the workaround for 'don't let traffic block him'.")
+  ImGui.Separator()
+
   if ImGui.Button("DESPAWN bike + Jackie") then despawnAll() end
   if V.status ~= "" then ImGui.TextWrapped("> " .. V.status) end
   ImGui.End()
@@ -762,4 +870,5 @@ registerHotkey("jkv_unmount",   "Vehicle: unmount Jackie",     function() unmoun
 registerHotkey("jkv_arrive",    "Vehicle: arrive at distance", function() arrivalAtDistance() end)
 registerHotkey("jkv_seat",      "Vehicle: seat Jackie passenger", function() seatJackieInPlayerCar() end)
 registerHotkey("jkv_unseat",    "Vehicle: unmount passenger",     function() unmountPassenger() end)
+registerHotkey("jkv_cruise",    "Vehicle: toggle bike cruise", function() if V.cruise.on then stopCruise() else startCruise() end end)
 registerHotkey("jkv_despawn",   "Vehicle: despawn all",        function() despawnAll() end)
