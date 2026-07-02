@@ -78,7 +78,10 @@ local JL = {
   -- v0.72 companion PERSISTENCE: "is companion" is saved per-slot as the game fact
   -- jackielives_companion. On a fresh load (Lua state wiped) or a load-screen fast-travel that
   -- culled his entity, this re-spawns + re-promotes him at V. gapSince/lastRespawn are throttles.
-  persist = { gapSince = nil, lastRespawn = nil },
+  persist = { gapSince = nil, lastRespawn = nil, worldReadyAt = nil },
+  -- v0.84 walk-abreast: keep-close variant that holds Jackie BESIDE/AHEAD of V (offset from V's
+  -- forward vector) instead of trailing behind. lastAt is the re-issue throttle.
+  abreast = { lastAt = nil },
   -- v0.35 free-roam wander: placed=on a waypoint yet; phase=dwelling|walking; cur/tgtIdx=waypoints.
   -- v0.38 walk-away: leaving=true while he's strolling to a venue exit before despawning.
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
@@ -3092,6 +3095,7 @@ end
 local function followKeepCloseTick()
   local F = Config.follow or {}
   if F.enabled == false then return end
+  if Config.abreast and Config.abreast.enabled then return end   -- v0.84: abreast mode owns positioning instead
   if not (JL.summon.active and JL.summon.companionSet) then return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -3104,6 +3108,44 @@ local function followKeepCloseTick()
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
   if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end
   sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)
+end
+
+-- v0.84 WALK-ABREAST. Instead of trailing behind V (keep-close), hold Jackie at a point OFFSET from V —
+-- beside / slightly ahead — computed from V's forward vector, so on the way to dinner he walks next to
+-- her, not on the long companion leash. The offset is polar in V's own frame: `angleIndex` picks one of
+-- 12 clock positions around V (0 = dead ahead, +90° = V's right, 180° = behind, -90° = left) and `radius`
+-- is how far out. Re-issued as an AIMoveToCommand to the moving offset point on a throttle. The point is
+-- only a few m from V, so even on the (role-cleared) teleport-to-target quirk the worst case is a tiny
+-- snap, not a fling. Live-tunable from the CET "Walk abreast" panel. Global -> 200-local cap safe.
+function abreastTick()
+  local A = Config.abreast or {}
+  if not A.enabled then return end
+  if not (JL.summon.active and JL.summon.companionSet) then return end
+  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return end
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  if not h then return end
+  local now = JL.clock or 0
+  if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 1.0) then return end
+  JL.abreast.lastAt = now
+  local pp = playerPos(); if not pp then return end
+  local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
+  -- don't fight the catch-up teleport: if he's far enough for that to own him, leave it.
+  if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end
+  -- V's forward (horizontal). Fall back to +Y if unavailable.
+  local fx, fy = 0.0, 1.0
+  pcall(function()
+    local f = Game.GetPlayer():GetWorldForward()
+    if f then local m = math.sqrt(f.x * f.x + f.y * f.y); if m > 1e-4 then fx, fy = f.x / m, f.y / m end end
+  end)
+  -- right vector (forward rotated -90° about Z). +angle = toward V's right.
+  local rx, ry = fy, -fx
+  local ang = math.rad((A.angleIndex or 2) * (360.0 / (A.positions or 12)))
+  local ca, sa = math.cos(ang), math.sin(ang)
+  local dirx = fx * ca + rx * sa
+  local diry = fy * ca + ry * sa
+  local rad  = A.radius or 2.0
+  local dest = Vector4.new(pp.x + dirx * rad, pp.y + diry * rad, pp.z, 1.0)
+  sendMoveToPoint(h, dest, A.movement or "Run", A.tolerance or 0.5)
 end
 
 -- v0.80: SUBTITLE WATCHDOG — the guaranteed cleanup. Stepped every frame from onUpdate. The old bug:
@@ -3961,8 +4003,19 @@ function companionPersistTick()
   local P = Config.persist or {}
   if P.enabled == false then return end
   if not Retrieval.isUnlocked() then return end                 -- mod still gated -> no companion to keep
-  if (JL.clock or 0) < (P.startupGrace or 2.0) then return end   -- let the world finish loading first
-  if not playerPos() then return end                            -- player not in-world yet
+
+  -- v0.84 CRASH FIX: the startup grace MUST be measured from when the player entered the world, NOT
+  -- from JL.clock (time since onInit). A mid-session load-from-save does NOT re-run onInit, so JL.clock
+  -- is already huge and the old `JL.clock < startupGrace` gate was skipped instantly -> we respawned into
+  -- a still-streaming world = the load crash. Now: while the player is absent (load screen / fast-travel)
+  -- we clear worldReadyAt; the frame he reappears we stamp it, then require startupGrace of settled,
+  -- in-world time before touching AMM. This resets correctly on EVERY load and district-scale fast-travel.
+  local now = JL.clock or 0
+  if not playerPos() then                                       -- player not in-world (loading / FT screen)
+    JL.persist.worldReadyAt = nil; JL.persist.gapSince = nil; return
+  end
+  JL.persist.worldReadyAt = JL.persist.worldReadyAt or now
+  if (now - JL.persist.worldReadyAt) < (P.startupGrace or 8.0) then return end  -- let the world finish streaming
 
   -- Is a LIVE, settled companion actually present right now?
   local live = false
@@ -3985,9 +4038,16 @@ function companionPersistTick()
     JL.persist.gapSince = nil; return
   end
 
+  -- v0.84 CRASH FIX: don't spawn until AMM has re-initialised post-load and Jackie's record resolves.
+  -- After a load AMM re-inits a beat later than us; calling its Spawn path before it's ready was the other
+  -- half of the load crash. Bail (and reset the gap timer) until both are live, then spawn is the same
+  -- proven path the confirmed catch-up respawn (bug 2f) already uses safely.
+  local amm = getAMM()
+  if not (amm and amm.Spawn and amm.Spawn.NewSpawn) then JL.persist.gapSince = nil; return end
+  if not resolveJackieRecord() then JL.persist.gapSince = nil; return end
+
   -- Require the gap to persist a beat (rides out a momentary stream/handle hiccup), then respawn
   -- on a cooldown (which also covers the few frames a fresh spawn needs to resolve + promote).
-  local now = JL.clock or 0
   JL.persist.gapSince = JL.persist.gapSince or now
   if (now - JL.persist.gapSince) < (P.gapSustain or 1.5) then return end
   if (now - (JL.persist.lastRespawn or -1e9)) < (P.cooldown or 5.0) then return end
@@ -4194,6 +4254,7 @@ registerForEvent("onUpdate", function(dt)
     pcall(function() startLeaving(Config.mainQuestExit) end)
   end
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
+  pcall(abreastTick)      -- v0.84: OR (when enabled) hold him beside/ahead of V instead of trailing
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
   pcall(companionPersistTick)  -- v0.72: saved "is companion" but his body is gone (reload / culling FT) -> respawn at V
   pcall(settleTick)       -- v0.82: hide + no-collision for a beat after a respawn-at-V so he doesn't pop/clip in
@@ -4378,6 +4439,27 @@ registerForEvent("onDraw", function()
     Config.follow.distance       = ImGui.SliderFloat("Follow gap (m behind V)",      Config.follow.distance or 2.5,       1.0, 8.0)
     Config.catchUp.distance      = ImGui.SliderFloat("Catch-up trigger (m from V)",  Config.catchUp.distance or 25.0,     8.0, 60.0)
     Config.catchUp.placeDistance = ImGui.SliderFloat("Catch-up drop (m beside V)",   Config.catchUp.placeDistance or 3.0, 1.5, 8.0)
+    ImGui.Separator()
+  end
+
+  -- v0.84: WALK-ABREAST test + live tuner. Toggle ON to make a settled companion walk BESIDE/AHEAD of V
+  -- instead of trailing. The 12-position dial picks a clock spot around V (0 = dead ahead, 3 = V's right,
+  -- 6 = behind, 9 = left); "Radius" is how far out. Drag while walking to find the spot, then tell Claude
+  -- the index+radius to bake into config.lua / wire into the dinner walk. (Live-only; resets on reload.)
+  if Config.abreast then
+    local A = Config.abreast
+    if ImGui.Button("Walk abreast: " .. (A.enabled and "ON (beside V)" or "OFF (trails behind)")) then
+      A.enabled = not A.enabled
+      JL.abreast.lastAt = nil   -- re-issue immediately on toggle
+      log("Walk-abreast -> " .. (A.enabled and "ON" or "OFF"))
+    end
+    if A.enabled then
+      local idx = math.floor((A.angleIndex or 2) + 0.5)
+      idx = ImGui.SliderInt("Position (0=ahead 3=right 6=back 9=left)", idx, 0, (A.positions or 12) - 1)
+      A.angleIndex = idx
+      A.radius     = ImGui.SliderFloat("Abreast radius (m from V)", A.radius or 2.0, 1.0, 6.0)
+      ImGui.Text(("Angle = %d° from V's forward"):format(math.floor(idx * (360.0 / (A.positions or 12)) + 0.5)))
+    end
     ImGui.Separator()
   end
 

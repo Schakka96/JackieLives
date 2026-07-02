@@ -28,19 +28,34 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
   + PlayAnimationOnTarget (workspot system). `- [ ] TEST:` deploy via
   `.\deploy_probe.ps1 -ModName JackieAnimTest`, confirm anims play + names log + saves land.
 
-### 🐞 START HERE next session (updated 2026-07-01, end of session) — NEXT SESSION = BUG-FIXING SPRINT
-Antonia: "We have a ton of bugs on our hands. For the next session we have to start fixing those."
-**v0.78 is DEPLOYED + PUSHED (tag v0.78).** Session 2026-07-01 (dismiss-despawn hunt) recap:
-- **Root cause of the dismiss "instant despawn" NAILED** (bug 2d): game 2.31 teleports a just-`OnRoleCleared`
-  puppet on its next `AIMoveToCommand`; the walk-off code was unchanged since v0.36. Not idle-departures/keep-close.
-- **Fix shipped, needs test** (bug 2e): walk-off now uses `jlRetreatFollow` (FollowTarget to a large distance),
-  no role-clear. **← first thing to verify next session** (watch `jackie_debug.log`).
-- **Diagnostics added:** `log()` now also writes `mods/JackieLives/jackie_debug.log` (fresh each load);
-  `jlDumpState()` + "Dump state (console)" CET button. Mouth flaps FIXED (bug 4). Follow gap set to 1.5 m.
-- **v0.73 keep-close-cancel fix was tried & reverted** (didn't help); persist still OFF (bug 1, crashes).
-- **Still open:** fast-travel despawn/respawn flicker (catch-up vs culling, bug 2/2c) + talk-then-dismiss CRASH
-  (stale handle) + arrivals "spawns at V" rescue path. See bugs below.
-What's DONE vs what's BROKEN:
+### 🟢 START HERE next session (updated 2026-07-02) — bug sprint mostly CLEARED
+**The 2026-07-01 bug pile is essentially closed** (Antonia tested + confirmed 2026-07-02). Cleared this pass:
+- ✅ **Jackie walks off on dismiss** (bugs 2b/2e) — CONFIRMED working. The v0.78 `jlRetreatFollow` retreat is good.
+- ✅ **Talk-then-dismiss CRASH** — never re-occurred; CONFIRMED solved.
+- ✅ **Fast-travel look-at despawn/respawn flicker** (bug 2/2c) — CONFIRMED solved + tested.
+- ✅ **Arrival "spawns inside V"** (bug 1 follow-up) — CONFIRMED solved.
+- ✅ Earlier confirmed: tutorial popup, both shards, fast-travel catch-up→respawn (2f), mouth flaps (4),
+  catch-up teleport (v0.66), dialogue picker (v0.33), respawn pop-in polish (v0.82), dialogue/subtitle polish (v0.80/0.81).
+
+**v0.84 shipped 2026-07-02 (AWAITING IN-GAME TEST):**
+- 🔧 **Persistence across a load RE-ENABLED** (`Config.persist.enabled = true`). Root cause of the old load
+  crash was a timing bug: `startupGrace` was measured against `JL.clock` (time since onInit), but a
+  mid-session load does NOT re-run onInit → grace was skipped → spawn into a still-streaming world = crash.
+  Now the grace is measured from **world-ready** (resets every load / district FT) and the respawn is gated
+  on **AMM re-initialised + Jackie's record resolved**. Grace bumped to 8 s. → **TEST:** be a companion →
+  hard-save → reload → after ~8 s Jackie returns at V, no crash. (If it EVER crashes again: raise
+  `Config.persist.startupGrace` first.) Watch `jackie_debug.log` for `Persist: … respawned him at V.`
+- 🔧 **Walk-abreast built + live tuner** (`Config.abreast`, off by default). CET "Companion spacing" panel
+  now has a **"Walk abreast"** toggle + a **12-position dial** (0=ahead, 3=right, 6=back, 9=left) + radius
+  slider. When ON it replaces keep-close-follow and holds Jackie beside/ahead of V. → **TEST + TUNE:** toggle
+  ON while walking, drag the dial/radius until he walks nicely alongside, then tell Claude the index+radius
+  to bake in + wire into the dinner walk (backlog item below).
+
+**Still to test (not yet checked):**
+- ⏳ **Dinner-seated dismiss** (v0.83 fix): confirm no "Head home" option while seated + "Enough chillin',
+  let's go" ends dinner with no crash.
+
+What's DONE vs what's still open:
 
 **✅ Working now (v0.75):**
 - **Tutorial popup FIXED.** All 5 probe variants rendered the same lower-left card, so the culprit was the
@@ -52,18 +67,16 @@ What's DONE vs what's BROKEN:
   Vektor") + Jackie's Rocky Ridge note (`shardLines`, title "Shard — Jackie Welles"). In-character;
   tweak the prose freely.
 
-**🐞 KNOWN BUGS — fix these next session (highest first):**
-1. **CRASH: companion persistence across a load.** The v0.72 auto-respawn (`companionPersistTick` →
-   `respawnCompanionAtV`) **crashes the game on load**. → **Mitigated for now: `Config.persist.enabled =
-   false`** so the build is stable (fact-tracking still runs; only auto-bring-him-back is off). FIX:
-   almost certainly `ammSpawn` firing too early / into a not-fully-streamed world, or an AMM call before
-   AMM re-inits post-load. Try a much longer/whole-frame-safe startup gate, verify AMM-ready + player
-   fully in-world before spawning, or switch to a MANUAL "he's back" trigger. See `config.lua`
-   `Config.persist` warning + init.lua `companionPersistTick`/`respawnCompanionAtV`.
-2. **Jackie despawns/respawns when V LOOKS AT him after a fast-travel.** Reported again; it's in
-   `List_of_companion_issues.md` (Session 1 cluster / catch-up). May be `catchUpTick`'s teleport fighting
-   the look-at/talk system, or the (now-disabled) persist respawn — re-check whether disabling persist
-   (#1) changed it. Reproduce: be a companion → fast-travel → look straight at Jackie.
+**🐞 KNOWN BUGS:**
+1. ✅ **FIXED (2026-07-02, v0.84) — AWAITING TEST. CRASH: companion persistence across a load.** The v0.72
+   auto-respawn (`companionPersistTick` → `respawnCompanionAtV`) crashed on load. ROOT CAUSE: `startupGrace`
+   was measured against `JL.clock` (time since onInit); a mid-session load doesn't re-run onInit, so the
+   grace was skipped and we spawned into a still-streaming world. FIX: grace now measured from **world-ready**
+   (player re-enters world — resets on every load/district FT), respawn gated on **AMM-ready +
+   `resolveJackieRecord()`**, grace bumped to 8 s, `Config.persist.enabled = true`. See `config.lua`
+   `Config.persist` + init.lua `companionPersistTick`. [ ] TEST: companion → save → reload → he returns, no crash.
+2. ✅ **SOLVED + TESTED (2026-07-02). Jackie despawns/respawns when V LOOKS AT him after a fast-travel.**
+   Confirmed fixed in-game by Antonia. (Left below for history / in case it regresses.)
    - **2f. ✅ FIXED (2026-07-01, v0.79 — CONFIRMED in-game by Antonia).** The "`CatchUp: was 1994 m -> teleported
      to her side` but he's still 2 km back, and travelling back doesn't fix it" case. `catchUpTick` logged
      success without verifying the `AITeleportCommand` landed; across a district-scale FT his body is stranded
@@ -172,8 +185,11 @@ retreat-follow). **Still open, grouped by area:**
       any must-be-interior venue out of the picker until proven stable.
 
 **🍽️ Dinner outing polish (old S3):**
-- [ ] **Walk abreast, not trailing.** On the way to dinner Jackie should walk slightly ahead / right beside V
-      (offset from V's forward vector + small right offset), not behind on the long companion leash.
+- [~] **Walk abreast, not trailing.** MECHANISM BUILT + live tuner shipped (v0.84, 2026-07-02): `Config.abreast`
+      + `abreastTick` hold Jackie at a polar offset from V's forward vector; CET "Companion spacing" panel has a
+      **Walk abreast** toggle + 12-position dial (0=ahead/3=right/6=back/9=left) + radius slider. **Remaining:**
+      Antonia tunes the index+radius in-game → Claude bakes the values into `Config.abreast` and **wires abreast
+      ON during the dinner walk** (currently a global toggle, not yet auto-enabled for the walk-to-dinner leg).
 
 **🚶 Walk-off / departure (old S2 leftovers):**
 - [ ] **Interrupt the walk-off for dinner.** If his timer expires and he's walking away, talking to him about
@@ -198,17 +214,10 @@ retreat-follow). **Still open, grouped by area:**
 robust, or revert to foot (`Config.call.arrivalMethod`).
 
 ### ▶️ Older OPEN verification tasks (still awaiting in-game test)
-- [ ] **TEST: Companion catch-up teleport (v0.66, NEW).** While Jackie is a SETTLED companion (arrived,
-      not dismissed), **FAST-TRAVEL** away (or sprint >25 m off) and confirm he **teleports to V's side**
-      within ~2 s, landing a few m beside her (NEVER on top of V). Console logs `CatchUp: Jackie was N m
-      from V -> teleported to her side.` Tunables in `Config.catchUp` (distance/sustain/cooldown/placeDistance).
-      - Known limit: if a load-screen fast-travel **culls his entity** (handle nil), teleport can't help →
-        he's just gone. That's the heavier persist+respawn job (List_of_companion_issues.md Session 1).
-- [ ] **Bug 1 follow-up — "spawns inside V" on a FAILED approach.** The catch-up teleport now always lands
-      him *beside* V, but the original yank-onto-V comes from the **arrival fallbacks** (rescue-spawn at V /
-      `maxSeconds` force-handoff using AMM's catch-up). NEEDS: observe whether it happens on a *normal* call
-      arrival or only after he gets *stuck approaching*; then offset those fallbacks the same way (place
-      beside V, not on her) and/or reduce stuck-arrivals. See diagnosis 2026-06-30.
+- [x] **Companion catch-up teleport (v0.66).** CONFIRMED working (2026-07-02) — landing beside V, and the
+      culled-entity case is now covered by the v0.79 respawn + v0.84 persist.
+- [x] **Bug 1 follow-up — "spawns inside V" on a FAILED approach.** CONFIRMED solved (2026-07-02) — arrival
+      fallbacks now place him beside V, not on her.
 - [ ] (prior v0.65 tasks below — all DEPLOYED in v0.65, awaiting in-game test)
 - [ ] **Bike record (v0.65, top priority):** in CET → "Bike model test", click **B1/B2/B3** → report which
       spawns Jackie's real (gold) Arch + the console `READ-BACK` appearance string. Then **lock that

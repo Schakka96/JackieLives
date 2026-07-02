@@ -187,18 +187,34 @@ Config.companion = {
 -- if it says "companion" but no live Jackie exists — a fresh load wiped the runtime state, or a
 -- load-screen fast-travel culled his body (the case Config.catchUp can't recover) — it re-spawns and
 -- re-promotes him at V's side. Set enabled=false to go back to "he's gone after a reload".
--- ⚠️ v0.74: enabled=false FOR NOW. The auto-respawn-on-load (companionPersistTick -> respawnCompanionAtV)
--- CRASHES the game across a load on the live build — almost certainly ammSpawn firing too early / into a
--- not-fully-streamed world, or an AMM call before AMM has re-initialised post-load. Disabled so the build
--- is stable to keep testing everything else; the fact-tracking (setCompanionFlag on promote/dismiss) still
--- runs, so nothing is lost — only the automatic bring-him-back is off. TOP bug to fix next session (see
--- TODO v0.75): much longer/whole-frame-safe startup gate, verify AMM ready + player fully in-world before
--- spawning, and consider a manual "he's back" trigger instead of an automatic one. Flip to true once safe.
+-- ✅ v0.84: RE-ENABLED. The old load crash was a timing bug: startupGrace was measured against JL.clock
+-- (time since onInit), but a mid-session load-from-save does NOT re-run onInit, so JL.clock was already
+-- huge and the grace was skipped -> we spawned into a still-streaming world = crash. companionPersistTick
+-- now measures the grace from when the PLAYER re-enters the world (resets on every load / district FT) AND
+-- refuses to spawn until AMM has re-initialised + Jackie's record resolves. Same spawn path the confirmed
+-- catch-up respawn (bug 2f) already uses safely. If a load crash EVER recurs: raise startupGrace first.
 Config.persist = {
-  enabled       = false,  -- ⚠️ crashes on load right now — see the warning above; re-enable when fixed
-  startupGrace  = 2.0,    -- s after load before we act, so we never spawn into a loading screen (too short?)
+  enabled       = true,   -- v0.84: back on (crash fixed — grace now measured from world-ready, AMM-gated)
+  startupGrace  = 8.0,    -- s of settled, in-world time (from when the player appears) before we spawn
   gapSustain    = 1.5,    -- s the "should be here but isn't" condition must hold (rides out stream hiccups)
   cooldown      = 5.0,    -- s between respawn attempts (also covers the spawn->promote resolve window)
+}
+
+-- ---- walk-abreast (v0.84) -------------------------------------------------
+-- When ON, a settled companion Jackie holds a spot BESIDE / slightly AHEAD of V (offset from V's forward
+-- vector) instead of trailing behind on the keep-close leash — for the "walk next to me to dinner" feel.
+-- Tune it LIVE from the CET "Walk abreast" panel: `angleIndex` is a clock position around V (of `positions`
+-- steps) — 0 = dead ahead, 3 = V's right, 6 = behind, 9 = left; `radius` is how far out. When enabled it
+-- REPLACES followKeepCloseTick (they'd fight otherwise). Starts OFF so nothing changes until you toggle it.
+-- Once a spot feels right in-game, tell Claude the index+radius to bake here and wire into the dinner walk.
+Config.abreast = {
+  enabled    = false,   -- toggled live from CET; off = normal trailing keep-close follow
+  positions  = 12,      -- number of clock steps around V the slider cycles through
+  angleIndex = 2,       -- default 2/12 = 60° off forward (ahead-right); slider overrides live
+  radius     = 2.0,     -- metres from V he holds
+  interval   = 1.0,     -- s between re-issues of the move-to-offset-point command
+  movement   = "Run",   -- "Walk" | "Run" | "Sprint" — how he closes to the abreast spot
+  tolerance  = 0.5,     -- desiredDistanceFromTarget for the move command
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
