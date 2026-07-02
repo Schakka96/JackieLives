@@ -753,6 +753,11 @@ registerForEvent("onShutdown", function() pcall(despawnAll) end)
 
 registerForEvent("onDraw", function()
   if not V.overlay or not V.open then return end
+  -- CAP the window height so it can't grow taller than the screen (which hid STEP 7/8 below the
+  -- bottom edge with no way to scroll). SizeConstraints caps it even if a huge size was already
+  -- saved in imgui.ini, forcing an INTERNAL scrollbar. (min 380x240, max 900x680.)
+  pcall(function() ImGui.SetNextWindowSizeConstraints(380, 240, 900, 680) end)
+  pcall(function() ImGui.SetNextWindowSize(460, 640, ImGuiCond.FirstUseEver) end)
   ImGui.Begin("Jackie Vehicle Test")
 
   -- live status read-out
