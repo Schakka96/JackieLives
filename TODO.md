@@ -73,6 +73,21 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
     fold any remaining trail need into abreast and comment out `followKeepCloseTick`. Not done yet (trail is
     still the jog/sprint fallback, so keep it for now).
 
+**v0.86 BIKE CRUISE folded into JackieLives 2026-07-02 (AWAITING IN-GAME TEST):**
+- 🏍️ **Companion Jackie trails V on his Arch when V rides a BIKE.** Proven in JackieVehicleTest (AI
+  follow + `useKinematic`), now integrated into the live mod as `Config.cruise` + globals
+  `jlCruiseTick/Start/Stop/Follow` (cap-safe; reuse `spawnDynEntity`/`mountAsDriver`/`unmountDriver`/
+  `promoteToCompanion`). Flow: settled companion + V mounts a bike → his Arch spawns ~8 m behind → he
+  mounts + `AIVehicleFollowCommand(useKinematic, target=player)` → trails V. V dismounts → unmount +
+  despawn Arch → back to foot follow. The keep-close/catch-up/abreast ticks are gated on `jlCruise.active`
+  so they can't drag him off the bike. **Ghost-trail was NOT shipped** (per Antonia — AI follow only).
+  In a CAR, AMM's own companion behaviour seats him as passenger (no code needed).
+  → **TEST:** be his companion → hop on a bike → does his Arch spawn + trail you through streets? Dismount
+  → does he get off + despawn the bike + resume foot follow? CET debug: "Cruise ON/OFF", "Force start/stop".
+  If it misbehaves for the release, set `Config.cruise.enabled = false` (everything else is unaffected).
+- ⚠️ **Watch for:** orphaned Arch if teardown misses (cleaned each tick + on dismiss); mount fighting the
+  follow role (gated, but verify); heavy traffic snags (kinematic routes around, may clip). Report results.
+
 **v0.85 REUNION RESTRUCTURE 2026-07-02 (AWAITING IN-GAME TEST — big flow change):**
 - 🐛→✅ **BUG FIX: reunion call went to voicemail when Jackie was asleep/busy.** New persisted stage
   **AWAITING_CALL (3)** between SHARD and REUNITED: shard read → Jackie has NO world presence yet (no
