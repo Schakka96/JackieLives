@@ -2490,13 +2490,13 @@ local function vehCfg() return Config.vehicle or {} end
 -- Spawn any record via the dynamic entity system (the path AMM wraps; used here for BOTH the bike
 -- and Jackie - same as the validated JackieVehicleTest harness). Returns the entity id; the handle
 -- resolves a few frames later via Game.FindEntityByID.
-local function spawnDynEntity(recordStr, pos, yawDeg, tag)
+local function spawnDynEntity(recordStr, pos, yawDeg, tag, appearance)
   local des = Game.GetDynamicEntitySystem(); if not des or not pos then return nil end
   local id
   local ok, err = pcall(function()
     local spec = DynamicEntitySpec.new()
     spec.recordID      = recordStr
-    spec.appearanceName = "default"
+    spec.appearanceName = appearance or "default"   -- v0.85: lockable (bike passes Config.vehicle.bikeAppearance)
     spec.position      = pos
     pcall(function() spec.orientation = EulerAngles.new(0.0, 0.0, yawDeg or 0.0):ToQuat() end)
     spec.persistState  = false
@@ -2814,7 +2814,10 @@ local function vehicleArrivalTick()
     local yaw = yawToward(va.pt, pp)                                    -- face V (the way he'll ride)
     va.pingAt, va.slowedLogged = 0, false                              -- arm the 3s ping + "easing off" one-shot
     -- bike + Jackie spawn together behind V (local mount).
-    va.bikeId  = spawnDynEntity(c.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", va.pt, yaw, "JackieLives_bike")
+    -- LOCK to Jackie's real Arch (record + appearance). Same record the JackieVehicleTest harness
+    -- confirmed spawns his correct gold Arch — never a random bike.
+    va.bikeId  = spawnDynEntity(c.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", va.pt, yaw,
+                                "JackieLives_bike", c.bikeAppearance or "default")
     local jpos = snapToNavmesh(Vector4.new(va.pt.x + 1.5, va.pt.y, va.pt.z, 1.0)) or va.pt
     local jid  = spawnDynEntity(Config.jackieRecord or "Character.Jackie", jpos, yaw, "JackieLives_jackie")
     if not va.bikeId or not jid then

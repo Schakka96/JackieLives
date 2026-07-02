@@ -33,6 +33,10 @@
      works, then we decide how to fake the bike (e.g. scripted ride-along) for the real mod.
 --]]
 
+-- Build stamp — shown in the window title + logged on load so you can confirm WHICH version is
+-- deployed. If the title doesn't show this, the in-game copy is STALE (re-run deploy_probe.ps1).
+local BUILD = "2026-07-02c  (STEP7 toggle + STEP8 cruise)"
+
 -- ── EDITABLE RECORDS ─────────────────────────────────────────────────────────
 -- Jackie's Arch - LOCKED to the normal model (no cycling needed). Same record JackieLives uses.
 local BIKE_RECORDS = {
@@ -705,7 +709,7 @@ end
 
 -- ── lifecycle ──────────────────────────────────────────────────────────────────
 registerForEvent("onInit", function()
-  log("Loaded. Press PROBE first. Records: bike='" .. BIKE_RECORDS[1] .. "', jackie='" .. JACKIE_RECORD .. "'.")
+  log("Loaded BUILD " .. BUILD .. ". Press PROBE first. Records: bike='" .. BIKE_RECORDS[1] .. "', jackie='" .. JACKIE_RECORD .. "'.")
 end)
 registerForEvent("onOverlayOpen",  function() V.overlay = true end)
 registerForEvent("onOverlayClose", function() V.overlay = false end)
@@ -758,7 +762,9 @@ registerForEvent("onDraw", function()
   -- saved in imgui.ini, forcing an INTERNAL scrollbar. (min 380x240, max 900x680.)
   pcall(function() ImGui.SetNextWindowSizeConstraints(380, 240, 900, 680) end)
   pcall(function() ImGui.SetNextWindowSize(460, 640, ImGuiCond.FirstUseEver) end)
-  ImGui.Begin("Jackie Vehicle Test")
+  ImGui.Begin("Jackie Vehicle Test  [" .. BUILD .. "]")
+  ImGui.TextColored(0.5, 1.0, 0.6, 1.0, "build: " .. BUILD)   -- if this line is absent, re-deploy: stale copy
+  ImGui.Separator()
 
   -- live status read-out
   local pp = playerPos()
