@@ -1563,7 +1563,7 @@ end
 -- you anyway) - guarded by JL.summon.active + the tree not being the call tree.
 local function withCompanionExtras(choices)
   if not JL.summon.active then return choices end
-  if bstate.tree == Config.callTree then return choices end                 -- not on a call
+  if bstate.tree == Config.callTree or bstate.tree == Config.firstCallTree then return choices end  -- not on a call
   if Config.date and bstate.tree == Config.date.tree then return choices end -- and not mid-date (no recursion)
   -- v0.83: NEVER offer "Head home, Jackie" during a dinner outing — dismissing a SEATED puppet (role
   -- cleared, in a sit workspot) doesn't stand him up and crashes the game. The dinner "Enough chillin',
@@ -1921,6 +1921,11 @@ local function runCallAction(name)
     JL.dinner.leaveNow = true
     return
   end
+  if name == "return_bike" then   -- v0.84: reunion beat — V agreed to give Jackie his Arch back
+    if jlReturnJackiesBike then pcall(jlReturnJackiesBike) end
+    JL.ui.status = "Gave Jackie his Arch back."
+    return
+  end
   if name == "date_accept" then   -- legacy (pre-v0.41 date tree); harmless
     local ext = (Config.date and Config.date.resetCompanionHours) or 6.0
     armCompanionTimer(ext)
@@ -2010,7 +2015,13 @@ local function callTick()
     if native then openNativeCallWindow() end     -- CONNECT: empty transparent window stays up
     JL.call.watchdogAt = now + 300                -- safety net (force-end if a call never completes)
     Branch.busy = false                           -- Branch.start re-sets it
+    -- v0.84: the FIRST call after he's back is the reunion beat (he asks for his Arch back);
+    -- every call after that is the normal callTree.
     local tree = Config.callTree
+    if Config.bikeReturn and Config.bikeReturn.enabled and Config.firstCallTree
+       and jlBikeReturned and not jlBikeReturned() then
+      tree = Config.firstCallTree
+    end
     Branch.start(tree and tree.start or nil, tree)
   end
 
@@ -3192,7 +3203,7 @@ local function branchTick()
       Branch.start(nxt)
     else
       Branch.busy = false
-      local wasCall = (bstate.tree == Config.callTree)
+      local wasCall = (bstate.tree == Config.callTree or bstate.tree == Config.firstCallTree)
       bstate.tree = nil
       local act = bstate.pendingAction; bstate.pendingAction = nil
       if wasCall then
@@ -3912,6 +3923,50 @@ function companionFlagSet()
   return ok and v == 1
 end
 
+-- ===========================================================================
+-- BIKE RETURN (v0.84) — one-time reunion beat: on his first call after he's back,
+-- Jackie asks for his Arch, and V hands it over. Giving it back = removing Jackie's
+-- Arch from V's garage (it's HIS ride again). Persisted via Config.bikeReturn.fact so
+-- it only happens once. Globals (no main-chunk `local`) to respect the 200-local cap.
+-- ===========================================================================
+function jlBikeReturned()
+  local f = (Config.bikeReturn and Config.bikeReturn.fact) or "jackielives_bikeback"
+  local v; pcall(function() v = Game.GetQuestsSystem():GetFactStr(f) end)
+  return type(v) == "number" and v >= 1
+end
+
+-- Remove Jackie's Arch from V's owned/garage vehicles. Reversible (re-enable to restore).
+-- `markDone` false = just remove without setting the fact (used by the debug button).
+function jlReturnJackiesBike(markDone)
+  local B   = Config.bikeReturn or {}
+  local rec = B.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player"
+  local ok  = pcall(function()
+    Game.GetVehicleSystem():EnablePlayerVehicle(rec, false, true)   -- (id, enable=false, updateGarage)
+  end)
+  -- best-effort: if this build ever has a literal bike-"key" inventory item, pull it too
+  -- (vanilla 2.x has none, so this no-ops unless Config.bikeReturn.keyItem is set)
+  if B.keyItem then
+    pcall(function()
+      local ts, p = Game.GetTransactionSystem(), Game.GetPlayer()
+      if ts and p then ts:RemoveItem(p, ItemID.FromTDBID(TweakDBID.new(B.keyItem)), 1) end
+    end)
+  end
+  if markDone ~= false then
+    pcall(function() Game.GetQuestsSystem():SetFactStr((B.fact or "jackielives_bikeback"), 1) end)
+  end
+  log("Bike return: removed '" .. rec .. "' from V's garage (ok=" .. tostring(ok) .. ").")
+  return ok
+end
+
+-- Debug helper: give the Arch back to V (undo), for re-testing the reunion beat.
+function jlRestoreJackiesBike()
+  local B   = Config.bikeReturn or {}
+  local rec = B.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player"
+  pcall(function() Game.GetVehicleSystem():EnablePlayerVehicle(rec, true, true) end)
+  pcall(function() Game.GetQuestsSystem():SetFactStr((B.fact or "jackielives_bikeback"), 0) end)
+  log("Bike return: RESTORED '" .. rec .. "' to V (reset the one-time flag).")
+end
+
 -- v0.76 DEBUG: dump Jackie's full runtime state to the console (bound to a CET button + called at the
 -- start/end of the dismiss walk-away so we can see WHY he vanishes). Global (no main-chunk local -> cap safe).
 -- Reports, for each system's entity: handle validity, world position, live distance to V, AMM companion
@@ -4530,6 +4585,16 @@ registerForEvent("onDraw", function()
     ImGui.SameLine(); if ImGui.Button("Reset to LOCKED") then Retrieval.reset() end
     ImGui.TextWrapped("Gate ships OFF: tip fires when you reach Vik (coords set). Flow: Vik's clinic -> " ..
       "tip + Badlands pin -> Rocky Ridge garage -> shard -> ~1s -> unlock (Phases 3-4 add call/arrival/reunion).")
+
+    ImGui.Separator()
+    ImGui.Text("v0.84 reunion beats:")
+    ImGui.Text("  Bike returned: " .. tostring(jlBikeReturned and jlBikeReturned() or "?"))
+    if ImGui.Button("Give bike back now") then jlReturnJackiesBike() end
+    ImGui.SameLine(); if ImGui.Button("Restore bike (undo)") then jlRestoreJackiesBike() end
+    ImGui.TextWrapped("  (Or just call Jackie for the FIRST time after he's back — he asks for his Arch; " ..
+      "agreeing removes it from your garage.)")
+    if ImGui.Button("Show Misty + Mama shards") then Retrieval.debugPostShards() end
+    ImGui.SameLine(); if ImGui.Button("Reset post-shard flags") then Retrieval.resetPostShards() end
   end
 
 

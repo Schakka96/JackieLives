@@ -51,6 +51,35 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
   ON while walking, drag the dial/radius until he walks nicely alongside, then tell Claude the index+radius
   to bake in + wire into the dinner walk (backlog item below).
 
+**v0.84 immersion pass 2026-07-02 (AWAITING IN-GAME TEST):**
+- 🏍️ **"Wants his bike back" reunion beat.** The FIRST holocall after Jackie's back now plays
+  `Config.firstCallTree` (relieved greeting → he asks for his Arch → V agrees) instead of the normal
+  `callTree`. Agreeing fires the `return_bike` action → `jlReturnJackiesBike()` removes
+  `Vehicle.v_sportbike2_arch_jackie_player` from V's garage (`VehicleSystem:EnablePlayerVehicle(rec,false,true)`).
+  One-time, persisted via fact `jackielives_bikeback`. Text-only Jackie lines (like seatedTree) — swap in
+  real VO later by adding `sfx`. → **TEST:** call Jackie the first time post-reunion → does the bike beat
+  play? After hang-up, is Jackie's Arch gone from your garage/vehicle wheel? CET debug: "Give bike back now" /
+  "Restore bike (undo)" buttons under the Retrieval header. ⚠️ VERIFY the `EnablePlayerVehicle` 3rd-arg
+  behavior + that the Arch is actually the record V owns; tell Claude if the bike doesn't disappear (may
+  need a different record or the vanilla "reward" vehicle id).
+- 📜 **Misty + Mama Welles shards** (replace mourning convos). Once REUNITED, walking up to Misty's
+  Esoterica / El Coyote shows a one-time note: Misty (relief + dark regret he almost died), Mama Welles
+  (outraged, overjoyed, "I'll kill him myself if he takes a gig like that again"). In `retrieval.lua`
+  `Config.postShards`, proximity-triggered, persisted (`jackielives_shard_misty`/`_mama`). → **TEST:** CET
+  debug "Show Misty + Mama shards" / "Reset post-shard flags" under the Retrieval header, or walk up to
+  each spot after Jackie's back.
+
+**📌 TO ADD / DO (from Antonia 2026-07-02) — not yet built:**
+- ⏳ **Disable the Mama Welles ofrenda invitation + that whole ofrenda quest.** The base-game "Heroes"
+  ofrenda arc (Mama Welles invites V to Jackie's ofrenda, the wake at El Coyote, placing his guns/photo)
+  makes no sense once he's alive. Block/short-circuit that quest so it never offers/fires. Needs
+  investigation: quest name/phase + how to suppress a base-game quest offer (redscript hook / fact gate /
+  quest-node block). Reality-check feasibility before building.
+- ⏳ **Disable the mourning conversations with Vik and Misty.** Delete/block the base-game dialogue options
+  where V grieves Jackie with Vik and Misty (they contradict him being alive). The Misty/Mama **shards
+  above are the replacement content.** Needs: locate those scene/dialogue choices and the cleanest way to
+  remove them (block the choice hub / scene, or gate via fact).
+
 **Still to test (not yet checked):**
 - ⏳ **Dinner-seated dismiss** (v0.83 fix): confirm no "Head home" option while seated + "Enough chillin',
   let's go" ends dinner with no crash.

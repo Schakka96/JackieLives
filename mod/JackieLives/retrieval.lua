@@ -80,6 +80,40 @@ M.Config = {
   shardDuration = 12.0,
 
   callDelay   = 1.0,          -- seconds after the shard is read before Jackie rings V
+
+  -- POST-REUNION shards (v0.84). Once Jackie's back (REUNITED), V comes across notes from the two
+  -- people who took his "death" hardest — Misty and Mama Welles. These REPLACE the mourning
+  -- conversations (see TODO: those base-game/mourning dialogue options are to be blocked). Each
+  -- shard shows ONCE, on proximity to that person's spot, persisted via its own game fact.
+  -- Coords: Misty's Esoterica + El Coyote Cojo, lifted from Config.locations (misty/coyote).
+  postShards = {
+    {
+      fact  = "jackielives_shard_misty",
+      pos   = { -1541.777, 1196.792, 15.905 }, radius = 8.0,
+      title = "Shard — Misty",
+      lines = {
+        "I keep the Death card turned face-down now. Couldn't look at it — for months it was all I saw when I shut my eyes.",
+        "When Vik told me he'd made it, that he was out there breathin' in the Badlands, I sat down on the shop floor and cried till the incense burned out.",
+        "I won't pretend I'm only happy, V. Some nights I'm so angry I could scream. He walked into that heist knowin' the risk. He almost left us. Almost left me.",
+        "But the cards weren't wrong. His thread didn't cut. It just frayed... and held.",
+        "Go easy on him. And thank you — for goin' to bring him home. — Misty",
+      },
+      duration = 15.0,
+    },
+    {
+      fact  = "jackielives_shard_mama",
+      pos   = { -1262.463, -1002.345, 12.037 }, radius = 9.0,
+      title = "Shard — Mama Welles",
+      lines = {
+        "So. My Jackie is alive, and I am the last to hear of it. You wait until you are a mother, V, and someone keeps a thing like this from you — then we will talk about forgiveness.",
+        "I lit a candle for that boy every single day. I cooked for a ghost. And all the while he is out in the dust, breathin', lettin' me grieve. Dios mío.",
+        "And yet — he is ALIVE. My boy is alive. I have not stopped thankin' the Virgin since I heard. My knees are sore from it.",
+        "But hear me once, V: if he ever takes a gig like that heist again — risks his life for eddies and glory one more time — I will not wait for this city to take him. I will kill him myself.",
+        "Bring him to my table. There is a plate waitin'. There has always been a plate waitin'. — Mama Welles",
+      },
+      duration = 15.0,
+    },
+  },
 }
 
 -- ---------------------------------------------------------------------------
@@ -315,6 +349,41 @@ local function reachHideout()                          -- TIP -> SHARD
 end
 
 -- ---------------------------------------------------------------------------
+-- Post-reunion shards (Misty / Mama Welles) — one-time each, on proximity
+-- ---------------------------------------------------------------------------
+local function factNum(name)
+  local v; pcall(function() v = Game.GetQuestsSystem():GetFactStr(name) end)
+  return (type(v) == "number") and v or 0
+end
+local function setFactNum(name, n)
+  pcall(function() Game.GetQuestsSystem():SetFactStr(name, n) end)
+end
+
+local function postShardTick()
+  if getStage() < REUNITED then return end             -- only after Jackie's back
+  for _, sh in ipairs(M.Config.postShards or {}) do
+    if sh.fact and factNum(sh.fact) < 1 and nearPoint(sh.pos, sh.radius or 8.0) then
+      showTip(sh.title, table.concat(sh.lines or {}, "\n"), sh.duration or 14.0)
+      setFactNum(sh.fact, 1)
+      log("Post-shard shown: " .. tostring(sh.title))
+    end
+  end
+end
+
+-- Debug: clear the post-shard flags so they can be re-triggered by walking up again.
+function M.resetPostShards()
+  for _, sh in ipairs(M.Config.postShards or {}) do if sh.fact then setFactNum(sh.fact, 0) end end
+  log("Post-shard flags reset (walk up to Misty / El Coyote to re-read).")
+end
+
+-- Debug: show both post-reunion shards right now (regardless of location / flags).
+function M.debugPostShards()
+  for _, sh in ipairs(M.Config.postShards or {}) do
+    showTip(sh.title, table.concat(sh.lines or {}, "\n"), sh.duration or 14.0)
+  end
+end
+
+-- ---------------------------------------------------------------------------
 -- Public API
 -- ---------------------------------------------------------------------------
 function M.isUnlocked()    return getStage() >= REUNITED end
@@ -374,6 +443,8 @@ function M.tick(dt)
   elseif s == SHARD then
     if state.callAt and state.clock >= state.callAt then startSequence() end
   end
+
+  postShardTick()   -- v0.84: Misty / Mama Welles notes, once Jackie's back
 end
 
 return M
