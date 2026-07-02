@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.85"
+Config.version = "0.85b"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -1050,7 +1050,7 @@ Config.reunionCallTree = {
     },
     gigs = {
       jackiePool = {
-        { text = "(quieter) An' V... gotta be straight with ya. After what happened, I can't be runnin' serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried." },
+        { text = "(quieter) Gotta be straight with ya, choom. After what happened... I can't be runnin' serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried." },
       },
       choices = {
         { text = "Nobody's askin' you to. We keep it low. Deal?",   to = "askbike" },
@@ -1075,16 +1075,24 @@ Config.reunionCallTree = {
     },
     bikesafe = {
       jackiePool = {
-        { text = "Hey, don't laugh! I swear to hell, V — if my baby ain't purrin', if there's one scratch on her tank when I get there, I'm gonna be SO mad, choom. I mean it—" },
+        { text = "(a nervous laugh) C'mon, don't tease me — that bike's the one piece o' the old me I got left. Just tell me straight, V. Is she okay?" },
       },
       choices = {
         { text = "Relax, hermano. She's safe and sound. Come pick her up.", to = "coming" },
       },
     },
     coming = {
+      jackiePool = {
+        { text = "(lets out a breath) ...Gracias, V. You got no idea what that means to me. Where you at? Nah — don't move, I'm already headed your way. Hang tight, chica." },
+      },
+      choices = {
+        { text = "Okay. I'll be right here. Hurry up, hermano.", to = "onmyway" },
+      },
+    },
+    onmyway = {
       -- terminal -> reunion_arrival: give the Arch back + Jackie walks in on foot -> first meeting.
       jackiePool = {
-        { text = "(exhales, laughs soft) ...You got no idea what that means to me, V. Where you at? Nah — don't move. I'm already on my way to ya. Hang tight, chica. I'll be right there." },
+        { text = "Countin' on it. See you real soon, V." },
       },
       action = "reunion_arrival",
     },
@@ -1109,13 +1117,21 @@ Config.reunionMeetTree = {
         { text = "(laughs) Yeah, yeah. Desert don't do wonders for a man's looks. You picked up some new miles too, V. Suits ya, though." },
       },
       choices = {
-        { text = "We're both still standin'. That's what counts.", to = "leave" },
+        { text = "We're both still standin'. That's what counts.", to = "bikeask" },
+      },
+    },
+    bikeask = {
+      jackiePool = {
+        { text = "That we are, hermano. ...So. Where is she? My Arch. Tell me you really kept my girl in one piece." },
+      },
+      choices = {
+        { text = "Safe and sound, choom. Waitin' right where you left her.", to = "leave" },
       },
     },
     leave = {
       -- terminal -> reunion_complete: unlock the whole mod (schedule + calls + summon).
       jackiePool = {
-        { text = "That we are, hermano. (claps V on the shoulder) Now c'mon — let's get the hell outta this sandy hellhole 'fore I sprout a cactus. Take me home." },
+        { text = "(grins) Then what're we waitin' for? C'mon — let's get the hell outta this sandy hellhole 'fore I sprout a cactus. Take me home, V." },
       },
       action = "reunion_complete",
     },
