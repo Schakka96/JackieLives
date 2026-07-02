@@ -41,19 +41,19 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 - ✅ Earlier confirmed: tutorial popup, both shards, fast-travel catch-up→respawn (2f), mouth flaps (4),
   catch-up teleport (v0.66), dialogue picker (v0.33), respawn pop-in polish (v0.82), dialogue/subtitle polish (v0.80/0.81).
 
-**v0.84 shipped 2026-07-02 (AWAITING IN-GAME TEST):**
-- 🔧 **Persistence across a load RE-ENABLED** (`Config.persist.enabled = true`). Root cause of the old load
-  crash was a timing bug: `startupGrace` was measured against `JL.clock` (time since onInit), but a
-  mid-session load does NOT re-run onInit → grace was skipped → spawn into a still-streaming world = crash.
-  Now the grace is measured from **world-ready** (resets every load / district FT) and the respawn is gated
-  on **AMM re-initialised + Jackie's record resolved**. Grace bumped to 8 s. → **TEST:** be a companion →
-  hard-save → reload → after ~8 s Jackie returns at V, no crash. (If it EVER crashes again: raise
-  `Config.persist.startupGrace` first.) Watch `jackie_debug.log` for `Persist: … respawned him at V.`
-- 🔧 **Walk-abreast built + live tuner** (`Config.abreast`, off by default). CET "Companion spacing" panel
-  now has a **"Walk abreast"** toggle + a **12-position dial** (0=ahead, 3=right, 6=back, 9=left) + radius
-  slider. When ON it replaces keep-close-follow and holds Jackie beside/ahead of V. → **TEST + TUNE:** toggle
-  ON while walking, drag the dial/radius until he walks nicely alongside, then tell Claude the index+radius
-  to bake in + wire into the dinner walk (backlog item below).
+**v0.84 / v0.84b 2026-07-02:**
+- 🐞 **Persistence across a load — TESTED, STILL BROKEN → re-DISABLED, deferred.** The v0.84 re-enable
+  crashed the save (Jackie pops in V's face frame 1, then crash). Full diagnosis + next ideas in KNOWN BUG
+  #1 below. `Config.persist.enabled` is back to `false`; the build is stable.
+- 🔧 **Walk-abreast v0.84b — smoothing + aggressive get-into-position (AWAITING RE-TEST).** First test was
+  jaggy (anchor snapped to V's instant heading) and he trailed forever (never got ahead of a walking V).
+  Fixes: (a) V's heading is now an **EMA over `smoothSeconds` (~2 s)** so the anchor drifts, not snaps;
+  (b) when **out of position** he's driven with **Sprint + tight tolerance** to get into the pocket, then
+  eases to Run to hold it; (c) the CET **Position** slider is now **fractional** (+ a live *Heading
+  smoothing* slider). → **TEST + TUNE:** Antonia found only near-front is useful — **try angleIndex
+  0.4 / 0.7 (right-of-ahead) or 11.2 / 11.5 (left-of-ahead)**; adjust radius + smoothing to taste, then tell
+  Claude the values to bake in. If it feels good: **replace keep-close-follow with abreast everywhere and
+  comment out the old close-follow code** (Antonia's call, long-term).
 
 **v0.85 REUNION RESTRUCTURE 2026-07-02 (AWAITING IN-GAME TEST — big flow change):**
 - 🐛→✅ **BUG FIX: reunion call went to voicemail when Jackie was asleep/busy.** New persisted stage
@@ -140,13 +140,16 @@ What's DONE vs what's still open:
   tweak the prose freely.
 
 **🐞 KNOWN BUGS:**
-1. ✅ **FIXED (2026-07-02, v0.84) — AWAITING TEST. CRASH: companion persistence across a load.** The v0.72
-   auto-respawn (`companionPersistTick` → `respawnCompanionAtV`) crashed on load. ROOT CAUSE: `startupGrace`
-   was measured against `JL.clock` (time since onInit); a mid-session load doesn't re-run onInit, so the
-   grace was skipped and we spawned into a still-streaming world. FIX: grace now measured from **world-ready**
-   (player re-enters world — resets on every load/district FT), respawn gated on **AMM-ready +
-   `resolveJackieRecord()`**, grace bumped to 8 s, `Config.persist.enabled = true`. See `config.lua`
-   `Config.persist` + init.lua `companionPersistTick`. [ ] TEST: companion → save → reload → he returns, no crash.
+1. 🐞 **STILL BROKEN (v0.84b, 2026-07-02) — DEFERRED, disabled again. CRASH: companion persistence across a
+   load.** The v0.84 world-ready + AMM-ready gate did NOT fix it. On test: **Jackie spawns VISIBLY in V's
+   face on the FIRST frame after loading, then the game crashes** — so the respawn fires immediately (grace
+   skipped) and the v0.82 settle-hide doesn't catch him. LEADING HYPOTHESIS: on an in-session load `onUpdate`
+   keeps running and `playerPos()` never reads nil during the transition, so `worldReadyAt` is a STALE
+   pre-load stamp → the 8 s grace "already elapsed" → spawn on frame 1 into a not-streamed world. Re-DISABLED
+   (`Config.persist.enabled = false`) so the build stays stable. NEXT FIX IDEAS: (a) reset `worldReadyAt` off
+   a real load EVENT (hook a save-load / player `OnGameAttached`) instead of an inferred nil-gap; (b) spawn
+   HIDDEN and reveal only once the world is confirmed fully streamed; (c) fall back to a MANUAL "he's back"
+   trigger. See `config.lua` `Config.persist` + init.lua `companionPersistTick`/`respawnCompanionAtV`.
 2. ✅ **SOLVED + TESTED (2026-07-02). Jackie despawns/respawns when V LOOKS AT him after a fast-travel.**
    Confirmed fixed in-game by Antonia. (Left below for history / in case it regresses.)
    - **2f. ✅ FIXED (2026-07-01, v0.79 — CONFIRMED in-game by Antonia).** The "`CatchUp: was 1994 m -> teleported

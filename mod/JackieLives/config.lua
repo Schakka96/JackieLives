@@ -187,14 +187,16 @@ Config.companion = {
 -- if it says "companion" but no live Jackie exists — a fresh load wiped the runtime state, or a
 -- load-screen fast-travel culled his body (the case Config.catchUp can't recover) — it re-spawns and
 -- re-promotes him at V's side. Set enabled=false to go back to "he's gone after a reload".
--- ✅ v0.84: RE-ENABLED. The old load crash was a timing bug: startupGrace was measured against JL.clock
--- (time since onInit), but a mid-session load-from-save does NOT re-run onInit, so JL.clock was already
--- huge and the grace was skipped -> we spawned into a still-streaming world = crash. companionPersistTick
--- now measures the grace from when the PLAYER re-enters the world (resets on every load / district FT) AND
--- refuses to spawn until AMM has re-initialised + Jackie's record resolves. Same spawn path the confirmed
--- catch-up respawn (bug 2f) already uses safely. If a load crash EVER recurs: raise startupGrace first.
+-- ⚠️ v0.84b: DISABLED AGAIN — still breaks the save. The v0.84 world-ready + AMM gate did NOT fix it:
+-- on test (2026-07-02) Jackie spawns VISIBLY in V's face on the FIRST frame after loading, then the game
+-- crashes. So the respawn is firing immediately (the grace is being skipped) AND the settle-hide isn't
+-- catching him. Leading hypothesis: on an in-session load onUpdate keeps running and playerPos() never
+-- reads nil during the transition, so worldReadyAt is a STALE pre-load stamp -> the 8 s grace has
+-- "already elapsed" -> spawn on frame 1. Real fix likely needs a genuine load EVENT (hook a save-load /
+-- player OnGameAttached) to reset worldReadyAt, not an inferred nil-gap; and/or spawn HIDDEN and only
+-- reveal once fully streamed. Deferred — see TODO "🐞 v0.84b persist still breaks the save". Stays OFF.
 Config.persist = {
-  enabled       = true,   -- v0.84: back on (crash fixed — grace now measured from world-ready, AMM-gated)
+  enabled       = false,  -- ⚠️ still crashes the save on load (v0.84b) — see warning above; do not flip on
   startupGrace  = 8.0,    -- s of settled, in-world time (from when the player appears) before we spawn
   gapSustain    = 1.5,    -- s the "should be here but isn't" condition must hold (rides out stream hiccups)
   cooldown      = 5.0,    -- s between respawn attempts (also covers the spawn->promote resolve window)
@@ -207,14 +209,22 @@ Config.persist = {
 -- steps) — 0 = dead ahead, 3 = V's right, 6 = behind, 9 = left; `radius` is how far out. When enabled it
 -- REPLACES followKeepCloseTick (they'd fight otherwise). Starts OFF so nothing changes until you toggle it.
 -- Once a spot feels right in-game, tell Claude the index+radius to bake here and wire into the dinner walk.
+-- v0.84b tuning: heading is SMOOTHED (EMA over smoothSeconds) so the anchor drifts instead of snapping
+-- when V turns; and when Jackie is OUT of position he's driven with catchUpMovement (Sprint) + a tight
+-- tolerance so he actually gets AHEAD of a walking V instead of trailing forever. Only near-front angles
+-- read as "abreast" (Antonia): try angleIndex 0.4 / 0.7 (right-of-ahead) or 11.2 / 11.5 (left-of-ahead).
 Config.abreast = {
-  enabled    = false,   -- toggled live from CET; off = normal trailing keep-close follow
-  positions  = 12,      -- number of clock steps around V the slider cycles through
-  angleIndex = 2,       -- default 2/12 = 60° off forward (ahead-right); slider overrides live
-  radius     = 2.0,     -- metres from V he holds
-  interval   = 1.0,     -- s between re-issues of the move-to-offset-point command
-  movement   = "Run",   -- "Walk" | "Run" | "Sprint" — how he closes to the abreast spot
-  tolerance  = 0.5,     -- desiredDistanceFromTarget for the move command
+  enabled        = false,   -- toggled live from CET; off = normal trailing keep-close follow
+  positions      = 12,      -- steps in the full dial the slider spans (angleIndex is FRACTIONAL)
+  angleIndex     = 0.5,     -- default ~15° right of dead-ahead; slider overrides live (0.4/0.7/11.2/11.5)
+  radius         = 2.0,     -- metres from V he holds
+  smoothSeconds  = 2.0,     -- EMA time-constant for V's heading (higher = smoother/laggier anchor)
+  interval       = 0.3,     -- s between re-issues of the move-to-anchor command (short = tracks the drift)
+  movement       = "Run",   -- how he moves while HOLDING position (in the pocket)
+  tolerance      = 0.5,     -- desiredDistanceFromTarget while holding
+  catchUpDist    = 2.0,     -- m from the anchor beyond which he's "out of position" -> aggressive catch-up
+  catchUpMovement= "Sprint",-- how he moves to GET into position (fast, so he can get ahead of a walking V)
+  catchUpTolerance = 0.2,   -- tighter target distance while catching up (so he reaches the exact spot)
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------

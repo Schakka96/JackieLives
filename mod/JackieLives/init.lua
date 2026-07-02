@@ -3147,40 +3147,64 @@ end
 
 -- v0.84 WALK-ABREAST. Instead of trailing behind V (keep-close), hold Jackie at a point OFFSET from V —
 -- beside / slightly ahead — computed from V's forward vector, so on the way to dinner he walks next to
--- her, not on the long companion leash. The offset is polar in V's own frame: `angleIndex` picks one of
--- 12 clock positions around V (0 = dead ahead, +90° = V's right, 180° = behind, -90° = left) and `radius`
--- is how far out. Re-issued as an AIMoveToCommand to the moving offset point on a throttle. The point is
--- only a few m from V, so even on the (role-cleared) teleport-to-target quirk the worst case is a tiny
--- snap, not a fling. Live-tunable from the CET "Walk abreast" panel. Global -> 200-local cap safe.
+-- her, not on the long companion leash. The offset is polar in V's own frame: `angleIndex` picks a spot
+-- around V (0 = dead ahead, +90° = V's right, 180° = behind, -90° = left; FRACTIONS allowed) at `radius` m.
+--
+-- v0.84b tuning (Antonia's feedback):
+--  * SMOOTH heading. Using V's INSTANT forward made the anchor snap every time V twitched the camera, so
+--    Jackie jittered. We keep an exponential-moving-average of V's forward (time-constant `smoothSeconds`,
+--    ~2 s) updated EVERY frame, and place the anchor off the SMOOTHED heading — so it drifts, never snaps.
+--  * GET INTO POSITION aggressively. A gentle move to a point that's ahead of a walking V never catches up
+--    (he trails forever). So when he's OUT of position (>`catchUpDist` from the anchor) we drive him with
+--    `catchUpMovement` (Sprint) + a tight tolerance until he's there, then ease to `movement` to hold it.
+-- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
 function abreastTick()
   local A = Config.abreast or {}
-  if not A.enabled then return end
-  if not (JL.summon.active and JL.summon.companionSet) then return end
-  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return end
+  if not A.enabled or not (JL.summon.active and JL.summon.companionSet)
+     or JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then
+    JL.abreast.smFwdX = nil   -- reset the heading EMA so it re-seeds cleanly when abreast resumes
+    return
+  end
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
-  local now = JL.clock or 0
-  if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 1.0) then return end
-  JL.abreast.lastAt = now
   local pp = playerPos(); if not pp then return end
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
-  -- don't fight the catch-up teleport: if he's far enough for that to own him, leave it.
-  if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end
-  -- V's forward (horizontal). Fall back to +Y if unavailable.
+  if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end  -- catch-up owns him
+
+  -- --- smoothed V-forward (EMA, updated every frame) -----------------------------------------------
   local fx, fy = 0.0, 1.0
   pcall(function()
     local f = Game.GetPlayer():GetWorldForward()
     if f then local m = math.sqrt(f.x * f.x + f.y * f.y); if m > 1e-4 then fx, fy = f.x / m, f.y / m end end
   end)
-  -- right vector (forward rotated -90° about Z). +angle = toward V's right.
-  local rx, ry = fy, -fx
-  local ang = math.rad((A.angleIndex or 2) * (360.0 / (A.positions or 12)))
+  local now = JL.clock or 0
+  local dt  = now - (JL.abreast.lastFrame or now); JL.abreast.lastFrame = now
+  if not JL.abreast.smFwdX then JL.abreast.smFwdX, JL.abreast.smFwdY = fx, fy end
+  local tau   = A.smoothSeconds or 2.0
+  local alpha = (tau > 0) and math.min(math.max(dt / tau, 0.0), 1.0) or 1.0
+  local sx = JL.abreast.smFwdX + alpha * (fx - JL.abreast.smFwdX)
+  local sy = JL.abreast.smFwdY + alpha * (fy - JL.abreast.smFwdY)
+  local sm = math.sqrt(sx * sx + sy * sy); if sm > 1e-4 then sx, sy = sx / sm, sy / sm end
+  JL.abreast.smFwdX, JL.abreast.smFwdY = sx, sy
+
+  -- --- anchor point off the smoothed heading -------------------------------------------------------
+  local rx, ry = sy, -sx                                    -- right vector (smoothed forward rotated -90°)
+  local ang = math.rad((A.angleIndex or 0.5) * (360.0 / (A.positions or 12)))
   local ca, sa = math.cos(ang), math.sin(ang)
-  local dirx = fx * ca + rx * sa
-  local diry = fy * ca + ry * sa
+  local dirx = sx * ca + rx * sa
+  local diry = sy * ca + ry * sa
   local rad  = A.radius or 2.0
-  local dest = Vector4.new(pp.x + dirx * rad, pp.y + diry * rad, pp.z, 1.0)
-  sendMoveToPoint(h, dest, A.movement or "Run", A.tolerance or 0.5)
+  local tx, ty = pp.x + dirx * rad, pp.y + diry * rad
+  local dest = Vector4.new(tx, ty, pp.z, 1.0)
+
+  -- --- issue on a short throttle; sprint when out of position, ease when holding it ----------------
+  if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 0.3) then return end
+  JL.abreast.lastAt = now
+  local gap = math.sqrt((jp.x - tx) * (jp.x - tx) + (jp.y - ty) * (jp.y - ty))
+  local outOfPos = gap > (A.catchUpDist or 2.0)
+  local mv  = outOfPos and (A.catchUpMovement or "Sprint") or (A.movement or "Run")
+  local tol = outOfPos and (A.catchUpTolerance or 0.2) or (A.tolerance or 0.5)
+  sendMoveToPoint(h, dest, mv, tol)
 end
 
 -- v0.80: SUBTITLE WATCHDOG — the guaranteed cleanup. Stepped every frame from onUpdate. The old bug:
@@ -4540,11 +4564,12 @@ registerForEvent("onDraw", function()
       log("Walk-abreast -> " .. (A.enabled and "ON" or "OFF"))
     end
     if A.enabled then
-      local idx = math.floor((A.angleIndex or 2) + 0.5)
-      idx = ImGui.SliderInt("Position (0=ahead 3=right 6=back 9=left)", idx, 0, (A.positions or 12) - 1)
-      A.angleIndex = idx
+      -- FRACTIONAL positions (Antonia: only near-front is useful — try 0.4 / 0.7 / 11.2 / 11.5).
+      -- Slider wraps the full dial 0..positions; the fine range around 0/12 is what reads as "ahead".
+      A.angleIndex = ImGui.SliderFloat("Position (0=ahead 3=right 6=back 9=left)", A.angleIndex or 0.5, 0.0, (A.positions or 12))
       A.radius     = ImGui.SliderFloat("Abreast radius (m from V)", A.radius or 2.0, 1.0, 6.0)
-      ImGui.Text(("Angle = %d° from V's forward"):format(math.floor(idx * (360.0 / (A.positions or 12)) + 0.5)))
+      A.smoothSeconds = ImGui.SliderFloat("Heading smoothing (s)", A.smoothSeconds or 2.0, 0.2, 5.0)
+      ImGui.Text(("Angle = %.0f° from V's forward"):format((A.angleIndex or 0.5) * (360.0 / (A.positions or 12))))
     end
     ImGui.Separator()
   end

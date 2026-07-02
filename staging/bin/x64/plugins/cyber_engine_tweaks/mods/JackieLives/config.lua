@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.83"
+Config.version = "0.85"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -187,14 +187,16 @@ Config.companion = {
 -- if it says "companion" but no live Jackie exists — a fresh load wiped the runtime state, or a
 -- load-screen fast-travel culled his body (the case Config.catchUp can't recover) — it re-spawns and
 -- re-promotes him at V's side. Set enabled=false to go back to "he's gone after a reload".
--- ✅ v0.84: RE-ENABLED. The old load crash was a timing bug: startupGrace was measured against JL.clock
--- (time since onInit), but a mid-session load-from-save does NOT re-run onInit, so JL.clock was already
--- huge and the grace was skipped -> we spawned into a still-streaming world = crash. companionPersistTick
--- now measures the grace from when the PLAYER re-enters the world (resets on every load / district FT) AND
--- refuses to spawn until AMM has re-initialised + Jackie's record resolves. Same spawn path the confirmed
--- catch-up respawn (bug 2f) already uses safely. If a load crash EVER recurs: raise startupGrace first.
+-- ⚠️ v0.84b: DISABLED AGAIN — still breaks the save. The v0.84 world-ready + AMM gate did NOT fix it:
+-- on test (2026-07-02) Jackie spawns VISIBLY in V's face on the FIRST frame after loading, then the game
+-- crashes. So the respawn is firing immediately (the grace is being skipped) AND the settle-hide isn't
+-- catching him. Leading hypothesis: on an in-session load onUpdate keeps running and playerPos() never
+-- reads nil during the transition, so worldReadyAt is a STALE pre-load stamp -> the 8 s grace has
+-- "already elapsed" -> spawn on frame 1. Real fix likely needs a genuine load EVENT (hook a save-load /
+-- player OnGameAttached) to reset worldReadyAt, not an inferred nil-gap; and/or spawn HIDDEN and only
+-- reveal once fully streamed. Deferred — see TODO "🐞 v0.84b persist still breaks the save". Stays OFF.
 Config.persist = {
-  enabled       = true,   -- v0.84: back on (crash fixed — grace now measured from world-ready, AMM-gated)
+  enabled       = false,  -- ⚠️ still crashes the save on load (v0.84b) — see warning above; do not flip on
   startupGrace  = 8.0,    -- s of settled, in-world time (from when the player appears) before we spawn
   gapSustain    = 1.5,    -- s the "should be here but isn't" condition must hold (rides out stream hiccups)
   cooldown      = 5.0,    -- s between respawn attempts (also covers the spawn->promote resolve window)
@@ -207,14 +209,22 @@ Config.persist = {
 -- steps) — 0 = dead ahead, 3 = V's right, 6 = behind, 9 = left; `radius` is how far out. When enabled it
 -- REPLACES followKeepCloseTick (they'd fight otherwise). Starts OFF so nothing changes until you toggle it.
 -- Once a spot feels right in-game, tell Claude the index+radius to bake here and wire into the dinner walk.
+-- v0.84b tuning: heading is SMOOTHED (EMA over smoothSeconds) so the anchor drifts instead of snapping
+-- when V turns; and when Jackie is OUT of position he's driven with catchUpMovement (Sprint) + a tight
+-- tolerance so he actually gets AHEAD of a walking V instead of trailing forever. Only near-front angles
+-- read as "abreast" (Antonia): try angleIndex 0.4 / 0.7 (right-of-ahead) or 11.2 / 11.5 (left-of-ahead).
 Config.abreast = {
-  enabled    = false,   -- toggled live from CET; off = normal trailing keep-close follow
-  positions  = 12,      -- number of clock steps around V the slider cycles through
-  angleIndex = 2,       -- default 2/12 = 60° off forward (ahead-right); slider overrides live
-  radius     = 2.0,     -- metres from V he holds
-  interval   = 1.0,     -- s between re-issues of the move-to-offset-point command
-  movement   = "Run",   -- "Walk" | "Run" | "Sprint" — how he closes to the abreast spot
-  tolerance  = 0.5,     -- desiredDistanceFromTarget for the move command
+  enabled        = false,   -- toggled live from CET; off = normal trailing keep-close follow
+  positions      = 12,      -- steps in the full dial the slider spans (angleIndex is FRACTIONAL)
+  angleIndex     = 0.5,     -- default ~15° right of dead-ahead; slider overrides live (0.4/0.7/11.2/11.5)
+  radius         = 2.0,     -- metres from V he holds
+  smoothSeconds  = 2.0,     -- EMA time-constant for V's heading (higher = smoother/laggier anchor)
+  interval       = 0.3,     -- s between re-issues of the move-to-anchor command (short = tracks the drift)
+  movement       = "Run",   -- how he moves while HOLDING position (in the pocket)
+  tolerance      = 0.5,     -- desiredDistanceFromTarget while holding
+  catchUpDist    = 2.0,     -- m from the anchor beyond which he's "out of position" -> aggressive catch-up
+  catchUpMovement= "Sprint",-- how he moves to GET into position (fast, so he can get ahead of a walking V)
+  catchUpTolerance = 0.2,   -- tighter target distance while catching up (so he reaches the exact spot)
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
@@ -906,6 +916,208 @@ Config.callTree = {
       -- ends and the summon fires - no redundant "Let's do it" click for V. The node-level
       -- `action` is what a choice used to carry. (See branchTick: no-choices node -> auto-end.)
       action = "summon_arrival",
+    },
+  },
+}
+
+-- ---- BIKE RETURN (v0.84 reunion beat) --------------------------------------
+-- The FIRST holocall after Jackie's back plays Config.firstCallTree instead of the normal
+-- callTree: he's relieved/happy and asks for his Arch back. When V agrees (the "return_bike"
+-- action), his bike is removed from V's garage — it's his ride again now that he's alive.
+-- One-time, persisted via the game fact below (see jlReturnJackiesBike in init.lua).
+Config.bikeReturn = {
+  enabled    = true,
+  bikeRecord = "Vehicle.v_sportbike2_arch_jackie_player",  -- Jackie's Arch (same record the arrival uses)
+  fact       = "jackielives_bikeback",
+  -- keyItem  = "Items.SomeBikeKey",   -- optional: vanilla 2.x has no bike-"key" item, so leave unset
+}
+
+-- The one-time reunion call. Same node format as Config.callTree. Text-only Jackie lines are fine
+-- here (same as seatedTree) — swap in real VO by adding `sfx = "jl_<id>"` once matching lines are found.
+Config.firstCallTree = {
+  start = "hey",
+  nodes = {
+    hey = {
+      jackiePool = {
+        { text = "V! Damn... it's good to hear your voice, chica. Wasn't sure I'd ever get to say that again." },
+      },
+      choices = {
+        { text = "Good to hear yours too, Jackie.",   to = "bike" },
+        { text = "You had me buryin' you, choom.",    to = "bike" },
+      },
+    },
+    bike = {
+      jackiePool = {
+        { text = "Listen, one thing's been eatin' at me. My Arch — Vik says you kept her safe all this time. She still purrs?" },
+      },
+      choices = {
+        { text = "She's yours. I'll bring her by.",       to = "thanks" },
+        { text = "Kept her warm for you, hermano.",       to = "thanks" },
+      },
+    },
+    thanks = {
+      -- terminal (no choices) -> random V farewell -> hang up. The node-level action fires at
+      -- hang-up (a choice's action would be overwritten on reaching this terminal node, so it
+      -- MUST live here — same pattern as callTree's gig/summon_arrival).
+      jackiePool = {
+        { text = "Heh. Knew it. Bring her round and come see me, yeah? We got a lotta catchin' up to do." },
+      },
+      action = "return_bike",
+    },
+  },
+}
+
+-- ============================================================================
+-- REUNION (v0.85) — the retrieval quest's emotional payoff.
+-- Flow: read the Rocky Ridge shard -> stage AWAITING_CALL (Jackie has no world
+-- presence yet + ALWAYS answers, never "asleep") -> V calls him -> this long call
+-- plays -> it ends with Jackie coming over -> he walks in on foot -> the SHORT
+-- reunionMeetTree plays face-to-face -> mod fully unlocks (schedule/calls/summon).
+-- Text-only lines (like seatedTree/firstCallTree) — add `sfx="jl_<id>"` to voice
+-- any line later. Emotion cues in (parens) are shown in the subtitle.
+-- reunionCallTree supersedes firstCallTree (the bike-back beat is folded in here).
+-- ============================================================================
+Config.reunionCallTree = {
+  start = "pickup",
+  nodes = {
+    pickup = {
+      jackiePool = {
+        { text = "...V? (a breath) Dios mío, it's really you. Been starin' at this phone for weeks wonderin' if you'd ever ring it." },
+      },
+      choices = {
+        { text = "You son of a bitch. You're ALIVE?",        to = "alive" },
+        { text = "Jackie. I buried you. I MOURNED you.",     to = "alive" },
+      },
+    },
+    alive = {
+      jackiePool = {
+        { text = "(sigh) Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us." },
+      },
+      choices = {
+        { text = "Weeks, Jackie. You let me think you were GONE.",       to = "outrage" },
+        { text = "I'm so mad at you I can't— (breathe) you're okay?",    to = "outrage" },
+      },
+    },
+    outrage = {
+      jackiePool = {
+        { text = "I know. I KNOW. Scream at me all you want, mano, I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh." },
+      },
+      choices = {
+        { text = "...You really scared me, choom.", to = "whatyou" },
+      },
+    },
+    whatyou = {
+      jackiePool = {
+        { text = "So talk to me. What'd I miss? What you been up to out there, huh — runnin' 'round Night City without your best choom watchin' your back?" },
+      },
+      choices = {
+        { text = "It's... complicated. Long story.",                  to = "deflect" },
+        { text = "(hesitates) You wouldn't believe me if I told you.", to = "deflect" },
+      },
+    },
+    deflect = {
+      jackiePool = {
+        { text = "(hmm) ...Complicated. Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now." },
+      },
+      choices = {
+        { text = "So what about YOU — done hidin'? Or you livin' in that crusty desert forever?", to = "hiding" },
+      },
+    },
+    hiding = {
+      jackiePool = {
+        { text = "(sigh) Honest? Layin' low out here's wearin' me down to nothin', V. Miss the city. The lights, the noise, Mama's cookin'. I wanna come home. But it ain't that simple." },
+      },
+      choices = {
+        { text = "Why not? What's keepin' you stuck out there?", to = "daemon" },
+      },
+    },
+    daemon = {
+      jackiePool = {
+        { text = "That chip they jammed in me... whatever got left behind's still runnin'. Some daemon, pingin' out where I am like a beacon. That's how 'Saka'd find me — why I gotta stay outta range. Vik tried to cut it. Couldn't." },
+      },
+      choices = {
+        { text = "Then we find someone who CAN. A netrunner, a ripper — anyone.", to = "quest" },
+        { text = "We'll get it out of you. I'm not losin' you twice, Jackie.",     to = "quest" },
+      },
+    },
+    quest = {
+      jackiePool = {
+        { text = "(a small laugh) You'd really do that. 'Course you would. A'ight, chica. We find someone who can pull this thing outta my skull... maybe I get my life back." },
+      },
+      choices = {
+        { text = "We'll get it done. No worries. I got your back till then.", to = "gigs" },
+      },
+    },
+    gigs = {
+      jackiePool = {
+        { text = "(quieter) An' V... gotta be straight with ya. After what happened, I can't be runnin' serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried." },
+      },
+      choices = {
+        { text = "Nobody's askin' you to. We keep it low. Deal?",   to = "askbike" },
+        { text = "Good. You've bled enough for this city, hermano.", to = "askbike" },
+      },
+    },
+    askbike = {
+      jackiePool = {
+        { text = "Deal. ...An' V? (a beat) There's one more thing I gotta ask ya." },
+      },
+      choices = {
+        { text = "Yeah? What is it now?", to = "bike" },
+      },
+    },
+    bike = {
+      jackiePool = {
+        { text = "(nervous) My Arch. My girl. Vik said you been holdin' onto her for me. She... she still with you? She okay?" },
+      },
+      choices = {
+        { text = "(laughs) THAT's what you're nervous about?", to = "bikesafe" },
+      },
+    },
+    bikesafe = {
+      jackiePool = {
+        { text = "Hey, don't laugh! I swear to hell, V — if my baby ain't purrin', if there's one scratch on her tank when I get there, I'm gonna be SO mad, choom. I mean it—" },
+      },
+      choices = {
+        { text = "Relax, hermano. She's safe and sound. Come pick her up.", to = "coming" },
+      },
+    },
+    coming = {
+      -- terminal -> reunion_arrival: give the Arch back + Jackie walks in on foot -> first meeting.
+      jackiePool = {
+        { text = "(exhales, laughs soft) ...You got no idea what that means to me, V. Where you at? Nah — don't move. I'm already on my way to ya. Hang tight, chica. I'll be right there." },
+      },
+      action = "reunion_arrival",
+    },
+  },
+}
+
+-- The SHORT face-to-face first meeting, played when the walked-in Jackie reaches V.
+Config.reunionMeetTree = {
+  start = "seeya",
+  nodes = {
+    seeya = {
+      jackiePool = {
+        { text = "(quiet) ...Look at you. In the flesh. Thought I'd never see that mug again, chica." },
+      },
+      choices = {
+        { text = "You've looked better yourself, choom.",     to = "used" },
+        { text = "(just look at him a moment) ...It's you.",  to = "used" },
+      },
+    },
+    used = {
+      jackiePool = {
+        { text = "(laughs) Yeah, yeah. Desert don't do wonders for a man's looks. You picked up some new miles too, V. Suits ya, though." },
+      },
+      choices = {
+        { text = "We're both still standin'. That's what counts.", to = "leave" },
+      },
+    },
+    leave = {
+      -- terminal -> reunion_complete: unlock the whole mod (schedule + calls + summon).
+      jackiePool = {
+        { text = "That we are, hermano. (claps V on the shoulder) Now c'mon — let's get the hell outta this sandy hellhole 'fore I sprout a cactus. Take me home." },
+      },
+      action = "reunion_complete",
     },
   },
 }
