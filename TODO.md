@@ -156,6 +156,72 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
   above are the replacement content.** Needs: locate those scene/dialogue choices and the cleanest way to
   remove them (block the choice hub / scene, or gate via fact).
 
+**📌 TO ADD / DO (from Antonia 2026-07-03) — 3 new features, feasibility triaged. Recommended build order: #3 → #1 → #2.**
+
+- 📱 **#1 — SCRIPTED TEXT MESSAGING from Jackie.** Pre-written (NOT AI-generated) SMS threads that unlock
+  after major quest beats, so Jackie can text V updates. Reference (inspiration only, **do NOT extend it**):
+  Immersive Generative Texting (github.com/Hugana/…, 100% redscript) + `docs/research/texting_research.md`
+  (written 2026-07-03, has the full API breakdown). **Feasibility: MODERATE — feasible, well-trodden, but
+  it's the project's FIRST non-CET-Lua component.** Two real paths (see research note for the full trade):
+  - **Path A — runtime injection (recommended).** Push a `gameJournalPhoneMessage` into `JournalManager`
+    at runtime, gated on the mod's OWN game facts (`jackielives_*` stage) — the exact fact-gating the mod
+    already does. Content stays **data-driven** in a `Config.texts` tree (same shape as the dialogue
+    trees). ✅ Fits "unlock after quest developments" perfectly; no quest-graph dependency web.
+    ⚠️ **KEY UNKNOWN to spike first:** can we call `JournalManager`/`gameJournalPhoneMessage` from **CET
+    Lua** (keeps everything in-stack), or does it require a small **redscript** shim? Answer this before
+    committing — it decides whether this is a 1-file Lua add or a new redscript module. Codeware may expose
+    enough reflection to do it from Lua.
+  - **Path B — authored `.journal` + `.questphase` (WolvenKit/ArchiveXL).** The native "add a message
+    thread" wiki route. Static, gated by quest facts. **Intermediate–advanced WolvenKit graph work** →
+    heavier for Antonia and pulls in quest-phase editing. Fall back to this only if Path A's API is closed.
+  - **Replies?** Decide scope: one-way updates (Jackie texts, V reads) is trivial; branching V-choice
+    replies need the choice-hub UI the phone provides (harder). MVP = one-way, add replies later.
+  - `- [ ] SPIKE:` prove one hard-coded Jackie text lands in V's phone (Path A from CET first). Then wire
+    `Config.texts` + fact gates + the "new message" ping. Watch the init.lua **200-local cap** (globals/module).
+
+- 📟 **#2 — REAL in-game shards (replace the on-screen text popups).** Today the "shards" are `showTip`/
+  `tutorialPopup` on-screen cards (`retrieval.lua` `Config.postShards`, `shardLines`), NOT lootable/readable
+  Codex shards. Antonia wants actual shard items placed at fixed coords, picked up + read. **Feasibility —
+  split into 3, honesty per part:**
+  - ✅ **Shard TRACKER tool (EASY, Claude-drivable — do anytime).** A `tools/shard-tracker/` interactive
+    tool + a `shards.json` manifest: what shards exist, world coords, whether they display correctly, and
+    **last-updated timestamp** per shard. Single source of truth for the text too (generates the strings the
+    mod/archive read). Can be a Mac-side CLI/HTML tool OR a CET panel. **This is the concrete deliverable I
+    can build now.**
+  - 🟡 **PLACING the shard in the world (semi-scriptable, NOT full auto).** Real readable shards = a lootable
+    object/journal entry streamed into the world. **`.archive` files are custom RED-engine binary → a
+    "mini-WolvenKit" that opens the archive and injects a file = reimplementing WolvenKit's serializer =
+    NOT worth building (I'd advise against).** BUT the modern placement route is **ArchiveXL world-streaming
+    (`.xl` + sector edits)** which is **text/YAML** — so a tool that *generates* the ArchiveXL streaming
+    entry + shard journal/onscreen-text from the tracker coords is feasible and drivable. **Investigate:
+    ArchiveXL `worldStreamingSector` node add for a lootable shard prop** before Antonia does anything manual.
+  - 🔧 **Manual fallback (Antonia in WolvenKit).** If ArchiveXL placement proves too fiddly, Antonia places
+    the shard file in the nested archive dir by hand (the step she already does); the tracker tool still owns
+    the registry + text + "displays correctly?" checklist. Also relevant: **Missing Persons Read Shard
+    Add-On** (Nexus 9018) shows the shard-open-from-message pattern — study, don't depend.
+
+- 🎬 **#3 — Jackie reliably LEAVES for cutscenes / near main NPCs / gated off main quests (BUILD FIRST).**
+  Most feasible of the three: **pure CET Lua, extends systems that already exist**, no new tools/tech.
+  Directly prevents the worst immersion break (Jackie loitering in a scripted Judy/Panam scene). Three parts:
+  - **(a) Leave for CUTSCENES.** Detect the cinematic/scene state (gameplay **tier** / `PlayerStateMachine`
+    scene-tier, or a scene-lock flag) → auto-dismiss/hide Jackie for the duration, restore after. `- [ ]
+    RESEARCH:` which signal cleanly flags "a cutscene/scripted scene is playing" from CET (tier ≥ cinematic).
+  - **(b) Leave when MAJOR NPCs are around** (Judy, Panam, Goro, River, Kerry, Rogue, etc.). Scan nearby
+    NPCs for known TweakDB character record IDs within a radius → if present, Jackie excuses himself + walks
+    off (reuse `startLeaving` + the existing NPC enumeration `getAMMCharacters`/target scan). Needs: the
+    **list of record IDs** for the main companions. Gate is symmetric with the main-quest excuse he already does.
+  - **(c) GATE off MAIN quests — extend the existing ban.** `isMainQuestActive()` (reads the tracked journal
+    quest type) + `Config.mainQuestExit` + summon-decline ALREADY exist (v0.62, still `- [ ] TEST`-pending —
+    see "Main-quest ban" below). Strengthen with Antonia's two ideas: **(i)** an explicit **quest-fact/ID
+    blocklist** (belt-and-suspenders for quests the tracked-type check misses), and **(ii)** a **venue/region
+    blocklist** (main-quest-exclusive locations) so he won't join even if the journal check lags.
+  - ⚠️ **200-local cap:** all of this goes in as **globals or a new module** (e.g. `presence.lua`), never new
+    top-level `local`s in init.lua. `- [ ] TEST:` verify he cleanly exits + returns for a real cutscene, a
+    Judy encounter, and a main quest — and that he does NOT bail during ordinary free-roam/side jobs.
+
+**📥 Install add (done 2026-07-03):** **Missing Persons — Fixer's Hidden Gems** (Nexus 5058) added to
+`docs/SETUP.md` To-Install list per Antonia's request (+ its Read Shard Add-On, 9018, noted for #2).
+
 **Still to test (not yet checked):**
 - ⏳ **Dinner-seated dismiss** (v0.83 fix): confirm no "Head home" option while seated + "Enough chillin',
   let's go" ends dinner with no crash.

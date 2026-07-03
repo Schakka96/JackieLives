@@ -47,6 +47,14 @@ Each is on Nexus; "Mod Manager Download" sends it straight to Vortex. Install, t
 20. Open **AMM** in the CET overlay → spawn **Jackie** → set him to follow. If he appears and follows,
     we've basically proven MVP-0/MVP-1 are reachable. ✅
 
+## To-Install — content & reference mods (install as features need them)
+These aren't part of the core framework stack above; install when we start the feature that uses them.
+
+| Mod | Nexus | Why we want it |
+|-----|-------|----------------|
+| **Missing Persons — Fixer's Hidden Gems** | [5058](https://www.nexusmods.com/cyberpunk2077/mods/5058) | Antonia wants it (2026-07-03). 194 fixer gigs + 400+ SMS messages. Also a **reference** for scripted phone-message threads (TODO feature #1 texting). |
+| ↳ Missing Persons **Read Shard Add-On** | [9018](https://www.nexusmods.com/cyberpunk2077/mods/9018) | Adds a one-click "open the requested shard" button from a gig message. Pattern reference for TODO feature #2 (real shards). Install alongside the base mod. |
+
 ## Maintenance rules
 - After any future game patch: **don't launch modded** until RED4ext + the core mods update. Watch Nexus.
 - Keep a written list of installed mod **versions** (add to this file) so we can reproduce the setup.
