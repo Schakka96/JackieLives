@@ -1185,6 +1185,21 @@ local function resetSmileFace(handle)
   if not handle then return end
   pcall(function() local s = handle:GetStimReactionComponent(); if s then s:ResetFacial(0) end end)
 end
+
+-- v0.94: pick WHICH happy face a smile uses once it has fired. `selfChance` -> his own `idle` (Smile);
+-- otherwise an evenly-picked one of `otherIdles` (Joy etc.), so the "other" faces COLLECTIVELY make up
+-- the remaining share. Does NOT touch how OFTEN he smiles — the chance roll upstream is unchanged.
+local function pickSmileIdle(cfg)
+  cfg = cfg or Config.smile or {}
+  local own = cfg.idle or 6
+  local others = cfg.otherIdles
+  if not others or #others == 0 then return own end        -- no alternates -> always his own
+  local r = 1.0; pcall(function() r = math.random() end)
+  if r < (cfg.selfChance or 0.60) then return own end
+  local i = 1; pcall(function() i = math.random(1, #others) end)
+  return others[i] or own
+end
+
 -- stepped from onUpdate.
 local function smileTick()
   local cfg = Config.smile
@@ -1253,9 +1268,10 @@ local function smileTick()
   if math.random() >= chance then return end
 
   s.handle    = jackie
+  s.idle      = pickSmileIdle(cfg)   -- v0.94: mostly his own Smile, occasionally an "other" happy face
   s.until_    = now + (cfg.duration or 3.0)
   s.nextApply = 0   -- apply on the next tick
-  log("Smile: caught V's eye -> brief smile.")
+  log("Smile: caught V's eye -> brief smile (idle " .. tostring(s.idle) .. ").")
 end
 
 -- v0.55 AMBIENT "feel alive" grunts. While Jackie is present (companion OR idle at a venue) and

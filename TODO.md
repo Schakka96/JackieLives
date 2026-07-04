@@ -98,7 +98,16 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
     fold any remaining trail need into abreast and comment out `followKeepCloseTick`. Not done yet (trail is
     still the jog/sprint fallback, so keep it for now).
 
-**v0.94 2026-07-04 (reunion subtitle timing + quality-of-life):**
+**v0.94 2026-07-04 (reunion subtitle timing + smile variety + quality-of-life):**
+- 😀 **Smile variety (which face, not how often).** The catch-his-eye smile always used his own Smile
+  (native FacialReaction cat 3, idle 6). New `pickSmileIdle()` + `Config.smile.selfChance`(0.60) /
+  `otherIdles`({5}) → when a smile fires it's 60% his own Smile, 40% shared evenly across the "other"
+  happy faces (only Joy=5 verified so far). **Overall smile frequency is UNCHANGED** — the `chance`
+  roll is untouched; this only picks the expression once a smile has already fired. Extensible: sweep
+  cat 3 in JackieLipsync for more happy idles and append to `otherIdles` (they auto-split the 40%).
+  - **Smile inventory:** only **2** real happy expressions exist today — Smile(6, his own) + Joy(5).
+    The AMM Expressions Overhaul's 36 faces (cat 7, 231–266) are *talking* mouth-shapes for lip-flap,
+    NOT smiles. The reunion boost keeps its own even {6,5} rotation (deliberately joyful beat).
 - 📖 **Emotional reunion subtitles now scale with LINE LENGTH.** The reunion phone call
   (`reunionCallTree`) + first meeting (`reunionMeetTree`) used a flat fallback hold (3.0 s Jackie / 2.5 s
   V's picks) on the mute build, so long lines flashed by unread. New `readingSecs(text)` +

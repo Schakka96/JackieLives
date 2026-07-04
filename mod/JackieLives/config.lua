@@ -91,7 +91,14 @@ Config.smile = {
   cooldown = 25.0,   -- seconds after a smile before he can smile again (keeps it special)
   reapply  = 0.6,    -- re-assert the facial every N s so it doesn't decay before duration ends
   category = 3,      -- FacialReaction category for the smile set
-  idle     = 6,      -- 6 = Smile (5 = Joy, 2 = Neutral)
+  idle     = 6,      -- 6 = Smile — HIS OWN signature grin (5 = Joy, 2 = Neutral)
+  -- v0.94 SMILE VARIETY — WHICH face a smile uses once one fires (does NOT change how OFTEN he smiles).
+  -- `selfChance` of the time it's his own `idle` (the Smile); the rest of the time it's one of
+  -- `otherIdles` (the "other" happy faces), picked evenly so they COLLECTIVELY share (1 - selfChance).
+  -- Only 5 (Joy) is verified so far, so today it's 60% Smile / 40% Joy. To add more variety, sweep
+  -- category 3 in JackieLipsync for other happy idles and append them here — they auto-split the 40%.
+  selfChance = 0.60,     -- 60% his own Smile; 40% shared across otherIdles
+  otherIdles = { 5 },    -- other happy faces (5 = Joy). Grow this list as more are verified.
   -- v0.93 REUNION SMILE BOOST — during the first-meeting dialogue (reunionMeetTree) he beams:
   -- a forced smile for the first `reunionForceSeconds`, then `reunionChanceMult`x the normal smile
   -- chance for the rest of that chat. `reunionIdles` rotates his two happy faces (6 = Smile, 5 = Joy)
@@ -981,8 +988,12 @@ Config.cruise = {
   reissue        = 5.0,     -- re-issue the follow command every N seconds (keeps him locked on)
 }
 
--- The one-time reunion call. Same node format as Config.callTree. Text-only Jackie lines are fine
--- here (same as seatedTree) — swap in real VO by adding `sfx = "jl_<id>"` once matching lines are found.
+-- (v0.94b: Config.firstCallTree — the short bike-back call — RETIRED. It was a fallback the reunion
+-- flow never reached: reunionCallTree folds in the bike ask, and bike-return fires on `reunion_arrival`.
+-- Git history keeps it. Config.bikeReturn above is still used by the reunion arrival + debug button.)
+
+-- ORIGINAL retired body kept commented for one release in case the fallback is ever wanted again:
+--[==[
 Config.firstCallTree = {
   start = "hey",
   nodes = {
