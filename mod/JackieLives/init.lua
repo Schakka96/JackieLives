@@ -1120,7 +1120,7 @@ end
 -- Overhaul installed; no-ops gracefully if its faces are absent. (Greeting/reaction barks that
 -- use real VO voiceset contexts get true lipsync separately - see memory jackie-facial-rig-runtime.)
 -- ---------------------------------------------------------------------------
-local flap = { until_ = 0, nextAt = 0, idles = nil, interval = 0.9 }
+local flap = { until_ = 0, nextAt = 0, idles = nil, interval = 0.82 }
 local function flapIdles()
   if flap.idles then return flap.idles end
   local t = {}
@@ -4800,29 +4800,6 @@ registerForEvent("onDraw", function()
       JL.idle.collisionOff and "OFF" or "on"))
   end
 
-  -- v0.43b: MASTER flip switch — collision off for idle Jackie's whole stay (so chairs/stalls can't
-  -- block or shove him). Flipping it applies immediately to the live idle Jackie.
-  do
-    local prev = Config.idleNoCollision
-    Config.idleNoCollision = ImGui.Checkbox("Idle Jackie: collisions OFF (no chair-blocking)", Config.idleNoCollision and true or false)
-    if Config.idleNoCollision ~= prev then
-      applyIdleCollision()
-      log("Idle collision master -> " .. (Config.idleNoCollision and "OFF (no collision)" or "ON (normal collision)"))
-    end
-  end
-  -- v0.45: explicit collision STATUS line so you can confirm it's actually deactivated on the entity.
-  do
-    local setting = Config.idleNoCollision and "OFF" or "ON"
-    local live
-    if JL.dinner.collisionOff then
-      live = "OFF — dinner seat (companion)"
-    elseif JL.idle.spawn then
-      live = JL.idle.collisionOff and "OFF — deactivated ✓" or "ON"
-    else
-      live = "— (no idle Jackie spawned yet)"
-    end
-    ImGui.Text(("Collision  setting: %s   |   live on Jackie: %s"):format(setting, live))
-  end
   ImGui.Separator()
 
   -- v0.7: LIVE companion-spacing tunables. These edit Config.follow / Config.catchUp in place, and the
@@ -4866,38 +4843,9 @@ registerForEvent("onDraw", function()
     ImGui.Separator()
   end
 
-  -- DEBUG: force his schedule to a venue so you can go observe him (overrides time + secret).
-  ImGui.Text("Force venue:  " .. (JL.ui.forceVenue and ("-> " .. tostring(JL.ui.forceVenue)) or "OFF (following schedule)"))
-  local venueKeys = { "noodle", "misty", "coyote", "afterlife", "ginger", "redwood", "lizzies", "secret", "test" }
-  local perRow = 4
-  for i, k in ipairs(venueKeys) do
-    local loc = Config.locations[k]
-    if loc then
-      if ((i - 1) % perRow) ~= 0 then ImGui.SameLine() end
-      local lbl = (loc.name or k) .. (JL.ui.forceVenue == k and " *" or "")
-      if ImGui.Button(lbl .. "##fv_" .. k) then
-        JL.ui.forceVenue = k
-        log("Force venue -> " .. k .. " (go to " .. (loc.name or k) .. " to see him; overrides time).")
-      end
-    end
-  end
-  if ImGui.Button("Clear force (resume schedule)") then JL.ui.forceVenue = nil; log("Force venue cleared.") end
-  ImGui.Separator()
-
   if ImGui.Button("Summon Jackie (companion)") then summonJackie() end
   ImGui.SameLine()
   if ImGui.Button("Dismiss Jackie") then dismissJackie() end
-  ImGui.SameLine()
-  if ImGui.Button("Dump state (console)") then pcall(function() jlDumpState("manual button") end) end   -- v0.76 DEBUG
-  -- v0.72 companion-persistence readout: the saved "is companion" fact survives save/load, so this
-  -- should read ON while he's with you and OFF after a dismiss/walk-off. Reload with it ON -> he
-  -- respawns at V. "Clear saved flag" is a test escape hatch (clears the fact without despawning).
-  ImGui.Text("Saved companion flag: " .. (companionFlagSet() and "ON (he returns on reload)" or "off"))
-  ImGui.SameLine()
-  if ImGui.SmallButton("Clear saved flag") then setCompanionFlag(false); log("Companion flag cleared (debug).") end
-  if ImGui.Button("Call Jackie (holocall)") then startCall() end
-  ImGui.SameLine()
-  ImGui.TextWrapped("ring -> choices -> ask onto a gig -> he spawns at distance + walks in")
 
   -- v0.50: TWO arrival modes only — toggle FOOT <-> BIKE, live. Pick one, then Call Jackie (or hit
   -- "Test arrival now"). Both spawn via DES out at distance and share the sprint -> walk -> companion tail.
@@ -4973,30 +4921,62 @@ registerForEvent("onDraw", function()
 
 
   ImGui.Separator()
-  -- v0.63: BIKE-MODEL TEST — find the spawn method that reliably gives Jackie's REAL Arch. Each
-  -- button spawns the bike ~6 m in front of you; the console logs what actually spawned. Tell me
-  -- which one looks right (+ its read-back appearance) and I'll lock it into the live arrival.
-  if ImGui.CollapsingHeader("Bike model test (spawn Arch in front)") then
-    ImGui.TextWrapped("The old test record was wrong. These spawn 3 DIFFERENT candidate bikes ~6 m in " ..
-      "front of you; watch each + read the console 'READ-BACK' line. Tell me which is his real (gold) Arch.")
-    for i, cand in ipairs(BIKE_CANDIDATES) do
-      if ImGui.Button(cand.label .. "##bk" .. i) then bikeTestSpawn(i) end
-    end
-    if ImGui.Button("Dump appearances (console)") then bikeTestDumpAppearances() end
-    ImGui.SameLine()
-    if ImGui.Button("Despawn test bike") then bikeTestDespawn() end
-  end
-
-  ImGui.Separator()
   if ImGui.Button("Capture current position") then capturePosition() end
   if JL.ui.lastCapture then
     ImGui.Text("Last capture (also in console — copy into config.lua):")
     ImGui.TextWrapped(JL.ui.lastCapture)
   end
 
-  -- v0.43 SEAT TUNER (v0.45: any venue + multi-seat): slide a seat until perfect, print for config.lua.
+  -- Mouth-flap live tuner: how fast the talking faces shuffle while Jackie speaks (default 0.82).
   ImGui.Separator()
-  if ImGui.CollapsingHeader("Seat position tuner") then
+  flap.interval = ImGui.SliderFloat("Mouth-flap shuffle interval (s)", flap.interval or 0.82, 0.4, 1.5)
+
+  -- Consolidated "spots" tuning — idle collision, force-venue and the seat tuner, all in one place.
+  ImGui.Separator()
+  if ImGui.CollapsingHeader("Jackie's spots fine tuning") then
+
+    -- MASTER flip switch — collision off for idle Jackie's whole stay (so chairs/stalls can't block him).
+    do
+      local prev = Config.idleNoCollision
+      Config.idleNoCollision = ImGui.Checkbox("Idle Jackie: collisions OFF (no chair-blocking)", Config.idleNoCollision and true or false)
+      if Config.idleNoCollision ~= prev then
+        applyIdleCollision()
+        log("Idle collision master -> " .. (Config.idleNoCollision and "OFF (no collision)" or "ON (normal collision)"))
+      end
+    end
+    do
+      local setting = Config.idleNoCollision and "OFF" or "ON"
+      local live
+      if JL.dinner.collisionOff then
+        live = "OFF — dinner seat (companion)"
+      elseif JL.idle.spawn then
+        live = JL.idle.collisionOff and "OFF — deactivated ✓" or "ON"
+      else
+        live = "— (no idle Jackie spawned yet)"
+      end
+      ImGui.Text(("Collision  setting: %s   |   live on Jackie: %s"):format(setting, live))
+    end
+
+    -- Force his schedule to a venue so you can go observe him (overrides time + secret).
+    ImGui.Separator()
+    ImGui.Text("Force venue:  " .. (JL.ui.forceVenue and ("-> " .. tostring(JL.ui.forceVenue)) or "OFF (following schedule)"))
+    local venueKeys = { "noodle", "misty", "coyote", "afterlife", "ginger", "redwood", "lizzies", "secret", "test" }
+    local perRow = 4
+    for i, k in ipairs(venueKeys) do
+      local loc = Config.locations[k]
+      if loc then
+        if ((i - 1) % perRow) ~= 0 then ImGui.SameLine() end
+        local lbl = (loc.name or k) .. (JL.ui.forceVenue == k and " *" or "")
+        if ImGui.Button(lbl .. "##fv_" .. k) then
+          JL.ui.forceVenue = k
+          log("Force venue -> " .. k .. " (go to " .. (loc.name or k) .. " to see him; overrides time).")
+        end
+      end
+    end
+    if ImGui.Button("Clear force (resume schedule)") then JL.ui.forceVenue = nil; log("Force venue cleared.") end
+
+    -- v0.43 SEAT TUNER (v0.45: any venue + multi-seat): slide a seat until perfect, print for config.lua.
+    ImGui.Separator()
     if not JL.tuner.init then tunerInit() end
     local t = JL.tuner
 
@@ -5064,7 +5044,6 @@ registerForEvent("onDraw", function()
   end
 
   ImGui.Separator()
-  Config.enableSchedule = ImGui.Checkbox("Enable schedule", Config.enableSchedule)
   if JL.ui.status ~= "" then ImGui.TextWrapped("> " .. JL.ui.status) end
 
   ImGui.End()
