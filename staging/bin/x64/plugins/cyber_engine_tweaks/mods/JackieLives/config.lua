@@ -962,10 +962,9 @@ Config.callTree = {
 }
 
 -- ---- BIKE RETURN (v0.84 reunion beat) --------------------------------------
--- The FIRST holocall after Jackie's back plays Config.firstCallTree instead of the normal
--- callTree: he's relieved/happy and asks for his Arch back. When V agrees (the "return_bike"
--- action), his bike is removed from V's garage — it's his ride again now that he's alive.
--- One-time, persisted via the game fact below (see jlReturnJackiesBike in init.lua).
+-- When the reunion call ends and Jackie walks in (the `reunion_arrival` action), his Arch is removed
+-- from V's garage — it's his ride again now that he's alive. One-time, persisted via the game fact
+-- below (see jlReturnJackiesBike in init.lua). Also fired by the "Give bike back" debug button.
 Config.bikeReturn = {
   enabled    = true,
   bikeRecord = "Vehicle.v_sportbike2_arch_jackie_player",  -- Jackie's Arch (same record the arrival uses)
@@ -988,40 +987,10 @@ Config.cruise = {
   reissue        = 5.0,     -- re-issue the follow command every N seconds (keeps him locked on)
 }
 
--- The one-time reunion call. Same node format as Config.callTree. Text-only Jackie lines are fine
--- here (same as seatedTree) — swap in real VO by adding `sfx = "jl_<id>"` once matching lines are found.
-Config.firstCallTree = {
-  start = "hey",
-  nodes = {
-    hey = {
-      jackiePool = {
-        { text = "V! Damn... it's good to hear your voice, chica. Wasn't sure I'd ever get to say that again." },
-      },
-      choices = {
-        { text = "Good to hear yours too, Jackie.",   to = "bike" },
-        { text = "You had me buryin' you, choom.",    to = "bike" },
-      },
-    },
-    bike = {
-      jackiePool = {
-        { text = "Listen, one thing's been eatin' at me. My Arch — Vik says you kept her safe all this time. She still purrs?" },
-      },
-      choices = {
-        { text = "She's yours. I'll bring her by.",       to = "thanks" },
-        { text = "Kept her warm for you, hermano.",       to = "thanks" },
-      },
-    },
-    thanks = {
-      -- terminal (no choices) -> random V farewell -> hang up. The node-level action fires at
-      -- hang-up (a choice's action would be overwritten on reaching this terminal node, so it
-      -- MUST live here — same pattern as callTree's gig/summon_arrival).
-      jackiePool = {
-        { text = "Heh. Knew it. Bring her round and come see me, yeah? We got a lotta catchin' up to do." },
-      },
-      action = "return_bike",
-    },
-  },
-}
+-- v0.94b: Config.firstCallTree (the short bike-back fallback call) RETIRED — deleted; git history is
+-- the archive. It was never reached in the live flow: reunionCallTree folds in the bike ask, and the
+-- Arch is returned on the `reunion_arrival` action. Config.bikeReturn (above) is still used by that
+-- arrival + the "Give bike back" debug button, so it stays.
 
 -- ============================================================================
 -- REUNION (v0.85) — the retrieval quest's emotional payoff.
@@ -1029,9 +998,8 @@ Config.firstCallTree = {
 -- presence yet + ALWAYS answers, never "asleep") -> V calls him -> this long call
 -- plays -> it ends with Jackie coming over -> he walks in on foot -> the SHORT
 -- reunionMeetTree plays face-to-face -> mod fully unlocks (schedule/calls/summon).
--- Text-only lines (like seatedTree/firstCallTree) — add `sfx="jl_<id>"` to voice
--- any line later. Emotion cues in (parens) are shown in the subtitle.
--- reunionCallTree supersedes firstCallTree (the bike-back beat is folded in here).
+-- Text-only lines (like seatedTree) — add `sfx="jl_<id>"` to voice any line later.
+-- The bike-back beat is folded in here (the old firstCallTree fallback was retired v0.94b).
 -- ============================================================================
 Config.reunionCallTree = {
   start = "pickup",

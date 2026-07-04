@@ -1655,7 +1655,7 @@ end
 -- you anyway) - guarded by JL.summon.active + the tree not being the call tree.
 local function withCompanionExtras(choices)
   if not JL.summon.active then return choices end
-  if bstate.tree == Config.callTree or bstate.tree == Config.firstCallTree
+  if bstate.tree == Config.callTree
      or bstate.tree == Config.reunionCallTree then return choices end  -- not on a call
   if Config.date and bstate.tree == Config.date.tree then return choices end -- and not mid-date (no recursion)
   if bstate.tree == Config.reunionMeetTree then return choices end  -- v0.85: no "send off" during the first meeting
@@ -2017,11 +2017,8 @@ local function runCallAction(name)
     JL.dinner.leaveNow = true
     return
   end
-  if name == "return_bike" then   -- v0.84: reunion beat — V agreed to give Jackie his Arch back
-    if jlReturnJackiesBike then pcall(jlReturnJackiesBike) end
-    JL.ui.status = "Gave Jackie his Arch back."
-    return
-  end
+  -- (v0.94b: the "return_bike" action handler was removed with the retired firstCallTree — the Arch is
+  -- now returned by the reunion_arrival handler below and the "Give bike back" debug button.)
   if name == "reunion_arrival" then   -- v0.85: the reunion CALL ended -> he comes to V on foot
     if jlReturnJackiesBike then pcall(jlReturnJackiesBike) end                 -- his Arch is his again
     pcall(function() Game.GetQuestsSystem():SetFactStr("jackielives_daemon", 1) end)  -- launch daemon-removal quest (stub)
@@ -2137,14 +2134,12 @@ local function callTick()
     if native then openNativeCallWindow() end     -- CONNECT: empty transparent window stays up
     JL.call.watchdogAt = now + 300                -- safety net (force-end if a call never completes)
     Branch.busy = false                           -- Branch.start re-sets it
-    -- v0.85: in AWAITING_CALL this is THE reunion call (long, emotional, ends with him walking in).
-    -- v0.84: else the first call after he's back is the bike-back beat; every call after = normal tree.
+    -- v0.85: in AWAITING_CALL this is THE reunion call (long, emotional, ends with him walking in);
+    -- it folds in the bike-back beat. Every other call = the normal tree. (v0.94b: the old
+    -- firstCallTree bike-back fallback was retired — the reunion + reunion_arrival cover it.)
     local tree = Config.callTree
     if Retrieval.isAwaitingCall() and Config.reunionCallTree then
       tree = Config.reunionCallTree
-    elseif Config.bikeReturn and Config.bikeReturn.enabled and Config.firstCallTree
-       and jlBikeReturned and not jlBikeReturned() then
-      tree = Config.firstCallTree
     end
     Branch.start(tree and tree.start or nil, tree)
   end
@@ -3425,7 +3420,7 @@ local function branchTick()
       Branch.start(nxt)
     else
       Branch.busy = false
-      local wasCall = (bstate.tree == Config.callTree or bstate.tree == Config.firstCallTree
+      local wasCall = (bstate.tree == Config.callTree
                        or bstate.tree == Config.reunionCallTree)
       bstate.tree = nil
       local act = bstate.pendingAction; bstate.pendingAction = nil
