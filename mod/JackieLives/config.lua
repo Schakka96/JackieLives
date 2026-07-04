@@ -1031,7 +1031,7 @@ Config.reunionCallTree = {
   nodes = {
     pickup = {
       jackiePool = {
-        { text = "...V? (a breath) Dios mío, it's really you. Been starin' at this phone for weeks wonderin' if you'd ever ring it." },
+        { text = "...V? Dios mío, it's really you. Been starin' at this phone for weeks wonderin' if you'd ever ring it." },
       },
       choices = {
         { text = "You son of a bitch. You're ALIVE?",        to = "alive" },
@@ -1040,11 +1040,11 @@ Config.reunionCallTree = {
     },
     alive = {
       jackiePool = {
-        { text = "(sigh) Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us." },
+        { text = "Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us." },
       },
       choices = {
         { text = "Weeks, Jackie. You let me think you were GONE.",       to = "outrage" },
-        { text = "I'm so mad at you I can't— (breathe) you're okay?",    to = "outrage" },
+        { text = "I'm so mad at you I can't—  ...  you're okay?",    to = "outrage" },
       },
     },
     outrage = {
@@ -1076,7 +1076,7 @@ Config.reunionCallTree = {
     },
     deflect = {
       jackiePool = {
-        { text = "(hmm) ...Complicated. Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now." },
+        { text = "Hmm ...Complicated. Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now." },
       },
       choices = {
         { text = "So what about YOU — done hidin'? Or you livin' in that crusty desert forever?", to = "hiding" },
@@ -1092,7 +1092,7 @@ Config.reunionCallTree = {
     },
     daemon = {
       jackiePool = {
-        { text = "That chip they jammed in me... whatever got left behind's still runnin'. Some daemon, pingin' out where I am like a beacon. That's how 'Saka'd find me — why I gotta stay outta range. Vik tried to cut it. Couldn't." },
+        { text = "That chip ... whatever got left behind's still runnin'. Some Arasaka security soft - pingin' out where I am like a beacon. That's how 'Saka'd find me — why I gotta stay outta range. Vik tried to cut it. Couldn't." },
       },
       choices = {
         { text = "Then we find someone who CAN. A netrunner, a ripper — anyone.", to = "quest" },
@@ -1101,7 +1101,7 @@ Config.reunionCallTree = {
     },
     quest = {
       jackiePool = {
-        { text = "(a small laugh) You'd really do that. 'Course you would. A'ight, chica. We find someone who can pull this thing outta my skull... maybe I get my life back." },
+        { text = "You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can pull this thing outta my skull... maybe I get my life back." },
       },
       choices = {
         { text = "We'll get it done. No worries. I got your back till then.", to = "gigs" },
@@ -1126,7 +1126,7 @@ Config.reunionCallTree = {
     },
     bike = {
       jackiePool = {
-        { text = "(nervous) My Wheels you know... My bike. Vik said you been holdin' onto her for me. She... she still with you? She okay?" },
+        { text = "My Wheels you know... My bike. Vik said you been holdin' onto her for me. She... she still with you? She okay?" },
       },
       choices = {
         { text = "(laughs) THAT's what you're nervous about?", to = "bikesafe" },
@@ -1134,7 +1134,7 @@ Config.reunionCallTree = {
     },
     bikesafe = {
       jackiePool = {
-        { text = "(a nervous laugh) C'mon, don't tease me — that bike's the one piece o' the old me I got left. Just tell me straight, V. Is she okay?" },
+        { text = "C'mon, don't tease me — that bike's the one piece o' the old me I got left. Just tell me straight, V. Is she okay?" },
       },
       choices = {
         { text = "Relax, hermano. She's safe and sound. Come pick her up.", to = "coming" },
@@ -1142,7 +1142,7 @@ Config.reunionCallTree = {
     },
     coming = {
       jackiePool = {
-        { text = "(lets out a breath) ...Gracias, V. You got no idea what that means to me. Where you at? Nah — don't move, I'm already headed your way. Hang tight, chica." },
+        { text = "Phew ... Gracias V. You got no idea what that means to me. Ok enough chatting, where you at? Nah — don't move, I'm already headed your way. Hang tight, chica." },
       },
       choices = {
         { text = "Okay. I'll be right here. Hurry up, hermano.", to = "onmyway" },
@@ -1176,7 +1176,7 @@ Config.reunionMeetTree = {
     -- bespoke text-only (no clip fits the hug beat) — full emotional subtitle.
     used = {
       jackiePool = {
-        { text = "(laughs, pulls you into a rough hug) Yeah, yeah — desert don't do a man's looks any favors. But you? Damn, you're a sight, V." },
+        { text = "Yeah, yeah — desert don't do a man's looks any favors. But you? Damn, you're a sight, V." },
       },
       choices = {
         { text = "We're both still standin'. That's what counts.", to = "drivehome" },
@@ -1191,13 +1191,14 @@ Config.reunionMeetTree = {
         { text = "Drive me home? Thought you'd wanna ride your Arch — she's right where you left her.", to = "bikejoy" },
       },
     },
-    -- v0.93b: VOICED — Jackie lights up hearing his bike was kept in shape (real clip about the Arch).
+    -- v0.94b: MUTE (text-only) — the Miguel VO clip didn't fit here. Bespoke subtitle: he's just
+    -- floored his bike was kept safe. Add `sfx = "jl_<id>"` later if a fitting clip turns up.
     bikejoy = {
       jackiePool = {
-        { text = "Some top-notch work, Miguel did. Rides like it looks — factory new.", sfx = "jl_1628830076146479104" },
+        { text = "You kept her runnin' for me. All this time... Damn, V. That's the last piece o' the old me, right there." },
       },
       choices = {
-        { text = "(laughs) Go on then, hermano. Take her for a spin.", to = "leave" },
+        { text = "Go on then, hermano. Take her for a spin.", to = "leave" },
       },
     },
     leave = {
