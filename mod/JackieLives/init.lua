@@ -662,6 +662,10 @@ local function lookedAtJackie()
   if JL.idle.spawn and sameEntity(target, JL.idle.spawn.handle) then return target end
   local isJackie = false
   pcall(function()
+    -- NEVER match a vehicle: Jackie's Arch record is "Vehicle.v_sportbike2_arch_jackie_player",
+    -- which also contains "jackie" — looking at his bike must NOT open a talk prompt. (bug 2026-07-04)
+    local cn = tostring(target:GetClassName()):lower()
+    if cn:find("vehicle") then return end
     local rec = target.GetRecordID and target:GetRecordID()
     if rec and tostring(rec):lower():find("jackie") then isJackie = true end
   end)

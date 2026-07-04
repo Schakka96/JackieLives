@@ -3,8 +3,8 @@
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
 > 🔀 **This file is JackieLives-only.** The **NCLives** framework (Night City Lives; Jackie = persona #0,
-> Evelyn = persona #1) tracks separately in `docs/NCLIVES_TODO.md` + `docs/NCLIVES_FRAMEWORK.md`. Keep
-> the two roadmaps/logs apart.
+> Evelyn = persona #1) is a **separate repo/project** (`../NCLives/`) — it reuses this engine by porting,
+> not by sharing. Keep the two roadmaps/logs apart.
 
 > 📋 **Companion backlog:** `List_of_companion_issues.md` was RESOLVED + MERGED into this file on
 > 2026-07-01 (v0.83) and deleted (git history keeps it). Done items: sticky subtitles (v0.80), no-(Leave)
@@ -76,6 +76,16 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
   - ▶ **LONG-TERM (Antonia's call, when ready):** if it keeps feeling great, **retire keep-close-follow** —
     fold any remaining trail need into abreast and comment out `followKeepCloseTick`. Not done yet (trail is
     still the jog/sprint fallback, so keep it for now).
+
+**v0.91 2026-07-04 (small fixes + voice re-activated for the release):**
+- 🐛→✅ **"Talk to the bike" bug.** Looking at Jackie's summoned Arch popped the F "Talk to Jackie"
+  prompt (and let you converse with the bike). Cause: `lookedAtJackie()`'s record fallback matched any
+  entity whose record contains "jackie" — and the Arch is `Vehicle.v_sportbike2_arch_jackie_player`. Fix:
+  the fallback now skips anything whose class name contains "vehicle". (init.lua `lookedAtJackie`.)
+- 🔊 **Voice re-activated in the STAGING release.** Added `staging/r6/audioware/JackieLives/JackieLives.yml`
+  (the Audioware bank manifest) + a `HOW_TO_ADD_JACKIE_VOICES.txt` so the Nexus download is voice-READY.
+  Audio files stay OUT (CDPR copyright, gitignored) — users extract them with WolvenKit via Antonia's
+  video tutorial. Subtitle-only still works if audio is absent (no crash). Version -> 0.91; staging synced.
 
 **v0.86 BIKE CRUISE folded into JackieLives 2026-07-02 (AWAITING IN-GAME TEST):**
 - 🏍️ **Companion Jackie trails V on his Arch when V rides a BIKE.** Proven in JackieVehicleTest (AI

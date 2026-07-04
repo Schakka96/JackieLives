@@ -1,0 +1,26 @@
+Jackie Lives — Jackie's real voice (OPTIONAL)
+=============================================
+
+By default this mod runs with SUBTITLES ONLY. Jackie's actual voice lines are
+CD PROJEKT RED audio and cannot be redistributed, so they are NOT included in
+this download. If you own Cyberpunk 2077 you can extract them yourself and drop
+them in here to give Jackie his real voice.
+
+WHAT THIS FOLDER IS
+-------------------
+  r6\audioware\JackieLives\
+    JackieLives.yml   <- the Audioware sound bank (lists every "jl_<id>" clip)
+    (audio files)     <- YOU add these; each must match a filename in the .yml
+
+HOW TO ADD THE VOICES
+---------------------
+Follow the video tutorial (link on the mod's Nexus page) — it walks through the
+WolvenKit extraction step by step. In short:
+  1. Install WolvenKit + this mod's normal requirements (RED4ext, CET, Codeware,
+     Audioware, AMM — see the Nexus description).
+  2. Use WolvenKit to extract Jackie's voice-over files and convert them to the
+     filenames listed in JackieLives.yml, into THIS folder.
+  3. Launch the game — Audioware loads the bank and Jackie speaks his lines.
+
+Without the audio files the mod still works perfectly — you just read his lines
+instead of hearing them. Nothing here will crash if the audio is missing.
