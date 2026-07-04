@@ -5,9 +5,23 @@ quests, and gives him a simple daily schedule at his Heywood spots. Spawn + comb
 **AppearanceMenuMod (AMM)**; this mod owns the trigger / schedule / ban logic.
 
 ## Requirements
+
+**Core (required — the mod won't run without these):**
+- **RED4ext** — native plugin loader that Codeware and Audioware sit on.
 - Cyber Engine Tweaks (**1.18.1+** — required by Native Settings UI)
 - AppearanceMenuMod (AMM)
 - Codeware
+
+**For Jackie's real voice (optional, but it's the whole point):**
+- **Audioware** — plays his voice lines. Without it the mod runs **subtitle-only** (no crash). CDPR's
+  audio can't be redistributed, so you extract it yourself and drop it in — see
+  `r6\audioware\JackieLives\HOW_TO_ADD_JACKIE_VOICES.txt`.
+
+**For his mouth to move while he talks:**
+- **AMM Expressions Overhaul** ([Nexus mod 20108](https://www.nexusmods.com/cyberpunk2077/mods/20108)) —
+  provides the "Talking" facial anims the lip-flap uses. Without it he still speaks, but his lips stay still.
+
+**For the in-game settings page:**
 - **Native Settings UI** (`nativeSettings`) — adds the in-game **Esc → Settings → Jackie Lives**
   page (the "Go Home Jackie" recovery button). Get it from
   [Nexus mod 3518](https://www.nexusmods.com/cyberpunk2077/mods/3518).
@@ -56,8 +70,9 @@ Bind **"Talk to Jackie"** (CET → Bindings), then **look at Jackie and press it
 `Config.talk` (range / cooldown / chance) and fill `Config.talkLines` with his event ids.
 - Want a native feel? You *can* bind "Talk to Jackie" to the same key you use to interact. A truly native
   dialogue-choice prompt (like vendors) is a heavier future upgrade, not this.
-- No voice yet? The pools use a placeholder event; real Jackie audio depends on the VO playback test
-  (Route A native event ids vs Route B Audioware).
+- Voice: with **Audioware** installed and his audio files added (see
+  `r6\audioware\JackieLives\HOW_TO_ADD_JACKIE_VOICES.txt`) he speaks his real lines; without them it's
+  subtitle-only. His lips move only if **AMM Expressions Overhaul** is installed.
 
 ### Call Jackie onto a gig (arrival)
 Click **"Call Jackie (holocall)"** → a short call plays; ask him along and he ARRIVES from a distance and

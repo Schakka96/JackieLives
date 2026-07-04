@@ -4,23 +4,48 @@ Jackie Lives — Jackie's real voice (OPTIONAL)
 By default this mod runs with SUBTITLES ONLY. Jackie's actual voice lines are
 CD PROJEKT RED audio and cannot be redistributed, so they are NOT included in
 this download. If you own Cyberpunk 2077 you can extract them yourself and drop
-them in here to give Jackie his real voice.
+them in here to give Jackie his real voice. Nothing crashes if you skip this —
+you just read his lines instead of hearing them.
+
+WHAT YOU NEED
+-------------
+  - RED4ext, Cyber Engine Tweaks, Codeware, AppearanceMenuMod  (the mod's normal requirements)
+  - Audioware        <- this is what actually PLAYS the voice files
+  - WolvenKit        <- to extract Jackie's voice-over from your own game files
+  (AMM Expressions Overhaul is what makes his mouth move while he talks.)
 
 WHAT THIS FOLDER IS
 -------------------
   r6\audioware\JackieLives\
-    JackieLives.yml   <- the Audioware sound bank (lists every "jl_<id>" clip)
-    (audio files)     <- YOU add these; each must match a filename in the .yml
+    JackieLives.yml              <- the Audioware sound bank (maps every line to a file)
+    HOW_TO_ADD_JACKIE_VOICES.txt <- this file
+    rebuild_bank_yml.py          <- helper (see "IF NOTHING PLAYS" below)
+    (audio files)                <- YOU add these
 
-HOW TO ADD THE VOICES
----------------------
-Follow the video tutorial (link on the mod's Nexus page) — it walks through the
-WolvenKit extraction step by step. In short:
-  1. Install WolvenKit + this mod's normal requirements (RED4ext, CET, Codeware,
-     Audioware, AMM — see the Nexus description).
-  2. Use WolvenKit to extract Jackie's voice-over files and convert them to the
-     filenames listed in JackieLives.yml, into THIS folder.
-  3. Launch the game — Audioware loads the bank and Jackie speaks his lines.
+HOW TO ADD THE VOICES  (no renaming!)
+-------------------------------------
+Follow the video tutorial on the mod's Nexus page for the WolvenKit steps. In short:
 
-Without the audio files the mod still works perfectly — you just read his lines
-instead of hearing them. Nothing here will crash if the audio is missing.
+  1. Install Audioware (and the other requirements above).
+  2. In WolvenKit, extract Jackie's voice-over .wem files and convert them to WAV.
+  3. Drop the converted .Wav files straight into THIS folder — KEEP their original
+     names (e.g. jackie_q000_f_170a4a14f8405008.Wav). The bank already refers to
+     the game's own filenames, so you do NOT rename anything.
+  4. Launch the game. Audioware loads the bank and Jackie speaks his lines.
+
+IF NOTHING PLAYS
+----------------
+Audioware ignores the whole bank if the manifest points at a filename you don't
+have. If your WolvenKit export produced slightly different names (or you only
+grabbed some lines), regenerate the manifest from the files you ACTUALLY have:
+
+  - Make sure Python is installed (python.org, or the Microsoft Store), then in a
+    PowerShell window opened in THIS folder run:
+        python rebuild_bank_yml.py
+    It rewrites JackieLives.yml to match your files exactly (old one saved as
+    JackieLives.yml.bak). Relaunch and he should speak.
+
+  - Quick check in the CET console (a real line should show a positive number):
+        Game.GetAudioSystemExt():Duration(CName.new("jl_fallback"))
+
+That's it — no filename math, no renaming.
