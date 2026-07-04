@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.93"
+Config.version = "0.94"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -152,6 +152,22 @@ Config.dialogue = {
   choiceHold = 2.5,      -- seconds V's chosen line stays on screen before Jackie's reply
   cycleDebug = false,    -- v0.42 OFF: arrow CNames locked + release-edge handling confirmed working.
                          --   Flip true only to re-log input-action names while a choice box is open.
+}
+
+-- ---- character-based subtitle reading time (v0.94) -----------------------
+-- For the EMOTIONAL reunion beats — the phone call (reunionCallTree) and the first face-to-face
+-- meeting (reunionMeetTree) — a flat 3 s subtitle flashed long lines by before they could be read.
+-- When a line has no readable voice-clip length to pace by (the mute build), we instead scale the
+-- subtitle's on-screen time to the LINE LENGTH:  secs = clamp(minSecs, base + chars/charsPerSec, maxSecs).
+-- Lower charsPerSec = slower reading pace = lines linger longer. Applies to BOTH Jackie's lines and
+-- V's chosen replies on those two trees; the rest of the mod is unchanged.
+-- Anchored to feel: 1-2 word line ~2 s, a ~6-word sentence (~30 chars) ~3 s (matches the old flat
+-- 3.0 s), and long lines keep stretching (~7 s at 120 chars, ~10.7 s at 200), capped at maxSecs.
+Config.subtitleReading = {
+  minSecs     = 2.0,   -- floor: a 1-2 word line ("Hey.") holds this long, no longer
+  maxSecs     = 16.0,  -- ceiling: a very long paragraph won't sit forever
+  base        = 1.6,   -- fixed lead-in added to every line (time to notice it appeared)
+  charsPerSec = 22.0,  -- reading pace in characters/second (higher = shorter holds)
 }
 
 -- ---- send Jackie off (v0.33) ---------------------------------------------
@@ -1110,7 +1126,7 @@ Config.reunionCallTree = {
     },
     bike = {
       jackiePool = {
-        { text = "(nervous) My Arch. My girl. Vik said you been holdin' onto her for me. She... she still with you? She okay?" },
+        { text = "(nervous) My Arch. My bike. Vik said you been holdin' onto her for me. She... she still with you? She okay?" },
       },
       choices = {
         { text = "(laughs) THAT's what you're nervous about?", to = "bikesafe" },
@@ -1172,16 +1188,16 @@ Config.reunionMeetTree = {
         { text = "Aah, savin' my ass, V, thank you. How about I drive you home, eh?", sfx = "jl_1866254590956171264" },
       },
       choices = {
-        { text = "Drive me home? Didn't you wanna ride your girl? Your Arch's right where you left her.", to = "bikejoy" },
+        { text = "Drive me home? Thought you'd wanna ride your Arch — she's right where you left her.", to = "bikejoy" },
       },
     },
-    -- v0.93: VOICED — Jackie lights up about his bike ("my girl"). His real voice on the beat you wanted.
+    -- v0.93b: VOICED — Jackie lights up hearing his bike was kept in shape (real clip about the Arch).
     bikejoy = {
       jackiePool = {
-        { text = "Aa, a heart o' gold? 'Cause only somebody with a heart o' gold can understand just how much I need to get back to my girl.", sfx = "jl_1866269806381133824" },
+        { text = "Some top-notch work, Miguel did. Rides like it looks — factory new.", sfx = "jl_1628830076146479104" },
       },
       choices = {
-        { text = "(laughs) Go on then, hermano. She's missed you.", to = "leave" },
+        { text = "(laughs) Go on then, hermano. Take her for a spin.", to = "leave" },
       },
     },
     leave = {

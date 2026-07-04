@@ -77,6 +77,26 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
     fold any remaining trail need into abreast and comment out `followKeepCloseTick`. Not done yet (trail is
     still the jog/sprint fallback, so keep it for now).
 
+**v0.94 2026-07-04 (reunion subtitle timing + quality-of-life):**
+- 📖 **Emotional reunion subtitles now scale with LINE LENGTH.** The reunion phone call
+  (`reunionCallTree`) + first meeting (`reunionMeetTree`) used a flat fallback hold (3.0 s Jackie / 2.5 s
+  V's picks) on the mute build, so long lines flashed by unread. New `readingSecs(text)` +
+  `isReunionBeat()` (file-local in the branch-dialogue region, 200-cap safe): `secs = clamp(min, base +
+  chars/cps, max)` via `Config.subtitleReading` (`minSecs 2.0`, `base 1.6`, `charsPerSec 22`, `maxSecs
+  16`). Anchored so 1–2 words ≈ 2 s, a ~6-word sentence ≈ 3 s (old feel), long lines stretch (~7 s @120
+  chars, ~10.7 s @200). Only a **fallback** — a readable voice-clip length still wins, so future voiced
+  lines stay lip-synced. Wired into `speakJackieLine` (Jackie) + `Branch.confirm` (V's reply); the same
+  value also gates when the choice box opens, so the menu waits until the line's been read. Rest of the
+  mod's timing unchanged. Tunable entirely from `Config.subtitleReading`.
+- ⏱️ **Main-quest call-refusal notice held too briefly** — doubled `jlDeclineMainQuest`'s on-screen band
+  from 4.0 → 8.0 s so the blue "Can't call Jackie during a main mission" notice is readable.
+- 🛠️ **CET: "Complete quest now (Jackie is back)" button** added atop the *Retrieval quest* debug panel
+  (calls existing `Retrieval.completeReunion()` → REUNITED). Clear label vs the old dev-jargon "Force
+  REUNITED (skip, unlock)".
+- 🔒 **.gitignore: copyrighted CDPR transcripts** (`audioware/JackieLives/transcripts.json`/`.txt`,
+  produced by the voice-tagging session) now excluded like `index.json` — never pushed.
+- Version → 0.94; staging synced. *(FOMOD `info.xml` NOT bumped — no release cut this session.)*
+
 **v0.93 2026-07-04 (two bug fixes):**
 - 🐛→✅ **Calling Jackie during a MAIN quest failed SILENTLY.** Summon/call during a main quest is a
   deliberate no-op (he won't be dragged into the story), but the only feedback was the CET status text —

@@ -980,7 +980,7 @@ end
 function jlDeclineMainQuest()
   JL.ui.status = Config.declineLine
   log(Config.declineLine)
-  showOnscreenMsg(Config.mainQuestBlockNotice or Config.declineLine, 4.0)
+  showOnscreenMsg(Config.mainQuestBlockNotice or Config.declineLine, 8.0)   -- v0.94: doubled hold (was 4.0) so it's readable
 end
 
 -- ---------------------------------------------------------------------------
@@ -1388,12 +1388,28 @@ local menu = { shown = false, choices = nil, sel = 1, title = "Jackie" }
 -- pending* : after the player's chosen line shows (1s), go to `pending` node (or end)
 local bstate = { node = nil, openAt = nil, pending = nil, pendingAt = nil, talkCooldownKey = nil }
 
+-- Reading time scaled to line LENGTH (v0.94); used when no voice-clip length paces the line (the mute
+-- build) on the emotional reunion beats — so long lines linger while short ones stay snappy.
+-- secs = clamp(min, base + chars/cps, max). Config.subtitleReading holds the tunables.
+local function readingSecs(text)
+  local cfg = Config.subtitleReading or {}
+  local n = #tostring(text or "")
+  local s = (cfg.base or 1.6) + n / (cfg.charsPerSec or 22.0)
+  return math.max(cfg.minSecs or 2.0, math.min(cfg.maxSecs or 16.0, s))
+end
+-- The two emotional beats that get length-scaled subtitles: the reunion phone call + first meeting.
+local function isReunionBeat()
+  return bstate.tree == Config.reunionCallTree or bstate.tree == Config.reunionMeetTree
+end
+
 -- Play a Jackie line: real voice (sfx, else the guaranteed jl_fallback WAV) + subtitle.
 local function speakJackieLine(text, sfx)
   local spoke = false
   if sfx then spoke = playVoice(sfx) end
   if not spoke then spoke = playVoice("jl_fallback") end
-  local secs = voiceDuration(sfx) or 3.0
+  -- pace by the real clip length when readable; on the mute build, scale to text length for the
+  -- reunion beats (v0.94), else the old flat 3 s.
+  local secs = voiceDuration(sfx) or (isReunionBeat() and readingSecs(text)) or 3.0
   hideSubtitle()
   -- carrier entity for the subtitle band: Jackie if spawned, else the player (on a phone
   -- call Jackie isn't in the world yet, and a null speaker can make the band skip the line).
@@ -1771,7 +1787,9 @@ Branch.confirm = function(idx)
   closeChoiceMenu()
   log("Branch: selected #" .. tostring(idx) .. " '" .. tostring(c.text) .. "'")
   hideSubtitle()
-  local hold = (Config.dialogue and Config.dialogue.choiceHold) or 2.5
+  -- v0.94: on the reunion beats, scale V's chosen line to its length too (so long picks aren't cut off).
+  local hold = (isReunionBeat() and readingSecs(c.text))
+               or (Config.dialogue and Config.dialogue.choiceHold) or 2.5
   showDialogueText("V", c.text or "", hold, Game.GetPlayer())  -- V's pick, shown before Jackie replies
   bstate.pending       = c.to or "__end__"
   bstate.pendingAction = c.action                              -- e.g. "summon_arrival" (fires at call end)
@@ -4910,6 +4928,8 @@ registerForEvent("onDraw", function()
   -- Retrieval questline gate: stage readout + debug jumps (the "Where's Jackie?" quest).
   if ImGui.CollapsingHeader("Retrieval quest (Where's Jackie?)") then
     ImGui.Text("Stage: " .. Retrieval.stageName())
+    -- v0.94: one-click "done" — jumps straight to REUNITED (Jackie back, calls/summon/schedule live).
+    if ImGui.Button("Complete quest now (Jackie is back)") then Retrieval.completeReunion() end
     if ImGui.Button("Force tip (skip Vik)") then Retrieval.forceTip() end
     ImGui.SameLine(); if ImGui.Button("Force shard read") then Retrieval.forceShard() end
     if ImGui.Button("Probe quest gate (console)") then Retrieval.debugQuestState() end
