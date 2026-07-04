@@ -11,6 +11,27 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🔊 Added 2026-07-04 — ALL 1200 voice lines now playable (bank rebuilt)
+- **`tools/rebuild_bank_yml.py` regenerates the Audioware manifest from the REAL extracted `.Wav`
+  files** (no renaming). Antonia ran it on Windows and copied the output to
+  `audioware/JackieLives/JackieLives.yml` (**gitignored — reference only**) + a `.yml.bak` of the old one.
+- **Why:** Audioware looks each clip up by the exact `file:` name; WolvenKit exports Jackie's VO with the
+  game's own stem names (`jackie_q000_f_<hex>.Wav`), but the old manifest referenced `jl_<id>.wav`.
+  Mismatch → Audioware drops the WHOLE bank (test_tone Duration = -1, no voice). See memory
+  `jackielives-audioware-bank-fix`. The rebuild points the manifest at the real files and references only
+  files that exist, so one missing clip can never sink the bank again.
+- **The mapping is arithmetic** (no lookup table): a line's String ID = the trailing hex of the wem stem
+  in decimal — `int("170a4a14f8405008",16) == 1660220866564214792` → plays as `jl_1660220866564214792`.
+  The rebuilt bank emits **two events per file**: `jl_<decimal>` (what `config.lua` uses) **and**
+  `jl_<stem>`. So all **2331 keys / 1200 files** are playable, and every `sfx = "jl_<decimal>"` already
+  in `config.lua` (47 of them) is verified present in the new bank.
+- ⚠️ **ACTION ITEM (do from Windows, where the real `.Wav` live):** the **shipped** manifest
+  `staging/r6/audioware/JackieLives/JackieLives.yml` is **still the OLD 1281-key `jl_<id>.wav` version** —
+  regenerate it with `rebuild_bank_yml.py` and update `HOW_TO_ADD_JACKIE_VOICES.txt` to the new
+  **no-rename** workflow (users just drop the WolvenKit-extracted `.Wav` in — no converting). Until then
+  a Nexus download would be silent unless the user's filenames happen to match. (Claude can copy the
+  reference YML into staging on request; flagged here so it isn't forgotten.)
+
 ### 🆕 Added 2026-07-01 (research + new test mod)
 - **Jackie as PASSENGER in V's car** — feasibility researched → `docs/research/vehicle_passenger_research.md`.
   Verdict: **Easy–Moderate** (easier than the driver case — no vehicle AI). Same `AIMountCommand`+

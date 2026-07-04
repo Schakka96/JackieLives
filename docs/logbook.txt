@@ -8,6 +8,30 @@ Log last written: 2026-06-16 (day session)
 Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
 
 --------------------------------------------------------------------------------
+2026-07-04  -  VOICE BANK REBUILT: ALL 1200 LINES PLAYABLE
+--------------------------------------------------------------------------------
+- Problem (recurring): Audioware finds each clip by the EXACT `file:` name in the
+  manifest. WolvenKit exports Jackie's VO with the game's own stem names
+  (jackie_q000_f_<hex>.Wav); the shipped manifest referenced jl_<id>.wav. One
+  mismatch and Audioware drops the WHOLE bank -> no voice in dialogue (test_tone
+  Duration = -1). See memory `jackielives-audioware-bank-fix`.
+- Fix: tools/rebuild_bank_yml.py regenerates JackieLives.yml from the ACTUAL
+  files present -- no renaming. It references only files that exist (a missing
+  clip can never sink the bank) and emits TWO events per file:
+    jl_<decimal>  (String ID = trailing hex of the wem stem, in decimal;
+                   int("170a4a14f8405008",16) -> jl_1660220866564214792)
+    jl_<stem>     (jl_jackie_q000_f_170a4a14f8405008)
+  Antonia ran it on Windows and copied the output to
+  audioware/JackieLives/JackieLives.yml (gitignored, reference only) + a .yml.bak.
+- Result: 2331 keys / 1200 files playable. All 47 sfx ids already used in
+  config.lua verified present in the new bank. The reunion partial-VO lines
+  (v0.93/0.94) therefore all resolve to real audio.
+- STILL OPEN: the SHIPPED manifest staging/r6/audioware/JackieLives/JackieLives.yml
+  is still the old 1281-key jl_<id>.wav version -- regenerate it + update
+  HOW_TO_ADD_JACKIE_VOICES.txt to the no-rename workflow before the next Nexus
+  build (must run rebuild_bank_yml.py from Windows where the real .Wav live).
+
+--------------------------------------------------------------------------------
 2026-06-15  -  KICKOFF & DESIGN
 --------------------------------------------------------------------------------
 - Defined the project: a Cyberpunk 2077 mod that brings Jackie Welles back after

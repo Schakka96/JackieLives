@@ -1126,7 +1126,7 @@ Config.reunionCallTree = {
     },
     bike = {
       jackiePool = {
-        { text = "(nervous) My Arch. My bike. Vik said you been holdin' onto her for me. She... she still with you? She okay?" },
+        { text = "(nervous) My Wheels you know... My bike. Vik said you been holdin' onto her for me. She... she still with you? She okay?" },
       },
       choices = {
         { text = "(laughs) THAT's what you're nervous about?", to = "bikesafe" },
