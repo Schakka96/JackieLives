@@ -393,7 +393,7 @@ end
 -- ---------------------------------------------------------------------------
 local function summonJackie()
   if not Retrieval.isUnlocked() then JL.ui.status = Retrieval.unavailableMsg(); Retrieval.notifyUnavailable(); return end  -- gated until the retrieval quest is done
-  if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
+  if isMainQuestActive() then jlDeclineMainQuest(); return end
   if JL.summon.active then JL.ui.status = "Jackie is already with you."; return end
   local spawn, err = ammSpawn(1)
   if not spawn then JL.ui.status = "Summon failed: " .. tostring(err); log("Summon failed: " .. tostring(err)); return end
@@ -965,6 +965,18 @@ local function showOnscreenMsg(text, duration)
     msg.message = text
     bb:SetVariant(defs.UI_Notifications.OnscreenMessage, ToVariant(msg), true)
   end)
+end
+
+-- v0.93: MAIN-QUEST CALL REFUSAL notice. Calling/summoning Jackie during a MAIN quest is a deliberate
+-- no-op (he won't get dragged into the story), but it used to fail SILENTLY — the only feedback was the
+-- CET status text, invisible during normal play — so it read as a bug ("I did the retrieval quest, why
+-- won't he answer?"). This routes every refusal through one place: V's status line + log AS BEFORE, PLUS
+-- the blue on-screen NOTICE band so the player is told why on screen. Global (not a top-level local) so
+-- it's callable from summonJackie (defined ABOVE showOnscreenMsg) and 200-local-cap safe.
+function jlDeclineMainQuest()
+  JL.ui.status = Config.declineLine
+  log(Config.declineLine)
+  showOnscreenMsg(Config.mainQuestBlockNotice or Config.declineLine, 4.0)
 end
 
 -- ---------------------------------------------------------------------------
@@ -1968,7 +1980,7 @@ local function runCallAction(name)
     return
   end
   if name ~= "summon_arrival" then return end
-  if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
+  if isMainQuestActive() then jlDeclineMainQuest(); return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
   -- v0.50: two modes only — both run through vehicleArrivalTick (foot = bikeless, bike = useBike).
   -- v0.51: player Esc-menu "Disable vehicle arrivals" (JL.disableVehicleArrivals) forces FOOT,
@@ -1991,7 +2003,7 @@ local function startCall()
   end
   if Branch.open or Branch.busy or dlg.active then JL.ui.status = "Busy - finish the current talk first."; return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
-  if isMainQuestActive() then JL.ui.status = Config.declineLine; log(Config.declineLine); return end
+  if isMainQuestActive() then jlDeclineMainQuest(); return end
   Branch.busy = true                       -- reserve so the look-prompt / talk don't fight the ring
   pcall(hideJackieChoiceBox)
   local id   = (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
@@ -2089,7 +2101,7 @@ local function onPlayerCalledJackie()
   if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then return end  -- gated: let the game's own call ring out (no hijack)
   if Branch.open or Branch.busy or dlg.active then return end   -- already talking
   if JL.summon.active then return end                          -- already with you
-  if isMainQuestActive() then return end
+  if isMainQuestActive() then jlDeclineMainQuest(); return end  -- v0.93: tell the player WHY (blue notice)
   -- v0.55: asleep -> DON'T hijack. The game's own ring just plays out and auto-hangs-up; Jackie
   -- never "picks up" (our connect hook never arms). Matches "rings until it auto hangs up".
   if jackieAsleep() and not Retrieval.isAwaitingCall() then   -- v0.85: reunion call always connects
@@ -3141,12 +3153,19 @@ local function catchUpTick()
   log(("CatchUp: Jackie was %.0f m from V -> teleported to her side (try %d)."):format(d, tries + 1))
 end
 
--- v0.85b: is V currently WALKING (her slow toggle) vs jogging/sprinting? V has 3 speeds, Jackie only 2,
--- so walk-abreast (which relies on Jackie out-pacing V) only holds up while V WALKS; at jog/sprint he
--- falls back to the normal trail. We read V's horizontal speed from her per-frame position delta (robust,
--- no velocity API) with light smoothing, and apply HYSTERESIS (walk below walkMaxSpeed, jog above
--- jogMinSpeed) so it doesn't flip-flop at the boundary. Cached per frame (JL.clock) so calling it from
--- both follow ticks does the work once. Global -> 200-local cap safe.
+-- v0.85b: is V currently WALKING (a steady stroll) vs STILL or jogging/sprinting? Abreast (Jackie holds a
+-- spot beside/ahead of V) only makes sense while V actually strolls; at jog/sprint he can't out-pace her
+-- (V has 3 speeds, Jackie 2) and when STILL he'd hover at a weird side-angle, jerking as the camera pans.
+-- So this returns true ONLY for the narrow "steady walk" case; every other state -> the close trail.
+-- We read V's horizontal speed from her per-frame position delta (robust, no velocity API) with light
+-- smoothing. Cached per frame (JL.clock) so calling it from both follow ticks does the work once.
+-- v0.93 — this used to treat STANDING STILL (~0 m/s, which is <= walkMaxSpeed) as "walking", so abreast
+-- hijacked normal standing-around conversation. Two gates fixed it:
+--   * WALK BAND with hysteresis on BOTH edges: V must move FASTER than walkMinSpeed (not still) and slower
+--     than jogMinSpeed. Once in the band she only leaves it by (near-)stopping or speeding up to a jog.
+--   * SUSTAIN: abreast only engages after V holds that band CONTINUOUSLY for walkSustainSeconds (~3 s) — a
+--     step or a shuffle mid-chat won't trip it; any drop out of the band resets the timer.
+-- Global -> 200-local cap safe.
 function jlVWalking()
   local A  = Config.abreast or {}
   local st = JL.abreast
@@ -3167,11 +3186,19 @@ function jlVWalking()
       st.spdPX, st.spdPY, st.spdT = pp.x, pp.y, now
     end
     local spd = st.vSpeed or 0.0
-    local walking = st.walking
-    if walking == nil then walking = spd <= (A.walkMaxSpeed or 2.0) end
-    if walking and spd > (A.jogMinSpeed or 2.8) then walking = false end        -- sped up -> trail
-    if (not walking) and spd < (A.walkMaxSpeed or 2.0) then walking = true end  -- slowed to a walk -> abreast
-    st.walking = walking
+    -- --- WALK BAND (hysteresis on both edges): moving but not still, not jogging/sprinting --------------
+    local lo, hi, jog = (A.walkMinSpeed or 0.6), (A.walkMaxSpeed or 2.0), (A.jogMinSpeed or 2.8)
+    local inBand = st.inBand
+    if inBand == nil then inBand = (spd >= lo and spd <= hi) end
+    if inBand then
+      if spd < (lo * 0.5) or spd > jog then inBand = false end   -- (near-)stopped OR sped up -> leave band
+    else
+      if spd >= lo and spd <= hi then inBand = true end           -- settled into a steady walk -> enter band
+    end
+    st.inBand = inBand
+    -- --- SUSTAIN: only count as "walking" once the band has held continuously long enough ---------------
+    if inBand then st.walkSince = st.walkSince or now else st.walkSince = nil end
+    st.walking = (st.walkSince ~= nil) and ((now - st.walkSince) >= (A.walkSustainSeconds or 3.0))
   end
   return st.walking
 end
@@ -4759,7 +4786,13 @@ registerForEvent("onDraw", function()
       A.angleLeft  = ImGui.SliderFloat("Left position (near-front)",  A.angleLeft or 11.25, 9.0, (A.positions or 12))
       A.radius     = ImGui.SliderFloat("Abreast radius (m from V)",   A.radius or 3.5, 1.0, 6.0)
       A.smoothSeconds = ImGui.SliderFloat("Heading smoothing (s)",    A.smoothSeconds or 3.3, 0.2, 6.0)
-      ImGui.Text(("Live: V %s | side=%s"):format(jlVWalking() and "WALKING (abreast)" or "jog/sprint (trailing)",
+      -- v0.93: report the real state — WALKING (abreast) vs the trail, split into STILL vs jog/sprint, plus
+      -- live speed and how long the walk band has held (so the walkSustainSeconds gate is visible).
+      local walk = jlVWalking()
+      local held = JL.abreast.walkSince and ((JL.clock or 0) - JL.abreast.walkSince) or 0
+      local state = walk and "WALKING (abreast)"
+                    or (JL.abreast.inBand and ("walk band, holding %.1fs..."):format(held) or "STILL/jog (trailing)")
+      ImGui.Text(("Live: V %s | %.2f m/s | side=%s"):format(state, JL.abreast.vSpeed or 0.0,
         tostring(JL.abreast.side or "-")))
     end
     ImGui.Separator()
@@ -4810,7 +4843,7 @@ registerForEvent("onDraw", function()
   ImGui.SameLine()
   if ImGui.Button("Test arrival now") then
     -- fire the selected arrival immediately, no call needed (mirrors runCallAction's summon_arrival)
-    if isMainQuestActive() then JL.ui.status = Config.declineLine
+    if isMainQuestActive() then jlDeclineMainQuest()   -- v0.93: same blue notice the player gets
     elseif JL.summon.active then JL.ui.status = "Jackie's already with you."
     else
       JL.varrival.at = (JL.clock or 0) + 0.2; JL.varrival.useBike = (cc.arrivalMethod == "bike")

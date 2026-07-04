@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "0.92b"
+Config.version = "0.93"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -230,6 +230,11 @@ Config.abreast = {
   catchUpTolerance = 0.35,  -- target distance while moving in
   walkMaxSpeed   = 2.0,     -- m/s at/below which V counts as WALKING (abreast on)
   jogMinSpeed    = 2.8,     -- m/s above which V counts as jogging/sprinting (trail); band = hysteresis
+  -- v0.93: abreast is a NARROW case — it only makes sense while V is genuinely STROLLING. Two extra gates
+  -- stop it from hijacking normal standing-around conversation (where he'd sit at a weird 3.5 m angle,
+  -- jerking as the camera pans):
+  walkMinSpeed      = 0.6,  -- m/s V must EXCEED to count as walking. Below this she's STILL -> he trails close.
+  walkSustainSeconds= 3.0,  -- s V must hold the walk band CONTINUOUSLY before abreast engages (no snap on a step)
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
@@ -1442,5 +1447,10 @@ Config.mainQuestBlocklist = {
   -- "mq001", "mq005", ...
 }
 Config.declineLine = "V: Not draggin' Jackie into this mess. Not after everything he went through."
+
+-- v0.93: the SAME refusal, but written for the blue on-screen NOTICE band (top-left objective-style
+-- notifications), so a call/summon that no-ops during a main quest tells the player WHY instead of
+-- looking broken. Kept short so it fits the notice band; declineLine stays V's spoken/status line.
+Config.mainQuestBlockNotice = "Can't call Jackie during a main mission — not draggin' him into this."
 
 return Config

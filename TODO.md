@@ -77,6 +77,25 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
     fold any remaining trail need into abreast and comment out `followKeepCloseTick`. Not done yet (trail is
     still the jog/sprint fallback, so keep it for now).
 
+**v0.93 2026-07-04 (two bug fixes):**
+- 🐛→✅ **Calling Jackie during a MAIN quest failed SILENTLY.** Summon/call during a main quest is a
+  deliberate no-op (he won't be dragged into the story), but the only feedback was the CET status text —
+  invisible in normal play — so it read as "I did the retrieval quest, why won't he answer?". Fix: one
+  new global helper `jlDeclineMainQuest()` now routes EVERY refusal through V's status + log **plus the
+  blue on-screen NOTICE band** (`showOnscreenMsg` → `Config.mainQuestBlockNotice`). Wired into all call
+  paths: `summonJackie`, `startCall`, `summon_arrival`, the phone-dial hijack `onPlayerCalledJackie`
+  (was the fully-silent `return`), and the CET "Test arrival" button. Global (not a top-level `local`) so
+  it's callable from `summonJackie` — defined ABOVE `showOnscreenMsg` — and 200-local-cap safe.
+- 🐛→✅ **Walk-abreast hijacked STANDING conversation (weird distance, jerky).** `jlVWalking()` treated
+  standing still (~0 m/s, which is ≤ `walkMaxSpeed`) as "walking", so abreast held Jackie at a 3.5 m side
+  angle that snapped as the camera panned. Fix: abreast is now a NARROW case — it engages only when V is
+  in a genuine WALK BAND (faster than new `walkMinSpeed` 0.6 m/s, slower than `jogMinSpeed`, hysteresis on
+  both edges) AND has held that band **continuously for `walkSustainSeconds` (3 s)**. When STILL → the
+  close 1.5 m trail (`followKeepCloseTick`, `Config.follow.distance`). When jogging/sprinting → same close
+  trail. CET tuner now shows live speed + walk-band hold timer. `Config.abreast.walkMinSpeed` /
+  `walkSustainSeconds` are live-tunable.
+- Version → 0.93; staging + FOMOD `info.xml` synced.
+
 **v0.92 2026-07-04 (small fixes):**
 - 🎬 **Cutscene / main-quest → Jackie leaves (and his bike can't spawn).** Instead of gating the cruise
   separately, the existing main-quest walk-off now ALSO fires on a real **cutscene** (`jlInCutscene()` =
