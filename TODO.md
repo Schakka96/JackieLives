@@ -14,7 +14,7 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 ### 🔊 Added 2026-07-04 — ALL 1200 voice lines now playable (bank rebuilt)
 - **`tools/rebuild_bank_yml.py` regenerates the Audioware manifest from the REAL extracted `.Wav`
   files** (no renaming). Antonia ran it on Windows and copied the output to
-  `audioware/JackieLives/JackieLives.yml` (**gitignored — reference only**) + a `.yml.bak` of the old one.
+  the tracked source bank manifest `audioware/JackieLives/JackieLives.yml` (committed) + a `.yml.bak` of the old one (`.bak` gitignored).
 - **Why:** Audioware looks each clip up by the exact `file:` name; WolvenKit exports Jackie's VO with the
   game's own stem names (`jackie_q000_f_<hex>.Wav`), but the old manifest referenced `jl_<id>.wav`.
   Mismatch → Audioware drops the WHOLE bank (test_tone Duration = -1, no voice). See memory

@@ -67,3 +67,6 @@ WolvenKit*.zip
 # COPYRIGHTED transcripts of CDPR VO (like index.json) — never commit
 audioware/JackieLives/transcripts.json
 audioware/JackieLives/transcripts.txt
+
+# rebuild_bank_yml.py backup of the previous manifest
+audioware/JackieLives/*.yml.bak
