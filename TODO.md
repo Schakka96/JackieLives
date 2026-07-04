@@ -77,6 +77,16 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
     fold any remaining trail need into abreast and comment out `followKeepCloseTick`. Not done yet (trail is
     still the jog/sprint fallback, so keep it for now).
 
+**v0.92 2026-07-04 (small fixes):**
+- 🎬 **Cutscene / main-quest → Jackie leaves (and his bike can't spawn).** Instead of gating the cruise
+  separately, the existing main-quest walk-off now ALSO fires on a real **cutscene** (`jlInCutscene()` =
+  PlayerStateMachine `SceneTier >= 4`; verified no false positives on holocalls/dialogue). Once Jackie
+  excuses himself and walks off, the cruise is naturally gated (no companion → no Arch); the cruise gate
+  also checks `jlInCutscene()` directly as a belt-and-suspenders. CET debug shows "In cutscene (tier>=4)".
+- 🏍️ **Cruise Arch never orphans** — teardown on mod reload/exit + full-dismiss (Follower-Jackster bug class).
+- 🧹 **Harden vehicle exclusion** — `getTalkTarget()` (voice path) also skips vehicles, like `lookedAtJackie()`.
+- Version -> 0.92; staging synced.
+
 **v0.91 2026-07-04 (small fixes + voice re-activated for the release):**
 - 🐛→✅ **"Talk to the bike" bug.** Looking at Jackie's summoned Arch popped the F "Talk to Jackie"
   prompt (and let you converse with the bike). Cause: `lookedAtJackie()`'s record fallback matched any

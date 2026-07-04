@@ -4107,6 +4107,21 @@ function jlIsBikeVeh(veh)
   return (cn:find("bike") ~= nil) or (cn:find("motorcycle") ~= nil)
 end
 
+-- True only during a real locked cutscene (PlayerStateMachine SceneTier >= 4 = FPPCinematic/Cinematic).
+-- NO false positives on holocalls / dialogue / vendors / braindance (those stay tier 1-3). Verified
+-- against psiberx/cp2077-cet-kit GameUI (the base AMM + most companion mods use). Global -> cap-safe.
+function jlInCutscene()
+  local inCut = false
+  pcall(function()
+    local defs  = Game.GetAllBlackboardDefs()
+    local psmBB = Game.GetBlackboardSystem():Get(defs.PlayerStateMachine)
+    if not psmBB then return end
+    local tier = psmBB:GetInt(defs.PlayerStateMachine.SceneTier)   -- 1=gameplay ... 4/5=cinematic
+    inCut = (tier >= 4)
+  end)
+  return inCut
+end
+
 -- (Re)issue the follow command onto Jackie's Arch so it trails V's bike.
 function jlCruiseFollow()
   local bh, p = jlCruise.bikeHandle, Game.GetPlayer()
@@ -4164,6 +4179,7 @@ function jlCruiseTick()
   -- only cruise a SETTLED companion (not mid-arrival / dinner / walk-off)
   local settled = companion and JL.summon.companionSet
     and not (JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase))
+    and not jlInCutscene()   -- v0.92: never spawn/keep his Arch during a cutscene
   local onBike = settled and jlIsBikeVeh(jlPlayerVehicleObj())
   if onBike and not jlCruise.active then jlCruiseStart()
   elseif jlCruise.active and not onBike then jlCruiseStop() end
@@ -4522,12 +4538,13 @@ registerForEvent("onUpdate", function(dt)
       pcall(startLeaving)
     end
   end
-  -- v0.62: MAIN-QUEST EXIT. If V starts/tracks a main quest while Jackie's tagging along, he
-  -- excuses himself and walks off (he won't be dragged into the main story). Same guards as the
-  -- expiry exit: not mid-dinner, not already walking off; fires once (summon.active clears on despawn).
+  -- v0.62: MAIN-QUEST / CUTSCENE EXIT. If V starts/tracks a main quest OR enters a cutscene while
+  -- Jackie's tagging along, he excuses himself and walks off (he won't be dragged into the story, and
+  -- once he's gone his cruise bike can't spawn either). Same guards as the expiry exit: not mid-dinner,
+  -- not already walking off; fires once (summon.active clears on despawn).
   if JL.summon.active and JL.summon.companionSet and not JL.dinner.phase
-     and JL.leaving.phase ~= "walking" and startLeaving and isMainQuestActive() then
-    log("Main quest active -> Jackie excuses himself and heads out.")
+     and JL.leaving.phase ~= "walking" and startLeaving and (isMainQuestActive() or jlInCutscene()) then
+    log("Main quest / cutscene -> Jackie excuses himself and heads out.")
     pcall(function() startLeaving(Config.mainQuestExit) end)
   end
   pcall(jlCruiseTick)     -- v0.85: V on a BIKE -> Jackie trails on his Arch (gated before the foot ticks)
@@ -4798,6 +4815,7 @@ registerForEvent("onDraw", function()
   -- DEBUG: pretend a main quest is active so you can test Jackie declining / excusing himself.
   JL.ui.forceMainQuest = ImGui.Checkbox("Force main-quest active (test decline)", JL.ui.forceMainQuest)
   ImGui.Text("Main quest detected: " .. (isMainQuestActive() and "YES (Jackie won't follow)" or "no"))
+  ImGui.Text("In cutscene (tier>=4): " .. (jlInCutscene() and "YES (Jackie leaves)" or "no"))
 
   ImGui.Separator()
   -- Retrieval questline gate: stage readout + debug jumps (the "Where's Jackie?" quest).
