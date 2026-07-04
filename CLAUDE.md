@@ -73,6 +73,31 @@ Content (dialogue trees) should be **data-driven** so writing can be added witho
 - ⚠️ The **Game Pass / Microsoft Store** version is much harder to mod. **GOG or Steam** strongly preferred.
 - Always test on a **fresh/backup save**; mods can corrupt saves.
 
+## Packaging for release (Nexus / mod managers)
+
+The Nexus-ready mod lives in **`staging/`** and its internal layout **is** the zip layout — it must
+mirror the game root so Vortex/MO2 install files 1:1. Current structure:
+
+```
+staging/
+  fomod/                  <- installer metadata (info.xml + ModuleConfig.xml)
+  bin/x64/plugins/cyber_engine_tweaks/mods/JackieLives/   <- CET mod (init/config/retrieval/README)
+  r6/audioware/JackieLives/                               <- Audioware bank manifest + HOW_TO_ADD_JACKIE_VOICES.txt
+```
+
+Rules for future sessions:
+- **A `fomod/` folder is required at the staging root.** It's what makes Vortex/MO2 recognise the mod
+  instead of showing the "couldn't determine mod type / fallback installer" notice. `ModuleConfig.xml`
+  installs `bin\` and `r6\` 1:1 to game root with no user options; bump the version in both `info.xml`
+  and `Config.version` on release.
+- **When you zip for upload, zip the *contents* of `staging/`** — so `fomod\`, `bin\`, `r6\` sit at the
+  archive TOP LEVEL. Never zip the `staging` folder itself; a wrapper folder breaks FOMOD detection and
+  drops the manager back to the fallback installer.
+- **Copyrighted audio stays OUT** (gitignored `.ogg`/`.wav`/`.wem` + `index.json`). The bank manifest
+  (`JackieLives.yml`) ships; users add Jackie's real voice themselves via WolvenKit (see the HOW_TO).
+- Keep `staging/` in lockstep with `mod/JackieLives/` — the source of truth is `mod/`, staging is the
+  packaged copy.
+
 ## Files
 
 - `CLAUDE.md` — this file (ground rules + project summary).
