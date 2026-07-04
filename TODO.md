@@ -2,6 +2,10 @@
 
 _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETUP.md` for install steps._
 
+> 🔀 **This file is JackieLives-only.** The **NCLives** framework (Night City Lives; Jackie = persona #0,
+> Evelyn = persona #1) tracks separately in `docs/NCLIVES_TODO.md` + `docs/NCLIVES_FRAMEWORK.md`. Keep
+> the two roadmaps/logs apart.
+
 > 📋 **Companion backlog:** `List_of_companion_issues.md` was RESOLVED + MERGED into this file on
 > 2026-07-01 (v0.83) and deleted (git history keeps it). Done items: sticky subtitles (v0.80), no-(Leave)
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
@@ -188,17 +192,22 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
     **last-updated timestamp** per shard. Single source of truth for the text too (generates the strings the
     mod/archive read). Can be a Mac-side CLI/HTML tool OR a CET panel. **This is the concrete deliverable I
     can build now.**
-  - 🟡 **PLACING the shard in the world (semi-scriptable, NOT full auto).** Real readable shards = a lootable
-    object/journal entry streamed into the world. **`.archive` files are custom RED-engine binary → a
-    "mini-WolvenKit" that opens the archive and injects a file = reimplementing WolvenKit's serializer =
-    NOT worth building (I'd advise against).** BUT the modern placement route is **ArchiveXL world-streaming
-    (`.xl` + sector edits)** which is **text/YAML** — so a tool that *generates* the ArchiveXL streaming
-    entry + shard journal/onscreen-text from the tracker coords is feasible and drivable. **Investigate:
-    ArchiveXL `worldStreamingSector` node add for a lootable shard prop** before Antonia does anything manual.
-  - 🔧 **Manual fallback (Antonia in WolvenKit).** If ArchiveXL placement proves too fiddly, Antonia places
-    the shard file in the nested archive dir by hand (the step she already does); the tracker tool still owns
-    the registry + text + "displays correctly?" checklist. Also relevant: **Missing Persons Read Shard
-    Add-On** (Nexus 9018) shows the shard-open-from-message pattern — study, don't depend.
+  - ✅ **PLACING — Route 1: CET/Codeware runtime spawn (RECOMMENDED, achieves "place shard X at Y, zero
+    WolvenKit").** Reversed my first-pass caution (see `docs/research/shard_placement_research.md`, 2026-07-03).
+    The mod already spawns entities at coords + already does proximity→text (`postShards`). Spawn a visible
+    shard-case prop at the coord; walk-up shows the note. **"Place shard X at Y" = one row in a Lua table**
+    (`{id, pos, title, lines}`) that Claude fully controls — no new files, no tools. Even better: reuse the
+    mod's existing position-capture so the loop is **stand at the spot in-game → hotkey → coord saved to the
+    shard registry → it spawns there forever.** It's a runtime marker, not a baked Codex shard — fine for
+    "walk up and read Jackie's note." Persistence uses the same respawn-on-load machinery Jackie already has.
+  - 🟡 **PLACING — Route 2: "real" baked shard (TweakXL + ArchiveXL + World Builder).** For a proper Codex
+    shard later. Item/action records = TweakXL YAML + localization JSON (Claude authors). The `.journal`
+    onscreen resource = the one genuinely-binary piece (make one in WolvenKit, clone per shard). Placement =
+    **World Builder** (in-game CET tool, drop the `shard_case_container.ent` visually) → export JSON → a
+    WolvenKit import script bakes the `.streamingsector`. More moving parts; not needed for MVP.
+  - ❌ **NOT worth building:** a tool that cracks open the `.archive` binary and injects files = reimplementing
+    WolvenKit's serializer. Route 1 sidesteps this entirely. (Ref: **Missing Persons Read Shard Add-On**,
+    Nexus 9018, for the shard-open pattern — study, don't depend.)
 
 - 🎬 **#3 — Jackie reliably LEAVES for cutscenes / near main NPCs / gated off main quests (BUILD FIRST).**
   Most feasible of the three: **pure CET Lua, extends systems that already exist**, no new tools/tech.
@@ -206,10 +215,15 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
   - **(a) Leave for CUTSCENES.** Detect the cinematic/scene state (gameplay **tier** / `PlayerStateMachine`
     scene-tier, or a scene-lock flag) → auto-dismiss/hide Jackie for the duration, restore after. `- [ ]
     RESEARCH:` which signal cleanly flags "a cutscene/scripted scene is playing" from CET (tier ≥ cinematic).
-  - **(b) Leave when MAJOR NPCs are around** (Judy, Panam, Goro, River, Kerry, Rogue, etc.). Scan nearby
-    NPCs for known TweakDB character record IDs within a radius → if present, Jackie excuses himself + walks
-    off (reuse `startLeaving` + the existing NPC enumeration `getAMMCharacters`/target scan). Needs: the
-    **list of record IDs** for the main companions. Gate is symmetric with the main-quest excuse he already does.
+  - **(b) Leave near DIALOGUE-HEAVY STORY NPCs — say goodbye within ~50 m** (Antonia 2026-07-03). When a
+    companion Jackie is out and V approaches a story NPC (Peralezes, Placide, Brigitte, Hellman, Hanako,
+    Mitch, Judy, Panam, Goro, River, Kerry, Rogue, PL characters…) within ~50 m, Jackie says a short goodbye
+    ("got some biz to attend to, catch you later") and walks off — reuse `startLeaving` + the existing NPC
+    enumeration (`getAMMCharacters`/target scan). **Design = ALLOWLIST:** default LEAVE for every story NPC;
+    only Vik / Mama Welles / Misty / Delamain (+ in-head Johnny, + Jackie himself) are STAY. **Full character
+    list + per-NPC disposition + the record-ID slots live in `docs/story_npc_gate.md`.** `- [ ] RESEARCH:`
+    harvest the TweakDB character record IDs from AMM's own database to fill that file's Record ID column.
+    Radius tunable (`Config.presence.radius`, default 50 m). Symmetric with the main-quest excuse he already does.
   - **(c) GATE off MAIN quests — extend the existing ban.** `isMainQuestActive()` (reads the tracked journal
     quest type) + `Config.mainQuestExit` + summon-decline ALREADY exist (v0.62, still `- [ ] TEST`-pending —
     see "Main-quest ban" below). Strengthen with Antonia's two ideas: **(i)** an explicit **quest-fact/ID
