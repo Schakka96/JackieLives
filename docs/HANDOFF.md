@@ -38,8 +38,9 @@ user/Claude session. For full history see `docs/logbook.txt`; for live tasks see
 - **Voice bank refresh 777 → 1280 lines** + tagger rework + String-ID recovery (String ID = decimal of
   the wem hash); `tools/` Whisper transcription + `tag_usage.py`; `docs/VOICE_LINES.md` canonical labels.
 - **Track A lipsync probe** — play a line by stringId with native lipsync (dump-first; awaiting test).
-- **Bike-model test harness** — spawn candidate records to find Jackie's REAL Arch (still unresolved —
-  which candidate is his gold Arch is an open in-game test).
+- **Bike-model test harness** — ✅ RESOLVED: Jackie's real (gold) Arch is
+  `Vehicle.v_sportbike2_arch_jackie_player` (appearance "default"), confirmed in-game and used by all
+  vehicle flows. Harness kept only as a fallback for any future livery regression.
 - **Arrival system** — unified to two modes (foot / bike) through `vehicleArrivalTick`; side-spawn,
   park-and-walk, height/respawn guards, arrival grunt; **catch-his-eye smile**, **ambient grunts**,
   **dinner outings**, **asleep (00:00–06:00) no-pickup**.
@@ -55,7 +56,8 @@ user/Claude session. For full history see `docs/logbook.txt`; for live tasks see
 - **Esc-menu settings backlog** — schedule on/off + proximity slider, arrival-method dropdown, companion
   auto-leave, barks/dinner/secret toggles, dismiss-all + reset buttons, debug subcategory. Needs
   **non-boolean persistence** (`jlSave/LoadSettings` are boolean-only today).
-- **Bike-model test** — click B1/B2/B3 / M1/M2/M3 in-game, report which spawns the correct gold Arch.
+- ~~**Bike-model test** — click B1/B2/B3 / M1/M2/M3 in-game, report which spawns the correct gold Arch.~~
+  ✅ RESOLVED — his Arch is `v_sportbike2_arch_jackie_player` (default), locked into all vehicle flows.
 - **Release prep** — `init.lua` is large; a discussed `modules/` split (start with lowest-risk
   `modules/diag.lua`). `package.ps1` for a Nexus-ready zip + Nexus page text. ⚠️ **Cannot ship CDPR
   voice audio** (copyright) — distribute build scripts, not `.ogg`s. See

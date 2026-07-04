@@ -2532,14 +2532,15 @@ local function yawToward(from, to)
 end
 
 -- ---------------------------------------------------------------------------
--- v0.63: BIKE-MODEL TEST. The earlier three methods ALL used the one record
--- "v_sportbike2_arch_jackie_player" and ALL spawned the wrong bike -> that record is wrong /
--- doesn't spawn his Arch via DES on this build. So these buttons now try DIFFERENT candidate
--- records (from the CET vehicle list + game files) that are MORE LIKELY his real Arch. Each spawns
--- ~6 m in FRONT of you and logs a READ-BACK of what actually spawned. Jackie's Arch model lives
--- under the entity "v_sportbike2_arch_nemesis"; the *_player records are the garage wrappers.
--- Tell me which button gives his real (gold) Arch + the console READ-BACK appearance, and I lock
--- that record+appearance into the live arrival spawn. Easy to swap: just edit BIKE_CANDIDATES.
+-- v0.63: BIKE-MODEL TEST (kept as a FALLBACK tool — the hunt is RESOLVED).
+-- RESOLVED: "Vehicle.v_sportbike2_arch_jackie_player" IS Jackie's correct (gold) Arch, confirmed
+-- in-game. The earlier "spawned the wrong bike" reports were the pre-v0.85 DES spawn method, not the
+-- record — the v0.85 appearance-lockable spawnDynEntity path spawns his real Arch reliably. The live
+-- arrival, cruise, and bike-return all use this record (Config.vehicle/.cruise/.bikeReturn.bikeRecord).
+-- These buttons remain as a fallback: if a livery/model regression ever appears, they spawn DIFFERENT
+-- candidate records ~6 m in FRONT of you and log a READ-BACK of what actually spawned. Jackie's Arch
+-- model lives under the entity "v_sportbike2_arch_nemesis"; the *_player records are garage wrappers.
+-- Easy to swap: just edit BIKE_CANDIDATES.
 -- ---------------------------------------------------------------------------
 local BIKE_TEST_TAG = "JackieLives_biketest"
 

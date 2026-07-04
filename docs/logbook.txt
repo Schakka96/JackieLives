@@ -801,7 +801,13 @@ GetMountInfoSingle -> parentId defined?) and re-issues ONE unmountDriver if Jack
 at handoff. Gated on isMounted so a foot arrival / already-grounded Jackie never plays a phantom
 get-off. unmountDriver forward-declared (it's defined with the vehicle helpers, after promoteToCompanion).
 
-BIKE-RECORD HUNT (v0.63 -> v0.65) — STILL OPEN, awaiting in-game test:
+BIKE-RECORD HUNT (v0.63 -> v0.65) — ✅ RESOLVED (confirmed in-game after v0.85):
+- OUTCOME: "Vehicle.v_sportbike2_arch_jackie_player" IS Jackie's correct (gold) Arch. The earlier
+  "wrong bike" reports were the pre-v0.85 DES spawn method, NOT the record — once spawnDynEntity became
+  appearance-lockable (v0.85), that record + appearance "default" spawns his real Arch reliably. Live
+  arrival, cruise, and bike-return all use it (Config.vehicle/.cruise/.bikeReturn.bikeRecord). The
+  B1/B2/B3 candidate harness is kept only as a fallback for any future livery regression.
+- (Original hunt notes, kept for history:)
 - PROBLEM: the bike arrival spawns the WRONG bike model. Live + old test both spawned
   Vehicle.v_sportbike2_arch_jackie_player (string recordID + appearanceName="default").
 - v0.63 tester (M1/M2/M3) varied only the appearance HANDLING on that ONE record -> Antonia tested:

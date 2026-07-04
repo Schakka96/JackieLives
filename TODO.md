@@ -425,11 +425,11 @@ robust, or revert to foot (`Config.call.arrivalMethod`).
 - [x] **Bug 1 follow-up — "spawns inside V" on a FAILED approach.** CONFIRMED solved (2026-07-02) — arrival
       fallbacks now place him beside V, not on her.
 - [ ] (prior v0.65 tasks below — all DEPLOYED in v0.65, awaiting in-game test)
-- [ ] **Bike record (v0.65, top priority):** in CET → "Bike model test", click **B1/B2/B3** → report which
-      spawns Jackie's real (gold) Arch + the console `READ-BACK` appearance string. Then **lock that
-      record (+appearance) into the live arrival** (`spawnDynEntity` bike spawn; `Config.vehicle.bikeRecord`
-      /`.bikeAppearance` exist). If none match, use the read-back ids / "Dump appearances" / a full TweakDB
-      vehicle dump to find more candidates. See logbook "BIKE-RECORD HUNT".
+- [x] **Bike record — ✅ RESOLVED (confirmed in-game after v0.85).** Jackie's real (gold) Arch is
+      `Vehicle.v_sportbike2_arch_jackie_player` (appearance "default"). The earlier "wrong bike" was the
+      pre-v0.85 spawn method, not the record; the v0.85 appearance-lockable `spawnDynEntity` spawns his
+      Arch reliably. Locked into ALL vehicle flows (`Config.vehicle`/`.cruise`/`.bikeReturn.bikeRecord`).
+      The B1/B2/B3 "Bike model test" harness is kept only as a fallback for a future livery regression.
 - [ ] **Main-quest ban (v0.62):** confirm "Main quest detected" flips **YES** during a real main quest and
       stays **no** on side jobs / free-roam; that a companion Jackie then excuses himself + walks off; and
       summon/call decline. If the journal reflection never flips, revisit `isMainQuestActive()` (API/enum).
@@ -811,7 +811,12 @@ First-time release prep on a Mac clone (code/docs only; Windows machine does dep
 - [ ] **TODO:** trim the shipped README's old `deploy.ps1` reference is already removed in staging — but
       the dev `mod/JackieLives/README.md` still documents deploy (intentional; dev-only).
 
-## 🆕 v0.65 — bike-model test: try DIFFERENT records (the v0.63 record was wrong) (DEPLOYED, awaiting test, 2026-06-23)
+## 🆕 v0.65 — bike-model test: try DIFFERENT records (✅ RESOLVED — see banner) (2026-06-23)
+> ✅ **RESOLVED (confirmed in-game after v0.85):** Jackie's real Arch is `v_sportbike2_arch_jackie_player`
+> (appearance "default") after all. The "wrong bike" was the pre-v0.85 DES spawn method, not the record —
+> the v0.85 appearance-lockable `spawnDynEntity` spawns his Arch reliably. Locked into every vehicle flow.
+> B1/B2/B3 harness kept as a fallback only. Original v0.65 notes below are historical.
+
 The v0.63 tester's 3 methods all used ONE record (`v_sportbike2_arch_jackie_player`) and ALL spawned the
 WRONG bike → that record doesn't give his Arch via DES on this build. Researched the actual records
 (CET vehicle list + redmodding wiki + game files): Jackie's Arch model lives under the entity
@@ -822,9 +827,8 @@ buttons to spawn 3 DIFFERENT candidate records (in `BIKE_CANDIDATES`, trivially 
 - **B3** `Vehicle.v_sportbike2_arch_player` — standard Arch Nazaré (control).
 Each spawns ~6 m in front + logs a `READ-BACK` (record/appearance/class). "Dump appearances" now dumps
 all three candidates. Note: "La Chingona Dorada" is Jackie's GUN, not the bike — the bike is just his Arch.
-- [ ] **TEST:** click B1/B2/B3; tell me which is his real (gold) Arch + the READ-BACK appearance string.
-      Then I lock that record+appearance into the live `spawnDynEntity` bike spawn. If none look right,
-      the read-back record ids + appearance dump will point to the correct one.
+- [x] **TEST — DONE:** confirmed `v_sportbike2_arch_jackie_player` (default) is his real Arch; locked into
+      the live `spawnDynEntity` bike spawn (and cruise + bike-return). B1/B2/B3 kept as a fallback tool.
 
 ## 🗒️ Session 2026-06-23b — RELEASE PLANNING + init.lua module split (DISCUSSION ONLY, no code changed)
 No deploy this session. Two threads opened for later; nothing implemented yet.
@@ -934,9 +938,9 @@ pinning the model — needs in-game evidence to tell which.
   - **M3** = recordID as `TweakDBID.new()` + record-default appearance (tests a string-coercion / default bug).
   - Plus "Dump appearances (console)" (best-effort TweakDB read) and "Despawn test bike".
 - New `Config.vehicle.bikeAppearance` knob for M2 / the eventual live fix.
-- [ ] **TEST:** open the header, click M1/M2/M3 in turn, and tell me (a) which spawns his correct gold Arch
-      and (b) the console `READ-BACK` appearance string for each. Then I lock the winning method +
-      appearance into the live `spawnDynEntity` bike spawn so arrivals always use his real bike.
+- [x] **TEST — DONE (✅ RESOLVED, see the v0.65 banner above):** `v_sportbike2_arch_jackie_player` +
+      appearance "default" spawns his correct gold Arch once the spawn is done the v0.85 appearance-lockable
+      way. Locked into the live `spawnDynEntity` bike spawn (+ cruise + bike-return).
 
 ## 🆕 v0.62 — CET window declutter + main-quest detection + companion safety dismount (DEPLOY + test, 2026-06-19)
 - **Disabled the VEHICLE + LIPSYNC test windows.** Renamed their deployed `init.lua → init.lua.disabled`
@@ -2348,9 +2352,8 @@ exact action CName) -> add it to `INTERACT_ACTIONS` in init.lua. These are the n
       **ride-in state machine**: drive at a configurable cruise speed (default 12, button cycles
       8/12/16/22) → at 20 m from V, STOP the bike + Jackie dismounts → sprint → at 10 m downshift to a
       walk → stop ~2 m from V. Step 6 now does the full spawn-at-distance → ride → dismount → walk.
-- [ ] **Open: Jackie's Arch livery.** The bike-record cycle (`v_sportbike2_arch_jackie_player` +2
-      variants) doesn't show the iconic Arch look Antonia expects. Need to confirm the right record /
-      appearance — read the record string shown in the panel and report which index looks correct.
+- [x] **Jackie's Arch livery — ✅ RESOLVED.** `v_sportbike2_arch_jackie_player` (appearance "default")
+      shows his correct gold Arch once spawned the v0.85 appearance-lockable way. Locked into all flows.
 - [ ] **Next:** once the ride-in feel is dialed in, fold a cleaned-up version into JackieLives as a
       "vehicle arrival" option for the holocall summon (alongside the existing walk-in arrival).
 
