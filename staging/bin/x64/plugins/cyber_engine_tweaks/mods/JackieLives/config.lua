@@ -92,6 +92,14 @@ Config.smile = {
   reapply  = 0.6,    -- re-assert the facial every N s so it doesn't decay before duration ends
   category = 3,      -- FacialReaction category for the smile set
   idle     = 6,      -- 6 = Smile (5 = Joy, 2 = Neutral)
+  -- v0.93 REUNION SMILE BOOST — during the first-meeting dialogue (reunionMeetTree) he beams:
+  -- a forced smile for the first `reunionForceSeconds`, then `reunionChanceMult`x the normal smile
+  -- chance for the rest of that chat. `reunionIdles` rotates his two happy faces (6 = Smile, 5 = Joy)
+  -- so it isn't one frozen expression. The smile always YIELDS to his mouth flap, so his spoken lines
+  -- still lip-sync (the smile fills the gaps between/after his lines).
+  reunionForceSeconds = 8.0,
+  reunionChanceMult   = 3.0,
+  reunionIdles        = { 6, 5 },   -- happy faces to rotate (Smile, Joy)
 }
 
 -- ---- ambient "feel alive" grunts (v0.55) ----------------------------------
@@ -1028,7 +1036,17 @@ Config.reunionCallTree = {
         { text = "I know. I KNOW. Scream at me all you want, mano, I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh." },
       },
       choices = {
-        { text = "...You really scared me, choom.", to = "whatyou" },
+        { text = "...You really scared me, choom.", to = "iffy" },
+      },
+    },
+    -- v0.93: VOICED beat (Antonia's pick) — Jackie's real voice on how close the heist was. Subtitle =
+    -- the clip's actual words so his VO isn't a mismatch (see docs/reunion_voiced_options.md).
+    iffy = {
+      jackiePool = {
+        { text = "Honestly, for a sec there, things looked iffy. Wasn't sure we'd worm outta that alive.", sfx = "jl_1918251744810168320" },
+      },
+      choices = {
+        { text = "You weren't SURE — and you still didn't call me.", to = "whatyou" },
       },
     },
     whatyou = {
@@ -1116,8 +1134,9 @@ Config.reunionCallTree = {
     },
     onmyway = {
       -- terminal -> reunion_arrival: give the Arch back + Jackie walks in on foot -> first meeting.
+      -- v0.93: VOICED sign-off — real clip "Made it. Almost at your place." (he's already on the way).
       jackiePool = {
-        { text = "Countin' on it. See you real soon, V." },
+        { text = "Made it. Almost at your place.", sfx = "jl_1866275454447677440" },
       },
       action = "reunion_arrival",
     },
@@ -1128,35 +1147,48 @@ Config.reunionCallTree = {
 Config.reunionMeetTree = {
   start = "seeya",
   nodes = {
+    -- v0.93: greeting is VOICED (Antonia's locked pick) — subtitle = the real clip words.
     seeya = {
       jackiePool = {
-        { text = "(quiet) ...Look at you. In the flesh. Thought I'd never see that mug again, chica." },
+        { text = "Don't come here often, do ya? Heheh. It's good to see you, chica.", sfx = "jl_1661700260668284928" },
       },
       choices = {
         { text = "You've looked better yourself, choom.",     to = "used" },
         { text = "(just look at him a moment) ...It's you.",  to = "used" },
       },
     },
+    -- bespoke text-only (no clip fits the hug beat) — full emotional subtitle.
     used = {
       jackiePool = {
-        { text = "(laughs) Yeah, yeah. Desert don't do wonders for a man's looks. You picked up some new miles too, V. Suits ya, though." },
+        { text = "(laughs, pulls you into a rough hug) Yeah, yeah — desert don't do a man's looks any favors. But you? Damn, you're a sight, V." },
       },
       choices = {
-        { text = "We're both still standin'. That's what counts.", to = "bikeask" },
+        { text = "We're both still standin'. That's what counts.", to = "drivehome" },
       },
     },
-    bikeask = {
+    -- v0.93: VOICED — real clip ("...How about I drive you home, eh?"). V kept his bike safe = "savin' my ass".
+    drivehome = {
       jackiePool = {
-        { text = "That we are, hermano. ...So. Where is she? My Arch. Tell me you really kept my girl in one piece." },
+        { text = "Aah, savin' my ass, V, thank you. How about I drive you home, eh?", sfx = "jl_1866254590956171264" },
       },
       choices = {
-        { text = "Safe and sound, choom. Waitin' right where you left her.", to = "leave" },
+        { text = "Drive me home? Didn't you wanna ride your girl? Your Arch's right where you left her.", to = "bikejoy" },
+      },
+    },
+    -- v0.93: VOICED — Jackie lights up about his bike ("my girl"). His real voice on the beat you wanted.
+    bikejoy = {
+      jackiePool = {
+        { text = "Aa, a heart o' gold? 'Cause only somebody with a heart o' gold can understand just how much I need to get back to my girl.", sfx = "jl_1866269806381133824" },
+      },
+      choices = {
+        { text = "(laughs) Go on then, hermano. She's missed you.", to = "leave" },
       },
     },
     leave = {
       -- terminal -> reunion_complete: unlock the whole mod (schedule + calls + summon).
+      -- v0.93: VOICED sign-off ("...dyin' for some fresh air") — they head off for his Arch.
       jackiePool = {
-        { text = "(grins) Then what're we waitin' for? C'mon — let's get the hell outta this sandy hellhole 'fore I sprout a cactus. Take me home, V." },
+        { text = "Now let's get outta here. I'm dyin' for some fresh air.", sfx = "jl_1676583523110838280" },
       },
       action = "reunion_complete",
     },

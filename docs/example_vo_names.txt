@@ -1,0 +1,9 @@
+jackie_q000_f_1a0ff30a222ef000.Wav
+jackie_q000_f_1a0ff5291b2ef000.Wav
+jackie_q000_f_1a7be0c160449000.Wav
+jackie_q000_f_1a7bf0ef1f405000.Wav
+jackie_q000_f_1a7bf22cad405000.Wav
+
+jackie_vs_vset_jackie_f_1f1168b67352a008.Wav
+jackie_scene_jackie_default_f_1b3025da182c5000.Wav
+jackie_q005_m_1672707a474b6000.Wav

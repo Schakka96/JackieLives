@@ -1,125 +1,84 @@
-# Reunion dialogue — voiced-line options (first call + first meet)
+# Reunion dialogue — voiced-line plan (first call + first meet)
 
-_Created 2026-07-04. Companion to the TODO item "rewrite the Jackie dialogues with lines we have
-transcripts for." Source pool: `audioware/JackieLives/index.json` (777 real Jackie lines, id → text)._
+_Updated 2026-07-04. **DECIDED (Antonia):** keep the full emotional bespoke subtitles, drop in a few
+real voiced lines where they genuinely fit. Source pool: `audioware/JackieLives/index.json`._
 
-## What this covers
+## ⚠️ Line-pool caveat — only 777 of the ~1281 lines are searchable on the Mac
 
-The two **first-reunion** trees in `config.lua`, currently **text-only** (no `sfx`):
+The voice bank (`JackieLives.yml`) lists **1281** lines, but only the **777** in `index.json` have
+**text** on this machine. The other **504** are the Whisper-transcribed "new" lines whose transcripts
+live in `lines.json` on the **Windows** box (gitignored → never synced here), so they can't be searched
+from the Mac. To open them up, do ONE of these on Windows and sync it:
+- re-run the transcript export so `index.json` includes all 1281 (best), **or**
+- copy `tools/voice-tagger/lines.json` into the repo temporarily so I can read the 504 transcripts.
 
-- **First phone call** → `Config.reunionCallTree` (config.lua ~1000) — the long emotional call V makes
-  after reading the Rocky Ridge shard.
-- **First meet** → `Config.reunionMeetTree` (config.lua ~1123) — the short face-to-face when Jackie
-  walks in.
+Everything below is chosen from the 777 available now — searched hard across bike / joy / gratitude /
+farewell / warmth buckets.
 
-> `Config.firstCallTree` (the old bike-back call) is **superseded** by `reunionCallTree` per the code
-> comment, so it's not touched here.
+## How voiced lines work here (important)
 
-## The hard truth up front (so you can choose well)
-
-Every line in `index.json` is Jackie's **real in-game voice**, but he **never had a "back from the
-dead" scene** — so no transcript line actually says "I'm alive," "I'm sorry I let you mourn me," or
-"there's a tracking daemon in my skull." That means:
-
-- **Only Jackie's lines can ever be voiced.** V's choice lines are the *player's* picks — we have no V
-  audio in this bank, so V stays text on-screen in both options. (A separate 80-line **memorial** set
-  of *V calling Jackie's dead line* exists — "I went to your funeral" — but it's not in this file and
-  is a future, separate idea.)
-- **The more we voice, the more the story bends** toward what Jackie actually said on tape. Fully
-  voiced = his real voice throughout, but the precise emotional beats (mourning, the daemon, "I'm
-  sorry") get softer/looser. Minimal = keeps your exact bespoke writing, voice only where a real line
-  genuinely fits.
-
-That trade-off is the whole reason there are two versions below.
+A node plays ONE audio clip (`sfx`) under its on-screen subtitle (`text`). To avoid a dubbed-wrong feel,
+**voiced nodes set the subtitle = the clip's real words**; the surrounding **text-only** nodes carry the
+bespoke emotional writing that has no matching audio. Only **Jackie** can be voiced — V's lines are the
+player's picks (no V audio in this bank), so V always stays text.
 
 ---
 
-# OPTION A — Fully voiced (every Jackie line is a real transcript line)
+# FIRST MEET — restructured (`Config.reunionMeetTree`)
 
-Goal: when this plays, **every word out of Jackie is his real voice.** The beats are re-shaped to fit
-lines that exist. Reads a little more like "old Jackie being Jackie" and a little less like a scripted
-resurrection — but it's 100% him.
+New shape you asked for: warm greeting → he offers to drive V home → **V: "but didn't you want your
+bike?"** → he lights up about his Arch → they head off. Voiced nodes = 🔊.
 
-### A · First phone call (`reunionCallTree`)
+| Node | Speaker line (subtitle) | Voiced? |
+|---|---|---|
+| **seeya** | 🔊 "Don't come here often, do ya? Heheh. It's good to see you, chica." | `jl_1661700260668284928` ✅ (your locked pick) |
+| ↳ V | "You've looked better yourself, choom." / "(just look at him a moment) ...It's you." | text |
+| **used** | "(laughs, pulls you into a rough hug) Yeah, yeah — desert don't do a man's looks any favors. But you? Damn, you're a sight, V." | text-only (bespoke) |
+| ↳ V | "We're both still standin'. That's what counts." | text |
+| **drivehome** | 🔊 "Aah, savin' my ass, V, thank you. How about I drive you home, eh?" | `jl_1866254590956171264` |
+| ↳ V | "Drive me home? Didn't you wanna ride your girl? Your Arch's right where you left her." | text |
+| **bikejoy** | 🔊 "Aa, a heart o' gold? 'Cause only somebody with a heart o' gold can understand just how much I need to get back to my girl." | `jl_1866269806381133824` ⭐ new find |
+| ↳ V | "(laughs) Go on then, hermano. She's missed you." | text |
+| **rideout** (terminal → `reunion_complete`) | 🔊 "Now let's get outta here. I'm dyin' for some fresh air." | `jl_1676583523110838280` |
 
-| Node | Voiced Jackie line (real) | `sfx` id | Fit |
-|---|---|---|---|
-| pickup | "V, hey! ¿Cómo te sientes?" | `jl_1867549271199477760` | ✅ warm surprised pickup |
-| alive | "Eh, you know how it is, can't complain, but... we ain't here to shoot the shit about me." | `jl_1861666308579323904` | ⚠️ deflects instead of apologizing |
-| outrage | "Talk to me, choomba." | `jl_2239163066690486272` | ⚠️ "let me have it" tone, loose |
-| whatyou | "Now siddown and tell me what's got your shorts in a knot." | `jl_1692474422040915968` | ✅ "tell me everything" |
-| deflect | "Yep, don't gotta tell me." | `jl_1989698662345547776` | ✅ "you go quiet, I won't push" |
-| hiding | "Now I go back, find Misty and we do somethin' to make me feel alive again." | `jl_1677043911795367936` | ✅ wants to come home |
-| daemon | "Worried 'bout me. Been for a while." | `jl_2028635009449914368` | ⚠️ gestures at danger, not the daemon |
-| quest | "You're all right." | `jl_1885197235896905728` | ✅ "you'd really do that for me" warmth |
-| gigs | "Years of mercwork, and yet – still sweat like a roasted pig when I talk to my ma." | `jl_1795303665032519680` | ✅ Mama beat, no more gigs |
-| askbike | "Listen, chica, I got this thing. Mind if I borrow your wheels?" | `jl_1866205008628969472` | ✅ segues into the bike ask |
-| bike / bikesafe | "Can't help herself, y'know – checkin' to see if I'm not rottin' in some dumpster... like most of the Welles boys." | `jl_1964635881791627264` | ⚠️ family/dark-humor filler for the nervous beat |
-| coming | "Hold on, V, I'm comin'." | `jl_1714251940705820672` | ✅ on my way |
-| onmyway | "Made it. Almost at your place." | `jl_1866275454447677440` | ✅ arriving (terminal → `reunion_arrival`) |
+That's **4 voiced Jackie beats** (greeting, drive-home, bike-joy, ride-out) wrapped around the bespoke
+hug/banter. `bikejoy` (`jl_1866269806381133824`) is the standout — it's literally Jackie gushing about
+"my girl" (his bike), so his real voice lands exactly on the beat you described.
 
-⚠️ = beat is bent to fit an existing line. To keep the branch shape identical, some multi-node beats
-(bike / bikesafe) collapse to one voiced idea.
-
-### A · First meet (`reunionMeetTree`)
-
-| Node | Voiced Jackie line (real) | `sfx` id | Fit |
-|---|---|---|---|
-| seeya | "Don't come here often, do ya? Heheh. It's good to see you, chica." | `jl_1661700260668284928` | ✅ perfect face-to-face greeting |
-| used | "You're all right." | `jl_1885197235896905728` | ✅ warm |
-| bikeask | "Listen, chica, I got this thing. Mind if I borrow your wheels?" | `jl_1866205008628969472` | ✅ the bike |
-| leave | "Aah, savin' my ass, V, thank you. How about I drive you home, eh?" | `jl_1866254590956171264` | ✅✅ "take me home" — near-perfect closer (terminal → `reunion_complete`) |
-
-Alt closers if you prefer: "Hey, hermana. Your new life... it starts now." (`jl_2231669070565130240`)
-or "Now let's get outta here. I'm dyin' for some fresh air." (`jl_1676583523110838280`).
+**Swap options if you want a different flavour:**
+- bike-joy alt: 🔊 "Some top-notch work, Miguel did. Rides like it looks – factory new." (`jl_1628830076146479104`) — admires her condition instead.
+- ride-out alt: 🔊 "Vámonos." (`jl_1688508282677452800`) — short & punchy · or "You and me, we're gonna get along fine." (`jl_1804217704801824768`) — warm.
 
 ---
 
-# OPTION B — Keep the writing, add voice only where it truly fits
+# FIRST CALL — voiced picks (`Config.reunionCallTree`)
 
-Goal: **don't touch your bespoke emotional script.** Leave the current text exactly as written, and
-add `sfx` to the handful of nodes where a real line lands close enough that Jackie's voice can carry
-your subtitle. Everywhere else stays text-only (subtitle, no audio) — which already works with no crash.
+Keep your whole emotional call script; voice only these four nodes (real clips that match your beat),
+leave the mourning / daemon / Mama / nervous-bike nodes text-only.
 
-> How it works technically: a node's on-screen subtitle is the `text`; the `sfx` just picks which audio
-> clip plays under it. The audio's *actual words* won't match your subtitle exactly — but for a short,
-> tonally-right clip that usually reads fine (the game does this too). Where the mismatch would be
-> jarring, leave it text-only.
+| Node | Add `sfx` | Real clip words |
+|---|---|---|
+| **pickup** | `jl_1867549271199477760` | "V, hey! ¿Cómo te sientes?" |
+| **whatyou** | `jl_1692474422040915968` | "Now siddown and tell me what's got your shorts in a knot." |
+| **coming** | `jl_1714251940705820672` | "Hold on, V, I'm comin'." |
+| **onmyway** (terminal) | `jl_1866275454447677440` | "Made it. Almost at your place." |
 
-### B · First phone call (`reunionCallTree`) — voice these nodes only
-
-| Node | Keep your text | Add `sfx` | Why it's safe |
-|---|---|---|---|
-| pickup | "...V? (a breath) Dios mío, it's really you..." | `jl_1867549271199477760` ("V, hey! ¿Cómo te sientes?") | warm, breathy, short — reads as the same beat |
-| whatyou | "So talk to me. What'd I miss?..." | `jl_1692474422040915968` ("Now siddown and tell me what's got your shorts in a knot.") | same "tell me everything" energy |
-| coming | "...Where you at? Nah — don't move, I'm already headed your way..." | `jl_1714251940705820672` ("Hold on, V, I'm comin'.") | literally the same idea |
-| onmyway | "Countin' on it. See you real soon, V." | `jl_1866275454447677440` ("Made it. Almost at your place.") | on-his-way farewell |
-
-All **other** call nodes (alive / outrage / deflect / hiding / daemon / quest / gigs / askbike / bike /
-bikesafe) stay **text-only** — their content is too specific (mourning, the daemon, Mama, the nervous
-bike ask) for any real clip to match honestly.
-
-### B · First meet (`reunionMeetTree`) — voice these nodes only
-
-| Node | Keep your text | Add `sfx` | Why it's safe |
-|---|---|---|---|
-| seeya | "(quiet) ...Look at you. In the flesh..." | `jl_1661700260668284928` ("...It's good to see you, chica.") | ✅ near-exact match |
-| leave | "(grins) Then what're we waitin' for?... Take me home, V." | `jl_1866254590956171264` ("...How about I drive you home, eh?") | ✅ "take me home" match |
-
-`used` and `bikeask` stay text-only (optional: add `jl_1885197235896905728` "You're all right." to
-`used` if you want one more voiced beat).
+(If you'd rather match subtitles exactly, set those four subtitles to the clip words above; otherwise
+leave your bespoke subtitle and accept a loose audio match on the call.)
 
 ---
 
-## Summary / recommendation
+## ✅ IMPLEMENTED (v0.93)
 
-- **Want the whole reunion in his real voice, accept looser beats → Option A.**
-- **Want to protect your emotional script, voice only the safe moments → Option B.** _(recommended —
-  the reunion's power is in the specific writing, and B keeps 100% of it while still opening with his
-  real voice and closing on "take me home.")_
+- **First meet** restructured exactly as above: `seeya` → `used` (hug) → `drivehome` → V: "didn't you
+  want your bike?" → `bikejoy` → `leave` (ride out). 4 voiced Jackie beats, bespoke hug in the middle.
+- **First call**: added the voiced **`iffy`** node (Antonia's pick — `jl_1918251744810168320`,
+  "…for a sec there things looked iffy…") between `outrage` and `whatyou`, and voiced the final
+  `onmyway` sign-off (`jl_1866275454447677440`).
+- **Reunion smile boost** (`Config.smile.reunion*`): Jackie is forced to smile for the first 8 s of the
+  meet, then rolls smiles at **3× the normal chance** for the rest of that chat, rotating his two happy
+  faces (idle 6 = Smile, 5 = Joy). It **yields to his mouth flap** so his spoken lines still lip-sync
+  (the smile fills the gaps) — same rule the rest of the mod uses so a smile never freezes his mouth.
 
-**No manifest work needed either way:** every `jl_<id>` above is already in
-`staging/r6/audioware/JackieLives/JackieLives.yml` (the bank lists all lines). Adding `sfx` to a node
-just makes it play once the user has the audio installed; with no audio it silently stays subtitle-only.
-
-_To apply a choice, say which option (or mix) and I'll edit `config.lua`._
+_Still open:_ the other **504** Whisper-transcribed lines aren't on the Mac — sync `lines.json` /
+regenerate `index.json` from Windows and I'll re-search the full 1281 for even better fits.

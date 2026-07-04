@@ -105,7 +105,11 @@ local JL = {
   leaving = { phase = nil, deadline = nil, lastReissue = 0 },
   -- v0.53 catch-his-eye smile: until_=hold-smile deadline; nextRoll=next gaze roll; nextApply=re-assert
   -- facial; cooldownUntil=earliest next smile; handle=who's smiling (to reset the right face).
-  smile  = { until_ = 0, nextRoll = 0, nextApply = 0, cooldownUntil = 0, handle = nil },
+  smile  = { until_ = 0, nextRoll = 0, nextApply = 0, cooldownUntil = 0, handle = nil,
+             -- v0.93 reunion boost: on during reunionMeetTree; forceUntil = end of the forced-smile
+             -- window; safety = hard expiry so an aborted meet can't leave him smiling forever; idle =
+             -- which happy face is currently applied.
+             reunionActive = false, reunionForceUntil = 0, reunionSafety = 0, idle = nil },
   -- v0.34 VEHICLE ARRIVAL: spawn on bike behind V -> drive in -> dismount -> jog/walk -> companion.
   varrival = { at = nil, phase = nil, pt = nil, bikeId = nil, bikeHandle = nil,
                placeAt = nil, driveAt = nil, sprintAt = nil, lastReissue = 0, deadline = nil, driveCmd = nil },
@@ -1166,14 +1170,14 @@ end
 -- then relaxes. Same FacialReaction mechanism as the talk-flap, so it's gated OFF whenever a line
 -- is playing (flap/dialogue) — a smile must never stomp the mouth mid-sentence.
 -- ---------------------------------------------------------------------------
-local function applySmileFace(handle)
+local function applySmileFace(handle, idleOverride)
   if not handle then return end
   pcall(function()
     local anim = handle:GetAnimationControllerComponent()
     if not anim then return end
     local f = NewObject("handle:AnimFeature_FacialReaction")
     pcall(function() f.category = (Config.smile and Config.smile.category) or 3 end)
-    pcall(function() f.idle     = (Config.smile and Config.smile.idle)     or 6 end)
+    pcall(function() f.idle     = idleOverride or (Config.smile and Config.smile.idle) or 6 end)
     anim:ApplyFeature(CName.new("FacialReaction"), f)
   end)
 end
@@ -1193,11 +1197,40 @@ local function smileTick()
     if now >= s.until_ then
       resetSmileFace(s.handle)
       s.until_, s.handle = 0, nil
-      s.cooldownUntil = now + (cfg.cooldown or 25.0)
+      -- during the reunion boost we want him to be able to grin again right away (no 25s cooldown).
+      s.cooldownUntil = now + ((s.reunionActive and 0) or (cfg.cooldown or 25.0))
     elseif now >= (s.nextApply or 0) then
       s.nextApply = now + (cfg.reapply or 0.6)
-      applySmileFace(s.handle)
+      applySmileFace(s.handle, s.idle)
     end
+    return
+  end
+
+  -- v0.93 REUNION SMILE BOOST — while the first-meeting dialogue is running he beams. Bypasses the
+  -- gaze + Branch/dialogue gates (we WANT smiles mid-convo here), but still yields to his mouth flap
+  -- so spoken lines lip-sync. Hard `reunionSafety` expiry protects against an aborted meet.
+  if s.reunionActive then
+    if now > (s.reunionSafety or 0) then s.reunionActive = false; return end
+    local jackie = (JL.summon.spawn and JL.summon.spawn.handle) or lookedAtJackie()
+    if flap.until_ > 0 or dlg.active then return end   -- never over his mouth flap
+    -- (i) forced continuous smile for the first `reunionForceSeconds`.
+    if now < (s.reunionForceUntil or 0) then
+      if jackie and now >= (s.nextApply or 0) then
+        s.handle    = jackie
+        s.idle      = (cfg.reunionIdles and cfg.reunionIdles[1]) or cfg.idle or 6
+        s.nextApply = now + (cfg.reapply or 0.6)
+        applySmileFace(s.handle, s.idle)
+      end
+      return
+    end
+    -- (ii) rest of the chat: roll at `reunionChanceMult`x the normal chance, no gaze requirement.
+    if now < (s.nextRoll or 0) then return end
+    s.nextRoll = now + (cfg.rollEvery or 1.5)
+    if not jackie then return end
+    if math.random() >= ((cfg.chance or 0.033) * (cfg.reunionChanceMult or 3.0)) then return end
+    local pool = cfg.reunionIdles or { cfg.idle or 6 }
+    s.handle, s.idle = jackie, pool[math.random(#pool)]
+    s.until_, s.nextApply = now + (cfg.duration or 3.0), 0
     return
   end
 
@@ -1968,6 +2001,12 @@ local function runCallAction(name)
   end
   if name == "reunion_complete" then   -- v0.85: first-meeting dialogue ended -> UNLOCK the mod
     pcall(function() Retrieval.completeReunion() end)
+    -- v0.93: disarm the reunion smile boost + relax his face.
+    pcall(function()
+      if JL.smile.until_ > 0 or JL.smile.reunionActive then resetSmileFace(JL.smile.handle) end
+      JL.smile.reunionActive, JL.smile.reunionForceUntil = false, 0
+      JL.smile.until_, JL.smile.handle = 0, nil
+    end)
     JL.ui.status = "Jackie's back. Mod unlocked."
     log("Reunion: complete -> REUNITED.")
     return
@@ -4480,7 +4519,18 @@ local function arrivalGreetTick()
     if JL.reunionPending then   -- v0.85: the FIRST-EVER meeting -> play the short reunion dialogue, then unlock
       JL.reunionPending = false
       pcall(function() Branch.start(Config.reunionMeetTree and Config.reunionMeetTree.start or nil, Config.reunionMeetTree) end)
-      log("Reunion: first-meeting dialogue started (reunionMeetTree).")
+      -- v0.93: arm the reunion SMILE BOOST — forced smile for the first N s, then 3x smile chance for
+      -- the rest of the meet (see smileTick). Cleared by the reunion_complete action; `reunionSafety`
+      -- is a hard expiry so an aborted meet can't leave him grinning forever.
+      pcall(function()
+        local now = JL.clock or 0
+        local sc  = Config.smile or {}
+        JL.smile.reunionActive     = true
+        JL.smile.reunionForceUntil = now + (sc.reunionForceSeconds or 8.0)
+        JL.smile.reunionSafety     = now + 180.0
+        JL.smile.until_, JL.smile.cooldownUntil, JL.smile.nextRoll, JL.smile.nextApply = 0, 0, 0, 0
+      end)
+      log("Reunion: first-meeting dialogue started (reunionMeetTree) + smile boost armed.")
       return
     end
     local e = pickArrivalGreetLine(JL.clock or 0)
