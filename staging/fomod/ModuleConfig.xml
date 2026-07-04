@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FOMOD installer for Jackie Lives.
+  Purpose: tell Vortex / Mod Organizer 2 exactly what this mod is, so they use a
+  proper named installer instead of the generic "couldn't determine mod type"
+  fallback. There are no user choices — both folders are always installed, mapped
+  1:1 to the game root (bin\... = CET script, r6\... = Audioware voice bank manifest).
+
+  The archive that ships to Nexus must have this fomod\ folder AND the bin\ + r6\
+  folders at its TOP LEVEL (no wrapper folder). Zip the *contents* of staging\.
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+  <moduleName>Jackie Lives</moduleName>
+  <requiredInstallFiles>
+    <!-- CET mod (init/config/retrieval/README) -->
+    <folder source="bin" destination="bin" priority="0" alwaysInstall="true" installIfUsable="true" />
+    <!-- Audioware voice-bank manifest + the "how to add Jackie's voice" guide -->
+    <folder source="r6" destination="r6" priority="0" alwaysInstall="true" installIfUsable="true" />
+  </requiredInstallFiles>
+</config>

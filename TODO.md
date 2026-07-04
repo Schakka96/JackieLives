@@ -846,7 +846,12 @@ No deploy this session. Two threads opened for later; nothing implemented yet.
   - `r6/audioware/JackieLives/`  (manifest + audio — but see copyright blocker)
 - **Dependencies = Requirements tab, NOT bundled:** RED4ext, CET, redscript, TweakXL, ArchiveXL, Codeware,
   Audioware, AMM (if hard runtime dep). Pin game patch in the description (version drift = #1 breakage).
-- [ ] Write `package.ps1` that builds the Nexus-ready zip (mirror-root structure) — deferred.
+- [x] **FOMOD installer added (2026-07-04).** `staging/fomod/info.xml` + `staging/fomod/ModuleConfig.xml`
+  make Vortex/MO2 recognise the mod (no more "couldn't determine mod type / fallback installer" notice).
+  No user options — both folders install 1:1 to game root. **Packaging rule:** the Nexus zip must have
+  `fomod\`, `bin\`, and `r6\` at the TOP LEVEL — zip the *contents* of `staging\`, never the `staging`
+  folder itself (a wrapper folder breaks FOMOD detection).
+- [ ] Write `package.ps1` that builds the Nexus-ready zip (mirror-root structure, contents of `staging/`) — deferred.
 - [ ] Draft Nexus page text + requirements list — deferred.
 - **⚠️ COPYRIGHT BLOCKER (the real issue):** the Audioware bank ships Jackie's REAL CDPR voice lines
   (940 MB of `.wav` in `audioware/JackieLives/`, already gitignored per `ASSETS_NOTICE.md`). **Cannot be
