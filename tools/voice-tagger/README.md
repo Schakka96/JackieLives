@@ -63,6 +63,19 @@ already have). `lines.json` also carries extra fields the mod uses later — `st
 Downloads `jackie_voice_tags.json`: each line merged with its tags
 (`category, mood[], triggers[], probability, locations[], notes, done`). That's what the mod will read.
 
+## Fixing bad Whisper transcripts (`⚠ likely nonsense`)
+Some auto-transcripts are garbage (silence hallucinations, loops, wrong-language, symbol soup). The
+tagger auto-flags those with a red **⚠ LIKELY NONSENSE** badge (heuristic: empty, non-Latin script,
+mostly non-letters, a single looped word, or a giant run-on token).
+- Tick **`⚠ likely nonsense only`** in the top bar to see just those.
+- Each flagged card shows an **editable transcript box** — retype what you hear, then click **`✓ text OK`**
+  to clear the flag (a corrected line also usually clears itself as the heuristic re-evaluates live).
+- Missed one? Click **`⚠ mark nonsense`** on any card to flag it yourself. The manual choice
+  (flag / clear) is saved per line and survives export (`nonsense: true/false` in the tag).
+
+## Output (`Export tags`)
+See above — corrected transcripts export in the `transcript` field; `nonsense` carries your manual review.
+
 ## Notes
 - Tags auto-save to the browser/device (localStorage). **Export regularly** to back up — clearing site
   data wipes localStorage.

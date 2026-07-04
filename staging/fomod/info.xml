@@ -2,7 +2,7 @@
 <fomod>
   <Name>Jackie Lives</Name>
   <Author>Antonia</Author>
-  <Version>0.93</Version>
+  <Version>0.94</Version>
   <Website></Website>
   <Description>Brings Jackie Welles back to Night City after his Act 1 death, in a lore-friendly way, as a living scheduled NPC (not a default follower). Adds a retrieval questline, holocalls, proximity encounters, branching voiced dialogue, and an optional side-job companion. CET + Codeware + Audioware based; Jackie's real voice is added by the player (see the included HOW_TO_ADD_JACKIE_VOICES.txt), and the mod runs subtitle-only if audio is absent.</Description>
   <Groups>

@@ -27,6 +27,9 @@
     background:#00e0c6;color:#04201d;vertical-align:middle;margin-left:6px}
   .usable-badge{font-size:10px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:999px;
     background:#5a6573;color:#fff;vertical-align:middle;margin-left:6px}
+  .non-badge{font-size:10px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:999px;
+    background:var(--bad);color:#2a0307;vertical-align:middle;margin-left:6px}
+  .card.nonsense{border-color:var(--bad)}
   .vg{font-size:10px;font-weight:700;padding:2px 6px;border-radius:999px;vertical-align:middle;margin-left:6px}
   .vg.male{background:#2b6bff;color:#fff} .vg.female{background:#ff4d9d;color:#2a001a}
   .tx-edit{width:100%;font-size:15px;font-family:inherit;background:var(--panel2);
@@ -79,6 +82,7 @@
     <label class="tiny"><input type="checkbox" id="fnew"> new lines only</label>
     <select id="fgender" class="tiny"><option value="">V: any</option><option value="female">V: female</option><option value="male">V: male</option></select>
     <label class="tiny"><input type="checkbox" id="fmem"> memorial only</label>
+    <label class="tiny" title="Whisper transcripts that look like garbage — fix the text, then it drops out of this filter"><input type="checkbox" id="fnon"> ⚠ likely nonsense only</label>
   </div>
   <div class="bar" style="margin-top:8px">
     <button class="ghost" id="import">Import lines.json</button>
@@ -178,6 +182,40 @@ function updateProg(){
   document.getElementById("prog").innerHTML = `<b>${done}</b> / ${LINES.length} tagged`;
 }
 
+// ---- "Likely nonsense" detection ------------------------------------------
+// The Whisper auto-transcripts (source:new_unscraped) are ~90% right, but some are pure garbage
+// (silence hallucinations, loops, wrong-language, symbol soup). We AUTO-flag those so they can be
+// filtered and hand-corrected. `t.nonsense` is a manual override: true = force-flag, false = cleared.
+function effTx(l){
+  const t=TAGS[l.id];
+  return (t && t.transcript_edit!==undefined && t.transcript_edit!=="") ? t.transcript_edit : (l.transcript||"");
+}
+function nonsenseAuto(txt){
+  const s=String(txt||"").trim();
+  if(!s || s==="(no transcript)") return true;
+  // non-Latin script = Whisper hallucinating another language (Cyrillic/Hebrew/Arabic/CJK/Hangul)
+  if(/[Ѐ-ӿ֐-׿؀-ۿ　-ヿ一-鿿가-힯]/.test(s)) return true;
+  // music / block symbols Whisper emits over noise
+  if(/[♪♫♩▪●█]/.test(s)) return true;
+  const letters=(s.match(/[a-zA-ZÀ-ɏ]/g)||[]).length;
+  if(letters<2) return true;                       // basically no words
+  if(letters/s.length < 0.5) return true;          // mostly punctuation/digits
+  const words=s.toLowerCase().replace(/[^\w\s'À-ɏ]/g," ").split(/\s+/).filter(Boolean);
+  if(!words.length) return true;
+  if(words.length>=4 && new Set(words).size===1) return true;         // "you you you you"
+  const c={}; let top=0; words.forEach(w=>{c[w]=(c[w]||0)+1; if(c[w]>top)top=c[w];});
+  if(words.length>=5 && top/words.length>0.6) return true;            // looped token
+  if(/^(thanks for watching|thank you\.?|you\.?|bye\.?|\.+|- )$/i.test(s)) return true; // silence hallucinations
+  if(/\S{22,}/.test(s)) return true;               // one giant run-on garbage token
+  return false;
+}
+function isNonsense(l){
+  const t=tagFor(l.id);
+  if(t.nonsense===true) return true;
+  if(t.nonsense===false) return false;             // user reviewed / cleared
+  return nonsenseAuto(effTx(l));
+}
+
 function chip(label,on,cls,onclick){
   const b=document.createElement("span");
   b.className="chip"+(cls?(" "+cls):"")+(on?" on":"");
@@ -192,6 +230,7 @@ function render(){
   const fnew=document.getElementById("fnew").checked;
   const fgender=document.getElementById("fgender").value;
   const fmem=document.getElementById("fmem").checked;
+  const fnon=document.getElementById("fnon").checked;
   list.innerHTML="";
   LINES.forEach(l=>{
     const isNew = l.source==="new_unscraped";
@@ -203,25 +242,30 @@ function render(){
     if(fnew && !isNew) return;
     if(fgender && l.v_gender!==fgender) return;
     if(fmem && !l.memorial) return;
+    if(fnon && !isNonsense(l)) return;
     list.appendChild(cardEl(l,t));
   });
   updateProg();
 }
 
 function cardEl(l,t){
-  const c=document.createElement("div"); c.className="card"+(t.done?" done":""); c.id="card-"+l.id;
-
   const isNew = l.source==="new_unscraped";
-  if(isNew){
-    // editable transcript for lines with no scraped text
+  const flagged = isNonsense(l);
+  const c=document.createElement("div"); c.className="card"+(t.done?" done":"")+(flagged?" nonsense":""); c.id="card-"+l.id;
+
+  // Editable transcript for new (unscraped) lines AND anything flagged "likely nonsense" — so a bad
+  // Whisper guess can be corrected in place. Editing feeds effTx() so the auto-flag re-evaluates live.
+  if(isNew || flagged){
     const txLabel=fld("Transcript"); c.appendChild(txLabel);
     const txEdit=document.createElement("textarea"); txEdit.className="tx-edit";
     txEdit.placeholder="Type what you hear…";
-    // seed from a manual edit if present, else the Whisper transcript baked into lines.json
     txEdit.value = (t.transcript_edit!==undefined && t.transcript_edit!=="") ? t.transcript_edit : (l.transcript||"");
     txEdit.oninput=()=>{ t.transcript_edit=txEdit.value; save(); };
     c.appendChild(txEdit);
-    if(l.transcript) { const h=document.createElement("p"); h.className="tiny"; h.textContent="↑ Whisper auto-transcript — fix any errors by ear"; c.appendChild(h); }
+    const h=document.createElement("p"); h.className="tiny";
+    h.textContent = flagged ? "⚠ looks like garbage — retype what you hear, then hit “✓ text OK” to clear the flag"
+                            : "↑ Whisper auto-transcript — fix any errors by ear";
+    c.appendChild(h);
   } else {
     const tx=document.createElement("p"); tx.className="tx"; tx.textContent=l.transcript; c.appendChild(tx);
   }
@@ -243,6 +287,7 @@ function cardEl(l,t){
   if(l.memorial) badges+='<span class="mem-badge">MEMORIAL · V→Jackie</span>';
   if(l.used) badges+=`<span class="used-badge">USED · ${esc(l.category||"")}</span>`;
   else if(l.usable) badges+='<span class="usable-badge">USABLE</span>';
+  if(flagged) badges+='<span class="non-badge">⚠ LIKELY NONSENSE</span>';
   meta.innerHTML=esc(bits.join("  ·  "))+badges;
   c.appendChild(meta);
 
@@ -317,6 +362,16 @@ function cardEl(l,t){
   db.textContent=t.done?"✓ tagged":"mark tagged";
   db.onclick=()=>{ t.done=!t.done; save(); render(); };
   dr.appendChild(db);
+
+  // Manual nonsense override: flag a bad line the heuristic missed, or clear a false positive /
+  // a line you've just corrected. `undefined` = auto (heuristic decides); true/false = you decide.
+  const nb=document.createElement("button");
+  if(flagged){ nb.className="acc"; nb.textContent="✓ text OK"; nb.title="Clear the nonsense flag (you've fixed / reviewed it)";
+    nb.onclick=()=>{ t.nonsense=false; save(); render(); }; }
+  else { nb.className="bad"; nb.textContent="⚠ mark nonsense"; nb.title="Flag this transcript as garbage to fix later";
+    nb.onclick=()=>{ t.nonsense=true; save(); render(); }; }
+  dr.appendChild(nb);
+
   c.appendChild(dr);
   return c;
 }
@@ -332,6 +387,7 @@ document.getElementById("funtag").onchange=render;
 document.getElementById("fnew").onchange=render;
 document.getElementById("fgender").onchange=render;
 document.getElementById("fmem").onchange=render;
+document.getElementById("fnon").onchange=render;
 CATS.forEach(x=>document.getElementById("fcat").appendChild(new Option(x,x)));
 
 document.getElementById("next").onclick=()=>{
