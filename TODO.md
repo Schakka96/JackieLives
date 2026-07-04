@@ -83,6 +83,12 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
   PlayerStateMachine `SceneTier >= 4`; verified no false positives on holocalls/dialogue). Once Jackie
   excuses himself and walks off, the cruise is naturally gated (no companion → no Arch); the cruise gate
   also checks `jlInCutscene()` directly as a belt-and-suspenders. CET debug shows "In cutscene (tier>=4)".
+  - v0.92b: the departure is a **bark only** — `startLeaving` uses `speakJackieLine` (VO + subtitle), no
+    Branch tree, so **V never replies**. And `updateTalkPrompt` is now gated on `jlInCutscene()` so the
+    **dialogue picker / F-prompt can't pop up during a cutscene** (Jackie just barks his bye + walks off).
+- 🎙️ **Reunion voice lines = ANOTHER SESSION's job.** Do NOT wire real `sfx` into the reunion trees here.
+  Antonia is having a separate session mine the full 1280-line `tools/voice-tagger/lines.json` and pick
+  fitting lines for the phone call + first meeting. The reunion trees stay text-only until that lands.
 - 🏍️ **Cruise Arch never orphans** — teardown on mod reload/exit + full-dismiss (Follower-Jackster bug class).
 - 🧹 **Harden vehicle exclusion** — `getTalkTarget()` (voice path) also skips vehicles, like `lookedAtJackie()`.
 - Version -> 0.92; staging synced.

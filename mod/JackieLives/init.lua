@@ -1038,6 +1038,11 @@ local function updateTalkPrompt(dt)
   talkUI.checkT = (talkUI.checkT or 0) + dt
   if talkUI.checkT < 0.2 then return end
   talkUI.checkT = 0
+  if jlInCutscene() then           -- v0.92: no talk prompt / dialogue picker during a cutscene
+    if choiceBox.shown then hideJackieChoiceBox() end
+    talkUI.shown = false
+    return                         -- Jackie just barks his bye line (startLeaving) + walks off; V never replies
+  end
   if Branch.busy then return end   -- a conversation is running; don't fight / clear its choice box
   local j = lookedAtJackie()
   local within = false
