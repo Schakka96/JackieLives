@@ -450,6 +450,7 @@ function dismissAllJackies()   -- global (not local): 200-local cap; see note at
   JL.arrival.at, JL.arrival.phase, JL.arrival.placeAt, JL.arrival.moveAt, JL.arrival.deadline = nil, nil, nil, nil, nil
   JL.leaving.phase, JL.leaving.deadline = nil, nil   -- v0.33
   clearVehicleArrival()
+  pcall(function() if jlCruise and jlCruise.active then jlCruiseStop() end end)  -- v0.92: kill any cruise Arch
   JL.ui.status = "Dismissed all Jackies (" .. n .. " tracked by AMM)."
   log("Dismiss ALL: " .. n .. " Jackie(s).")
 end
@@ -465,7 +466,12 @@ local function getTalkTarget()
     local ts = Game.GetTargetingSystem()
     if ts then h = ts:GetLookAtObject(Game.GetPlayer(), false, false) end
   end)
-  if h then return h, "lookat" end
+  -- never treat a VEHICLE as a talk target (Jackie's Arch record contains "jackie"). See lookedAtJackie.
+  if h then
+    local isVeh = false
+    pcall(function() isVeh = tostring(h:GetClassName()):lower():find("vehicle") ~= nil end)
+    if not isVeh then return h, "lookat" end
+  end
   return Game.GetPlayer(), "player"
 end
 
@@ -4945,6 +4951,7 @@ registerForEvent("onShutdown", function()
   pcall(clearVehicleArrival)     -- v0.34: never orphan the arrival bike
   pcall(bikeTestDespawn)         -- v0.63: never orphan the bike-model test spawn
   pcall(clearDinnerWaypoint)     -- v0.41: never leave a dinner map pin stuck
+  pcall(function() if jlCruise and jlCruise.active then jlCruiseStop() end end)  -- v0.92: never orphan the cruise Arch
   pcall(dismissJackie)
 end)
 
