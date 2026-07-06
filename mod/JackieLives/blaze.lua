@@ -36,11 +36,11 @@ M.cfg = {
   -- TweakDB Character records to spawn. Leave as-is until you grab the real ones:
   -- spawn Smasher/Takemura ONCE via AMM's own menu, then click the overlay's
   -- "Grab ... record" button (it reads AMM's spawned list and logs the exact path).
-  smasherRecord = nil,   -- e.g. "Character.0x...."  (grab in-game)
-  goroRecord    = nil,   -- e.g. "Character.0x...."  (grab in-game)
-  -- Any hovering aerial vehicle (AV/VTOL). Grab a working one from AMM's vehicle
-  -- menu the same way, or paste a known Vehicle.* record here.
-  heliRecord    = nil,   -- e.g. "Vehicle.av_..."   (grab in-game)
+  smasherRecord = "Character.Smasher",   -- confirmed via AMM (Antonia 2026-07-07)
+  goroRecord    = "Character.Takemura",  -- confirmed via AMM (Antonia 2026-07-07)
+  -- Heli = a VEHICLE record (AMM menu name "Arasaka Helicopter"). It's NOT in AMM's NPC list,
+  -- so grab it with the overlay's "Grab heli record (look at it)" button, then it auto-saves.
+  heliRecord    = nil,   -- e.g. "Vehicle.av_..."   (look-at grab fills this)
 
   -- Spawn transforms {x,y,z,yaw}. Capture on Windows: stand on the spot, FACE the
   -- way the NPC/heli should look, click the matching "Capture ... spot" button.

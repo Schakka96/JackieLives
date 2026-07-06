@@ -213,19 +213,56 @@ end
 -- can be pasted into blaze.lua M.cfg for permanence). Global (not local) => 200-cap safe.
 function discoverBlazeRecord(nameFilter)
   local amm = getAMM()
-  if not amm or not amm.Spawn or not amm.Spawn.spawnedNPCs then log("AMM spawnedNPCs unavailable."); return nil end
+  if not amm or not amm.Spawn then log("AMM.Spawn unavailable."); return nil end
   nameFilter = tostring(nameFilter or ""):lower()
   local hit = nil
-  for _, sp in pairs(amm.Spawn.spawnedNPCs) do   -- keep the LAST match (newest spawn wins)
-    local nm   = tostring(sp.name or ""):lower()
-    local path = sp.path or sp.id
-    if path and (nameFilter == "" or nm:find(nameFilter, 1, true) or tostring(path):lower():find(nameFilter, 1, true)) then
-      hit = tostring(path)
+  local function scan(tbl)
+    if type(tbl) ~= "table" then return end
+    for _, sp in pairs(tbl) do                     -- keep the LAST match (newest spawn wins)
+      if type(sp) == "table" then
+        local nm   = tostring(sp.name or ""):lower()
+        local path = sp.path or sp.id
+        if path and (nameFilter == "" or nm:find(nameFilter, 1, true) or tostring(path):lower():find(nameFilter, 1, true)) then
+          hit = tostring(path)
+        end
+      end
     end
   end
-  if hit then log("Blaze DISCOVERED record for '" .. nameFilter .. "' = '" .. hit .. "'   <- paste into blaze.lua M.cfg")
-  else        log("Blaze: no AMM-spawned NPC matched '" .. nameFilter .. "'. Spawn it via AMM's menu first.") end
+  scan(amm.Spawn.spawnedNPCs)                       -- NPCs live here...
+  for k, v in pairs(amm.Spawn) do                   -- ...vehicles/props may live in a sibling "spawned*" table
+    if type(v) == "table" and tostring(k):lower():find("spawn", 1, true) then scan(v) end
+  end
+  if hit then log("Blaze DISCOVERED record for '" .. nameFilter .. "' = '" .. hit .. "'   <- saved")
+  else        log("Blaze: no AMM-spawned entity matched '" .. nameFilter .. "'. (Vehicles: use the look-at grab.)") end
   return hit
+end
+
+-- v0.97 BLAZE: grab the TweakDB record path off whatever V is LOOKING AT. Works for the heli
+-- (a vehicle — not in AMM's NPC table) and anything else with a crosshair hitbox. Reads
+-- GetRecordID() and reverses it to the readable "Vehicle.xxx"/"Character.xxx" string via CET's
+-- TDBID.ToStringDEBUG. Global (not local) => 200-cap safe.
+function discoverBlazeRecordFromTarget()
+  local pl = Game.GetPlayer(); if not pl then log("Blaze look-at grab: no player."); return nil end
+  local target
+  pcall(function()
+    local ts = Game.GetTargetingSystem()
+    if ts then target = ts:GetLookAtObject(pl, false, false) end
+  end)
+  if not target then log("Blaze look-at grab: not looking at anything — put your crosshair ON the heli, then click."); return nil end
+  local rec
+  pcall(function()
+    if target.GetRecordID then
+      local id = target:GetRecordID()
+      if TDBID and TDBID.ToStringDEBUG then rec = TDBID.ToStringDEBUG(id) end   -- hash -> readable path
+    end
+  end)
+  local cls = "?"; pcall(function() local c = target:GetClassName(); cls = tostring(c and (c.value or c)) end)
+  if rec and rec ~= "" then
+    log("Blaze look-at grab [" .. cls .. "] record = '" .. rec .. "'   <- saved")
+    return rec
+  end
+  log("Blaze look-at grab: entity [" .. cls .. "] gave no readable record — tell Claude this class name so we can adapt.")
+  return nil
 end
 
 -- v0.96 BLAZE: capture V's current transform as a plain {x,y,z,yaw} table for a set-piece
@@ -5040,7 +5077,8 @@ registerForEvent("onDraw", function()
     if ImGui.Button("Grab Smasher record") then local r = discoverBlazeRecord("smasher");  if r then Blaze.setRecord("smasher", r) end end
     ImGui.SameLine()
     if ImGui.Button("Grab Takemura record") then local r = discoverBlazeRecord("takemura"); if r then Blaze.setRecord("goro", r) end end
-    if ImGui.Button("Grab AV/heli record") then local r = discoverBlazeRecord("av");        if r then Blaze.setRecord("heli", r) end end
+    ImGui.TextWrapped("Heli is a VEHICLE (not in AMM's NPC list) -- aim your crosshair AT the floating heli, then:")
+    if ImGui.Button("Grab heli record (look at it)") then local r = discoverBlazeRecordFromTarget(); if r then Blaze.setRecord("heli", r) end end
     ImGui.TextWrapped("2. POSITIONS -- stand on each spot (FACE the right way) & capture:")
     if ImGui.Button("Capture Goro / elevator spot")  then Blaze.setPos("goro",    blazeCapture()) end
     if ImGui.Button("Capture Smasher / balcony spot") then Blaze.setPos("smasher", blazeCapture()) end
