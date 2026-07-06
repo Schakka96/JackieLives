@@ -1,11 +1,23 @@
-# SPIKE — find the Watson-unlock fact (and confirm the Johnny split)
+# SPIKE — find the Watson-unlock lever (and confirm the Johnny split)
 
-**Goal of this experiment:** on YOUR real game, capture exactly which quest facts flip when the
+**Goal of this experiment:** on YOUR real game, capture exactly which quest state flips when the
 Heist ends, so we can find the lever that opens the world (Watson lockdown) **and** confirm the
-Johnny/Relic facts we must never trigger. These names are undocumented, so we record them live.
+Johnny/Relic state we must never trigger. These names are undocumented, so we record them live.
 
 This is **observation only** — you play the *vanilla* Heist ending on a throwaway save and just
-watch the facts. We change nothing yet. Do it on a **backup/disposable save** anyway.
+watch. We change nothing yet. Do it on a **backup/disposable save** anyway.
+
+> **What changed in v2 (why the first run looked empty).** The first log only caught shallow
+> world-reaction facts (`wanted_level`, `ripperdocs_visited`, `delamain` calls) because it only
+> hooked `SetFact` — but the main quest (Heist tail, Watson lift, Jackie's death, Johnny/Relic)
+> advances through the **quest graph + journal**, which never pass through `SetFact`. So the tool
+> was structurally blind to the levers. **v2 adds two channels that see that layer:**
+> - **`journal`** — hooks `gameJournalManager:ChangeEntryState`, the real main-quest state machine
+>   (Heist → Succeeded, the Lockdown quest completing, Playing for Time going Active).
+> - **`poll`** — every ~0.75s it *reads* a curated suspect list of fact names and logs any that
+>   change, catching graph-set facts a write-hook can't see.
+>
+> You'll see three `src` tags in the log now: `journal`, `poll`, and the old `cname`/`str` writes.
 
 ---
 
@@ -19,8 +31,10 @@ watch the facts. We change nothing yet. Do it on a **backup/disposable save** an
 1. Copy the whole **`JLFactDump`** folder into:
    `Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\`
    (so you have `…\mods\JLFactDump\init.lua`).
-2. Launch the game. Press **`~`** to open the CET overlay. You should see a **"JL Fact Dump"**
-   window. It shows a "Hooks:" line and live counters.
+2. Launch the game. Press **`~`** to open the CET overlay. You should see a **"JL Fact Dump v2"**
+   window. It shows a "Hooks:" line and live counters (Writes / Journal / Poll changes / Markers).
+   For the run to be useful the Hooks line should list **`gameJournalManager:ChangeEntryState`** —
+   that's the journal channel. If it's missing, tell me and I'll adjust the class spelling.
 3. Open **Bindings** (in the CET overlay) → find the **Hotkeys** section → bind keys to:
    - `Marker: 1) The Heist complete`
    - `Marker: 2) V gets shot (No-Tell Motel)`
@@ -30,16 +44,21 @@ watch the facts. We change nothing yet. Do it on a **backup/disposable save** an
    without opening the overlay.
 
 ## Part 2 — VALIDATE before the costly run (2 minutes, do NOT skip)
-The logger tries to hook the game's fact system. On some builds that hook may not attach — we must
-confirm it captures BEFORE you spend a whole Heist run.
-1. In the JL Fact Dump window, click **"Self-test"**. Open
+The logger tries to hook two systems. On some builds a hook may not attach — confirm capture BEFORE
+you spend a whole Heist run.
+1. In the JL Fact Dump v2 window, click **"Self-test"**. Open
    `…\mods\JLFactDump\factdump.log` in a text editor → you should see a line ending
    `jlfd_selftest=…`. (This proves file logging works.)
-2. Now the real test: do any small in-game action that changes a fact — **loot an item, finish a
-   tiny objective, or skip time**. Re-open `factdump.log`. If you see **new `SET` lines** appear,
-   the hook works → continue to Part 3.
-3. **If NO new `SET` lines appear on a real change** (only your self-test line), this build can't
-   hook the native setter. → Use the **Fact Finder fallback** (Part 5) instead.
+2. Now the real test: do a small in-game action that moves the story a hair — **finish a tiny
+   objective / advance a quest step, loot something, or skip time**. Re-open `factdump.log`. The
+   **journal channel is the one that matters** — advancing an objective should add a line like
+   `SET  journal  <class>#<hash>=Active/1` (or `Succeeded/2`). Seeing **any** new `journal` line on
+   a real story action means the key channel works → continue to Part 3.
+   - `poll` lines only appear when a *watched* fact flips, so you may not see one from a random
+     action — that's fine. A `journal` line is the pass condition.
+3. **If NO `journal` line ever appears** (even after advancing an objective) and the Hooks line
+   doesn't list `ChangeEntryState`, the journal hook didn't attach → tell me the exact Hooks line
+   and I'll fix the class name, or fall back to **Fact Finder** (Part 5).
 
 ## Part 3 — Capture the Heist ending
 1. Load your **before-the-Heist-ends** save. (The logger wipes `factdump.log` fresh on each game
@@ -60,9 +79,16 @@ confirm it captures BEFORE you spend a whole Heist run.
    python3 tools/factdiff/factdiff.py /path/to/factdump.log
    ```
    (No argument = it reads `mod/JLFactDump/factdump.log`.)
-3. **Send me the output.** I'm looking for a fact that flips in the **"Heist complete"** segment
-   (the Watson lever) that is NOT part of the Johnny/Relic set — that decides whether we can open
-   the world without triggering the death/Johnny tail.
+3. **Send me the output** (or just the raw `factdump.log`). I'm looking for state that flips in the
+   **"Heist complete"** segment (the Watson lever) that is NOT part of the Johnny/Relic set — that
+   decides whether we can open the world without triggering the death/Johnny tail. With v2 the
+   strongest signal is the `journal` lines that go `Succeeded` right at marker 1, plus any `poll`
+   fact that moves there.
+
+> **Tip — grow the suspect list.** The `poll` channel only watches the names in the `SUSPECTS`
+> table at the top of `init.lua`. If you run **Fact Finder** alongside and spot a fact flipping at
+> the Heist end, add its name to that table and re-run — reading an unknown name is harmless (it
+> just returns 0), so over-seeding costs nothing.
 
 ## Part 5 — Fallback: Fact Finder (only if Part 2 step 3 failed)
 1. Install **Fact Finder** (Nexus mod 12735) — the maintained fact-watching tool.
