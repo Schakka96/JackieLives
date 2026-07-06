@@ -29,16 +29,20 @@ You're just **exporting files to JSON text and sending them to me.** I do the gr
    audio — we only want the quest-logic files.
    - search: **`q005`**   → the Heist quest + all its phases (the main target)
    - search: **`q101`**   → the Act-2 opener (so I can see what triggers it)
-   - search: **`lockdown`** → the internal Watson-lockdown quest (the thing that lifts the barrier)
+   - search: **`lockdown`** → _(optional)_ there is **no file literally named "lockdown"** (you'll only
+     see `.bk2`/`.ent`/meshes — unrelated). That's expected: the lockdown is welded to the Heist, so its
+     logic lives **inside the q005 phases above.** Skip this search — q005 covers it.
    > Tip: the file count should be modest — a handful of `.quest` and several `.questphase` each.
    > If a search returns hundreds of hits, you've got `.scene`/anim noise in there; filter to
    > `.quest`/`.questphase` only.
-4. **Export each extracted file to JSON.** In WolvenKit, extracted quest resources open as a JSON
-   view; use the file's right-click **Export → JSON** (or the "Convert to JSON" option). You want a
-   `.json` on disk for each `.quest`/`.questphase`.
-   > If your WolvenKit build's export menu looks different or won't produce JSON, **stop and send me
-   > one screenshot of the right-click menu** — I'll give you the exact click for your version
-   > (same escape-hatch as the .journal doc). Don't fight the tool.
+4. **Convert each extracted file to JSON.** ⚠️ **The "Export" button is greyed out for quest files —
+   that's expected.** "Export" is only for raw art (textures→PNG, meshes→GLB, audio→WAV). Quest files
+   use a different command: **right-click the file in the Project Explorer → "Convert to JSON"** (some
+   builds: *Convert to → JSON*). It drops a `.json` next to the file in the project folder on disk,
+   roughly `…\<Project>\source\archive\base\quest\…\*.json`. That `.json` is what you send.
+   > If you don't see "Convert to JSON" in the right-click menu, **send me one screenshot of that
+   > menu** — the wording moved between WolvenKit releases and I'll name the exact click. Don't fight
+   > the tool.
 5. **Send them to me.** Two easy ways, either is fine:
    - Drop all the `.json` files into `docs/research/questgraph/` in the repo and commit/push, **or**
    - Zip them and paste them into our chat.
