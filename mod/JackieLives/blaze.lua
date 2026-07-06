@@ -77,12 +77,14 @@ end
 function M.setRecord(slot, str)  -- slot: "smasher" | "goro" | "heli"
   M.cfg[slot .. "Record"] = str
   blog(slot .. " record set = " .. tostring(str))
+  if M.bound.persist then M.bound.persist() end   -- auto-write blaze_config.txt (no console copying)
 end
 
 function M.setPos(slot, p)       -- slot: "smasher" | "goro" | "heli"; p = {x,y,z,yaw}
   if not p then return end
   M.cfg[slot .. "Pos"] = p
   blog(string.format("%s pos set = { x=%.2f, y=%.2f, z=%.2f, yaw=%.1f }", slot, p.x, p.y, p.z, p.yaw or 0.0))
+  if M.bound.persist then M.bound.persist() end   -- auto-write blaze_config.txt (no console copying)
 end
 
 function M.hasPositions() local c = M.cfg; return (c.goroPos and c.smasherPos and c.heliPos) and true or false end

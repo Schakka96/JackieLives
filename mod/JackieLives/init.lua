@@ -239,6 +239,46 @@ function blazeCapture()
   return t
 end
 
+-- v0.96 BLAZE: persist the whole set-piece config to a plain-text file in the mod folder
+-- (CET sandboxes io to .../mods/JackieLives/), written as executable Lua assignments so it
+-- RE-LOADS itself on launch (see blazeLoadConfig) -- captures survive reloads/redeploys with
+-- ZERO console copying. Move this file to the Mac only if you want the values baked into
+-- blaze.lua for the shipped mod. Auto-called on every capture/grab. Global => 200-cap safe.
+BLAZE_CONFIG_FILE = "blaze_config.txt"
+function blazeDumpConfig()
+  local c = Blaze.cfg
+  local function q(s)   return s and string.format("%q", tostring(s)) or "nil" end
+  local function pos(p) return p and string.format("{ x = %.3f, y = %.3f, z = %.3f, yaw = %.1f }", p.x, p.y, p.z, p.yaw or 0.0) or "nil" end
+  local out = {
+    "-- Blaze of Glory captured config (AUTO-WRITTEN; re-loaded on launch). Move to Mac to bake into blaze.lua.",
+    "Blaze.cfg.smasherRecord = " .. q(c.smasherRecord),
+    "Blaze.cfg.goroRecord    = " .. q(c.goroRecord),
+    "Blaze.cfg.heliRecord    = " .. q(c.heliRecord),
+    "Blaze.cfg.smasherPos    = " .. pos(c.smasherPos),
+    "Blaze.cfg.goroPos       = " .. pos(c.goroPos),
+    "Blaze.cfg.heliPos       = " .. pos(c.heliPos),
+  }
+  pcall(function()
+    local f = io.open(BLAZE_CONFIG_FILE, "w")
+    if f then f:write(table.concat(out, "\n") .. "\n"); f:close() end
+  end)
+end
+
+-- v0.96 BLAZE: read blaze_config.txt (if present) and apply it to Blaze.cfg on load. The file
+-- IS Lua (Blaze.cfg.* = ...), so we just load+run it. Guarded: a missing file or a disabled
+-- load() simply no-ops (in-session captures still work). Global => 200-cap safe.
+function blazeLoadConfig()
+  local content
+  pcall(function() local f = io.open(BLAZE_CONFIG_FILE, "r"); if f then content = f:read("*a"); f:close() end end)
+  if not content or content == "" then return false end
+  local ok = pcall(function()
+    local chunk = (load and load(content)) or (loadstring and loadstring(content))
+    if chunk then chunk() end
+  end)
+  log(ok and "Blaze config loaded from blaze_config.txt." or "Blaze config present but could not be applied.")
+  return ok
+end
+
 local function resolveJackieRecord()
   if JL.jackie.record then return true end
 
@@ -4626,8 +4666,10 @@ registerForEvent("onInit", function()
       -- for real WolvenKit .journal calls / a real scene (docs/BLAZE_WOLVENKIT_OBJECTIVES.md).
       objective = function(text, dur) showOnscreenMsg(text, dur or 8.0) end,
       fade = function(caption) showOnscreenMsg(caption or "CUT TO BLACK", 8.0) end,
+      persist = function() blazeDumpConfig() end,   -- auto-write blaze_config.txt on every capture/grab
     }
   end)
+  pcall(blazeLoadConfig)   -- v0.96: re-apply captured records/positions from blaze_config.txt (survives reloads)
   log("Loaded v" .. tostring(Config.version or "?") .. ". AMM present: " .. tostring(JL.amm ~= nil))
 end)
 
@@ -4989,6 +5031,9 @@ registerForEvent("onDraw", function()
     if ImGui.Button("Start set-piece") then Blaze.start() end
     ImGui.SameLine()
     if ImGui.Button("Reset set-piece") then Blaze.reset(); JL.ui.status = "Blaze set-piece reset." end
+    ImGui.TextWrapped("Records + positions AUTO-SAVE to blaze_config.txt (in the mod folder) and reload " ..
+      "on launch -- no console copying, no re-capturing. Grab a Smasher record via AMM's menu FIRST, though.")
+    if ImGui.Button("Re-write blaze_config.txt now") then blazeDumpConfig(); JL.ui.status = "Wrote blaze_config.txt in the mod folder." end
   else
     ImGui.TextWrapped("Quiet Life: the main story plays out as normal, but Jackie secretly survived and " ..
       "returns as a living Heywood NPC. Less invasive -- but Jackie can only join SIDE jobs, never the " ..
