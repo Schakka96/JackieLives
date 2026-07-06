@@ -73,3 +73,7 @@ audioware/JackieLives/*.yml.bak
 
 # R console history (junk)
 .Rhistory
+
+# Extracted CDPR quest-graph JSON (datamining artifact, do not redistribute)
+docs/research/q005_raw/
+docs/research/q101_raw/

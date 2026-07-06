@@ -46,13 +46,29 @@ Scripted editing required (once the spike confirms facts):
   research warning). ⇒ Fact-flipping is the wrong tool. Superseded by the graph read below.
   `mod/JLFactDump/` + `tools/factdiff/factdiff.py` kept in git history (dev tools, not shipped/staged).
 
-- 🔬 **DE-RISK STEP 2 — WolvenKit `q005` graph read (THE go/no-go, awaiting Antonia's export).**
-  Antonia chose "keep all 3" (open world + no-Johnny + Jackie alive) → needs a WolvenKit edit of the
-  `q005` end-graph to reach world-unlock while pruning the death/q101 branch. **Open question:** is that
-  branch separable or welded to the completion node? The graph shows it directly. **Steps:
-  `docs/research/q005_graph_extract.md`** — Antonia exports `q005`/`q101`/`lockdown` `.quest`+`.questphase`
-  to JSON (no gameplay) and sends them; Claude reads the graph and returns the separability verdict + the
-  exact node edit, or an honest fallback. `- [ ] GRAPH:` export + send → decides feasibility before any edit.
+- ✅ **DE-RISK STEP 2 — WolvenKit `q005`/`q101` graph read: DONE 2026-07-06. Verdict: FEASIBLE, NO
+  graph surgery needed.** Full findings: **`docs/research/q005_graph_findings.md`**. Antonia exported
+  the whole q005+q101 quest tree to JSON; Claude traced the fact-setter/condition nodes across all 88
+  phases. Key results:
+  - **Watson barrier lever = a plain fact: `watson_prolog_unlock=1` (+ `watson_prolog_lock=0`).** Set in
+    vanilla inside `q101_j_01_concert` (Love Like Fire — hence the world opening then), and read by NO
+    quest condition → consumed by the placed prevention-area system. So the mod can set it directly and
+    Watson opens **without q101**.
+  - **q005 never installs Johnny/biochip; Jackie even survives the escape in-data**
+    (`q005_jackie_follower_escape=1`). Death + biochip-activation are the No-Tell tail → q101. q101 is
+    entered only by q005 completing; nothing force-starts it → a Blaze what-if never enters it.
+  - **Act-2 content toggles are also plain `_on` facts inside q101** (`apartment_on`,
+    `victor_vector_default_on`, `misty_default_on`, `mq033_misty_dialogue_on`,
+    `wat_lch_gunsmith_01_default_on`, `radio_on`, `tv_on`, `cyberspace_on`) → replicable from the mod;
+    "sparse world" shrinks to "which toggles we choose to set."
+  - ⇒ **Supersedes the "graph surgery" plan (Part 2 steps 1-3 above).** The route is mod-side: extend
+    the Blaze end (`blaze.lua`) to set `watson_prolog_unlock` etc. + never trigger q101 + wake-at-Vik's.
+  - Raw exports (`docs/research/q005_raw/`, `q101_raw/`) are gitignored (CDPR game data, ~25 MB).
+
+- 🔨 **NEXT — Blaze-end fact block (MVP, smallest slice first).** In `blaze.lua` at the escape/end,
+  set `watson_prolog_unlock=1` + `watson_prolog_lock=0` ONLY; confirm in-game on a throwaway save
+  (Watson barrier gone, no soft-lock, save/reload clean). THEN layer the content toggles one at a time,
+  then wire the wake-at-Vik's scene. `- [ ] BUILD:` watson-unlock slice + in-game confirm.
 
 - ✅ **BUILT 2026-07-06 — in-game STORY MODE toggle** (Quiet Life ↔ Blaze of Glory) in the "Jackie Lives"
   menu window (top of `onDraw`). Two buttons + wrapped descriptions; persisted via `JL.mode` +
