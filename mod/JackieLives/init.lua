@@ -4666,6 +4666,24 @@ registerForEvent("onInit", function()
       -- for real WolvenKit .journal calls / a real scene (docs/BLAZE_WOLVENKIT_OBJECTIVES.md).
       objective = function(text, dur) showOnscreenMsg(text, dur or 8.0) end,
       fade = function(caption) showOnscreenMsg(caption or "CUT TO BLACK", 8.0) end,
+      -- ALTERNATE-TIMELINE WORLD UNLOCK (v-next MVP slice): the Watson prologue barrier reads the
+      -- quest fact `watson_prolog_unlock` directly (proven in docs/research/q005_graph_findings.md —
+      -- set by NO quest condition, only the prevention-area system). Vanilla sets it deep inside q101
+      -- (Love Like Fire). Setting it here opens Watson WITHOUT entering q101 -> no Johnny, no biochip,
+      -- no death. THIS SLICE = Watson only (test it in isolation first). The Act-2 content toggles are
+      -- the NEXT slice, added here once Watson is confirmed in-game:
+      --   apartment_on, victor_vector_default_on, misty_default_on, mq033_misty_dialogue_on,
+      --   wat_lch_gunsmith_01_default_on, radio_on, tv_on, cyberspace_on  (all =1).
+      worldUnlock = function()
+        pcall(function()
+          local qs = Game.GetQuestsSystem()
+          if qs then
+            qs:SetFactStr("watson_prolog_unlock", 1)
+            qs:SetFactStr("watson_prolog_lock", 0)
+          end
+        end)
+        log("[Blaze] world unlock -> watson_prolog_unlock=1, watson_prolog_lock=0 (Watson barrier lifted)")
+      end,
       persist = function() blazeDumpConfig() end,   -- auto-write blaze_config.txt on every capture/grab
     }
   end)

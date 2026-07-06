@@ -192,6 +192,12 @@ function M.tick(now, dt)
     if not st.firedFade then
       st.firedFade = true
       blog("CUTSCENE TRIGGER: Smasher dead + V reached the VTOL.")
+      -- Alternate-timeline payoff: lift the Watson prologue lockdown so the world opens WITHOUT the
+      -- Heist's death/q101 tail (the placed barrier reads the fact `watson_prolog_unlock` directly;
+      -- vanilla only sets it deep inside q101 / Love Like Fire). Because this what-if never completes
+      -- the real q005, q101 never starts -> no Johnny, no biochip, no death. Idempotent; no-ops if
+      -- the helper isn't bound. See docs/research/q005_graph_findings.md.
+      if M.bound.worldUnlock then M.bound.worldUnlock() end
       if M.bound.fade then M.bound.fade("BLAZE OF GLORY — you and Jackie make the jump. (cut to black)") end
     end
     st.stage = "done"

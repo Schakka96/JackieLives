@@ -65,10 +65,20 @@ Scripted editing required (once the spike confirms facts):
     the Blaze end (`blaze.lua`) to set `watson_prolog_unlock` etc. + never trigger q101 + wake-at-Vik's.
   - Raw exports (`docs/research/q005_raw/`, `q101_raw/`) are gitignored (CDPR game data, ~25 MB).
 
-- 🔨 **NEXT — Blaze-end fact block (MVP, smallest slice first).** In `blaze.lua` at the escape/end,
-  set `watson_prolog_unlock=1` + `watson_prolog_lock=0` ONLY; confirm in-game on a throwaway save
-  (Watson barrier gone, no soft-lock, save/reload clean). THEN layer the content toggles one at a time,
-  then wire the wake-at-Vik's scene. `- [ ] BUILD:` watson-unlock slice + in-game confirm.
+- 🔨 **BUILT (awaiting Windows in-game confirm) — Blaze-end Watson-unlock slice.** Added a
+  `worldUnlock` helper to `init.lua`'s `Blaze.bind{}` block (sets `watson_prolog_unlock=1` +
+  `watson_prolog_lock=0` via `SetFactStr`, idempotent, pcall-guarded) and call it from `blaze.lua`'s
+  `cut` stage alongside the fade (the "you make the jump" beat). Pure-Lua module contract kept (blaze.lua
+  only calls `M.bound.worldUnlock`; no-ops if unbound). Only runs while `JL.mode=="blaze"` (the tick is
+  mode-gated) so Quiet Life is untouched. Both files `luac -p` clean; no new top-level locals (200-cap safe).
+  Staging NOT synced + `Config.version` left at 1.0 (WIP; sync on Windows at deploy, per v0.96).
+  - `- [ ] CONFIRM (Windows, throwaway save):` quickest test = CET console
+    `Game.GetQuestsSystem():SetFactStr("watson_prolog_unlock",1); Game.GetQuestsSystem():SetFactStr("watson_prolog_lock",0)`
+    → drive to a Watson boundary: barrier gone? no soft-lock? save/reload clean? Then run the real Blaze
+    set-piece to see it fire at the VTOL cut.
+  - `- [ ] NEXT slice:` once confirmed, add the Act-2 content toggles to `worldUnlock` (apartment_on,
+    victor_vector_default_on, misty_default_on, mq033_misty_dialogue_on, wat_lch_gunsmith_01_default_on,
+    radio_on, tv_on, cyberspace_on), one at a time; then wire the wake-at-Vik's scene.
 
 - ✅ **BUILT 2026-07-06 — in-game STORY MODE toggle** (Quiet Life ↔ Blaze of Glory) in the "Jackie Lives"
   menu window (top of `onDraw`). Two buttons + wrapped descriptions; persisted via `JL.mode` +
