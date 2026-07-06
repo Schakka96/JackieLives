@@ -5,7 +5,7 @@
       "id": "jl_shard_badlands_note",
       "label": "Jackie's note to V — Badlands hideout (Rocky Ridge garage)",
       "itemRecord": "Items.jl_shard_badlands_note",
-      "journalEntry": "onscreens/jackielives/jl_shard_badlands_note",
+      "journalEntry": "onscreens/emails/quests/minor_quest/new_shards/shards/jl_shard_badlands_note",
       "locKeys": {
         "title": "jl_shard_badlands_note_title",
         "desc": "jl_shard_badlands_note_desc",

@@ -40,4 +40,6 @@ Items.jl_shard_badlands_note_inline0:
   actionName: Read
   objectActionType: ObjectActionType.Item
   removeAfterUse: False           # keep the shard after reading (re-readable)
-  journalEntry: onscreens/jackielives/jl_shard_badlands_note
+  # MUST match the id-chain built inside the .journal (see SHARD_SHEET.md Step 2). Corrected 2026-07-07
+  # to the real wiki hierarchy (onscreens ▸ emails ▸ quests ▸ minor_quest ▸ new_shards ▸ shards ▸ leaf).
+  journalEntry: onscreens/emails/quests/minor_quest/new_shards/shards/jl_shard_badlands_note
