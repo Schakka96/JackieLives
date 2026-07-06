@@ -52,20 +52,28 @@ local POLL_INTERVAL = 0.75   -- seconds between suspect-list reads
 -- Seeded from docs/research (q005 body facts + Act-1->Act-2 transition guesses).
 -- ---------------------------------------------------------------------------
 local SUSPECTS = {
+  -- CONFIRMED REAL on Antonia's build (2026-07-06 run): these two are our core pair.
+  "q005_done",       -- [WATSON] Heist complete — flips 1 at the Heist end
+  "q101_started",    -- [AVOID]  Act-2/Johnny opener — must NOT be 1 in our route
+  -- Siblings of the confirmed convention (qNNN_started / qNNN_done) — capture ordering + earlier gates
+  "q005_started", "q101_done",
+  "q003_started", "q003_done",   -- The Pickup
+  "q004_started", "q004_done",   -- The Information
+  "q101_01_started", "q101_01_done", "q101_02_started", "q101_02_done",
   -- Jackie's body destination at the end of the Heist (gates the ofrenda/mourning)
   "q005_jackie_to_hospital",
   "q005_jackie_to_mama",
   "q005_jackie_stay_notell",
-  -- Heist / prologue progress + likely completion / lockdown levers (names are guesses — safe)
-  "q005_heist",
-  "q005_done", "q005_complete", "q005_finished", "q005_end",
+  -- Other Heist / prologue completion + lockdown lever guesses (names are guesses — safe, read=0 if absent)
+  "q005_heist", "q005_complete", "q005_finished", "q005_end",
   "prologue_done", "prologue_complete", "prologue_finished",
   "watson_lockdown", "watson_lockdown_lifted", "lockdown", "lockdown_lifted",
-  "lockdown_over", "district_watson_locked", "prevention_watson",
+  "lockdown_over", "lockdown_done", "lockdown_started",
+  "district_watson_locked", "prevention_watson",
   "act_01_done", "act_02", "act_02_start", "act2_start", "act_02_started",
   "open_world", "world_open", "fast_travel_unlocked",
-  -- Act-2 opener / Relic / Johnny — the AVOID set (we watch to confirm they DON'T flip pre-intercept)
-  "q101_resurrection", "q101", "q101_start", "q101_started",
+  -- Act-2 opener / Relic / Johnny — the rest of the AVOID set
+  "q101_resurrection", "q101", "q101_start",
   "q101_01_firestorm", "love_like_fire", "johnny_active", "johnny_intro",
   "relic_active", "biochip_installed", "chip_installed", "engram_active",
   -- Number-of-things counters we already saw move (baseline sanity)
