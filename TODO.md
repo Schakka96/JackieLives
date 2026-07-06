@@ -38,16 +38,21 @@ Scripted editing required (once the spike confirms facts):
   6. Content hand-off → mod-driven "wake at Vik's" reunion (reuse `reunionMeetTree`/AMM/`completeReunion()`) + NEW Jackie+Vik greeting lines.
   7. Part 1 mourning suppression still applies.
 
-- 🔬 **DE-RISK FIRST — the JLFactDump spike (built this session, awaiting Antonia's Windows run).**
-  New standalone CET mod **`mod/JLFactDump/`** logs every quest fact the game sets, with manual MARKER
-  hotkeys, to `factdump.log`. Mac-side **`tools/factdiff/factdiff.py`** segments the log by marker and
-  shortlists (a) Watson-unlock lever candidates vs (b) Johnny/Relic facts to never trigger. `factdiff.py`
-  smoke-tested OK on a synthetic log. **Steps: `mod/JLFactDump/SPIKE.md`.** Antonia captures 4 moments:
-  Heist complete, V gets shot, Love Like Fire (Johnny memories), Playing for Time. `- [ ] SPIKE:` run it,
-  send `factdiff.py` output → decides whether the Watson lever is separable from q101 before we build.
-  ⚠️ Uncertainty: unproven whether CET `Observe` can hook the native `QuestsSystem:SetFact`; SPIKE.md Part 2
-  validates capture on a real fact change BEFORE the costly Heist run, with Fact Finder (nexus 12735) as fallback.
-  ⚠️ Not in `staging/` — dev tool, not shipped.
+- ✅ **DE-RISK STEP 1 — JLFactDump fact-spike: CONCLUDED 2026-07-06 (verdict: no fact seam).**
+  Ran on Antonia's game. v2 added journal-hook + read-poll channels (poll worked; journal hook attached
+  but never fired on her build — deprioritised). Poll confirmed `q005_done` and `q101_started` are REAL
+  facts and **both already `1` by the No-Tell Motel**, moving as one block tied to the Heist ending.
+  **There is no standalone fact that separates "Watson unlocks" from "q101/Johnny starts"** (matches the
+  research warning). ⇒ Fact-flipping is the wrong tool. Superseded by the graph read below.
+  `mod/JLFactDump/` + `tools/factdiff/factdiff.py` kept in git history (dev tools, not shipped/staged).
+
+- 🔬 **DE-RISK STEP 2 — WolvenKit `q005` graph read (THE go/no-go, awaiting Antonia's export).**
+  Antonia chose "keep all 3" (open world + no-Johnny + Jackie alive) → needs a WolvenKit edit of the
+  `q005` end-graph to reach world-unlock while pruning the death/q101 branch. **Open question:** is that
+  branch separable or welded to the completion node? The graph shows it directly. **Steps:
+  `docs/research/q005_graph_extract.md`** — Antonia exports `q005`/`q101`/`lockdown` `.quest`+`.questphase`
+  to JSON (no gameplay) and sends them; Claude reads the graph and returns the separability verdict + the
+  exact node edit, or an honest fallback. `- [ ] GRAPH:` export + send → decides feasibility before any edit.
 
 - ✅ **BUILT 2026-07-06 — in-game STORY MODE toggle** (Quiet Life ↔ Blaze of Glory) in the "Jackie Lives"
   menu window (top of `onDraw`). Two buttons + wrapped descriptions; persisted via `JL.mode` +
