@@ -7,8 +7,19 @@ When a companion Jackie is tagging along and V approaches a **dialogue-heavy sto
 **~50 m** (tunable, `Config.presence.radius`), Jackie **says goodbye** — a short "got some biz to attend
 to, catch you later" line — and walks off (reuse `startLeaving`, same as the main-quest excuse). He does NOT
 bail during ordinary free-roam or around ambient/neutral NPCs. This layers on top of:
+
+### Designated goodbye line (Antonia 2026-07-06)
+Jackie's walk-away line here is **"Ahí luego, V."** — the same line now wired as the parting-line pool for
+the dismiss/send-away flow (`Config.dismiss.partingPool`). At least **3 clean in-game instances** exist.
+The presence gate calls the same `startLeaving`, so once the VO is scraped into the Audioware bank and its
+`jl_<decimal>` id lands in `partingPool`, this gate speaks it for free — no extra wiring. See
+`docs/VOICE_LINES.md` → "Bye". Until the clip is in the bank the pool entry runs `sfx=nil` (text+grunt fallback).
+
+This layers on top of:
 - **(3a) cutscene gate** — leave when a scripted scene/cinematic tier starts, and
-- **(3c) main-quest gate** — the existing `isMainQuestActive()` ban (v0.62).
+- **(3c) main-quest gate** — the existing `isMainQuestActive()` ban (v0.62). ✅ **CONFIRMED working
+  in-game (Antonia 2026-07-06):** during a real main quest Jackie says bye and walks off. The presence
+  gate (3b) reuses this same say-bye-and-leave path.
 
 Together they stop Jackie loitering in scripted Judy/Panam/Peralez/Hanako scenes.
 

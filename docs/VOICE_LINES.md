@@ -188,6 +188,7 @@ Recommendation: keep the current decline ("Why, what's the rush?") until a clean
 |---|---|
 | `jl_v_scene_jackie_default_f_1f459b1948494000` | "Alright, I'm out. Take care." |
 | `jl_jackie_q003_f_18c517f3d22ef000` | "Hasta luego." |
+| _sfx TODO — scrape on Windows_ | **"Ahí luego, V."** ← designated walk-away / dismiss line (Antonia 2026-07-06). At least **3 CLEAN in-game instances** exist; pick one, add to the Audioware bank, put its `jl_<decimal>` id into `Config.dismiss.partingPool` (2nd entry, currently `sfx=nil` → text+grunt fallback). Also the designated goodbye line for the story-NPC presence gate (`docs/story_npc_gate.md`). |
 
 ### What's food / drinks
 | sfx key | line |

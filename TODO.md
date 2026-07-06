@@ -251,7 +251,7 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
   Audio files stay OUT (CDPR copyright, gitignored) — users extract them with WolvenKit via Antonia's
   video tutorial. Subtitle-only still works if audio is absent (no crash). Version -> 0.91; staging synced.
 
-**v0.86 BIKE CRUISE folded into JackieLives 2026-07-02 (AWAITING IN-GAME TEST):**
+**v0.86 BIKE CRUISE folded into JackieLives 2026-07-02 (✅ CONFIRMED GOOD in-game — Antonia 2026-07-06):**
 - 🏍️ **Companion Jackie trails V on his Arch when V rides a BIKE.** Proven in JackieVehicleTest (AI
   follow + `useKinematic`), now integrated into the live mod as `Config.cruise` + globals
   `jlCruiseTick/Start/Stop/Follow` (cap-safe; reuse `spawnDynEntity`/`mountAsDriver`/`unmountDriver`/
@@ -266,7 +266,7 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
 - ⚠️ **Watch for:** orphaned Arch if teardown misses (cleaned each tick + on dismiss); mount fighting the
   follow role (gated, but verify); heavy traffic snags (kinematic routes around, may clip). Report results.
 
-**v0.85 REUNION RESTRUCTURE 2026-07-02 (AWAITING IN-GAME TEST — big flow change):**
+**v0.85 REUNION RESTRUCTURE 2026-07-02 (✅ CONFIRMED GOOD in-game — Antonia 2026-07-06):**
 - 🐛→✅ **BUG FIX: reunion call went to voicemail when Jackie was asleep/busy.** New persisted stage
   **AWAITING_CALL (3)** between SHARD and REUNITED: shard read → Jackie has NO world presence yet (no
   schedule) and **ALWAYS answers** V's call (bypasses the asleep/busy/"disconnected" gates). Reading the
@@ -545,10 +545,17 @@ retreat-follow). **Still open, grouped by area:**
       facing). Antonia will walk Jackie to each venue, use the in-game seat tuner to line him up, and send the
       printed coords; Claude bakes them into `Config.date.restaurants` / `Config.locations`. **Blocked on**
       the sit-coords-don't-persist bug below (the tuner's values must survive a reload to be usable).
-- [ ] **Sit coords don't persist on reload (old S4).** The in-game seat slider prints new coords to Lua but
-      the mod re-reads the OLD `Config` values on reload — a write-back step is missing. Add a write-back
-      (CET state file or a dedicated coords file) + make the re-seat path read the live value, so tuner
-      adjustments survive a reload and apply immediately. (Enables the manual fix above.)
+- [x] **Sit coords don't persist on reload (old S4). — FIXED v1.1 (2026-07-06, awaiting in-game test.)**
+      Root cause: the tuner only live-patched the in-memory `Config` + printed a line for a manual
+      config.lua edit; on reload config.lua was re-`require`d with its OLD baked coords, so every tuning
+      session was lost and Jackie re-sat at the stale spot. Fix: the **"Save seat (survives reload)"** button
+      (was "Print coords → config.lua") now write-backs each committed seat to `jl_seats.txt`
+      (`key|sitSeatIdx|x|y|z|yaw`), and `onInit` calls `jlLoadSeats()` to re-apply every override into the
+      live `Config` waypoint. The normal re-seat path already reads the live `Config` value
+      (`wpVec`/`wpVec4`/`loc.pos`), so a restored override takes effect immediately AND survives reloads.
+      New globals (200-locals-cap-safe): `jlApplySeatOverride` / `jlSaveSeats` / `jlPersistSeat` /
+      `jlLoadSeats`. **TEST:** tune a seat → Save → reload the save → he sits at the tuned spot, not the old
+      one. (This unblocks the manual sitting-position fix above.)
 - [ ] **Venue interiors break the game (old S3), e.g. Lizzie's.** He tries to path INTO an interior and it
       breaks. Keep every dinner seat at an exterior-reachable spot that never triggers an interior load; gate
       any must-be-interior venue out of the picker until proven stable.
