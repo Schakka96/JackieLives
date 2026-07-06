@@ -11,6 +11,85 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-06 — "SAVE JACKIE" alternate-timeline route + mourning removal (design + spike)
+Two Antonia asks this session. **Both are a deliberate pivot:** the existing quiet-life mod was built
+to NEVER touch the main story (`DESIGN.md` §2); this route DOES. It is a **separate "alternate-timeline"
+mode**, not a change to the working layer (which keeps working untouched). Full research +
+sources: **`docs/research/main_quest_freeze_research.md`**.
+
+**PART 1 — Remove the mourning (decided: A+B hybrid).** Mama Welles ofrenda, Misty/Vik/V grief lines.
+- **A — runtime fact-block the "Heroes" ofrenda quest** in CET (kills the wake set-piece, no WolvenKit).
+- **B — WolvenKit scene-node edits** for Vik's clinic + Misty's Esoterica standalone grief lines.
+- **Defer** scattered one-off V mentions (Tier 3, per DESIGN §10.3).
+- ⚠️ Open decision: blocking Heroes removes its rewards (La Chingona Dorada pistols) — decide how/if V gets them.
+
+**PART 2 — "Save Jackie" route (decided: intercept the death-tail).** Antonia authors the set-piece
+(run back in → kill Smasher → roof → kill Takemura → helicopter with a LIVING Jackie → fade → wake at Vik's).
+Mod does the state plumbing. **Research verdict:** literal "never complete the Heist + Watson open" is NOT
+cleanly achievable (lockdown welded to Heist completion; only savegame precedent) AND gives a sparse
+Watson-only world. So per Antonia's own fallback → **let the Heist reach its world-unlock, replace the
+cab-death tail with the set-piece, and hold `q101_resurrection` (Johnny/biochip) from ever starting.**
+Scripted editing required (once the spike confirms facts):
+  1. WolvenKit `.questphase` edit on `q005_heist` — cut/redirect the cab-death tail node.
+  2. Decoupled Watson unlock — complete/neutralize the internal "Lockdown" quest / its prevention areas.
+  3. Hold `q101_resurrection` from starting (trigger-gate or questphase gate) → no Johnny, no terminal condition.
+  4. Journal untrack/park the frozen main quest (`gameJournalManager.UntrackEntry()` + re-track preventer, cf. nexus 6328).
+  5. Disable the systemic 2.2 "passenger Johnny" at source (only Johnny surface not gated by q101).
+  6. Content hand-off → mod-driven "wake at Vik's" reunion (reuse `reunionMeetTree`/AMM/`completeReunion()`) + NEW Jackie+Vik greeting lines.
+  7. Part 1 mourning suppression still applies.
+
+- 🔬 **DE-RISK FIRST — the JLFactDump spike (built this session, awaiting Antonia's Windows run).**
+  New standalone CET mod **`mod/JLFactDump/`** logs every quest fact the game sets, with manual MARKER
+  hotkeys, to `factdump.log`. Mac-side **`tools/factdiff/factdiff.py`** segments the log by marker and
+  shortlists (a) Watson-unlock lever candidates vs (b) Johnny/Relic facts to never trigger. `factdiff.py`
+  smoke-tested OK on a synthetic log. **Steps: `mod/JLFactDump/SPIKE.md`.** Antonia captures 4 moments:
+  Heist complete, V gets shot, Love Like Fire (Johnny memories), Playing for Time. `- [ ] SPIKE:` run it,
+  send `factdiff.py` output → decides whether the Watson lever is separable from q101 before we build.
+  ⚠️ Uncertainty: unproven whether CET `Observe` can hook the native `QuestsSystem:SetFact`; SPIKE.md Part 2
+  validates capture on a real fact change BEFORE the costly Heist run, with Fact Finder (nexus 12735) as fallback.
+  ⚠️ Not in `staging/` — dev tool, not shipped.
+
+- ✅ **BUILT 2026-07-06 — in-game STORY MODE toggle** (Quiet Life ↔ Blaze of Glory) in the "Jackie Lives"
+  menu window (top of `onDraw`). Two buttons + wrapped descriptions; persisted via `JL.mode` +
+  `jlSetMode()` (extends `jlSaveSettings`/`jlLoadSettings` for a string setting) and mirrored to the
+  **`jl_mode_blaze` quest fact** so a future WolvenKit `q005_heist` questphase edit gates the Heist
+  reroute on it. Blaze machinery is WIP — the toggle is the scaffold + the mode selector. 200-local-cap
+  safe (field on `JL`, globals only). luajit parse-checked OK. **Decision baked: ONE mod, not two** —
+  Blaze `.archive` edits self-gate on the fact, so Quiet Life players get vanilla story. Staging NOT
+  synced (Mac session; sync on Windows). `Config.version` left at 1.0 (no deploy).
+- ✅ **BUILT 2026-07-06 (v0.96) — Blaze "kill Smasher & Takemura → escape by VTOL" SET-PIECE (MVP-A).**
+  New self-contained module **`blaze.lua`** (global `Blaze`, 200-cap safe, retrieval.lua pattern). Runs
+  only while `JL.mode == "blaze"`. State machine: spawn Goro (elevator) + Smasher (balcony, hostile) + a
+  hovering AV at 3 captured transforms → poll **Smasher's handle for death** → when dead, unlock "reach
+  the VTOL" → V within `reachRadius` (6 m) of the heli → **cut-to-black** (caption stand-in). Reuses the
+  proven `spawnDynEntity` DES spawn (bike/Jackie path) for NPCs *and* the heli. init.lua coupling = 4
+  one-liners (require, `Blaze.bind{}` in onInit, tick in onUpdate, UI block in onDraw) + 2 globals
+  (`discoverBlazeRecord`, `blazeCapture`). Overlay buttons: grab records from AMM's spawned list, capture
+  the 3 spots, Start/Reset. Both files luajit parse-checked OK. `Config.version` left at 1.0 (no deploy).
+  - **VENUE DECISION baked (fixes the lockdown/blocked-stairs problem):** run it as a STANDALONE what-if
+    in the freely-accessible Konpeki suite (not inside the live Heist quest), and stage the escape at the
+    apartment **balcony** (heli hovers off the edge) instead of the roof — no roof stairs needed.
+  - `- [ ] TEST (Windows):` fill `blaze.lua` M.cfg — grab Smasher/Takemura/AV records via AMM + capture
+    the 3 positions; Start; confirm hostiles fight, Smasher-death flips the objective, reaching the heli
+    fires the cut. Watch: does the AV hover or fall? (if it drifts, add a per-tick hover-lock re-teleport.)
+    Are the DES-spawned bosses actually hostile/combat-active? (may need a combat-stim nudge, not just attitude.)
+  - **Objectives are a PLACEHOLDER** (native message band). Real WolvenKit `.journal` objectives = MVP-B,
+    hand-authored by Antonia per **`docs/BLAZE_WOLVENKIT_OBJECTIVES.md`**; swap is 2 lines in init.lua's
+    `Blaze.bind` (`objective`/`fade` → `JournalManager:ChangeEntryState`). Cut-to-black is also a stand-in
+    (real cinematic scene = Tier 3 / WolvenKit).
+  - **NEXT — "sell the Relic" chain (design, not yet built):** chip still in Jackie's suitcase → stash at
+    Vik's (place a briefcase prop + objective). Then beats, all "go to accessible place → talk/fight":
+    (1) **Dex in the Afterlife wants to betray you** — spawn Dex+guards hostile, Jackie fights beside you,
+    kill him together (mirrors the canon No-Tell Motel betrayal, pre-empted). (2) **Find a buyer** — best
+    lore hook **Evelyn Parker** (she originally tried to cut Dex out); runners-up Mr. Hands / Rogue.
+    Optional adds: authenticate the chip at a netrunner (Nix), an Arasaka ambush en route, a buyer's-test
+    job, a final double-cross fight, and a sell/destroy/keep choice. No Johnny/illness clock in this
+    timeline → it's a clean crime-caper cash-out, all spawn-and-fight (easy). To be written into DESIGN.md.
+- ✅ **BUILT 2026-07-06 — mourning suppression worklist:** `docs/mourning_suppression.md` (the A+B edit
+  list, owner split, datamining checklist to run alongside the spike, rewards decision flagged).
+  `- [ ] BLOCKED:` #1 Heroes fact-block needs the quest ID (datamine on Windows); #3/#4 Vik/Misty scene
+  edits need scene paths. Mourning is a Quiet-Life need (Blaze auto-suppresses it).
+
 ### 🔊 Added 2026-07-04 — ALL 1200 voice lines now playable (bank rebuilt)
 - **`tools/rebuild_bank_yml.py` regenerates the Audioware manifest from the REAL extracted `.Wav`
   files** (no renaming). Antonia ran it on Windows and copied the output to
@@ -295,11 +374,18 @@ tree is in lockstep). Only one deferred bug remains open (persist-across-save) p
     mod's existing position-capture so the loop is **stand at the spot in-game → hotkey → coord saved to the
     shard registry → it spawns there forever.** It's a runtime marker, not a baked Codex shard — fine for
     "walk up and read Jackie's note." Persistence uses the same respawn-on-load machinery Jackie already has.
-  - 🟡 **PLACING — Route 2: "real" baked shard (TweakXL + ArchiveXL + World Builder).** For a proper Codex
-    shard later. Item/action records = TweakXL YAML + localization JSON (Claude authors). The `.journal`
-    onscreen resource = the one genuinely-binary piece (make one in WolvenKit, clone per shard). Placement =
-    **World Builder** (in-game CET tool, drop the `shard_case_container.ent` visually) → export JSON → a
-    WolvenKit import script bakes the `.streamingsector`. More moving parts; not needed for MVP.
+  - ✅ **PLACING — Route 2: "real" baked shard — CHOSEN (Antonia 2026-07-06).** A proper, readable,
+    pick-up-able shard. **Division of labor is locked:** Claude authors ALL text (item record + action
+    record = TweakXL YAML, the shard's actual wording = localization JSON, the ArchiveXL `.xl` +
+    `.streamingsector` placement from Antonia's captured coords, the tracker). **Antonia does exactly ONE
+    WolvenKit action:** create the binary `.journal` onscreen resource (one-time; ~30 s clone per extra
+    shard from Claude-supplied values). **Full beginner step-by-step + the Claude/Antonia split are in
+    `docs/research/shard_placement_research.md` (see the "✅ DECISION" section at the bottom).** Route 1
+    (CET spawn) stays as the zero-WolvenKit fallback if the `.journal` step proves annoying.
+    - `- [ ] BUILD (Claude):` shard tracker + `shards.json`, then the TweakXL item/action records +
+      localization JSON + a filled-in `.journal` "shard sheet" (the 4 values Antonia pastes).
+    - `- [ ] ANTONIA:` capture the shard coord in-game (position-capture hotkey) → send Claude; then do the
+      one WolvenKit `.journal` action per the doc.
   - ❌ **NOT worth building:** a tool that cracks open the `.archive` binary and injects files = reimplementing
     WolvenKit's serializer. Route 1 sidesteps this entirely. (Ref: **Missing Persons Read Shard Add-On**,
     Nexus 9018, for the shard-open pattern — study, don't depend.)
@@ -505,10 +591,10 @@ robust, or revert to foot (`Config.call.arrivalMethod`).
       pre-v0.85 spawn method, not the record; the v0.85 appearance-lockable `spawnDynEntity` spawns his
       Arch reliably. Locked into ALL vehicle flows (`Config.vehicle`/`.cruise`/`.bikeReturn.bikeRecord`).
       The B1/B2/B3 "Bike model test" harness is kept only as a fallback for a future livery regression.
-- [ ] **Main-quest ban (v0.62):** confirm "Main quest detected" flips **YES** during a real main quest and
-      stays **no** on side jobs / free-roam; that a companion Jackie then excuses himself + walks off; and
-      summon/call decline. If the journal reflection never flips, revisit `isMainQuestActive()` (API/enum).
-      Optional: give the main-quest exit a DEDICATED VO line (`Config.mainQuestExit`, currently the send-off line).
+- [x] **Main-quest ban (v0.62): ✅ CONFIRMED in-game (Antonia 2026-07-06)** — during a real main quest
+      Jackie says bye and walks off. `isMainQuestActive()` reflection works.
+      Optional (still open): give the main-quest exit a DEDICATED VO line (`Config.mainQuestExit`, currently
+      the send-off line). Candidate = **"Ahí luego, V."** once its VO is scraped into the bank.
 - [ ] **Safety dismount (v0.62):** on a bike arrival where he used to stay seated, confirm the
       `still mounted -> safety dismount` log fires and he ends up off the bike (no phantom get-off on foot).
 - [x] Housekeeping: `List_of_companion_issues.md` resolved + merged into this file and deleted (v0.83).

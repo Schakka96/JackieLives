@@ -176,3 +176,44 @@ existing affectionate voice lines. Out of scope until the living-NPC + voice sys
 Antonia is willing to invest tens of hours in hand-crafted state management + quest patching, with voice
 cataloguing as a major part. That's the right expectation — the engineering is mostly **wiring + content**,
 and the hardest single piece is the realistic city-movement system (§10.1), which we stage last.
+
+## 11. "Blaze of Glory" — alternate-timeline route
+
+A **separate mode** (in-game toggle, `JL.mode == "blaze"`, mirrored to the `jl_mode_blaze` fact). The
+quiet-life layer above is left **completely untouched**; Blaze is the opposite premise: Jackie *never gets
+hurt* — you and he fight out of the Heist and cash out as legends. Because the chip **never goes into V's
+head**, there is **no Johnny, no Relic sickness, no death clock** — Blaze becomes a clean **crime-caper
+cash-out**, which is also why it's technically light: it's almost all spawn-NPC + fight + move-between-
+accessible-locations. Most invasive to the main plot, so it's chosen **before the Heist**.
+
+### 11.1 The Heist set-piece (kill Smasher & Takemura, escape by VTOL) — MVP-A, BUILT
+Implemented in `blaze.lua` (see `TODO.md` v0.96). Spawn **Goro at the elevator** + **Adam Smasher on the
+balcony** (both hostile) + a **hovering AV** just off the balcony; poll **Smasher's handle for death**;
+when he's dead and V reaches the VTOL → **cut to black**. Objectives shown top-of-screen.
+
+- **Venue decision (fixes the lockdown problem):** the real Heist lockdown blocks the roof stairs and its
+  streaming/collisions fight you. So we do **not** run this inside the live Heist quest. It's a
+  **standalone what-if** in the freely-accessible Konpeki suite, and the escape is staged at the
+  **apartment balcony** (heli hovers off the edge) — **no roof, no blocked stairs.**
+- **Placeholders:** objectives are the native message band for now (real WolvenKit `.journal` objectives =
+  MVP-B, `docs/BLAZE_WOLVENKIT_OBJECTIVES.md`); the "cut to black" is a caption stand-in (real cinematic
+  scene is Tier 3 / WolvenKit).
+
+### 11.2 "Sell the Relic" chain (design — next to build)
+The chip is still in **Jackie's suitcase**. Beats, all "go to an accessible place → talk / fight →
+objective flips" (so all easy, all spawn-and-fight):
+
+1. **Stash the case** — deposit at **Vik's clinic** (accessible, lore-perfect). Place a briefcase prop +
+   objective "The Relic is safe... for now." (Safer alt if we want it hidden from Arasaka: Misty's back
+   room or Jackie's stash.)
+2. **Dex betrays you — kill him together.** Meet **Dex in the Afterlife**; he means to double-cross you
+   (mirrors the canon No-Tell Motel betrayal, pre-empted). Spawn Dex + bodyguards hostile; **Jackie fights
+   beside you** (AMM follower); kill Dex.
+3. **Find a buyer — "someone crazy enough."** Best lore hook: **Evelyn Parker** (she originally tried to
+   cut Dex out and sell the Relic elsewhere — in this timeline she's alive and is exactly that contact).
+   Runners-up: **Mr. Hands** (Dogtown), **Rogue** (Afterlife).
+
+Optional extra beats (same cheap pattern): **authenticate the chip** at a netrunner (Nix / a Voodoo Boys
+contact); an **Arasaka ambush** en route to the meet; a **buyer's-test** good-faith job; a **final
+double-cross** fight; and a **sell / destroy / keep** choice at the end (pure "what kind of crew are you"
+— no illness clock forcing anything).
