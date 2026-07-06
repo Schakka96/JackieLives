@@ -5049,6 +5049,12 @@ registerForEvent("onDraw", function()
     if ImGui.Button("Start set-piece") then Blaze.start() end
     ImGui.SameLine()
     if ImGui.Button("Reset set-piece") then Blaze.reset(); JL.ui.status = "Blaze set-piece reset." end
+    ImGui.TextWrapped("TEST: fire the world-unlock directly (same as the set-piece's ending) -- lifts the " ..
+      "Watson barrier via watson_prolog_unlock. Use on a THROWAWAY save.")
+    if ImGui.Button("TEST: World unlock now (Watson barrier)") then
+      local ok = Blaze.testWorldUnlock()
+      JL.ui.status = ok and "Fired world unlock (watson_prolog_unlock=1, watson_prolog_lock=0)." or "World unlock helper not bound."
+    end
     ImGui.TextWrapped("Records + positions AUTO-SAVE to blaze_config.txt (in the mod folder) and reload " ..
       "on launch -- no console copying, no re-capturing. Grab a Smasher record via AMM's menu FIRST, though.")
     if ImGui.Button("Re-write blaze_config.txt now") then blazeDumpConfig(); JL.ui.status = "Wrote blaze_config.txt in the mod folder." end

@@ -143,6 +143,14 @@ function M.status()
          "   goroDead=" .. tostring(M.st.goroDead)
 end
 
+-- Fire the alternate-timeline world unlock on demand (overlay TEST button), so we can validate the
+-- fact lever without running the whole set-piece. Same helper the `cut` stage calls. No-op if unbound.
+function M.testWorldUnlock()
+  if M.bound.worldUnlock then M.bound.worldUnlock(); return true end
+  blog("worldUnlock helper not bound.")
+  return false
+end
+
 -- ---------------------------------------------------------------------------
 -- Per-frame state machine (stepped from init.lua onUpdate while mode == "blaze")
 -- ---------------------------------------------------------------------------
