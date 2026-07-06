@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.0"
+Config.version = "1.1"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -186,6 +186,17 @@ Config.dismiss = {
   choiceText      = "Head home, Jackie. I got this from here.",  -- silent V line in the choice box
   partingSfx      = "jl_1155727714874494976",   -- Jackie VO: "Time we were on our way, mamita."
   partingText     = "Time we were on our way, mamita.",
+  -- v0.94 (Antonia 2026-07-06): Jackie's parting line is now a POOL — startLeaving() picks one at random
+  -- each dismiss (partingText/partingSfx above stay as the safe fallback if the pool is empty). Antonia's
+  -- signature walk-away line "Ahí luego, V." goes here; she says at least 3 CLEAN in-game instances exist.
+  -- ⚠️ TODO(Windows/Audioware): scrape those 3 clips → add to audioware/JackieLives/JackieLives.yml → put
+  -- the clip's jl_ id in `sfx` below. Until then sfx=nil = text+grunt fallback (does NOT break the bank;
+  -- never invent a jl_ id — a missing .wav makes Audioware reject the WHOLE bank). Same line is the
+  -- designated goodbye for the #3b story-NPC gate (see docs/story_npc_gate.md).
+  partingPool     = {
+    { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" }, -- voiced (existing)
+    { text = "Ahí luego, V.",                    sfx = nil }, -- TODO sfx: 3 clean instances exist (scrape → bank)
+  },
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now

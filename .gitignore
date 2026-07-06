@@ -70,3 +70,6 @@ audioware/JackieLives/transcripts.txt
 
 # rebuild_bank_yml.py backup of the previous manifest
 audioware/JackieLives/*.yml.bak
+
+# R console history (junk)
+.Rhistory
