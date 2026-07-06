@@ -1,0 +1,25 @@
+{
+  "root": {
+    "$type": "localizationPersistenceOnScreenEntries",
+    "entries": [
+      {
+        "femaleVariant": "Shard — Jackie Welles",
+        "maleVariant": "Shard — Jackie Welles",
+        "primaryKey": 0,
+        "secondaryKey": "jl_shard_badlands_note_title"
+      },
+      {
+        "femaleVariant": "If you're readin' this, V, then the doc kept his word and you made it out here. It's me. I'm alive.\n\nVik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.\n\nMama Welles was so mad when she heard. Think she'd kill me if I went back runnin' the streets again — and this time, maybe she's right. I'm done with the merc life, V. For real. But I couldn't let you go on thinkin' you buried me.\n\nGive me a call when you read this. — Jackie",
+        "maleVariant": "If you're readin' this, V, then the doc kept his word and you made it out here. It's me. I'm alive.\n\nVik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.\n\nMama Welles was so mad when she heard. Think she'd kill me if I went back runnin' the streets again — and this time, maybe she's right. I'm done with the merc life, V. For real. But I couldn't let you go on thinkin' you buried me.\n\nGive me a call when you read this. — Jackie",
+        "primaryKey": 0,
+        "secondaryKey": "jl_shard_badlands_note_desc"
+      },
+      {
+        "femaleVariant": "Shard: Jackie Welles",
+        "maleVariant": "Shard: Jackie Welles",
+        "primaryKey": 0,
+        "secondaryKey": "jl_shard_badlands_note_name"
+      }
+    ]
+  }
+}

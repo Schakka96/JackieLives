@@ -1,0 +1,28 @@
+{
+  "_comment": "Tracker / single source of truth for JackieLives custom readable shards (Route 2). Update the status + lastUpdated whenever a shard is authored, placed, or verified in-game.",
+  "shards": [
+    {
+      "id": "jl_shard_badlands_note",
+      "label": "Jackie's note to V — Badlands hideout (Rocky Ridge garage)",
+      "itemRecord": "Items.jl_shard_badlands_note",
+      "journalEntry": "onscreens/jackielives/jl_shard_badlands_note",
+      "locKeys": {
+        "title": "jl_shard_badlands_note_title",
+        "desc": "jl_shard_badlands_note_desc",
+        "name": "jl_shard_badlands_note_name"
+      },
+      "title": "Shard — Jackie Welles",
+      "pos": { "x": 2575.852, "y": 0.291, "z": 80.871 },
+      "yaw": 129.8,
+      "posSource": "retrieval.lua hideoutPos (Rocky Ridge) — captured in-game",
+      "status": {
+        "textAuthored": true,
+        "journalBuilt": false,
+        "displaysCorrectly": false,
+        "placedInWorld": false
+      },
+      "lastUpdated": "2026-07-06",
+      "notes": "TESTER for the Route 2 pipeline. Milestone 1 = item reads correctly (spawn via console). Milestone 2 = physical placement at pos via World Builder / streamingsector."
+    }
+  ]
+}

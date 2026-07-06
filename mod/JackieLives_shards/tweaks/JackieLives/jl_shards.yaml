@@ -1,0 +1,43 @@
+# TweakXL — JackieLives custom readable shards
+# ---------------------------------------------------------------------------
+# TESTER: "Jackie's note to V at the Badlands hideout" (Rocky Ridge garage).
+# This is PLAIN TEXT authored by Claude. It loads LOOSE (no WolvenKit) once
+# this file sits at:  <game>\r6\tweaks\JackieLives\jl_shards.yaml
+#
+# It defines the shard ITEM (what sits in V's inventory) and its READ ACTION
+# (what shows on screen). The read action points at a journal "onscreen" entry
+# that Antonia creates in WolvenKit (see SHARD_SHEET.md). The words on the
+# shard live in the localization JSON (jl_shards.json), not here.
+#
+# Schema per redmodding wiki "Creating custom shards".
+# ---------------------------------------------------------------------------
+
+# --- The shard item -------------------------------------------------------
+Items.jl_shard_badlands_note:
+  $type: gamedataItem_Record
+  itemType: ItemType.Gen_Readable
+  # The read/pick-up behaviour is the action record below:
+  itemSecondaryAction: Items.jl_shard_badlands_note_inline0
+  # entityName = the in-hand prop mesh. w_data_shard is the generic shard prop;
+  # if it ever shows as an empty hand the item still WORKS (read text is what
+  # matters) — swap this later if we want Jackie's specific shard look.
+  entityName: w_data_shard
+  tags:
+    - Readable
+    - Shard
+    - SkipActivityLog     # don't spam the activity log when picked up
+    - HideInBackpackUI    # shards live in the Shards tab, not the backpack
+    - HideAtVendor
+  # Inventory-list name (cosmetic). Uses the same localization file (secondaryKey).
+  displayName: LocKey#jl_shard_badlands_note_name
+
+# --- The READ action (inline0) -------------------------------------------
+# actionName Read + journalEntry = "when V reads this shard, open THIS onscreen
+# entry". The journalEntry path MUST match the nested id path inside the
+# .journal Antonia builds in WolvenKit. Keep it EXACTLY in sync with SHARD_SHEET.md.
+Items.jl_shard_badlands_note_inline0:
+  $type: gamedataItemAction_Record
+  actionName: Read
+  objectActionType: ObjectActionType.Item
+  removeAfterUse: False           # keep the shard after reading (re-readable)
+  journalEntry: onscreens/jackielives/jl_shard_badlands_note
