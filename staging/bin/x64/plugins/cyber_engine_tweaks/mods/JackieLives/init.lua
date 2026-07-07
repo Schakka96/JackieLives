@@ -131,6 +131,7 @@ local JL = {
   -- Jackie doesn't collide with the ofrenda / grief calls. SAFE-BY-DEFAULT (off until confirmed) —
   -- persisted via JL_SETTINGS_KEYS; the actual fact list lives in JL_MOURNING_FACTS (below).
   mourningSuppress = false,
+  keepBarOpen      = false,   -- v0.97b: force El Coyote / Mama's bar open (compensates for blocking sq018)
   mourningTimer    = 0,
   timer  = 0,
   clock  = 0,        -- accumulated game seconds (for talk cooldowns)
@@ -4267,7 +4268,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "modeInit" }  -- persisted JL.* boolean flags (modeInit v1.2: has the first-load gender lock happened?)
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeInit" }  -- persisted JL.* boolean flags (modeInit v1.2: has the first-load gender lock happened?)
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
@@ -4399,30 +4400,47 @@ JL_MOURNING_PROTECTED = {
 -- the machinery below needs no other change. Rows marked CONFIRM are best-guess
 -- from the binaries and must be validated (JSON or in-game) before enabling.
 JL_MOURNING_FACTS = {
-  -- "Heroes" ofrenda side quest (sq018). Pinning sq018_active to 0 stops the whole
-  -- ofrenda arming without touching the body-choice above. Heroes is a narrative
-  -- dead-end (not a prerequisite), so pinning it is low-risk.
-  { name = "sq018_active",                  hold = 0, note = "Heroes/ofrenda quest arm flag" },        -- CONFIRM value
-  { name = "sq018_01_funeral_preparations", hold = 0, note = "ofrenda prep phase" },                   -- CONFIRM value
-  -- Grief holocalls (Mama Welles / Misty phone their condolences). Fact NAMES are
-  -- guesses — the holocall questphases didn't expose a clean *_on token via strings.
-  -- { name = "mama_welles_holocall_on",    hold = 0, note = "Mama grief call" },                       -- CONFIRM name+value
-  -- { name = "misty_holocall_on",          hold = 0, note = "Misty grief call" },                      -- CONFIRM name+value
-  -- World-bark grief (Misty at Esoterica / Mama at El Coyote switch to mourning
-  -- state). Tier-3 / ambient — leave COMMENTED until confirmed safe; some of these
-  -- may be desirable to keep (a somber-but-alive Misty is not lore-breaking).
-  -- { name = "misty_default_grief_on",     hold = 0, note = "Misty ambient grief state" },             -- CONFIRM name+value
+  -- "Heroes" ofrenda side quest (sq018). CONFIRMED from sq018_01_mama_welles.questphase.json:
+  -- the ofrenda phase gates on `sq018_active > 0`, so pinning it to 0 blocks the whole ofrenda
+  -- without touching the body-choice facts. Heroes is a narrative dead-end (not a prerequisite).
+  { name = "sq018_active", hold = 0, note = "Heroes/ofrenda arm flag; phase gates on >0 [VALUE CONFIRMED]" },
+  -- Mama Welles grief holocalls. CONFIRMED from mama_welles_holocall.questphase.json: each call is
+  -- REQUESTED by setting `holo_mama_welles_calls_v_*_activate = 1`, then fires while the shared
+  -- `holo_setup_active < 1`. Pinning the request facts to 0 suppresses the calls. Mama only ever
+  -- calls V about Jackie, so this is grief-exclusive. (NEVER pin `holo_setup_active` — that is the
+  -- shared holocall system; zeroing it would break ALL phone calls in the game.)
+  { name = "holo_mama_welles_calls_v_start_activate", hold = 0, note = "Mama grief call — request (start)" },
+  { name = "holo_mama_welles_calls_v_end_activate",   hold = 0, note = "Mama grief call — request (end)"   },
+  -- Misty grief holocalls exist too (`holo_misty_calls_v_*_activate`) BUT Misty also phones V for
+  -- non-grief reasons (Evelyn, tarot). Left COMMENTED until we confirm these specific triggers are
+  -- Jackie-only — enabling them blindly could silence unrelated Misty calls.
+  -- { name = "holo_misty_calls_v_start_activate", hold = 0, note = "Misty call (start) — NOT grief-exclusive, verify first" },
+  -- { name = "holo_misty_calls_v_end_activate",   hold = 0, note = "Misty call (end) — NOT grief-exclusive, verify first" },
+  -- World-bark grief (Misty at Esoterica / Mama at El Coyote switch to mourning state) is Tier-3 /
+  -- ambient — handled by scene edits, not runtime pins; a somber-but-alive Misty isn't lore-breaking.
 }
 
--- Apply the mourning holds (or, dryRun=true, just LOG what it would do). Returns
--- the number of facts it changed/would-change. Skips rows already at target and
--- refuses any protected (body-choice) fact.
-function jlMourningApply(dryRun)
-  if JL.mode ~= "quietlife" then return 0 end
-  local qs; pcall(function() qs = Game.GetQuestsSystem() end)
-  if not qs then return 0 end
+-- KEEP EL COYOTE OPEN (v0.97b). Blocking sq018 (above) ALSO stops the ofrenda from ever
+-- activating El Coyote Cojo as Mama's bar — the three facts below are what make it a live
+-- location, and vanilla only ever sets them inside the Heroes flow we just blocked. So when
+-- the player wants the bar without the grief quest, we force them ON (=1 by naming convention:
+-- *_default_on / *_activated). Applied only when JL.keepBarOpen is set (separate menu toggle),
+-- and only from inside jlMourningApply (which already requires Quiet Life + mourningSuppress).
+-- ⚠️ POST-HEIST only: forcing coyote_community_activated=1 during the prologue could disturb the
+-- early El Coyote scenes (Jackie's intro). Quiet-Life play is post-return, so that's the intent.
+-- NOTE: this opens the bar/vendor; Mama's *ambient lines* may still read somber (that's Tier-3
+-- scene-edit territory, see docs/mourning_suppression.md) — the location + vendor are the win here.
+JL_BAR_KEEPOPEN = {
+  { name = "mama_welles_default_on",     hold = 1, note = "Mama tends El Coyote (ambient dialogue on)" },
+  { name = "elcoyote_barman_default_on", hold = 1, note = "El Coyote barman active" },
+  { name = "coyote_community_activated", hold = 1, note = "El Coyote as a live community location" },
+}
+
+-- Apply one {name,hold,note} list. Skips rows already at target, refuses protected
+-- (body-choice) facts. dryRun => only LOG. Returns count changed/would-change.
+function jlApplyFactHolds(qs, list, dryRun)
   local n = 0
-  for _, e in ipairs(JL_MOURNING_FACTS) do
+  for _, e in ipairs(list) do
     if JL_MOURNING_PROTECTED[e.name] then
       log("[Mourning] REFUSED protected body-choice fact " .. tostring(e.name) .. " (never touched)")
     else
@@ -4441,13 +4459,24 @@ function jlMourningApply(dryRun)
   return n
 end
 
+-- Apply the mourning holds (or, dryRun=true, just LOG what it would do). Also forces the
+-- bar-open facts when JL.keepBarOpen. Returns the number of facts it changed/would-change.
+function jlMourningApply(dryRun)
+  if JL.mode ~= "quietlife" then return 0 end
+  local qs; pcall(function() qs = Game.GetQuestsSystem() end)
+  if not qs then return 0 end
+  local n = jlApplyFactHolds(qs, JL_MOURNING_FACTS, dryRun)
+  if JL.keepBarOpen then n = n + jlApplyFactHolds(qs, JL_BAR_KEEPOPEN, dryRun) end
+  return n
+end
+
 -- Short menu status line.
 function jlMourningStatus()
   if JL.mode ~= "quietlife" then return "n/a — Blaze mode auto-suppresses grief" end
   if not JL.mourningSuppress then return "OFF" end
   local active = 0
   for _, e in ipairs(JL_MOURNING_FACTS) do if not JL_MOURNING_PROTECTED[e.name] then active = active + 1 end end
-  return "ON — holding " .. tostring(active) .. " grief fact(s)"
+  return "ON — holding " .. tostring(active) .. " grief fact(s)" .. (JL.keepBarOpen and " + El Coyote forced open" or "")
 end
 
 -- Force-despawns EVERY Jackie (orphans included), wipes ALL transient state machines, then lets
@@ -5340,6 +5369,10 @@ registerForEvent("onDraw", function()
       "first (logs to jackie_debug.log without changing anything) and test on a throwaway save.")
     local newVal = ImGui.Checkbox("Suppress mourning content", JL.mourningSuppress)  -- CET: 1st return = new value
     if newVal ~= JL.mourningSuppress then JL.mourningSuppress = newVal; jlSaveSettings(); JL.mourningTimer = 999 end  -- fire next tick
+    local barVal = ImGui.Checkbox("Keep El Coyote / Mama's bar OPEN", JL.keepBarOpen)
+    if barVal ~= JL.keepBarOpen then JL.keepBarOpen = barVal; jlSaveSettings(); JL.mourningTimer = 999 end
+    ImGui.TextWrapped("(Blocking the ofrenda also closes El Coyote -- tick this to force the bar/vendor " ..
+      "live. Post-Heist only. Mama's ambient lines may still sound somber; that's a separate scene edit.)")
     if ImGui.Button("Preview (log only, no changes)") then
       local n = jlMourningApply(true)
       JL.ui.status = "Mourning preview: " .. tostring(n) .. " fact(s) would change -- see jackie_debug.log."
