@@ -5065,7 +5065,8 @@ registerForEvent("onInit", function()
     }
   end)
   pcall(blazeLoadConfig)   -- v0.96: re-apply captured records/positions from blaze_config.txt (survives reloads)
-  log("Loaded v" .. tostring(Config.version or "?") .. ". AMM present: " .. tostring(JL.amm ~= nil))
+  log("Loaded v" .. tostring(Config.version or "?") .. ". AMM present: " .. tostring(JL.amm ~= nil) ..
+      ". Blaze module v" .. tostring(Blaze and Blaze.VERSION or "?? (blaze.lua not loaded!)"))
 end)
 
 -- Track overlay visibility so the window only shows while the CET overlay is open.

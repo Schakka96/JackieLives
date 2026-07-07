@@ -31,6 +31,11 @@
 
 local M = { bound = {}, cfg = nil, st = nil }
 
+-- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
+-- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
+-- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
+M.VERSION = "0.98 (2026-07-08 diagnostics)"
+
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
   -- TweakDB Character records to spawn. Leave as-is until you grab the real ones:
@@ -216,10 +221,10 @@ function M.status()
   local rec = (c.goroRecord and "G" or "g") .. (c.smasherRecord and "S" or "s") .. (c.heliRecord and "H" or "h")
   local pos = (c.goroPos and "G" or "g") .. (c.smasherPos and "S" or "s") .. (c.heliPos and "H" or "h")
   if not M.st or not M.st.active then
-    return "idle   records[" .. rec .. "]  positions[" .. pos .. "]"
+    return "blaze v" .. tostring(M.VERSION) .. "   idle   records[" .. rec .. "]  positions[" .. pos .. "]"
   end
-  return "RUNNING   stage=" .. tostring(M.st.stage) .. "   smasherDead=" .. tostring(M.st.smasherDead) ..
-         "   goroDead=" .. tostring(M.st.goroDead)
+  return "blaze v" .. tostring(M.VERSION) .. "   RUNNING   stage=" .. tostring(M.st.stage) ..
+         "   smasherDead=" .. tostring(M.st.smasherDead) .. "   goroDead=" .. tostring(M.st.goroDead)
 end
 
 -- ⚠️ DIAGNOSE: prove whether the plumbing works, independent of the apartment/coords. Reports which
