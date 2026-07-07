@@ -58,20 +58,32 @@ M.cfg = {
 -- -> (defeat) -> spawn the escape heli -> V reaches it (5 m) -> fade -> world-unlock + wake at Vik's
 -- with a LIVING Jackie (the retrieval shard is skipped in Blaze mode). Coords from Antonia 2026-07-07.
 -- Yaw derived from compass facing (game yaw = -compass_bearing, matching the mod's yawToward).
--- VO sfx ids are TODO: text shows now; audio plays once the jl_ ids are filled from the catalogue
--- (same text-first pattern as the dismiss parting pool). This whole block is a throwaway-save toy.
+-- VO uses REAL voiced Jackie clips (Antonia 2026-07-07), by Audioware event name jl_<id>. Each beat is
+-- a LIST of lines played in order with clip-length spacing (see the VO queue). Jackie also becomes a
+-- COMPANION the moment Takemura appears, so his stock in-combat barks fire automatically on top of these.
 -- ---------------------------------------------------------------------------
 M.yori = {
   goro    = { rec = "Character.Takemura", pos = { x = -2205.531, y = 1767.591, z = 313.370, yaw =   45.0 } }, -- facing NW
   smasher = { rec = "Character.Smasher",  pos = { x = -2226.165, y = 1765.743, z = 309.329, yaw = -157.5 } }, -- facing SSE
   heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 } },  -- facing NW; record from M.cfg.heliRecord (look-at grab)
   reachRadius = 5.0,
-  fightLineDelay = 4.0,   -- seconds after Goro spawns before Jackie's mid-fight bark
-  vo = {   -- text-first (sfx = nil until the real jl_ ids are catalogued); "like" Antonia's examples
-    goroSpawn    = { text = "Shit, V — that's Takemura!",              sfx = nil },
-    fight        = { text = "Light 'em up, V — no mercy!",            sfx = nil },
-    smasherSpawn = { text = "Holy fuck, we're screwed — it's SMASHER!", sfx = nil },
-    heliReach    = { text = "That's our ride, V — we made it! Get in!",  sfx = nil },
+  fightLineDelay = 4.0,   -- seconds after each boss spawns before Jackie's one mid-fight bark
+  vo = {
+    -- Takemura appears: alarm, then "we're really fucked"
+    goroSpawn    = { { sfx = "jl_1683596019292229632", text = "Oh, shit..." },
+                     { sfx = "jl_1628793534684028928", text = "Estamos bien chingados!" } },
+    goroFight    = { { sfx = "jl_1686990027240464384", text = "¡Muerte, cabrón!" } },   -- one mid-fight bark
+    -- Takemura down: Antonia's assigned line
+    goroDefeated = { { sfx = "jl_1615924083907321856", text = "Luckily all clear for now. Shouldn't stick around, though." } },
+    -- Smasher reveal: the "is that..?" line, THEN the more intense "oh shit"
+    smasherSpawn = { { sfx = "jl_1683579060278317056", text = "Is tha— is that Adam Smasher?" },
+                     { sfx = "jl_1695238193871003648", text = "Oh, SHIT!" } },
+    smasherFight = { { sfx = "jl_1989544463892815872", text = "We ain't dyin' — not today!" } },
+    -- At the heli
+    heliReach    = { { sfx = "jl_1694028164799078400", text = "Jump!" } },
+    -- Spare voiced alternates (swap in above if you like):
+    --   jl_2232998526621773824 "Mierda, close call."
+    --   jl_1786751638324432896 "¡Pinche Dios Santo bendito!" (Jesus fucking Christ)
   },
 }
 
@@ -96,10 +108,23 @@ local function pushObjective(text)
   if M.bound.objective then M.bound.objective(text, 8.0) end
 end
 
--- Jackie says an experimental-scenario line (audio if the sfx id is set, plus on-screen text).
+-- Enqueue a beat's line(s) onto the VO queue (a beat is a LIST of {sfx,text}). The queue is drained
+-- one line at a time by voPump, spaced by each clip's real length, so sequences never talk over
+-- themselves. Jackie's automatic companion combat barks are separate and layer on top.
 local function say(key)
-  local vo = M.yori.vo[key]
-  if vo and M.bound.say then M.bound.say(vo.text, vo.sfx) end
+  local st = M.st; if not st then return end
+  local beat = M.yori.vo[key]; if not beat then return end
+  st.voQueue = st.voQueue or {}
+  for _, ln in ipairs(beat) do st.voQueue[#st.voQueue + 1] = ln end
+end
+
+-- Play the next queued line if its predecessor has finished. M.bound.say returns the clip length
+-- (seconds) so we can space them; fall back to 2.5 s when the length is unknown.
+local function voPump(now)
+  local st = M.st; if not st or not st.voQueue or now < (st.voNextAt or 0) then return end
+  local ln = table.remove(st.voQueue, 1); if not ln then return end
+  local dur = M.bound.say and M.bound.say(ln.text, ln.sfx) or nil
+  st.voNextAt = now + ((type(dur) == "number" and dur > 0) and (dur + 0.3) or 2.5)
 end
 
 -- ---- config setters used by the overlay -----------------------------------
@@ -159,11 +184,15 @@ function M.startYorinobu()
   M.reset()
   M.st = { active = true, mode = "yorinobu", stage = "goro", ent = {},
            goroDead = false, smasherDead = false, lastObjective = "", firedFade = false,
-           saidGoroSpawn = false, saidFight = false, fightLineAt = nil }
+           voQueue = {}, voNextAt = 0, goroFightAt = nil, smasherFightAt = nil,
+           saidGoroFight = false, saidSmasherFight = false }
+  -- The moment Takemura appears: Jackie -> COMPANION (fights + auto barks) and the Jackie Lives mod
+  -- goes fully active, which gates his schedule so no SECOND Jackie can spawn while he's placed.
+  if M.bound.becomeCompanion then M.bound.becomeCompanion() end
   spawnOne("goro", M.yori.goro.rec, M.yori.goro.pos, true)
   say("goroSpawn")
   pushObjective(">> Defeat Takemura")
-  blog("EXPERIMENTAL Yorinobu fight STARTED (Takemura first).")
+  blog("EXPERIMENTAL Yorinobu fight STARTED (Takemura first; Jackie -> companion).")
   return true
 end
 
@@ -228,17 +257,23 @@ function M.tick(now, dt)
 
   -- ⚠️ EXPERIMENTAL Yorinobu sequence: Takemura -> Smasher -> heli -> fade -> wake at Vik's.
   if st.mode == "yorinobu" then
+    voPump(now)                                              -- drain queued barks (clip-length spaced)
     if st.stage == "goro" then
-      st.fightLineAt = st.fightLineAt or (now + (M.yori.fightLineDelay or 4.0))
-      if not st.saidFight and now >= st.fightLineAt then st.saidFight = true; say("fight") end
+      st.goroFightAt = st.goroFightAt or (now + (M.yori.fightLineDelay or 4.0))
+      if not st.saidGoroFight and now >= st.goroFightAt then st.saidGoroFight = true; say("goroFight") end
       if st.goroDead then
         st.stage = "smasher"
+        say("goroDefeated")                                  -- "Luckily all clear for now..."
         spawnOne("smasher", M.yori.smasher.rec, M.yori.smasher.pos, true)   -- Smasher only appears now
-        say("smasherSpawn")
+        say("smasherSpawn")                                  -- "Is that Adam Smasher?" -> "Oh, SHIT!"
+        st.smasherFightAt = now + (M.yori.fightLineDelay or 4.0)
         pushObjective("[x] Takemura down\n>> Defeat Adam Smasher")
       end
 
     elseif st.stage == "smasher" then
+      if not st.saidSmasherFight and st.smasherFightAt and now >= st.smasherFightAt then
+        st.saidSmasherFight = true; say("smasherFight")      -- "We ain't dyin' — not today!"
+      end
       if st.smasherDead then
         st.stage = "escape"
         if M.cfg.heliRecord then spawnOne("heli", M.cfg.heliRecord, M.yori.heli.pos, false) end  -- heli appears last

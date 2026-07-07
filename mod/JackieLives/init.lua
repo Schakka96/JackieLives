@@ -1511,6 +1511,53 @@ startLinearDialogue = function()
   startDialogue(Config.testDialogue)
 end
 
+-- ===========================================================================
+-- RELATIONSHIP MODE (v1.2): Husbando (female-V track) vs Hermano (male-V track).
+-- JL.husbando (persisted) is the switch: true = Husbando, false = Hermano. The base
+-- text/sfx authored in config.lua IS the Husbando track; a Jackie line, pool entry or
+-- choice may carry an `m = {...}` MASCULINE OVERRIDE that replaces it in Hermano mode.
+-- No `m` -> the shared (unisex) line is reused — it's Jackie's own voice either way, so
+-- any content-neutral clip works for both. Declared GLOBAL (not local) to respect
+-- init.lua's 200-local cap. See config.lua header + docs/VOICE_LINES.md.
+-- ===========================================================================
+function jlHermano() return JL.husbando == false end   -- true while the male-V (Hermano) track is active
+
+-- Mode-appropriate variant of a Jackie line / pool-entry table {text=, sfx=, m={text=,sfx=}}.
+-- In Hermano mode, resolution order:
+--   1) an inline `m = {...}` on the entry (used for text-only lines + one-offs), else
+--   2) a central sfx-keyed override in Config.hermanoLines (rewrites EVERY recurrence of a
+--      voiced female-coded line at once — e.g. the "...chica" greeting appears in 5+ trees).
+-- No match -> the shared (unisex) entry is returned unchanged. nil-safe.
+function jlVar(entry)
+  if entry and jlHermano() then
+    if entry.m then return entry.m end
+    local map = Config.hermanoLines
+    if map and entry.sfx and map[entry.sfx] then return map[entry.sfx] end
+  end
+  return entry
+end
+
+-- v1.2: detect V's BODY GENDER once and LOCK the relationship-mode default (Female V -> Husbando,
+-- Male V -> Hermano). Player isn't ready in onInit, so this runs from onUpdate (world-ready-safe,
+-- same pattern as nsTick) and only fires on the FIRST load after install — the persisted JL.modeInit
+-- flag guards it, so afterwards the player's saved choice / manual toggle always wins. Global (200-cap).
+function jlDetectGenderOnce()
+  if JL.modeInit then return end                       -- already locked (persisted) -> respect saved choice
+  local pl = Game.GetPlayer(); if not pl then return end   -- world not ready this tick -> retry next frame
+  local female = nil
+  pcall(function()
+    local g = pl:GetResolvedGenderName()               -- CName "Female" / "Male"
+    if g ~= nil then female = (g == CName.new("Female")) end
+  end)
+  if female == nil then return end                     -- unreadable this tick -> retry (never lock on a bad read)
+  JL.husbando  = female                                -- female V -> Husbando, male V -> Hermano
+  JL.modeInit  = true
+  pcall(jlSaveSettings)
+  JL.ui.status = "Jackie mode auto-set: " .. (female and "Husbando (female V)" or "Hermano (male V)")
+  log("V body gender read -> relationship mode LOCKED to " ..
+      (female and "Husbando (female V)" or "Hermano (male V)") .. " (switch it anytime in Esc -> Settings).")
+end
+
 -- ---------------------------------------------------------------------------
 -- BRANCHING dialogue (v0.23): native-looking choice box driving a small tree.
 -- Jackie speaks a node's line (voice + subtitle); after it, a CHOICE BOX of silent
@@ -1633,7 +1680,8 @@ local function startDinnerWalk(key)
   local selfPick = (key == "random") and r.pickSfx
   local line = selfPick and r.pickText or D.ackText
   local sfx  = selfPick and r.pickSfx  or D.ackSfx
-  pcall(function() speakJackieLine(line, sfx) end)
+  local av   = jlVar({ text = line, sfx = sfx })   -- v1.2: Hermano swap (e.g. "Right on, chica." -> "...mano.")
+  pcall(function() speakJackieLine(av.text, av.sfx) end)
   -- v0.64: flash the objective as the native neon-left on-screen message (not a persistent ImGui box).
   local fmt = (D.objectiveText) or "Grab some food with Jackie: Go to %s"
   pcall(function() showOnscreenMsg(fmt:format(tostring(r.name)), D.objectiveDuration or 6.0) end)
@@ -1839,11 +1887,19 @@ local function openChoiceMenu(choices, title)
     local appear = true
     if c.chance then local r = 1.0; pcall(function() r = math.random() end); appear = (r < c.chance) end
     if appear then
-      if c.textPool and #c.textPool > 0 then
-        local i = 1; pcall(function() i = math.random(1, #c.textPool) end)
-        c.text = c.textPool[i]
+      -- v1.2: resolve the DISPLAY text into a shallow COPY so re-rolling a textPool or switching
+      -- relationship mode never clobbers the config's base text. In Hermano mode a choice's `m`
+      -- override ({text=} or {textPool=}) wins; otherwise the base choice text is used.
+      local sc = {}; for k, v in pairs(c) do sc[k] = v end
+      local src  = (c.m and jlHermano()) and c.m or c
+      local pool = src.textPool
+      if pool and #pool > 0 then
+        local i = 1; pcall(function() i = math.random(1, #pool) end)
+        sc.text = pool[i]
+      elseif src.text then
+        sc.text = src.text
       end
-      shown[#shown + 1] = c
+      shown[#shown + 1] = sc
     end
   end
   if #shown == 0 then shown = choices end   -- safety: never open an empty menu
@@ -1910,6 +1966,7 @@ Branch.start = function(nodeKey, tree)
   if node.jackiePool and #node.jackiePool > 0 then
     jline = pickPoolLine(node.jackiePool)
   end
+  jline = jlVar(jline)   -- v1.2: swap in the Hermano (male-V) line if this entry carries an `m = {...}`
   local secs = speakJackieLine(jline and jline.text, jline and jline.sfx)
   bstate.openAt = (JL.clock or 0) + secs + 0.4
 end
@@ -2550,7 +2607,7 @@ startLeaving = function(opts)
   local h  = sp and sp.handle
   if not h then return end
   local D = Config.dismiss or {}
-  opts = opts or {}
+  opts = jlVar(opts or {})   -- v1.2: Hermano swap for an explicit parting line (e.g. mainQuestExit's "...mamita.")
   -- 1) parting line (real VO + subtitle), like any Jackie line. Capture its duration so we can WIPE the
   --    subtitle afterwards - a one-off speakJackieLine has no follow-up hide, so the line stuck forever.
   local secs = 4.0
@@ -2558,8 +2615,9 @@ startLeaving = function(opts)
   -- the single partingText/partingSfx. An explicit opts.text (e.g. mainQuestExit) still overrides the pool.
   -- These are function-local (NOT main-chunk locals) so they don't count toward init.lua's 200-local cap.
   local pText, pSfx = D.partingText, D.partingSfx
-  if D.partingPool and #D.partingPool > 0 then
-    local pick = D.partingPool[math.random(#D.partingPool)]
+  local ppool = (jlHermano() and D.partingPoolM) or D.partingPool   -- v1.2: Hermano parting pool if present
+  if ppool and #ppool > 0 then
+    local pick = ppool[math.random(#ppool)]
     if pick then pText, pSfx = pick.text, pick.sfx end
   end
   pcall(function() secs = speakJackieLine(opts.text or pText, opts.sfx or pSfx) or 4.0 end)
@@ -4141,11 +4199,14 @@ local function nsTick()
     ns.addSwitch(
       "/jackielives/relationship",
       "Husbando mode",
-      "OFF = Hermano (canon): Jackie's your brother-in-arms and he's with Misty. " ..
-      "ON = Husbando: Jackie and V are closer/together and he's broken up with Misty. " ..
-      "(Mode-specific dialogue and venue schedules are WIP — toggling this only sets the flag for now.)",
-      JL.husbando,   -- current state
-      false,         -- default (Hermano)
+      "Picks Jackie's relationship track. Auto-set from your V the first time you load in " ..
+      "(Female V -> Husbando, Male V -> Hermano) and remembered after that — flip it here anytime. " ..
+      "ON = HUSBANDO: Jackie and V have a slow-burn thing going — he's a lot more flirty, the " ..
+      "tension's there, and he's broken things off with Misty. " ..
+      "OFF = HERMANO (canon): Jackie's your brother-in-arms, strictly choom, and still with Misty. " ..
+      "Changes his dialogue, greetings and the reunion/recovery notes to match.",
+      JL.husbando,   -- current state (auto-locked from V's gender on first load; then persisted)
+      true,          -- 'reset to default' value: Husbando (the flirty track)
       function(state)
         JL.husbando = state
         pcall(jlSaveSettings)
@@ -4198,7 +4259,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress" }  -- persisted JL.* boolean flags
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "modeInit" }  -- persisted JL.* boolean flags (modeInit v1.2: has the first-load gender lock happened?)
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
@@ -4740,7 +4801,7 @@ registerForEvent("onInit", function()
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
   pcall(jlLoadSeats)       -- v1.1: restore tuned sit coords into Config so they survive a reload (old-S4 fix)
-  pcall(function() Retrieval.bind{ log = log } end)   -- retrieval questline: inject the logger (more helpers bound in Phases 2-4)
+  pcall(function() Retrieval.bind{ log = log, isHermano = jlHermano } end)   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
   -- v0.96 BLAZE: inject every game-touching primitive the set-piece needs, built from the
   -- proven helpers in this file. blaze.lua stays pure Lua; ONLY this table calls Game.*.
   pcall(function()
@@ -4808,15 +4869,33 @@ registerForEvent("onInit", function()
         log("[Blaze] world unlock -> watson_prolog_unlock=1, watson_prolog_lock=0 (Watson barrier lifted)")
       end,
       -- ⚠️ EXPERIMENTAL Yorinobu scenario helpers ----------------------------------
-      -- Jackie speaks: play the clip if an sfx id is set (none yet), and show the text on-screen.
+      -- Jackie speaks: play the voiced clip + show the text. Returns the clip length (s) so blaze.lua's
+      -- VO queue can space a multi-line beat by its real duration.
       say = function(text, sfx)
-        if sfx and sfx ~= "" then pcall(function() playVoice(sfx) end) end
-        if text and text ~= "" then showOnscreenMsg(text, 4.0) end
+        local dur
+        if sfx and sfx ~= "" then pcall(function() playVoice(sfx) end); dur = voiceDuration(sfx) end
+        if text and text ~= "" then showOnscreenMsg(text, (dur and dur > 0) and dur or 4.0) end
+        return dur
+      end,
+      -- Takemura appears -> Jackie becomes a COMPANION (fights + auto combat barks) and the mod goes
+      -- fully active. Bypasses the retrieval/main-quest gates (this is the Blaze route). Setting
+      -- JL.summon.active gates scheduleTick, so no second idle Jackie can spawn while he's placed.
+      becomeCompanion = function()
+        pcall(function() Retrieval.forceReunion() end)   -- mod fully active (unlocks summon/companion systems)
+        if JL.summon.active then return end              -- already a companion -> schedule already gated
+        local spawn = ammSpawn(1)                        -- companion Jackie
+        if spawn then
+          JL.summon.spawn, JL.summon.active, JL.summon.companionSet = spawn, true, false
+          log("[Blaze] Jackie -> companion (schedule gated).")
+        else
+          log("[Blaze] becomeCompanion: ammSpawn failed.")
+        end
       end,
       -- The payoff: open Watson without q101 (world-unlock lever), SKIP the retrieval shard by marking
-      -- Jackie already returned, teleport V to Vik's clinic, and spawn a living Jackie there beside her.
-      -- (Full q005/interlude/q101 graph autocompletion is the OTHER workstream's job — this delivers the
-      -- playable result now via the barrier lift + teleport; see docs/research/q005_graph_findings.md.)
+      -- Jackie already returned, and teleport V to Vik's clinic. Jackie is ALREADY a companion (from
+      -- becomeCompanion at the start), so his catch-up logic brings him to Vik's beside her — no second
+      -- spawn. (Full q005/interlude/q101 graph autocompletion is the OTHER workstream's job — this
+      -- delivers the playable result via the barrier lift + teleport; see docs/research/q005_graph_findings.md.)
       finale = function()
         pcall(function()
           local qs = Game.GetQuestsSystem()
@@ -4828,8 +4907,7 @@ registerForEvent("onInit", function()
           local tf = Game.GetTeleportationFacility()
           if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(vik[1], vik[2], vik[3], 1.0), EulerAngles.new(0.0, 0.0, 129.8)) end
         end)
-        pcall(function() ammSpawn(0) end)   -- living Jackie appears at V (now standing in Vik's clinic)
-        log("[Blaze] FINALE: Watson open, retrieval shard skipped, V + living Jackie at Vik's.")
+        log("[Blaze] FINALE: Watson open, retrieval shard skipped, V teleported to Vik's (companion Jackie follows).")
       end,
       persist = function() blazeDumpConfig() end,   -- auto-write blaze_config.txt on every capture/grab
     }
@@ -4892,7 +4970,8 @@ end
 -- v0.52: no-repeat picker for arrival GREETING LINES (real jl_ clips + subtitle, NOT WWise grunt events).
 -- Avoids the last-used line + any used within greetRepeatCooldown (5 min). State on JL.arrivalGreet (keyed by sfx).
 local function pickArrivalGreetLine(now)
-  local pool = (Config.call and Config.call.arrivalGreetings) or {}
+  local pool = (jlHermano() and Config.call and Config.call.arrivalGreetingsM)   -- v1.2: Hermano arrival greetings
+               or (Config.call and Config.call.arrivalGreetings) or {}
   if #pool == 0 then return nil end
   JL.arrivalGreet = JL.arrivalGreet or { used = {}, last = nil }
   local st = JL.arrivalGreet
@@ -4989,6 +5068,7 @@ registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
   pcall(function() Retrieval.tick(dt) end)   -- retrieval questline: gate + Vik tip + Badlands shard + call/arrival/reunion sequence
   if JL.mode == "blaze" then pcall(function() Blaze.tick(JL.clock, dt) end) end   -- v0.96: Heist set-piece state machine (self-guards when idle)
+  pcall(jlDetectGenderOnce)   -- v1.2: one-shot — lock the Husbando/Hermano default from V's body gender
   pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)

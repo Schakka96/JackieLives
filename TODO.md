@@ -96,12 +96,18 @@ Scripted editing required (once the spike confirms facts):
   309.329, yaw −157.5 = SSE) + objective → on his defeat spawn the **heli** (−2191/1752/310, yaw +45 = NW,
   uses the look-at-grabbed `heliRecord`) + objective → V within **5 m** of the heli → **fade** → **finale**.
   Yaw math: game_yaw = −compass_bearing (verified vs the mod's `yawToward`). Jackie **barks** at each beat
-  (goro-spawn / mid-fight / smasher-spawn / heli-reach) via a new `say()` bind helper — **text shows now,
-  sfx ids are TODO** (fill jl_ ids from the catalogue; text-first like the parting pool).
+  via a new `say()` bind helper + a **VO queue** (clip-length-spaced) using **REAL voiced Jackie clips**
+  (Antonia 2026-07-07, `jl_<id>`): Takemura-appear ("Oh shit" → "Estamos bien chingados"), mid-fight
+  ("¡Muerte cabrón!"), Takemura-down ("Luckily all clear…"), Smasher-reveal ("Is that Adam Smasher?" →
+  "Oh, SHIT!"), Smasher mid-fight ("We ain't dyin' — not today!"), heli ("Jump!"). Two spare clips noted.
+  - **Companion-on-Takemura (Antonia's refinement):** the moment Takemura appears, `becomeCompanion` bind
+    makes Jackie a **companion** (fights + auto combat barks) and forces the mod **fully active**
+    (`Retrieval.forceReunion`). Because `scheduleTick` bails on `JL.summon.active`, this **gates the
+    schedule** → no second idle Jackie. Fixes the earlier double-Jackie caveat.
   - **Finale** (new `finale` bind helper): fires the **world-unlock** lever (`watson_prolog_unlock=1`,
-    `watson_prolog_lock=0`) → **`Retrieval.forceReunion()`** so the Where's-Jackie **shard is SKIPPED** and
-    Jackie is "returned" → teleport V to **Vik's** (`Retrieval.Config.vikPos`) → **`ammSpawn(0)`** puts a
-    living Jackie beside her. Both files luajit parse-checked. `Config.version` untouched.
+    `watson_prolog_lock=0`) → **`Retrieval.forceReunion()`** so the Where's-Jackie **shard is SKIPPED** →
+    teleport V to **Vik's** (`Retrieval.Config.vikPos`); companion Jackie **catches up** to Vik's beside
+    her (no second spawn). Both files luajit parse-checked. `Config.version` untouched.
   - **HONEST SCOPE:** full **q005/interlude/q101 graph autocompletion** is NOT done here — it's the OTHER
     workstream's job (the `worldUnlock` fact lever + q005/q101 graph research). This finale delivers the
     *playable* result (world opens, wake at Vik's, no Johnny) via the barrier lift + teleport, not a real
@@ -1326,8 +1332,8 @@ made progress. (NOT collision — the foot Jackie is a fresh DES entity with col
       until he reaches you. Confirm no duplicate Jackies and he ends as companion at ~5 m + grunt.
 
 ## 🆕 Esc-menu settings: Husbando toggle + Disable-vehicle-arrivals + PERSISTENCE (added, awaiting test)
-- **Husbando mode** switch (Relationship): OFF = Hermano (canon, with Misty); ON = Husbando (closer to
-  V, broke up with Misty). Sets `JL.husbando`. Nothing reads it yet — it's the hook for the work below.
+- **Husbando mode** switch (Relationship): OFF = Hermano (canon, with Misty); ON = Husbando (slow-burn
+  with V, broke up with Misty). Sets `JL.husbando`. **v1.2: now fully wired** — see the v1.2 section below.
 - **Disable vehicle arrivals** switch (Arrivals): ON forces FOOT arrival regardless of
   `Config.call.arrivalMethod`. Wired: `runCallAction` gates `bike` with `and not JL.disableVehicleArrivals`
   (the single decision point at the `arrivalMethod == "bike"` line). Default OFF (bike allowed) so it
@@ -1336,15 +1342,63 @@ made progress. (NOT collision — the foot Jackie is a fresh DES entity with col
       store in `jl_settings.txt` in the mod folder (NO json dependency — relative `io.open`, same as the
       phone probes). Loaded in `onInit`; each switch callback saves. `JL_SETTINGS_KEYS` = the persisted
       flag list; add future toggles there.
-- [ ] **Hermano/Husbando = V-gender modes (added 2026-06-19):** **Hermano mode = male V**, **Husbando
-      mode = female V** — these are V-gender-specific dialogue tracks. The voice bank now carries the
-      `v_gender` tag on every line (`tools/tag_lines.py`; 108 male-V + 1174 female-V), so gendered
-      branches can pull the correct variant — filter `lines.json` / the tagger by `v_gender`. See
-      `docs/VOICE_LINES.md` § Line metadata.
-- [ ] **Husbando-mode dialogue:** branch/alternate lines for talk, holocall, arrivals, dismiss when
-      `JL.husbando` is true (terms of endearment, couple banter, no Misty references).
+- [x] **Hermano/Husbando = V-gender modes (v1.2, 2026-07-07):** BUILT. See the "🆕 v1.2" section below.
+- [x] **Husbando-mode dialogue:** BUILT (v1.2) — Hermano overrides across talk/holocall/arrival/dismiss/
+      reunion/seated; Husbando (base) slow-burn tension + Misty-split beats.
 - [ ] **Husbando-mode venue schedule:** alternate `Config.daySchedules` / locations for husbando mode
-      (e.g. shared apartment, different hangouts; no Misty's-shop stops).
+      (e.g. shared apartment, different hangouts; no Misty's-shop stops). **Still open** — v1.2 did
+      dialogue + recovery text + the toggle, NOT the schedule. Next pass.
+
+## 🆕 v1.2 — Hermano/Husbando two-track relationship modes (BUILT 2026-07-07, awaiting Windows test)
+**What it does:** Jackie now has two dialogue tracks. **Husbando** = female-V default (slow-burn tension
+with V, more flirty, he's split with Misty). **Hermano** = male-V default (canon brother-in-arms, still
+with Misty). Auto-picked from V's body gender on first load and locked; player flips it anytime in
+Esc → Settings → Jackie Lives → Relationship.
+- **Gender detect + first-load lock** (`init.lua`): `jlDetectGenderOnce()` runs from `onUpdate` (player
+  isn't ready in `onInit`, same reason as `nsTick`), reads `GetResolvedGenderName()`, sets
+  `JL.husbando = (V is Female)` and `JL.modeInit = true`, then persists. `modeInit` is in
+  `JL_SETTINGS_KEYS`, so it only auto-locks ONCE; after that the saved choice / manual toggle wins.
+- **Swap engine** (`init.lua`, all globals — 200-local cap respected, still 186): `jlHermano()` = is the
+  male-V track active; `jlVar(entry)` returns the Hermano variant of a line/pool-entry. Resolution order:
+  inline `m = {...}` on the entry, else a central **`Config.hermanoLines`** map keyed by the base sfx
+  (rewrites every recurrence of a voiced line at once — e.g. the "…chica" greeting used in 5 trees).
+  Injected at `Branch.start` (Jackie lines), `openChoiceMenu` (V choices, via a non-destructive copy so
+  the base text is never clobbered), `pickArrivalGreetLine` (`arrivalGreetingsM`), `startLeaving`
+  (`partingPoolM` + explicit-opts map, covers `mainQuestExit`), and the dinner-accept ack.
+- **Config authoring** (`config.lua`): `Config.hermanoLines` map (4 voiced female-coded lines →
+  cabrón/mano) + inline `m` overrides across seated/reunion/location trees + `arrivalGreetingsM` /
+  `partingPoolM`. Husbando (base) text made flirtier / Misty-split on the text-only + choice lines
+  (voiced barks are audio-locked — their text can't change without new clips).
+- **Recovery quest, two versions** (`retrieval.lua`): Vik's tip, Jackie's shard, and the Misty + Mama
+  post-reunion shards each have a Husbando (base) + Hermano (`*M`/`linesM`) version, picked by a
+  `mvar()` selector fed by an injected `isHermano` mode getter (bound from `init.lua`).
+- **Key design fact:** Jackie's VOICE is the same clip in both modes — the `_f_`/`_m_` tag is only the
+  scene it was recorded in. So a line needs a male variant only when its CONTENT is female-coded
+  (chica/mamita/flirty); content-neutral clips are reused in both. That's why the male pool being thin
+  (68 clips) is fine: most of the tree is unisex. `Config.hermanoLines` IS the male/female categorization.
+
+### Problems & Resolutions (v1.2)
+- **P: Trees are compared by identity** (`bstate.tree == Config.callTree` in ~6 places) — swapping whole
+  tree objects per mode would break every identity check. **R:** per-LINE overrides on the SAME tree
+  objects (inline `m` + sfx-keyed map), resolved at render time. Zero identity checks touched; Husbando
+  path byte-for-byte unchanged.
+- **P: `openChoiceMenu` mutated `c.text` in place** (from `textPool`) — a per-mode text swap there would
+  permanently clobber the base Husbando text on the first Hermano open. **R:** resolve display text into a
+  shallow COPY of the choice; the config's base text is never written. (Also fixes the latent textPool clobber.)
+- **P: Player not ready in `onInit`** for gender read. **R:** one-shot in `onUpdate`, retries until
+  `GetResolvedGenderName()` reads, then locks — same pattern the Native Settings panel uses.
+
+### ⚠️ Needs Windows / in-game verification (can't be checked on the Mac)
+- [ ] **Gender API:** confirm `Game.GetPlayer():GetResolvedGenderName()` returns the CName `"Female"`/
+      `"Male"` and the mode auto-locks correctly (check the console log line "V body gender read -> …").
+      Test BOTH a female-V and a male-V save.
+- [ ] **First-load lock + manual switch:** new save auto-picks by gender; toggling in Esc menu sticks and
+      survives a reload; deleting `jl_settings.txt` re-triggers the auto-lock.
+- [ ] **Verify the 5 male-V clips by ear** (Whisper mis-hears Spanish — every one is marked `⚠️ VERIFY`
+      in `config.lua`): greeting `…cabrón`, straight-to-biz `…mano`, "man of the hour", "you with me mano",
+      "make moves mano". Fix the subtitle if the clip's actual words differ.
+- [ ] **Play a male-V run end-to-end:** reunion call/meet, a venue talk, a holocall summon + arrival, a
+      dismiss, and walk up to Misty's + El Coyote for the post-reunion shards — all should read Hermano.
 
 ### Esc-menu settings — backlog (next session can pick any; all back onto existing systems)
 Pattern for each: add an `addSwitch`/`addRangeFloat`/`addSelectorString` in `nsTick`, store the value on
