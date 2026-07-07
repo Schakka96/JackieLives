@@ -261,8 +261,9 @@ Config.persist = {
 --  * CLOSEST SIDE. `angleRight` / `angleLeft` are the two near-front anchors; he takes whichever is closer
 --    to him (with `sideHysteresis` stickiness) so he doesn't cut across in front of V.
 --  * SMOOTH heading (EMA over `smoothSeconds`) so the anchor drifts, never snaps on a camera twitch.
---  * When OUT of position (>`catchUpDist`) he moves in at `catchUpMovement` (Run), then eases to `movement`
---    (Walk, matching V's walk) to hold the pocket.
+--  * When OUT of position (>`catchUpDist`) he SPRINTS in (`catchUpMovement`) at a near-instant heading and
+--    COMMITS until he's closed to `inPositionDist`, only THEN easing to `movement` (Walk) + the smoothSeconds
+--    averaged hold. (v1.3: he was easing too early and couldn't catch a moving anchor at walk pace.)
 -- All live-tunable from the CET "Walk abreast" panel. Angle values are FRACTIONAL dial steps (of `positions`).
 Config.abreast = {
   enabled        = true,    -- v0.85b: ON by default for a companion (Antonia confirmed it feels great)
@@ -275,8 +276,14 @@ Config.abreast = {
   interval       = 0.3,     -- s between re-issues of the move-to-anchor command (short = tracks the drift)
   movement       = "Walk",  -- how he moves while HOLDING position (matches V's walk)
   tolerance      = 0.5,     -- desiredDistanceFromTarget while holding
-  catchUpDist    = 2.0,     -- m from the anchor beyond which he's "out of position"
-  catchUpMovement= "Run",   -- how he moves to GET into position (Run — gentle; he still out-paces a walking V)
+  -- v1.3: AGGRESSIVE get-into-position. He was easing Run->Walk at 2 m and then couldn't close the last
+  -- stretch on a MOVING anchor at walk pace (so he never actually caught up while V strolled). Now the
+  -- catch-up phase SPRINTS at a FRESH (barely-smoothed) heading and COMMITS until he's truly in the
+  -- pocket (<= inPositionDist), only THEN easing to the Walk + smoothSeconds averaged hold.
+  catchUpDist    = 2.0,     -- m from the anchor beyond which he ENTERS catch-up (starts sprinting in)
+  inPositionDist = 0.8,     -- m he must close to before he's "in position" (hysteresis: no early ease)
+  catchUpMovement= "Sprint",-- how he moves to GET into position (Sprint — he MUST out-pace a walking V)
+  catchUpSmoothSeconds = 0.5, -- while catching up, aim at a near-INSTANT heading (where V is NOW), not the EMA
   catchUpTolerance = 0.35,  -- target distance while moving in
   walkMaxSpeed   = 2.0,     -- m/s at/below which V counts as WALKING (abreast on)
   jogMinSpeed    = 2.8,     -- m/s above which V counts as jogging/sprinting (trail); band = hysteresis
@@ -284,7 +291,7 @@ Config.abreast = {
   -- stop it from hijacking normal standing-around conversation (where he'd sit at a weird 3.5 m angle,
   -- jerking as the camera pans):
   walkMinSpeed      = 0.6,  -- m/s V must EXCEED to count as walking. Below this she's STILL -> he trails close.
-  walkSustainSeconds= 3.0,  -- s V must hold the walk band CONTINUOUSLY before abreast engages (no snap on a step)
+  walkSustainSeconds= 2.0,  -- s V must hold the walk band CONTINUOUSLY before abreast engages (no snap on a step)
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
