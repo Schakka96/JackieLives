@@ -11,6 +11,50 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-08 (v1.3) — APPROACH CAMEO: raise Jackie's appearance likelihood
+
+His idle presence was too rare (3-4 of 7 venues run per day). New `approachTick` (init.lua) +
+`Config.approach` (config.lua), mirrored to `staging/`. **Awaiting Windows in-game test.**
+
+- [x] When V comes within **20 m** of any of his 7 real venues during **active hours (06:00-00:00)**,
+  roll once to **force his schedule to that venue for the rest of the in-game day** (he appears where
+  V is). Existing 45 m proximity spawn then places him.
+- [x] **35%** first daily appearance; stays 35% on each fresh venue-approach **until one lands**, then
+  **10%** the rest of the day (premium spent on a SUCCESS, not a miss — Antonia's call). **Noodle bar
+  is always 10%** (V passes it constantly).
+- [x] Edge-triggered per venue (must leave + re-enter the 20 m ring to re-roll — no per-tick spam);
+  the force only overrides the schedule while V is within 45 m of it (never suppresses his real spot
+  when V is elsewhere); resets each in-game day; sleep window left to the secret-nap cameo.
+- [ ] **TEST (Antonia):** walk up to a venue where he isn't scheduled → he should sometimes pop in.
+  Watch the CET log for `Approach roll: V near <venue> (35%/10%) -> HIT/miss`. Tune the three chances
+  in `Config.approach` to taste.
+
+### 🆕 Added 2026-07-08 (v1.3) — dialogue-review pass: gender-gating bug fix + line polish
+
+Antonia's in-game review of the reunion/recovery + companion dialogue (playing **female V**). Fixes
+in `config.lua` + `init.lua` (mirrored to `staging/`). **Awaiting Windows in-game test.**
+
+- [x] **ROOT BUG — female V wrongly defaulted to Hermano mode + Jackie said "mano".** `jlDetectGenderOnce()`
+      compared `CName` userdata with `==` (`g == CName.new("Female")`), which is unreliable in CET and
+      returned false for a female V → locked the mode to **Hermano** and persisted it. **Fix:** read the
+      gender as a **string** (`g.value`, with `NameToString`/`tostring` fallbacks) and compare `"Female"`.
+      Renamed the persisted guard flag `modeInit` → **`genderLock`** so saves already mis-locked by the
+      v1.2 bug **re-detect once** with the fixed read. Logs the raw gender string now, so if it's still
+      wrong on Windows Antonia can report what it read. ⚠️ **Can't be tested on Mac (no game).**
+- [x] **Ungated Jackie line** in the recovery call `outrage` node said "…scream at me all you want, **mano**"
+      hardcoded (no female variant) → even a correct Husbando female V heard "mano". Gated: base "chica",
+      `m =` "mano".
+- [x] **V "hermano" overuse in the recovery call** — dropped 2 of 3 (kept one: "Relax, hermano…"); the
+      `gigs` and `coming` V choices lost the trailing "hermano".
+- [x] **Reunion bike line** "…she's right where you left her" (implied V wasn't riding along) → "Drive me
+      home? She's your ride, Jackie — here, have your keys back."
+- [x] **"Go on then, hermano. Take her for a spin."** → "Let's go, hermano, and you can take her for a spin."
+- [x] **Companion small-talk send-off** — dropped the "take care / checkin' in" branch (+ its `care` node);
+      only the "let's move" pool remains (per Antonia: only the "let's go" options read right there).
+- [x] **"Time we were on our way, mamita"** in Hermano (male-V) mode was a MUTE grunt (text-only override).
+      Now maps to a **voiced** male clip "Make moves, mano." (`jl_jackie_vs_vset_jackie_m_1f119a05be52a008`)
+      so a male V never hears "mamita" and gets real audio. ⚠️ **VERIFY that clip by ear on Windows.**
+
 ### 🆕 Added 2026-07-08 — mourning suppression: test results, bug fix, next chunks
 
 **BUILT this session (v0.97–v0.98, pushed):**
@@ -650,17 +694,29 @@ retreat-follow). **Still open, grouped by area:**
       facing). Antonia will walk Jackie to each venue, use the in-game seat tuner to line him up, and send the
       printed coords; Claude bakes them into `Config.date.restaurants` / `Config.locations`. **Blocked on**
       the sit-coords-don't-persist bug below (the tuner's values must survive a reload to be usable).
-- [x] **Sit coords don't persist on reload (old S4). — FIXED v1.1 (2026-07-06, awaiting in-game test.)**
-      Root cause: the tuner only live-patched the in-memory `Config` + printed a line for a manual
-      config.lua edit; on reload config.lua was re-`require`d with its OLD baked coords, so every tuning
-      session was lost and Jackie re-sat at the stale spot. Fix: the **"Save seat (survives reload)"** button
-      (was "Print coords → config.lua") now write-backs each committed seat to `jl_seats.txt`
-      (`key|sitSeatIdx|x|y|z|yaw`), and `onInit` calls `jlLoadSeats()` to re-apply every override into the
-      live `Config` waypoint. The normal re-seat path already reads the live `Config` value
-      (`wpVec`/`wpVec4`/`loc.pos`), so a restored override takes effect immediately AND survives reloads.
-      New globals (200-locals-cap-safe): `jlApplySeatOverride` / `jlSaveSeats` / `jlPersistSeat` /
-      `jlLoadSeats`. **TEST:** tune a seat → Save → reload the save → he sits at the tuned spot, not the old
-      one. (This unblocks the manual sitting-position fix above.)
+- [x] **Seat tuner didn't move him + coords didn't persist (old S4). — FIXED v1.1 (2026-07-08, awaiting
+      in-game test.)** TWO bugs, both fixed:
+      **(A) "Slides but he's solid as a rock" — the re-seat never moved him.** Root cause: the re-seat
+      **teleported** him (`placeAtExact` → `AITeleportCommand`) then replayed the sit. But a puppet locked in
+      an AMM sit-workspot **rejects that teleport** — `StopInDevice` starts releasing him, but the instant
+      teleport is eaten while he's still pinned to the pose, so he never moves and the re-sit re-pins him at
+      the OLD spot. (Proof it wasn't collision — idle Jackie's collision is already OFF via
+      `Config.idleNoCollision=true`; and idle WANDER gets him up fine because it drives him with a *walk*
+      command, which the AI accepts, not a teleport, which it doesn't. v0.45's deferred-timing patch never
+      truly fixed this.) Fix: **`tunerApply` now DESPAWN + RESPAWNS him onto the tuned seat** instead of
+      teleporting. A freshly-spawned puppet is standing/unpinned, so the normal placement path
+      (`wanderTick` → `applyIdlePose`) seats him exactly where we point it, every time. `wanderTick` gained
+      `JL.idle.forceStartIdx` (place him on THIS seat, not a random waypoint) + a long hold-dwell so he
+      doesn't wander off mid-tune. Live-slide still works (debounced to 0.5 s, self-throttles while a respawn
+      is in flight); he **blinks** out/in each re-seat — accepted as fine for a dev tuner.
+      **(B) Coords didn't survive a reload.** The tuner only live-patched in-memory `Config`; on reload
+      config.lua was re-`require`d with its OLD baked coords. Fix: **"Save seat (survives reload)"** button
+      write-backs each committed seat to `jl_seats.txt` (`key|sitSeatIdx|x|y|z|yaw`); `onInit` →
+      `jlLoadSeats()` re-applies every override into the live `Config` waypoint. New globals
+      (200-locals-cap-safe): `jlApplySeatOverride`/`jlSaveSeats`/`jlPersistSeat`/`jlLoadSeats` +
+      `JL.idle.forceStartIdx`. **TEST:** (1) tune a seat → he re-seats (blinks) at the new spot each nudge;
+      (2) Save → reload the save → he sits at the tuned spot, not the old one. (Unblocks the manual
+      sitting-position fix above.)
 - [ ] **Venue interiors break the game (old S3), e.g. Lizzie's.** He tries to path INTO an interior and it
       breaks. Keep every dinner seat at an exterior-reachable spot that never triggers an interior load; gate
       any must-be-interior venue out of the picker until proven stable.

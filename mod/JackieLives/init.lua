@@ -100,6 +100,12 @@ local JL = {
   day    = { lastHour = nil, count = 0, template = nil, bag = {}, bagPos = 0 },
   -- v0.41 secret sleeping-hours cameo: decided=rolled this night yet; active=he shows at the spot.
   secret = { decided = false, active = false },
+  -- v1.3 approach cameo: V getting within Config.approach.radius of a venue can force Jackie to
+  -- show there. day = in-game day we last reset on; premiumUsed = the one premium appearance has
+  -- already landed today (rate drops after); forcedKey = the venue V's approach pinned him to for
+  -- the day; near = per-venue edge-trigger state (each venue only re-rolls after V has left its
+  -- radius and come back, so it can't roll every tick).
+  approach = { day = -1, premiumUsed = false, forcedKey = nil, near = {} },
   -- holocall arrival state machine: spawn far (passive) -> walk in -> hand off to companion.
   arrival = { at = nil, phase = nil, pt = nil, placeAt = nil, moveAt = nil, deadline = nil, lastReissue = 0 },
   -- v0.33 "send Jackie off": drop follower role -> walk away -> despawn once far enough.
@@ -4156,6 +4162,57 @@ local function secretWantKey(hour)
   return JL.secret.active and S.locationKey or nil
 end
 
+-- v1.3 APPROACH CAMEO: raise how often V actually bumps into Jackie. When V gets within
+-- Config.approach.radius (20 m) of one of his venues during his active hours (06:00–00:00), roll
+-- once to force his schedule to THAT venue for the rest of the in-game day. The first appearance of
+-- the day rolls at premiumChance (35%); each fresh venue-approach keeps rolling at that rate until
+-- one lands, after which every roll drops to repeatChance (10%). The noodle bar is ALWAYS
+-- noodleChance (10%) since V passes it constantly. Global (not local) to respect the 200-local cap.
+--   hour        = current game hour (nil if unreadable)
+--   naturalWant = the venue the normal schedule already wants him at now (don't re-roll there)
+-- Returns the forced venue key while V is within proximityRadius of it, else nil (so a force set
+-- earlier in the day never suppresses his real scheduled spot when V is somewhere else).
+function approachTick(hour, naturalWant)
+  local A = JL.approach
+  local C = Config.approach
+  if not (C and C.enabled) then return nil end
+  -- once-per-in-game-day reset, keyed off the same day counter the schedule rotation uses
+  local today = JL.day and JL.day.count or 0
+  if A.day ~= today then
+    A.day, A.premiumUsed, A.forcedKey, A.near = today, false, nil, {}
+  end
+  -- active hours only: sleep window (00:00–06:00) is left to the secret-nap cameo
+  if hour == nil or hour < 6.0 then A.near = {}; return nil end
+  local pp = playerPos(); if not pp then return nil end
+
+  for _, key in ipairs(C.venues or {}) do
+    local loc = Config.locations[key]
+    if loc and loc.pos then
+      local inside = dist3(pp, { x = loc.pos[1], y = loc.pos[2], z = loc.pos[3] }) <= (C.radius or 20.0)
+      -- rising edge only: roll the first tick V crosses into the radius, then stay armed-off until
+      -- V leaves and comes back. Skip venues he's already at (forced) or headed to (natural).
+      if inside and not A.near[key] and key ~= A.forcedKey and key ~= naturalWant then
+        local rate = (key == "noodle") and (C.noodleChance or 0.10)
+                     or (A.premiumUsed and (C.repeatChance or 0.10) or (C.premiumChance or 0.35))
+        local hit = math.random() < rate
+        log(string.format("Approach roll: V near %s (%.0f%%) -> %s",
+                           loc.name or key, rate * 100, hit and "HIT — Jackie shows here today" or "miss"))
+        if hit then A.forcedKey, A.premiumUsed = key, true end
+      end
+      A.near[key] = inside
+    end
+  end
+
+  -- apply the day's forced venue ONLY while V is actually near it
+  if A.forcedKey then
+    local fl = Config.locations[A.forcedKey]
+    if fl and fl.pos and dist3(pp, { x = fl.pos[1], y = fl.pos[2], z = fl.pos[3] }) <= (Config.proximityRadius or 45.0) then
+      return A.forcedKey
+    end
+  end
+  return nil
+end
+
 local function scheduleTick()
   if JL.idle.leaving then return end                 -- a departure is in progress; idleLeavingTick owns it
   if JL.summon.active then clearIdle(); return end
@@ -4171,6 +4228,10 @@ local function scheduleTick()
   end
   -- secret nap cameo: while asleep/unavailable, he may be at the hidden spot instead
   if not wantKey then wantKey = secretWantKey(hour) end
+  -- v1.3 approach cameo: V walking up to a venue can force him there for the day (overrides the
+  -- normal schedule so he shows up where V actually is). See approachTick.
+  local forced = approachTick(hour, wantKey)
+  if forced then wantKey = forced end
   -- DEBUG override (CET window "Force venue"): pin him to one venue regardless of time
   if JL.ui.forceVenue and Config.locations[JL.ui.forceVenue] and Config.locations[JL.ui.forceVenue].pos then
     wantKey = JL.ui.forceVenue

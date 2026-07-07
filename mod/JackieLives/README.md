@@ -93,7 +93,7 @@ Jackie has two dialogue tracks, set in **Esc → Settings → Jackie Lives → R
 - **Hermano** — the male-V default (canon): he's your brother-in-arms, strictly choom, still with Misty.
 
 It's **auto-picked from your V's body gender the first time you load in** and locked from then on (a
-`modeInit` flag saved in `jl_settings.txt`); flip it anytime with the switch. It reshapes his talk /
+`genderLock` flag saved in `jl_settings.txt`); flip it anytime with the switch. It reshapes his talk /
 holocall / arrival / dismiss lines, the reunion, and the Vik / Misty / Mama recovery notes. Authoring
 lives in `config.lua` (`Config.hermanoLines` + inline `m = {...}` overrides) and `retrieval.lua` (the
 shard texts). ⚠️ The male-V voice pool is thin (68 clips), so some Hermano lines are subtitle-only (mute)

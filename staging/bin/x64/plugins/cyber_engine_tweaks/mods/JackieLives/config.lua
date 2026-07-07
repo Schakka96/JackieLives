@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.2"
+Config.version = "1.3"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -529,9 +529,9 @@ Config.hermanoLines = {
   -- "Straight to biz, eh, chica?"  ->  "...mano?"  (real male-V mirror clip)
   ["jl_1777946122915868672"] = { text = "Straight to biz, eh, mano?",
                                  sfx  = "jl_jackie_q003_m_18ac88942e2ef000" },   -- ⚠️ VERIFY audio by ear
-  -- parting  "Time we were on our way, mamita."  ->  "...mano."  (text-only; also a voiced male
-  -- parting pool lives in Config.dismiss.partingPoolM below for the send-off path)
-  ["jl_1155727714874494976"] = { text = "Time we were on our way, mano." },
+  -- parting  "Time we were on our way, mamita."  ->  a VOICED male-V parting (never "mamita" to a
+  -- male V). Uses the real male clip "Make moves, mano." (same clip as partingPoolM below).
+  ["jl_1155727714874494976"] = { text = "Make moves, mano.", sfx = "jl_jackie_vs_vset_jackie_m_1f119a05be52a008" },  -- ⚠️ VERIFY audio by ear
   -- gig/dinner accept  "Right on, chica."  ->  "Right on, mano."  (text-only)
   ["jl_1721407637774192672"] = { text = "Right on, mano." },
 }
@@ -768,16 +768,11 @@ Config.locationDialogue = {
           { text = "V, how you feel? You all right?", sfx = "jl_1802590928224841728" },
           { text = "¿Qué onda?",                      sfx = "jl_2015561179233951744" },
         },
-        -- v0.81: each sign-off shows a RANDOM line from its textPool (re-rolled every open, like the
-        -- jackiePool above), so it never sounds canned. Left pool leads to his "you take it easy, rest
-        -- up" reply (`care`); right pool leads to his "time we were on our way" reply (`bye`).
+        -- v0.81: the sign-off shows a RANDOM line from its textPool (re-rolled every open, like the
+        -- jackiePool above), so it never sounds canned. v1.3: the "take care / checkin' in" branch was
+        -- dropped — as a companion send-off only the "let's move" lines read right, so just that pool
+        -- remains (leads to his "time we were on our way" reply, `bye`).
         choices = {
-          { textPool = {
-              "Just checkin' in on ya, hermano.",
-              "Take care of yourself, choom.",
-              "Look after yourself, yeah?",
-              "Get some rest, you earned it.",
-            }, to = "care" },
           { textPool = {
               "We should get movin'.",
               "Let's get goin', hermano.",
@@ -785,10 +780,6 @@ Config.locationDialogue = {
               "Time to hit the road, choom.",
             }, to = "bye"  },
         },
-      },
-      care = {
-        jackie  = { text = "Thanks, I will! V, you take it easy, OK? Rest up a bit.", sfx = "jl_1993514843414274048" },
-        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
@@ -1096,7 +1087,8 @@ Config.reunionCallTree = {
     },
     outrage = {
       jackiePool = {
-        { text = "I know. I KNOW. Scream at me all you want, mano, I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh." },
+        { text = "I know. I KNOW. Scream at me all you want, chica, I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh.",
+          m = { text = "I know. I KNOW. Scream at me all you want, mano, I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh." } },
       },
       choices = {
         { text = "...You really scared me, choom.", to = "iffy" },
@@ -1162,7 +1154,7 @@ Config.reunionCallTree = {
       },
       choices = {
         { text = "Nobody's askin' you to. We keep it low. Deal?",   to = "askbike" },
-        { text = "Good. You've bled enough for this city, hermano.", to = "askbike" },
+        { text = "Good. You've bled enough for this city.", to = "askbike" },
       },
     },
     askbike = {
@@ -1195,7 +1187,7 @@ Config.reunionCallTree = {
           m = { text = "Phew ... Gracias V. You got no idea what that means to me. Ok enough chatting, where you at? Nah — don't move, I'm already headed your way. Hang tight, mano." } },
       },
       choices = {
-        { text = "Okay. I'll be right here. Hurry up, hermano.", to = "onmyway" },
+        { text = "Okay. I'll be right here. Hurry up.", to = "onmyway" },
       },
     },
     onmyway = {
@@ -1240,7 +1232,7 @@ Config.reunionMeetTree = {
         { text = "Aah, savin' my ass, V, thank you. How about I drive you home, eh?", sfx = "jl_1866254590956171264" },
       },
       choices = {
-        { text = "Drive me home? Thought you'd wanna ride your Arch — she's right where you left her.", to = "bikejoy" },
+        { text = "Drive me home? She's your ride, Jackie — here, have your keys back.", to = "bikejoy" },
       },
     },
     -- v0.94b: MUTE (text-only) — the Miguel VO clip didn't fit here. Bespoke subtitle: he's just
@@ -1250,7 +1242,7 @@ Config.reunionMeetTree = {
         { text = "You kept her runnin' for me. All this time... Damn, V. That's the last piece o' the old me, right there." },
       },
       choices = {
-        { text = "Go on then, hermano. Take her for a spin.", to = "leave" },
+        { text = "Let's go, hermano, and you can take her for a spin.", to = "leave" },
       },
     },
     leave = {
@@ -1445,6 +1437,24 @@ Config.secret = {
   chance      = 0.20,    -- 20% per night
   startHour   = 2,       -- phone-unavailable window = 02:00–06:00 (4h/night; reduced from 0–6)
   endHour     = 6,
+}
+
+-- ---- approach cameo (v1.3) -------------------------------------------------
+-- Jackie only ever runs 3-4 of his 7 venues on any given day, so V rarely bumps into him. This
+-- raises the odds: whenever V gets within `radius` of ANY venue during his active hours
+-- (06:00-00:00), roll ONCE to force his schedule to that venue for the rest of the in-game day
+-- (he shows up where V actually is). The FIRST appearance of the day rolls at `premiumChance`; each
+-- new venue-approach keeps rolling at that rate UNTIL one lands, after which every roll drops to
+-- `repeatChance`. The noodle bar is ALWAYS `noodleChance` (V passes it far too often to earn the
+-- premium). Each venue only re-rolls after V has left its radius and returned (no per-tick spam).
+-- Resets every in-game day. Sleep hours are left to the secret-nap cameo above.
+Config.approach = {
+  enabled       = true,
+  radius        = 20.0,   -- metres: V this close to a venue triggers one roll
+  premiumChance = 0.35,   -- first daily appearance (non-noodle) — the "premium" shot
+  repeatChance  = 0.10,   -- after he's appeared once via this mechanic today
+  noodleChance  = 0.10,   -- noodle bar is ALWAYS this (V passes it constantly)
+  venues = { "noodle", "misty", "coyote", "afterlife", "ginger", "redwood", "lizzies" },
 }
 
 -- ---- daily schedules (v0.37a: 5 day-types, shuffled, 3 stops/day) ----------

@@ -8,6 +8,28 @@ Log last written: 2026-06-16 (day session)
 Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
 
 --------------------------------------------------------------------------------
+2026-07-08  -  v1.3 APPROACH CAMEO (Jackie shows up where V actually is)
+--------------------------------------------------------------------------------
+- Problem: his appearance likelihood was too low. He only runs 3-4 of his 7
+  venues per day-type, so V rarely bumps into an idle Jackie.
+- Fix: new `approachTick` in init.lua + `Config.approach`. When V gets within
+  `radius` (20 m) of ANY of his 7 real venues during active hours (06:00-00:00),
+  roll ONCE to force his schedule to that venue for the rest of the in-game day.
+    * FIRST daily appearance = premiumChance (35%). Rolls stay at 35% on each
+      fresh venue-approach UNTIL one lands, then drop to repeatChance (10%) for
+      the rest of the day (per Antonia: premium is spent on a SUCCESS, not a
+      miss). Noodle bar is ALWAYS noodleChance (10%) — V passes it constantly.
+    * Edge-triggered per venue: a venue only re-rolls after V has LEFT its 20 m
+      radius and come back, so it can't roll every 2 s tick.
+    * The forced venue only overrides the real schedule while V is within
+      proximityRadius (45 m) of it, so an early force never suppresses his
+      genuinely-scheduled spot when V is elsewhere. Resets each in-game day.
+    * Sleep window (00:00-06:00) is untouched — left to the secret-nap cameo.
+- Note: `approachTick` is a GLOBAL function (not `local`) — init.lua is at Lua's
+  200-locals-per-chunk cap, so a new top-level `local` would break the load.
+  Its constants live in Config; its internals are function-scoped locals (fine).
+
+--------------------------------------------------------------------------------
 2026-07-04  -  VOICE BANK REBUILT: ALL 1200 LINES PLAYABLE
 --------------------------------------------------------------------------------
 - Problem (recurring): Audioware finds each clip by the EXACT `file:` name in the

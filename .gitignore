@@ -77,3 +77,5 @@ audioware/JackieLives/*.yml.bak
 # Extracted CDPR quest-graph JSON (datamining artifact, do not redistribute)
 docs/research/q005_raw/
 docs/research/q101_raw/
+# Raw base-game mourning/reaction scene dumps (~222MB of CDPR .scene JSON; local authoring reference only)
+docs/mounring_scenes/
