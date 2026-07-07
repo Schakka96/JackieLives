@@ -287,6 +287,14 @@ end
 -- ZERO console copying. Move this file to the Mac only if you want the values baked into
 -- blaze.lua for the shipped mod. Auto-called on every capture/grab. Global => 200-cap safe.
 BLAZE_CONFIG_FILE = "blaze_config.txt"
+
+-- v1.x BLAZE: the Story-mode description, shown both in the arm/confirm prompt and once Blaze is on.
+-- Global (not a top-level local) => 200-cap safe; one source of truth for the two draw sites.
+BLAZE_DESC = "You and Jackie fight out of the Heist -- taking down Smasher & Takemura, escape by " ..
+  "helicopter, sell the Relic, and become living legends. DISABLES the main plot (no Relic, no Johnny, " ..
+  "no dyin'). Extremely experimental. Choose this BEFORE jumping off the building in the Heist -- " ..
+  "WARNING: this can't be undone!"
+
 function blazeDumpConfig()
   local c = Blaze.cfg
   local function q(s)   return s and string.format("%q", tostring(s)) or "nil" end
@@ -5259,14 +5267,14 @@ registerForEvent("onDraw", function()
   ImGui.Text("Story mode:  ")
   ImGui.SameLine()
   ImGui.TextColored(1.0, 0.6, 0.2, 1.0, JL.mode == "blaze" and "BLAZE OF GLORY" or "QUIET LIFE")
-  if ImGui.Button("Use Quiet Life") then jlSetMode("quietlife") end
+  if ImGui.Button("Use Quiet Life") then jlSetMode("quietlife"); JL.ui.blazeConfirm = false end
   ImGui.SameLine()
-  if ImGui.Button("Use Blaze of Glory") then jlSetMode("blaze") end
+  -- v1.x SAFETY: clicking here only ARMS Blaze — it does NOT switch mode. The irreversible switch
+  -- happens only on the explicit "Yes" in the confirm prompt below (Blaze disables the main plot).
+  if ImGui.Button("Use Blaze of Glory") then JL.ui.blazeConfirm = true end
   if JL.mode == "blaze" then
-    ImGui.TextColored(1.0, 0.6, 0.2, 1.0, "Blaze of Glory  (WORK IN PROGRESS)")
-    ImGui.TextWrapped("You and Jackie fight out of the Heist -- kill Smasher & Takemura, escape by " ..
-      "helicopter, sell the Relic, and retire as legends. DISABLES the main plot (no Relic, no Johnny, " ..
-      "no dying). Most invasive. Choose this BEFORE the Heist -- it can't be undone mid-save.")
+    ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "Blaze of Glory  (EXTREMELY EXPERIMENTAL)")
+    ImGui.TextWrapped(BLAZE_DESC)
 
     -- v0.96 MVP-A: Heist set-piece test controls (spawn Smasher+Goro+VTOL, run the
     -- kill-Smasher -> reach-VTOL -> cut-to-black flow). Positions/records are captured
@@ -5308,6 +5316,15 @@ registerForEvent("onDraw", function()
       "apartment before starting; grab the heli record (look-at, above) first if you want the heli to appear. " ..
       "Use a THROWAWAY save.")
     if ImGui.Button("EXPERIMENTAL: Start Yorinobu fight") then jlSetMode("blaze"); Blaze.startYorinobu(); JL.ui.status = "Blaze: Yorinobu fight started (experimental)." end
+  elseif JL.ui.blazeConfirm then
+    -- v1.x SECOND LAYER: the toggle is armed but not committed. Show the description + a hard
+    -- confirm; only "Yes" actually flips to Blaze (jlSetMode). "Cancel" disarms.
+    ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "Blaze of Glory  (EXTREMELY EXPERIMENTAL)")
+    ImGui.TextWrapped(BLAZE_DESC)
+    ImGui.TextColored(1.0, 0.25, 0.15, 1.0, "Are you sure? This DISABLES the main plot and CANNOT be undone.")
+    if ImGui.Button("Yes") then jlSetMode("blaze"); JL.ui.blazeConfirm = false; JL.ui.status = "Blaze of Glory ENABLED." end
+    ImGui.SameLine()
+    if ImGui.Button("Cancel") then JL.ui.blazeConfirm = false end
   else
     ImGui.TextWrapped("Quiet Life: the main story plays out as normal, but Jackie secretly survived and " ..
       "returns as a living Heywood NPC. Less invasive -- but Jackie can only join SIDE jobs, never the " ..

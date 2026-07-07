@@ -20,6 +20,22 @@ companion timer resets). A companion-duration clock sends him home on his own af
 See [TODO.md](TODO.md) for the live roadmap, [docs/conversations.md](docs/conversations.md) for the
 voiced-line bank, and [docs/DESIGN.md](docs/DESIGN.md) for the full design.
 
+## Story modes
+
+The mod has two mutually-exclusive **story modes**, chosen from the CET overlay window (Story mode
+selector). The default is **Quiet Life**; switching to **Blaze of Glory** is a deliberate, guarded action.
+
+- **Quiet Life** *(default, recommended)* — the main story plays out as normal, but Jackie secretly
+  survived and returns as a living Heywood NPC. The least invasive layer; Jackie can join **side jobs
+  only**, never the main plot. This is the mode all the polished content above targets.
+- **Blaze of Glory** *(extremely experimental)* — an alternate timeline where you and Jackie fight out
+  of the Heist: take down Smasher & Takemura, escape by helicopter, and cash out the Relic. It
+  **disables the main plot** (no Relic, no Johnny, no dying). Because it rewrites the Heist ending, it
+  must be chosen **before the Heist** and **cannot be undone** — so the toggle is behind a two-step
+  "Are you sure? → Yes" confirm, and lives only in the CET developer overlay (not the in-game Esc menu).
+  This mode is a **work-in-progress / throwaway-save toy**; see [TODO.md](TODO.md) and
+  [docs/DESIGN.md](docs/DESIGN.md) §11 for scope and status.
+
 ## Layout
 
 | Path | What |

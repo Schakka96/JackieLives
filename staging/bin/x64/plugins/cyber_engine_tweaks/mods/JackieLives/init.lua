@@ -53,6 +53,7 @@ local Config = require("config")
 -- is at Lua's hard 200-local-per-function limit; a new top-level `local` here would make the WHOLE file
 -- fail to load in CET. Globals don't count toward that limit. (The CET debug window calls Retrieval.*)
 Retrieval = require("retrieval")   -- "Where's Jackie?" questline + master mod gate (see retrieval.lua)
+Blaze     = require("blaze")       -- v0.96 GLOBAL (200-cap): "Blaze of Glory" Heist set-piece (see blaze.lua)
 -- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
 -- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
 -- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
@@ -120,6 +121,17 @@ local JL = {
   dinner  = { phase = nil, dest = nil, destName = nil, destYaw = nil, mappinId = nil, satAt = nil,
               lastResetGame = nil, collisionOff = false, seatDeadline = nil, sitFireAt = nil,  -- v0.44 seat rework
               nextOfferGame = nil, offerSession = nil },  -- v0.48: Jackie's self-initiated dinner offer schedule
+  -- v0.95 STORY MODE selector: "quietlife" (default, non-invasive layer) vs "blaze" (Blaze of Glory —
+  -- the alternate-timeline route that rewrites the Heist ending + disables the main plot). Blaze
+  -- MACHINERY IS WIP (pending the JLFactDump spike + WolvenKit q005 edits); the toggle persists the
+  -- choice and sets the jl_mode_blaze quest fact that the future questphase edit reads. Field on JL
+  -- (not a new top-level local) to respect the 200-locals cap.
+  mode   = "quietlife",   -- "quietlife" | "blaze"
+  -- v0.97 QUIET-LIFE MOURNING SUPPRESSION: hold the "Jackie is dead" grief facts down so a living
+  -- Jackie doesn't collide with the ofrenda / grief calls. SAFE-BY-DEFAULT (off until confirmed) —
+  -- persisted via JL_SETTINGS_KEYS; the actual fact list lives in JL_MOURNING_FACTS (below).
+  mourningSuppress = false,
+  mourningTimer    = 0,
   timer  = 0,
   clock  = 0,        -- accumulated game seconds (for talk cooldowns)
   lastTalk = -999,
@@ -198,6 +210,123 @@ function discoverJackieFromSpawned(verbose)   -- global (not local): 200-local c
     log("No Jackie among AMM's spawned NPCs. Spawn him via AMM's menu first, then click 'Find Jackie'.")
   end
   return found
+end
+
+-- v0.96 BLAZE: generalised version of discoverJackieFromSpawned — grab ANY AMM-spawned
+-- NPC/vehicle's record path by a name substring (e.g. "smasher", "takemura", "av"). Spawn
+-- it via AMM's own menu first, then call this; returns the record string (also logged so it
+-- can be pasted into blaze.lua M.cfg for permanence). Global (not local) => 200-cap safe.
+function discoverBlazeRecord(nameFilter)
+  local amm = getAMM()
+  if not amm or not amm.Spawn then log("AMM.Spawn unavailable."); return nil end
+  nameFilter = tostring(nameFilter or ""):lower()
+  local hit = nil
+  local function scan(tbl)
+    if type(tbl) ~= "table" then return end
+    for _, sp in pairs(tbl) do                     -- keep the LAST match (newest spawn wins)
+      if type(sp) == "table" then
+        local nm   = tostring(sp.name or ""):lower()
+        local path = sp.path or sp.id
+        if path and (nameFilter == "" or nm:find(nameFilter, 1, true) or tostring(path):lower():find(nameFilter, 1, true)) then
+          hit = tostring(path)
+        end
+      end
+    end
+  end
+  scan(amm.Spawn.spawnedNPCs)                       -- NPCs live here...
+  for k, v in pairs(amm.Spawn) do                   -- ...vehicles/props may live in a sibling "spawned*" table
+    if type(v) == "table" and tostring(k):lower():find("spawn", 1, true) then scan(v) end
+  end
+  if hit then log("Blaze DISCOVERED record for '" .. nameFilter .. "' = '" .. hit .. "'   <- saved")
+  else        log("Blaze: no AMM-spawned entity matched '" .. nameFilter .. "'. (Vehicles: use the look-at grab.)") end
+  return hit
+end
+
+-- v0.97 BLAZE: grab the TweakDB record path off whatever V is LOOKING AT. Works for the heli
+-- (a vehicle — not in AMM's NPC table) and anything else with a crosshair hitbox. Reads
+-- GetRecordID() and reverses it to the readable "Vehicle.xxx"/"Character.xxx" string via CET's
+-- TDBID.ToStringDEBUG. Global (not local) => 200-cap safe.
+function discoverBlazeRecordFromTarget()
+  local pl = Game.GetPlayer(); if not pl then log("Blaze look-at grab: no player."); return nil end
+  local target
+  pcall(function()
+    local ts = Game.GetTargetingSystem()
+    if ts then target = ts:GetLookAtObject(pl, false, false) end
+  end)
+  if not target then log("Blaze look-at grab: not looking at anything — put your crosshair ON the heli, then click."); return nil end
+  local rec
+  pcall(function()
+    if target.GetRecordID then
+      local id = target:GetRecordID()
+      if TDBID and TDBID.ToStringDEBUG then rec = TDBID.ToStringDEBUG(id) end   -- hash -> readable path
+    end
+  end)
+  local cls = "?"; pcall(function() local c = target:GetClassName(); cls = tostring(c and (c.value or c)) end)
+  if rec and rec ~= "" then
+    log("Blaze look-at grab [" .. cls .. "] record = '" .. rec .. "'   <- saved")
+    return rec
+  end
+  log("Blaze look-at grab: entity [" .. cls .. "] gave no readable record — tell Claude this class name so we can adapt.")
+  return nil
+end
+
+-- v0.96 BLAZE: capture V's current transform as a plain {x,y,z,yaw} table for a set-piece
+-- spawn point, and LOG it so it can be pasted into blaze.lua M.cfg. Global => 200-cap safe.
+function blazeCapture()
+  local pl = Game.GetPlayer(); if not pl then log("Blaze capture: no player."); return nil end
+  local pos = pl:GetWorldPosition(); local yaw = 0.0
+  pcall(function() yaw = pl:GetWorldOrientation():ToEulerAngles().yaw end)
+  local t = { x = pos.x, y = pos.y, z = pos.z, yaw = yaw }
+  log(string.format("Blaze capture -> { x = %.3f, y = %.3f, z = %.3f, yaw = %.1f }", t.x, t.y, t.z, yaw))
+  return t
+end
+
+-- v0.96 BLAZE: persist the whole set-piece config to a plain-text file in the mod folder
+-- (CET sandboxes io to .../mods/JackieLives/), written as executable Lua assignments so it
+-- RE-LOADS itself on launch (see blazeLoadConfig) -- captures survive reloads/redeploys with
+-- ZERO console copying. Move this file to the Mac only if you want the values baked into
+-- blaze.lua for the shipped mod. Auto-called on every capture/grab. Global => 200-cap safe.
+BLAZE_CONFIG_FILE = "blaze_config.txt"
+
+-- v1.x BLAZE: the Story-mode description, shown both in the arm/confirm prompt and once Blaze is on.
+-- Global (not a top-level local) => 200-cap safe; one source of truth for the two draw sites.
+BLAZE_DESC = "You and Jackie fight out of the Heist -- taking down Smasher & Takemura, escape by " ..
+  "helicopter, sell the Relic, and become living legends. DISABLES the main plot (no Relic, no Johnny, " ..
+  "no dyin'). Extremely experimental. Choose this BEFORE jumping off the building in the Heist -- " ..
+  "WARNING: this can't be undone!"
+
+function blazeDumpConfig()
+  local c = Blaze.cfg
+  local function q(s)   return s and string.format("%q", tostring(s)) or "nil" end
+  local function pos(p) return p and string.format("{ x = %.3f, y = %.3f, z = %.3f, yaw = %.1f }", p.x, p.y, p.z, p.yaw or 0.0) or "nil" end
+  local out = {
+    "-- Blaze of Glory captured config (AUTO-WRITTEN; re-loaded on launch). Move to Mac to bake into blaze.lua.",
+    "Blaze.cfg.smasherRecord = " .. q(c.smasherRecord),
+    "Blaze.cfg.goroRecord    = " .. q(c.goroRecord),
+    "Blaze.cfg.heliRecord    = " .. q(c.heliRecord),
+    "Blaze.cfg.smasherPos    = " .. pos(c.smasherPos),
+    "Blaze.cfg.goroPos       = " .. pos(c.goroPos),
+    "Blaze.cfg.heliPos       = " .. pos(c.heliPos),
+  }
+  pcall(function()
+    local f = io.open(BLAZE_CONFIG_FILE, "w")
+    if f then f:write(table.concat(out, "\n") .. "\n"); f:close() end
+  end)
+end
+
+-- v0.96 BLAZE: read blaze_config.txt (if present) and apply it to Blaze.cfg on load. The file
+-- IS Lua (Blaze.cfg.* = ...), so we just load+run it. Guarded: a missing file or a disabled
+-- load() simply no-ops (in-session captures still work). Global => 200-cap safe.
+function blazeLoadConfig()
+  local content
+  pcall(function() local f = io.open(BLAZE_CONFIG_FILE, "r"); if f then content = f:read("*a"); f:close() end end)
+  if not content or content == "" then return false end
+  local ok = pcall(function()
+    local chunk = (load and load(content)) or (loadstring and loadstring(content))
+    if chunk then chunk() end
+  end)
+  log(ok and "Blaze config loaded from blaze_config.txt." or "Blaze config present but could not be applied.")
+  return ok
 end
 
 local function resolveJackieRecord()
@@ -1390,6 +1519,53 @@ startLinearDialogue = function()
   startDialogue(Config.testDialogue)
 end
 
+-- ===========================================================================
+-- RELATIONSHIP MODE (v1.2): Husbando (female-V track) vs Hermano (male-V track).
+-- JL.husbando (persisted) is the switch: true = Husbando, false = Hermano. The base
+-- text/sfx authored in config.lua IS the Husbando track; a Jackie line, pool entry or
+-- choice may carry an `m = {...}` MASCULINE OVERRIDE that replaces it in Hermano mode.
+-- No `m` -> the shared (unisex) line is reused — it's Jackie's own voice either way, so
+-- any content-neutral clip works for both. Declared GLOBAL (not local) to respect
+-- init.lua's 200-local cap. See config.lua header + docs/VOICE_LINES.md.
+-- ===========================================================================
+function jlHermano() return JL.husbando == false end   -- true while the male-V (Hermano) track is active
+
+-- Mode-appropriate variant of a Jackie line / pool-entry table {text=, sfx=, m={text=,sfx=}}.
+-- In Hermano mode, resolution order:
+--   1) an inline `m = {...}` on the entry (used for text-only lines + one-offs), else
+--   2) a central sfx-keyed override in Config.hermanoLines (rewrites EVERY recurrence of a
+--      voiced female-coded line at once — e.g. the "...chica" greeting appears in 5+ trees).
+-- No match -> the shared (unisex) entry is returned unchanged. nil-safe.
+function jlVar(entry)
+  if entry and jlHermano() then
+    if entry.m then return entry.m end
+    local map = Config.hermanoLines
+    if map and entry.sfx and map[entry.sfx] then return map[entry.sfx] end
+  end
+  return entry
+end
+
+-- v1.2: detect V's BODY GENDER once and LOCK the relationship-mode default (Female V -> Husbando,
+-- Male V -> Hermano). Player isn't ready in onInit, so this runs from onUpdate (world-ready-safe,
+-- same pattern as nsTick) and only fires on the FIRST load after install — the persisted JL.modeInit
+-- flag guards it, so afterwards the player's saved choice / manual toggle always wins. Global (200-cap).
+function jlDetectGenderOnce()
+  if JL.modeInit then return end                       -- already locked (persisted) -> respect saved choice
+  local pl = Game.GetPlayer(); if not pl then return end   -- world not ready this tick -> retry next frame
+  local female = nil
+  pcall(function()
+    local g = pl:GetResolvedGenderName()               -- CName "Female" / "Male"
+    if g ~= nil then female = (g == CName.new("Female")) end
+  end)
+  if female == nil then return end                     -- unreadable this tick -> retry (never lock on a bad read)
+  JL.husbando  = female                                -- female V -> Husbando, male V -> Hermano
+  JL.modeInit  = true
+  pcall(jlSaveSettings)
+  JL.ui.status = "Jackie mode auto-set: " .. (female and "Husbando (female V)" or "Hermano (male V)")
+  log("V body gender read -> relationship mode LOCKED to " ..
+      (female and "Husbando (female V)" or "Hermano (male V)") .. " (switch it anytime in Esc -> Settings).")
+end
+
 -- ---------------------------------------------------------------------------
 -- BRANCHING dialogue (v0.23): native-looking choice box driving a small tree.
 -- Jackie speaks a node's line (voice + subtitle); after it, a CHOICE BOX of silent
@@ -1512,7 +1688,8 @@ local function startDinnerWalk(key)
   local selfPick = (key == "random") and r.pickSfx
   local line = selfPick and r.pickText or D.ackText
   local sfx  = selfPick and r.pickSfx  or D.ackSfx
-  pcall(function() speakJackieLine(line, sfx) end)
+  local av   = jlVar({ text = line, sfx = sfx })   -- v1.2: Hermano swap (e.g. "Right on, chica." -> "...mano.")
+  pcall(function() speakJackieLine(av.text, av.sfx) end)
   -- v0.64: flash the objective as the native neon-left on-screen message (not a persistent ImGui box).
   local fmt = (D.objectiveText) or "Grab some food with Jackie: Go to %s"
   pcall(function() showOnscreenMsg(fmt:format(tostring(r.name)), D.objectiveDuration or 6.0) end)
@@ -1718,11 +1895,19 @@ local function openChoiceMenu(choices, title)
     local appear = true
     if c.chance then local r = 1.0; pcall(function() r = math.random() end); appear = (r < c.chance) end
     if appear then
-      if c.textPool and #c.textPool > 0 then
-        local i = 1; pcall(function() i = math.random(1, #c.textPool) end)
-        c.text = c.textPool[i]
+      -- v1.2: resolve the DISPLAY text into a shallow COPY so re-rolling a textPool or switching
+      -- relationship mode never clobbers the config's base text. In Hermano mode a choice's `m`
+      -- override ({text=} or {textPool=}) wins; otherwise the base choice text is used.
+      local sc = {}; for k, v in pairs(c) do sc[k] = v end
+      local src  = (c.m and jlHermano()) and c.m or c
+      local pool = src.textPool
+      if pool and #pool > 0 then
+        local i = 1; pcall(function() i = math.random(1, #pool) end)
+        sc.text = pool[i]
+      elseif src.text then
+        sc.text = src.text
       end
-      shown[#shown + 1] = c
+      shown[#shown + 1] = sc
     end
   end
   if #shown == 0 then shown = choices end   -- safety: never open an empty menu
@@ -1789,6 +1974,7 @@ Branch.start = function(nodeKey, tree)
   if node.jackiePool and #node.jackiePool > 0 then
     jline = pickPoolLine(node.jackiePool)
   end
+  jline = jlVar(jline)   -- v1.2: swap in the Hermano (male-V) line if this entry carries an `m = {...}`
   local secs = speakJackieLine(jline and jline.text, jline and jline.sfx)
   bstate.openAt = (JL.clock or 0) + secs + 0.4
 end
@@ -2429,11 +2615,20 @@ startLeaving = function(opts)
   local h  = sp and sp.handle
   if not h then return end
   local D = Config.dismiss or {}
-  opts = opts or {}
+  opts = jlVar(opts or {})   -- v1.2: Hermano swap for an explicit parting line (e.g. mainQuestExit's "...mamita.")
   -- 1) parting line (real VO + subtitle), like any Jackie line. Capture its duration so we can WIPE the
   --    subtitle afterwards - a one-off speakJackieLine has no follow-up hide, so the line stuck forever.
   local secs = 4.0
-  pcall(function() secs = speakJackieLine(opts.text or D.partingText, opts.sfx or D.partingSfx) or 4.0 end)
+  -- v0.94: parting line is a POOL (Config.dismiss.partingPool) picked at random each dismiss; falls back to
+  -- the single partingText/partingSfx. An explicit opts.text (e.g. mainQuestExit) still overrides the pool.
+  -- These are function-local (NOT main-chunk locals) so they don't count toward init.lua's 200-local cap.
+  local pText, pSfx = D.partingText, D.partingSfx
+  local ppool = (jlHermano() and D.partingPoolM) or D.partingPool   -- v1.2: Hermano parting pool if present
+  if ppool and #ppool > 0 then
+    local pick = ppool[math.random(#ppool)]
+    if pick then pText, pSfx = pick.text, pick.sfx end
+  end
+  pcall(function() secs = speakJackieLine(opts.text or pText, opts.sfx or pSfx) or 4.0 end)
   JL.leaving.subClearAt = (JL.clock or 0) + secs + 0.8
   -- 2) start walking away (retreat-follow to despawnDistance). Keep summon.active/companionSet so the
   --    onUpdate "re-apply companion role" block stays OFF until he's actually gone; leavingTick re-issues.
@@ -4012,11 +4207,14 @@ local function nsTick()
     ns.addSwitch(
       "/jackielives/relationship",
       "Husbando mode",
-      "OFF = Hermano (canon): Jackie's your brother-in-arms and he's with Misty. " ..
-      "ON = Husbando: Jackie and V are closer/together and he's broken up with Misty. " ..
-      "(Mode-specific dialogue and venue schedules are WIP — toggling this only sets the flag for now.)",
-      JL.husbando,   -- current state
-      false,         -- default (Hermano)
+      "Picks Jackie's relationship track. Auto-set from your V the first time you load in " ..
+      "(Female V -> Husbando, Male V -> Hermano) and remembered after that — flip it here anytime. " ..
+      "ON = HUSBANDO: Jackie and V have a slow-burn thing going — he's a lot more flirty, the " ..
+      "tension's there, and he's broken things off with Misty. " ..
+      "OFF = HERMANO (canon): Jackie's your brother-in-arms, strictly choom, and still with Misty. " ..
+      "Changes his dialogue, greetings and the reunion/recovery notes to match.",
+      JL.husbando,   -- current state (auto-locked from V's gender on first load; then persisted)
+      true,          -- 'reset to default' value: Husbando (the flirty track)
       function(state)
         JL.husbando = state
         pcall(jlSaveSettings)
@@ -4069,12 +4267,13 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals" }  -- persisted JL.* boolean flags
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "modeInit" }  -- persisted JL.* boolean flags (modeInit v1.2: has the first-load gender lock happened?)
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
   if not f then log("settings: could not write " .. JL_SETTINGS_FILE); return end
   for _, k in ipairs(JL_SETTINGS_KEYS) do f:write(k .. "=" .. tostring(JL[k] == true) .. "\n") end
+  f:write("mode=" .. tostring(JL.mode or "quietlife") .. "\n")  -- v0.95 string setting (not a boolean)
   f:close()
 end
 
@@ -4084,12 +4283,171 @@ function jlLoadSettings()
   for line in f:lines() do
     local k, v = line:match("^(%w+)=(%w+)$")
     if k then
+      if k == "mode" and (v == "quietlife" or v == "blaze") then JL.mode = v end  -- v0.95
       for _, want in ipairs(JL_SETTINGS_KEYS) do
         if k == want then JL[k] = (v == "true") end
       end
     end
   end
   f:close()
+end
+
+-- ===========================================================================
+-- SEAT-TUNER PERSISTENCE (v1.1) — fixes the old-S4 "sit coords don't persist on reload" bug.
+-- The tuner used to only live-patch the in-memory Config + print a line for a manual config.lua
+-- edit; on reload config.lua was re-required with its OLD baked coords, so every tuning session
+-- was lost. Now each committed seat is written to jl_seats.txt and re-applied into Config on
+-- onInit. The normal re-seat path already reads the live Config waypoint (wpVec/wpVec4/loc.pos),
+-- so re-applying the override there is all it takes for the tuned spot to survive a reload AND
+-- take effect immediately. Globals (no top-level `local`) to respect the 200-locals cap.
+-- File format, one committed seat per line:  key|sitSeatIdx|x|y|z|yaw
+-- (sitSeatIdx indexes the venue's SIT waypoints in Config order — the same order the tuner uses.)
+-- ===========================================================================
+JL_SEATS_FILE = "jl_seats.txt"
+
+-- Re-apply one persisted override INTO the live Config, mirroring tunerPrint's in-memory patch so
+-- both the tuner and the normal scheduled sit path pick it up. Returns true if it landed on a seat.
+function jlApplySeatOverride(key, seatIdx, x, y, z, yaw)
+  local loc = Config.locations and Config.locations[key]
+  if not (loc and loc.waypoints) then return false end
+  local seats = {}   -- SIT waypoints in Config order (matches tunerSitWaypoints)
+  for _, wp in ipairs(loc.waypoints) do if wp.pose == "sit" then seats[#seats + 1] = wp end end
+  local wp = seats[seatIdx]
+  if not wp then return false end
+  wp.pos = { x, y, z }; wp.yaw = yaw
+  if #seats <= 1 then loc.pos = { x, y, z }; loc.yaw = yaw end   -- single-seat venue: anchor tracks it
+  return true
+end
+
+-- Write every committed override to disk. JL.tuner.saved is the in-memory map (id -> coords).
+function jlSaveSeats()
+  local f = io.open(JL_SEATS_FILE, "w")
+  if not f then log("seats: could not write " .. JL_SEATS_FILE); return end
+  local saved = JL.tuner.saved
+  if saved then
+    for _, s in pairs(saved) do
+      f:write(("%s|%d|%.4f|%.4f|%.4f|%.2f\n"):format(s.key, s.seatIdx, s.x, s.y, s.z, s.yaw))
+    end
+  end
+  f:close()
+end
+
+-- Record + persist the seat the tuner just committed, then flush the whole set to disk.
+function jlPersistSeat(key, seatIdx, x, y, z, yaw)
+  JL.tuner.saved = JL.tuner.saved or {}
+  JL.tuner.saved[key .. "|" .. seatIdx] = { key = key, seatIdx = seatIdx, x = x, y = y, z = z, yaw = yaw }
+  jlSaveSeats()
+end
+
+-- Read jl_seats.txt on load and re-apply each override into the live Config. Called from onInit.
+function jlLoadSeats()
+  JL.tuner.saved = JL.tuner.saved or {}
+  local f = io.open(JL_SEATS_FILE, "r")
+  if not f then return end
+  local n = 0
+  for line in f:lines() do
+    local key, si, x, y, z, yaw =
+      line:match("^([%w_]+)|(%d+)|(-?[%d.]+)|(-?[%d.]+)|(-?[%d.]+)|(-?[%d.]+)$")
+    if key then
+      si, x, y, z, yaw = tonumber(si), tonumber(x), tonumber(y), tonumber(z), tonumber(yaw)
+      JL.tuner.saved[key .. "|" .. si] = { key = key, seatIdx = si, x = x, y = y, z = z, yaw = yaw }
+      if jlApplySeatOverride(key, si, x, y, z, yaw) then n = n + 1 end
+    end
+  end
+  f:close()
+  if n > 0 then log(("seats: restored %d tuned seat(s) from %s"):format(n, JL_SEATS_FILE)) end
+end
+
+-- v0.95 single source of truth for the story mode. Persists the choice AND mirrors it to the
+-- jl_mode_blaze quest fact so a (future) WolvenKit questphase edit on q005_heist can gate the
+-- Heist-ending reroute on it (fact set => Blaze reroute fires; unset => vanilla story). Global
+-- (not a top-level local) for the 200-locals cap.
+function jlSetMode(m)
+  JL.mode = (m == "blaze") and "blaze" or "quietlife"
+  pcall(function() Game.GetQuestsSystem():SetFactStr("jl_mode_blaze", JL.mode == "blaze" and 1 or 0) end)
+  jlSaveSettings()
+  log("Story mode -> " .. JL.mode)
+end
+
+-- ===========================================================================
+-- MOURNING SUPPRESSION (v0.97, "Quiet Life") — hold the "Jackie is dead" grief
+-- facts down so a living Jackie doesn't collide with the ofrenda / grief calls.
+-- DATA-DRIVEN + SAFE-BY-DEFAULT. Forcing quest facts out of order can soft-lock
+-- (docs/research/main_quest_freeze_research.md), so this framework:
+--   * ONLY runs in Quiet Life mode AND when JL.mourningSuppress is ON,
+--   * NEVER writes the player's canon body-choice facts (JL_MOURNING_PROTECTED),
+--   * offers a dry-run PREVIEW that only LOGS what it would set (verify first!),
+--   * is reversible — we only pin narrative "on/active" facts to 0; flip the
+--     toggle off and we stop asserting them.
+-- This is the RUNTIME (CET) half of the A+B plan; the preferred long-term half is
+-- baked .questphase edits gated on quietlife (see docs/mourning_suppression.md).
+-- Fact NAMES below came from `strings` on the mourning binaries (docs/mounring_scenes/);
+-- exact target VALUES stay marked CONFIRM until the .questphase JSONs are read.
+-- Globals (no main-chunk `local`) for the 200-local cap.
+-- ===========================================================================
+
+-- The player's canon "where did Jackie's body go" decision. We suppress the
+-- DOWNSTREAM grief, NEVER these — hard-blocked so a bad list row can't corrupt a save.
+JL_MOURNING_PROTECTED = {
+  q005_jackie_to_mama     = true,
+  q005_jackie_to_hospital = true,
+  q005_jackie_stay_notell = true,
+}
+
+-- The grief levers. Each row: name = quest fact · hold = value we pin (0 = keep
+-- this content OFF) · note = what it gates. EDIT rows here once the JSONs land;
+-- the machinery below needs no other change. Rows marked CONFIRM are best-guess
+-- from the binaries and must be validated (JSON or in-game) before enabling.
+JL_MOURNING_FACTS = {
+  -- "Heroes" ofrenda side quest (sq018). Pinning sq018_active to 0 stops the whole
+  -- ofrenda arming without touching the body-choice above. Heroes is a narrative
+  -- dead-end (not a prerequisite), so pinning it is low-risk.
+  { name = "sq018_active",                  hold = 0, note = "Heroes/ofrenda quest arm flag" },        -- CONFIRM value
+  { name = "sq018_01_funeral_preparations", hold = 0, note = "ofrenda prep phase" },                   -- CONFIRM value
+  -- Grief holocalls (Mama Welles / Misty phone their condolences). Fact NAMES are
+  -- guesses — the holocall questphases didn't expose a clean *_on token via strings.
+  -- { name = "mama_welles_holocall_on",    hold = 0, note = "Mama grief call" },                       -- CONFIRM name+value
+  -- { name = "misty_holocall_on",          hold = 0, note = "Misty grief call" },                      -- CONFIRM name+value
+  -- World-bark grief (Misty at Esoterica / Mama at El Coyote switch to mourning
+  -- state). Tier-3 / ambient — leave COMMENTED until confirmed safe; some of these
+  -- may be desirable to keep (a somber-but-alive Misty is not lore-breaking).
+  -- { name = "misty_default_grief_on",     hold = 0, note = "Misty ambient grief state" },             -- CONFIRM name+value
+}
+
+-- Apply the mourning holds (or, dryRun=true, just LOG what it would do). Returns
+-- the number of facts it changed/would-change. Skips rows already at target and
+-- refuses any protected (body-choice) fact.
+function jlMourningApply(dryRun)
+  if JL.mode ~= "quietlife" then return 0 end
+  local qs; pcall(function() qs = Game.GetQuestsSystem() end)
+  if not qs then return 0 end
+  local n = 0
+  for _, e in ipairs(JL_MOURNING_FACTS) do
+    if JL_MOURNING_PROTECTED[e.name] then
+      log("[Mourning] REFUSED protected body-choice fact " .. tostring(e.name) .. " (never touched)")
+    else
+      local cur; pcall(function() cur = qs:GetFactStr(e.name) end)
+      if cur ~= e.hold then
+        if dryRun then
+          log(string.format("[Mourning] WOULD set %s: %s -> %d  (%s)", e.name, tostring(cur), e.hold, e.note or ""))
+        else
+          pcall(function() qs:SetFactStr(e.name, e.hold) end)
+          log(string.format("[Mourning] set %s: %s -> %d  (%s)", e.name, tostring(cur), e.hold, e.note or ""))
+        end
+        n = n + 1
+      end
+    end
+  end
+  return n
+end
+
+-- Short menu status line.
+function jlMourningStatus()
+  if JL.mode ~= "quietlife" then return "n/a — Blaze mode auto-suppresses grief" end
+  if not JL.mourningSuppress then return "OFF" end
+  local active = 0
+  for _, e in ipairs(JL_MOURNING_FACTS) do if not JL_MOURNING_PROTECTED[e.name] then active = active + 1 end end
+  return "ON — holding " .. tostring(active) .. " grief fact(s)"
 end
 
 -- Force-despawns EVERY Jackie (orphans included), wipes ALL transient state machines, then lets
@@ -4450,7 +4808,119 @@ registerForEvent("onInit", function()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
-  pcall(function() Retrieval.bind{ log = log } end)   -- retrieval questline: inject the logger (more helpers bound in Phases 2-4)
+  pcall(jlLoadSeats)       -- v1.1: restore tuned sit coords into Config so they survive a reload (old-S4 fix)
+  pcall(function() Retrieval.bind{ log = log, isHermano = jlHermano } end)   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
+  -- v0.96 BLAZE: inject every game-touching primitive the set-piece needs, built from the
+  -- proven helpers in this file. blaze.lua stays pure Lua; ONLY this table calls Game.*.
+  pcall(function()
+    Blaze.bind{
+      log = log,
+      spawnDyn = function(rec, p, yaw, tag)
+        return spawnDynEntity(rec, Vector4.new(p.x, p.y, p.z, 1.0), yaw, tag)   -- reuse the bike/Jackie DES spawn
+      end,
+      findEntity = function(id) local h; pcall(function() h = Game.FindEntityByID(id) end); return h end,
+      teleport = function(h, p, yaw)
+        pcall(function()
+          local tf = Game.GetTeleportationFacility()
+          if tf then tf:Teleport(h, Vector4.new(p.x, p.y, p.z, 1.0), EulerAngles.new(0.0, 0.0, yaw or 0.0)) end
+        end)
+      end,
+      setHostile = function(h)
+        pcall(function()
+          local pl = Game.GetPlayer()
+          if pl and h and h.GetAttitudeAgent then
+            h:GetAttitudeAgent():SetAttitudeTowards(pl:GetAttitudeAgent(), EAIAttitude.AIA_Hostile)
+          end
+        end)
+      end,
+      isDead = function(h)
+        if not h then return true end                    -- despawned/culled -> treat as gone
+        local dead = false
+        pcall(function() if h.IsDead then dead = h:IsDead() end end)
+        if not dead then                                 -- fallback: health pool <= 0
+          pcall(function()
+            local sps = Game.GetStatPoolsSystem()
+            if sps and h.GetEntityID then
+              local hp = sps:GetStatPoolValue(h:GetEntityID(), gamedataStatPoolType.Health, false)
+              if hp ~= nil and hp <= 0 then dead = true end
+            end
+          end)
+        end
+        return dead
+      end,
+      distToPlayer = function(p)
+        local pp = playerPos(); if not pp or not p then return 1e9 end
+        local dx, dy, dz = pp.x - p.x, pp.y - p.y, pp.z - p.z
+        return math.sqrt(dx * dx + dy * dy + dz * dz)
+      end,
+      deleteById = function(id) deleteEntityById(id) end,
+      -- MVP-A objective/cutscene = native message band + caption. MVP-B swaps THESE TWO lines
+      -- for real WolvenKit .journal calls / a real scene (docs/BLAZE_WOLVENKIT_OBJECTIVES.md).
+      objective = function(text, dur) showOnscreenMsg(text, dur or 8.0) end,
+      fade = function(caption) showOnscreenMsg(caption or "CUT TO BLACK", 8.0) end,
+      -- ALTERNATE-TIMELINE WORLD UNLOCK (v-next MVP slice): the Watson prologue barrier reads the
+      -- quest fact `watson_prolog_unlock` directly (proven in docs/research/q005_graph_findings.md —
+      -- set by NO quest condition, only the prevention-area system). Vanilla sets it deep inside q101
+      -- (Love Like Fire). Setting it here opens Watson WITHOUT entering q101 -> no Johnny, no biochip,
+      -- no death. THIS SLICE = Watson only (test it in isolation first). The Act-2 content toggles are
+      -- the NEXT slice, added here once Watson is confirmed in-game:
+      --   apartment_on, victor_vector_default_on, misty_default_on, mq033_misty_dialogue_on,
+      --   wat_lch_gunsmith_01_default_on, radio_on, tv_on, cyberspace_on  (all =1).
+      worldUnlock = function()
+        pcall(function()
+          local qs = Game.GetQuestsSystem()
+          if qs then
+            qs:SetFactStr("watson_prolog_unlock", 1)
+            qs:SetFactStr("watson_prolog_lock", 0)
+          end
+        end)
+        log("[Blaze] world unlock -> watson_prolog_unlock=1, watson_prolog_lock=0 (Watson barrier lifted)")
+      end,
+      -- ⚠️ EXPERIMENTAL Yorinobu scenario helpers ----------------------------------
+      -- Jackie speaks: play the voiced clip + show the text. Returns the clip length (s) so blaze.lua's
+      -- VO queue can space a multi-line beat by its real duration.
+      say = function(text, sfx)
+        local dur
+        if sfx and sfx ~= "" then pcall(function() playVoice(sfx) end); dur = voiceDuration(sfx) end
+        if text and text ~= "" then showOnscreenMsg(text, (dur and dur > 0) and dur or 4.0) end
+        return dur
+      end,
+      -- Takemura appears -> Jackie becomes a COMPANION (fights + auto combat barks) and the mod goes
+      -- fully active. Bypasses the retrieval/main-quest gates (this is the Blaze route). Setting
+      -- JL.summon.active gates scheduleTick, so no second idle Jackie can spawn while he's placed.
+      becomeCompanion = function()
+        pcall(function() Retrieval.forceReunion() end)   -- mod fully active (unlocks summon/companion systems)
+        if JL.summon.active then return end              -- already a companion -> schedule already gated
+        local spawn = ammSpawn(1)                        -- companion Jackie
+        if spawn then
+          JL.summon.spawn, JL.summon.active, JL.summon.companionSet = spawn, true, false
+          log("[Blaze] Jackie -> companion (schedule gated).")
+        else
+          log("[Blaze] becomeCompanion: ammSpawn failed.")
+        end
+      end,
+      -- The payoff: open Watson without q101 (world-unlock lever), SKIP the retrieval shard by marking
+      -- Jackie already returned, and teleport V to Vik's clinic. Jackie is ALREADY a companion (from
+      -- becomeCompanion at the start), so his catch-up logic brings him to Vik's beside her — no second
+      -- spawn. (Full q005/interlude/q101 graph autocompletion is the OTHER workstream's job — this
+      -- delivers the playable result via the barrier lift + teleport; see docs/research/q005_graph_findings.md.)
+      finale = function()
+        pcall(function()
+          local qs = Game.GetQuestsSystem()
+          if qs then qs:SetFactStr("watson_prolog_unlock", 1); qs:SetFactStr("watson_prolog_lock", 0) end
+        end)
+        pcall(function() Retrieval.forceReunion() end)   -- Blaze: skip the Where's-Jackie shard, mark him returned
+        local vik = (Retrieval.Config and Retrieval.Config.vikPos) or { -1546.551, 1229.270, 11.520 }
+        pcall(function()
+          local tf = Game.GetTeleportationFacility()
+          if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(vik[1], vik[2], vik[3], 1.0), EulerAngles.new(0.0, 0.0, 129.8)) end
+        end)
+        log("[Blaze] FINALE: Watson open, retrieval shard skipped, V teleported to Vik's (companion Jackie follows).")
+      end,
+      persist = function() blazeDumpConfig() end,   -- auto-write blaze_config.txt on every capture/grab
+    }
+  end)
+  pcall(blazeLoadConfig)   -- v0.96: re-apply captured records/positions from blaze_config.txt (survives reloads)
   log("Loaded v" .. tostring(Config.version or "?") .. ". AMM present: " .. tostring(JL.amm ~= nil))
 end)
 
@@ -4508,7 +4978,8 @@ end
 -- v0.52: no-repeat picker for arrival GREETING LINES (real jl_ clips + subtitle, NOT WWise grunt events).
 -- Avoids the last-used line + any used within greetRepeatCooldown (5 min). State on JL.arrivalGreet (keyed by sfx).
 local function pickArrivalGreetLine(now)
-  local pool = (Config.call and Config.call.arrivalGreetings) or {}
+  local pool = (jlHermano() and Config.call and Config.call.arrivalGreetingsM)   -- v1.2: Hermano arrival greetings
+               or (Config.call and Config.call.arrivalGreetings) or {}
   if #pool == 0 then return nil end
   JL.arrivalGreet = JL.arrivalGreet or { used = {}, last = nil }
   local st = JL.arrivalGreet
@@ -4604,6 +5075,8 @@ end
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
   pcall(function() Retrieval.tick(dt) end)   -- retrieval questline: gate + Vik tip + Badlands shard + call/arrival/reunion sequence
+  if JL.mode == "blaze" then pcall(function() Blaze.tick(JL.clock, dt) end) end   -- v0.96: Heist set-piece state machine (self-guards when idle)
+  pcall(jlDetectGenderOnce)   -- v1.2: one-shot — lock the Husbando/Hermano default from V's body gender
   pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
@@ -4676,6 +5149,17 @@ registerForEvent("onUpdate", function(dt)
   if JL.timer >= Config.scheduleCheckInterval then
     JL.timer = 0
     pcall(scheduleTick)
+  end
+
+  -- v0.97: Quiet-Life mourning suppression. Re-assert the grief holds every ~5 s
+  -- (cheap, and re-catches any fact the quest system flips back up). Gated so it
+  -- never runs in Blaze mode or when the player left it off.
+  if JL.mode == "quietlife" and JL.mourningSuppress then
+    JL.mourningTimer = (JL.mourningTimer or 0) + dt
+    if JL.mourningTimer >= 5.0 then
+      JL.mourningTimer = 0
+      pcall(jlMourningApply, false)
+    end
   end
 end)
 
@@ -4756,9 +5240,10 @@ local function tunerApply()
   return true
 end
 
--- Print the config-ready line AND live-patch the in-memory config so he keeps sitting right this
--- session. Updates THIS seat waypoint (key + seatIdx); for a single-seat venue it also moves the
--- anchor pos so his fall-back spot tracks the seat.
+-- Commit this seat: live-patch the in-memory config so he keeps sitting right this session, PERSIST
+-- it to jl_seats.txt so it survives a reload (v1.1 old-S4 fix), AND print the config-ready line so
+-- Antonia can still bake it into config.lua permanently. Updates THIS seat waypoint (key + seatIdx);
+-- for a single-seat venue it also moves the anchor pos so his fall-back spot tracks the seat.
 local function tunerPrint()
   local x, y, z, yaw = tunerCoords()
   local line = string.format("pos = { %.3f, %.3f, %.3f }, yaw = %.1f", x, y, z, yaw)
@@ -4767,6 +5252,8 @@ local function tunerPrint()
   local wp, loc, seats = tunerSeatWaypoint()
   if wp then wp.pos = { x, y, z }; wp.yaw = yaw end
   if loc and #seats <= 1 then loc.pos = { x, y, z }; loc.yaw = yaw end  -- single-seat venue: anchor tracks it
+  jlPersistSeat(JL.tuner.key, JL.tuner.seatIdx, x, y, z, yaw)           -- write-back so it survives a reload
+  JL.ui.status = ("Saved %s seat %d — survives reload."):format(JL.tuner.key, JL.tuner.seatIdx)
 end
 
 registerForEvent("onDraw", function()
@@ -4774,6 +5261,96 @@ registerForEvent("onDraw", function()
   if not JL.ui.overlayOpen then return end   -- the debug window only draws while the overlay is open
   if not JL.ui.open then return end
   ImGui.Begin("Jackie Lives")
+
+  -- v0.95 STORY MODE selector (Quiet Life vs Blaze of Glory). Buttons + wrapped description, using
+  -- only idioms already proven in this file (Button/Text/SameLine/TextWrapped/TextColored).
+  ImGui.Text("Story mode:  ")
+  ImGui.SameLine()
+  ImGui.TextColored(1.0, 0.6, 0.2, 1.0, JL.mode == "blaze" and "BLAZE OF GLORY" or "QUIET LIFE")
+  if ImGui.Button("Use Quiet Life") then jlSetMode("quietlife"); JL.ui.blazeConfirm = false end
+  ImGui.SameLine()
+  -- v1.x SAFETY: clicking here only ARMS Blaze — it does NOT switch mode. The irreversible switch
+  -- happens only on the explicit "Yes" in the confirm prompt below (Blaze disables the main plot).
+  if ImGui.Button("Use Blaze of Glory") then JL.ui.blazeConfirm = true end
+  if JL.mode == "blaze" then
+    ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "Blaze of Glory  (EXTREMELY EXPERIMENTAL)")
+    ImGui.TextWrapped(BLAZE_DESC)
+
+    -- v0.96 MVP-A: Heist set-piece test controls (spawn Smasher+Goro+VTOL, run the
+    -- kill-Smasher -> reach-VTOL -> cut-to-black flow). Positions/records are captured
+    -- in-game; paste the console-logged values into blaze.lua M.cfg to make them stick.
+    ImGui.Separator()
+    ImGui.Text("Heist set-piece (MVP-A):")
+    ImGui.TextWrapped(Blaze.status())
+    ImGui.TextWrapped("1. RECORDS -- spawn Smasher/Takemura (and an AV) via AMM's menu, then grab:")
+    if ImGui.Button("Grab Smasher record") then local r = discoverBlazeRecord("smasher");  if r then Blaze.setRecord("smasher", r) end end
+    ImGui.SameLine()
+    if ImGui.Button("Grab Takemura record") then local r = discoverBlazeRecord("takemura"); if r then Blaze.setRecord("goro", r) end end
+    ImGui.TextWrapped("Heli is a VEHICLE (not in AMM's NPC list) -- aim your crosshair AT the floating heli, then:")
+    if ImGui.Button("Grab heli record (look at it)") then local r = discoverBlazeRecordFromTarget(); if r then Blaze.setRecord("heli", r) end end
+    ImGui.TextWrapped("2. POSITIONS -- stand on each spot (FACE the right way) & capture:")
+    if ImGui.Button("Capture Goro / elevator spot")  then Blaze.setPos("goro",    blazeCapture()) end
+    if ImGui.Button("Capture Smasher / balcony spot") then Blaze.setPos("smasher", blazeCapture()) end
+    if ImGui.Button("Capture Heli / hover spot")      then Blaze.setPos("heli",    blazeCapture()) end
+    ImGui.TextWrapped("3. RUN:")
+    if ImGui.Button("Start set-piece") then Blaze.start() end
+    ImGui.SameLine()
+    if ImGui.Button("Reset set-piece") then Blaze.reset(); JL.ui.status = "Blaze set-piece reset." end
+    ImGui.TextWrapped("TEST: fire the world-unlock directly (same as the set-piece's ending) -- lifts the " ..
+      "Watson barrier via watson_prolog_unlock. Use on a THROWAWAY save.")
+    if ImGui.Button("TEST: World unlock now (Watson barrier)") then
+      local ok = Blaze.testWorldUnlock()
+      JL.ui.status = ok and "Fired world unlock (watson_prolog_unlock=1, watson_prolog_lock=0)." or "World unlock helper not bound."
+    end
+    ImGui.TextWrapped("Records + positions AUTO-SAVE to blaze_config.txt (in the mod folder) and reload " ..
+      "on launch -- no console copying, no re-capturing. Grab a Smasher record via AMM's menu FIRST, though.")
+    if ImGui.Button("Re-write blaze_config.txt now") then blazeDumpConfig(); JL.ui.status = "Wrote blaze_config.txt in the mod folder." end
+
+    -- v0.97 EXPERIMENTAL: one-button Yorinobu-apartment fight (hardcoded, WIP, not further developed).
+    ImGui.Separator()
+    ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "EXPERIMENTAL — Yorinobu apartment fight")
+    ImGui.TextWrapped("WIP / not further developed. Flips to Blaze mode and runs a scripted encounter at " ..
+      "Yorinobu's apartment (HARDCODED coords): Takemura appears -> defeat him (lethal or not) -> Smasher " ..
+      "appears -> defeat him -> escape heli appears -> reach it (5 m) -> fade -> world opens & you wake at " ..
+      "Vik's with a LIVING Jackie (the retrieval shard is skipped). Jackie barks along the way. Stand IN the " ..
+      "apartment before starting; grab the heli record (look-at, above) first if you want the heli to appear. " ..
+      "Use a THROWAWAY save.")
+    if ImGui.Button("EXPERIMENTAL: Start Yorinobu fight") then jlSetMode("blaze"); Blaze.startYorinobu(); JL.ui.status = "Blaze: Yorinobu fight started (experimental)." end
+  elseif JL.ui.blazeConfirm then
+    -- v1.x SECOND LAYER: the toggle is armed but not committed. Show the description + a hard
+    -- confirm; only "Yes" actually flips to Blaze (jlSetMode). "Cancel" disarms.
+    ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "Blaze of Glory  (EXTREMELY EXPERIMENTAL)")
+    ImGui.TextWrapped(BLAZE_DESC)
+    ImGui.TextColored(1.0, 0.25, 0.15, 1.0, "Are you sure? This DISABLES the main plot and CANNOT be undone.")
+    if ImGui.Button("Yes") then jlSetMode("blaze"); JL.ui.blazeConfirm = false; JL.ui.status = "Blaze of Glory ENABLED." end
+    ImGui.SameLine()
+    if ImGui.Button("Cancel") then JL.ui.blazeConfirm = false end
+  else
+    ImGui.TextWrapped("Quiet Life: the main story plays out as normal, but Jackie secretly survived and " ..
+      "returns as a living Heywood NPC. Less invasive -- but Jackie can only join SIDE jobs, never the " ..
+      "main plot.")
+
+    -- v0.97 mourning suppression (WIP: fact list still being confirmed from WolvenKit).
+    ImGui.Separator()
+    ImGui.Text("Mourning content:")
+    ImGui.SameLine()
+    ImGui.TextColored(0.6, 0.8, 1.0, 1.0, jlMourningStatus())
+    ImGui.TextWrapped("Suppress the 'Jackie is dead' grief (the ofrenda / condolence calls) so they don't " ..
+      "contradict a living Jackie. WORK IN PROGRESS -- the fact list isn't fully confirmed yet, so PREVIEW " ..
+      "first (logs to jackie_debug.log without changing anything) and test on a throwaway save.")
+    local newVal = ImGui.Checkbox("Suppress mourning content", JL.mourningSuppress)  -- CET: 1st return = new value
+    if newVal ~= JL.mourningSuppress then JL.mourningSuppress = newVal; jlSaveSettings(); JL.mourningTimer = 999 end  -- fire next tick
+    if ImGui.Button("Preview (log only, no changes)") then
+      local n = jlMourningApply(true)
+      JL.ui.status = "Mourning preview: " .. tostring(n) .. " fact(s) would change -- see jackie_debug.log."
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Apply once now") then
+      local n = jlMourningApply(false)
+      JL.ui.status = "Mourning: applied " .. tostring(n) .. " grief hold(s)."
+    end
+  end
+  ImGui.Separator()
 
   -- Reunion-quest status, always shown at the very top of the window.
   ImGui.Text("Reunion quest: ")
@@ -5049,9 +5626,10 @@ registerForEvent("onDraw", function()
     ImGui.SameLine()
     if ImGui.Button("Reset offsets") then t.dx, t.dy, t.dz, t.dyaw = 0, 0, 0, 0 end
     ImGui.SameLine()
-    if ImGui.Button("Print coords -> config.lua") then tunerPrint() end
-    ImGui.TextWrapped("Printed line goes to the console + the 'Last capture' box above. Tell me the " ..
-                      "numbers and I'll bake them into config.lua permanently.")
+    if ImGui.Button("Save seat (survives reload)") then tunerPrint() end
+    ImGui.TextWrapped("Saves this seat to jl_seats.txt so it sticks after a reload AND applies now. " ..
+                      "The same line is printed to the console + the 'Last capture' box above — tell me " ..
+                      "the numbers and I'll also bake them into config.lua permanently.")
   end
 
   ImGui.Separator()
