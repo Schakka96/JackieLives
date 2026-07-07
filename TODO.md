@@ -88,6 +88,15 @@ Scripted editing required (once the spike confirms facts):
   safe (field on `JL`, globals only). luajit parse-checked OK. **Decision baked: ONE mod, not two** —
   Blaze `.archive` edits self-gate on the fact, so Quiet Life players get vanilla story. Staging NOT
   synced (Mac session; sync on Windows). `Config.version` left at 1.0 (no deploy).
+- ⏸️ **BLAZE OF GLORY — POSTPONED (2026-07-07, Antonia's call).** The experimental Yorinobu set-piece
+  below is left in a clean, committed, playable state; no further Blaze work until Antonia resumes it.
+  **📌 NOTE FOR THE q005/q101 WORKSTREAM:** the Blaze `finale` deliberately delegates the world-open to
+  your **`worldUnlock` fact lever** and does NOT autocomplete any quest graph (force-completing q005 risks
+  starting q101 = the Johnny/biochip machinery Blaze exists to skip — see the discussion: fact-flip the
+  curated world-state levers + `UntrackEntry`, don't "complete" the quests). Blaze will **eventually
+  consume that fuller pulled-fact list** (apartment_on, victor_vector_default_on, misty_default_on, radio/
+  tv/cyberspace on, etc.), but **for now you can ignore Blaze entirely** — keep building the fact levers
+  for the main-quest-freeze route; Blaze's `finale` will just call into whatever `worldUnlock` ends up doing.
 - ⚠️ **BUILT 2026-07-07 (v0.97) — Blaze EXPERIMENTAL "Yorinobu apartment fight" (one-button, WIP, SUSPENDED).**
   Antonia's "leave it here" MVP before pausing Blaze work. New `Blaze.startYorinobu()` + a sequenced
   branch in `M.tick` (`st.mode == "yorinobu"`). One overlay button ("EXPERIMENTAL: Start Yorinobu fight")
