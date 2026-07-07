@@ -10,13 +10,21 @@ as a low-level community fixer in Heywood. The player can summon him onto **side
 
 ## Status
 
-Working CET-based prototype (v0.43). Jackie spawns and follows/fights as a companion, runs a
-shuffled **daily schedule** (idle-spawns + free-roam wander at captured venues, per-location
-outfits, sit/lean poses, a secret nap cameo), and talks through a data-driven **branching
-dialogue box** with real voiced lines. You can **call him onto a side job** (holocall → he walks
-or rides in), **talk** to him with location-specific trees, **send him off** (he walks away), and
-**take him to dinner** (pick a restaurant → map waypoint + objective → he takes his seat → his
-companion timer resets). A companion-duration clock sends him home on his own after a while.
+Playable CET build (v1.2). The mod is **gated behind a retrieval questline** — Vik reveals Jackie's
+alive, V finds his note in the Badlands and calls him, and a reunion brings him home; only then does
+everything unlock. After that he follows/fights as a companion, runs a shuffled **daily schedule**
+(idle-spawns + free-roam wander at captured venues, per-location outfits, sit/lean poses, a secret nap
+cameo), and talks through a data-driven **branching dialogue box** with real voiced lines. You can
+**call him onto a side job** (holocall → he walks or rides in), **talk** to him with location-specific
+trees, **send him off** (he walks away), and **take him to dinner** (pick a restaurant → map waypoint +
+objective → he takes his seat → his companion timer resets). A companion-duration clock sends him home
+on his own after a while.
+
+**Relationship modes (v1.2):** two dialogue tracks — **Husbando** (female-V default: slow-burn tension
+with V, more flirty, split with Misty) and **Hermano** (male-V default: canon brother-in-arms, still with
+Misty). Auto-picked from V's body gender on first load and lockable/switchable in **Esc → Settings →
+Jackie Lives → Relationship**. It reshapes his dialogue, greetings, and the reunion/recovery notes.
+
 See [TODO.md](TODO.md) for the live roadmap, [docs/conversations.md](docs/conversations.md) for the
 voiced-line bank, and [docs/DESIGN.md](docs/DESIGN.md) for the full design.
 

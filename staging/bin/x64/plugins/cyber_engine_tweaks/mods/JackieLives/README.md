@@ -76,8 +76,8 @@ Bind **"Talk to Jackie"** (CET → Bindings), then **look at Jackie and press it
 
 ### Call Jackie onto a gig (arrival)
 Click **"Call Jackie (holocall)"** → a short call plays; ask him along and he ARRIVES from a distance and
-walks up as your companion (he never just pops in next to you). Two modes, toggled live in the window
-with **"Arrival method"** (and **"Test arrival now"** fires one without a call):
+walks up as your companion (he never just pops in next to you). Two **arrival methods**, toggled live in
+the window with **"Arrival method"** (and **"Test arrival now"** fires one without a call):
 - **FOOT** (default) — spawns ~50 m off to one side of you, sprints in, walks the last stretch.
 - **BIKE** — spawns ~60 m back on his Arch, rides in, parks on the road ~20 m out, walks the rest.
 
@@ -85,6 +85,19 @@ He spawns on a valid street at *your* height (not a roof/other floor), and if he
 he respawns a little closer until he reaches you. Tuning lives in `Config.call` + `Config.vehicle`
 (spawn distances, where he becomes a companion, bike park distance, etc. — all commented). The CET
 console logs his distance every few seconds (`riding in... 44 m to V`) so you can see what he's doing.
+
+## Relationship mode — Husbando / Hermano (v1.2)
+Jackie has two dialogue tracks, set in **Esc → Settings → Jackie Lives → Relationship**:
+- **Husbando** — the female-V default: he and V have a slow-burn thing, he's more flirty, and he's
+  broken things off with Misty.
+- **Hermano** — the male-V default (canon): he's your brother-in-arms, strictly choom, still with Misty.
+
+It's **auto-picked from your V's body gender the first time you load in** and locked from then on (a
+`modeInit` flag saved in `jl_settings.txt`); flip it anytime with the switch. It reshapes his talk /
+holocall / arrival / dismiss lines, the reunion, and the Vik / Misty / Mama recovery notes. Authoring
+lives in `config.lua` (`Config.hermanoLines` + inline `m = {...}` overrides) and `retrieval.lua` (the
+shard texts). ⚠️ The male-V voice pool is thin (68 clips), so some Hermano lines are subtitle-only (mute)
+by design; the voiced male clips are marked `⚠️ VERIFY` in `config.lua` for an in-game ear-check.
 
 ## Capture his locations (needed for the schedule)
 The schedule only spawns idle Jackie at spots whose coordinates you've captured.
@@ -96,7 +109,9 @@ The schedule only spawns idle Jackie at spots whose coordinates you've captured.
 6. Re-deploy (`.\deploy.ps1`) and reload mods.
 
 Once captured, walk near a spot during its time block and Jackie appears; leave and he despawns.
-Schedule (game-time): 08–14 noodle · 14–20 Coyote Cojo · 20–02 Afterlife · 02–08 asleep/unavailable.
+Schedule: a **5-day shuffle bag** (`active1/2/3/quiet/gone` in `config.lua`), one day-type per in-game
+day — all seven venues appear across the active days. He sleeps 00:00–06:00 and always winds down at El
+Coyote before bed (a `gone` day = out of town, no appearances).
 
 ### Fine-tune his seats (the seat tuner)
 AMM's sit animation is freestanding (invisible chair), so a captured spot rarely lands him perfectly on
@@ -124,5 +139,7 @@ him) — the window's **"Collision … live on Jackie"** line confirms it's off.
   waypoint. To dial a seat onto a real stool/chair, use the **seat tuner** (see "Fine-tune his seats").
 
 ## Files
-- `init.lua` — all logic (summon, schedule, ban, capture, UI).
-- `config.lua` — **the file you edit**: locations, schedule, ban list, decline line.
+- `init.lua` — all logic (summon, schedule, ban, capture, UI, relationship-mode swap engine).
+- `config.lua` — **the file you edit**: locations, schedule, ban list, decline line, dialogue trees +
+  the Hermano line overrides (`Config.hermanoLines` / inline `m`).
+- `retrieval.lua` — the "Where's Jackie?" retrieval questline + the Husbando/Hermano recovery-note text.

@@ -59,8 +59,16 @@ M.Config = {
   },
 
   -- Vik's tip — the reveal, shown as the lower-left tutorial popup when V returns to the clinic.
+  -- v1.2: TWO versions. tipText = Husbando (base, charged — Jackie couldn't stop asking about V);
+  -- tipTextM = Hermano (canon, brotherly). init.lua picks via the mode selector (mvar).
   tipTitle    = "Viktor Vektor",
   tipText     = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
+              .. "my table that night. Got a pulse back, called in a favor, moved him out before "
+              .. "Arasaka came lookin' for the body. He's alive, V — layin' low out in the Badlands, "
+              .. "and it's gotta stay that way. Truth is... he's been askin' after you nonstop. Half-dead "
+              .. "and still your name was the first thing outta his mouth. Whatever's between you two kept "
+              .. "that boy fightin' when he had no business survivin'. I'm markin' the spot. Go get him.",
+  tipTextM    = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
               .. "my table that night. I got a pulse back, called in a favor, and moved him out "
               .. "before Arasaka came lookin' for the body. It just wasn't safe before to tell you, V. "
               .. "He's alive, V. Layin' low out in the Badlands — and it's gotta stay that way. "
@@ -69,7 +77,18 @@ M.Config = {
 
   -- Jackie's note — read on reaching the Badlands hideout (Rocky Ridge garage).
   shardTitle  = "Shard — Jackie Welles",
+  -- v1.2: shardLines = Husbando (base — the desert gave him time to think, about Misty AND about V);
+  -- shardLinesM = Hermano (canon, brotherly). Picked by the mode selector in reachHideout().
   shardLines  = {
+    "If you're readin' this, V, then the doc kept his word and you made it all the way out here. It's me. I'm alive.",
+    "Vik patched me up and smuggled me out 'fore 'Saka could stamp my name on a slab. Been layin' low ever "
+      .. "since — nothin' but a whole lotta desert an' too much time to think.",
+    "Thinkin' 'bout the heist. 'Bout Mama. 'Bout Misty — that's... that's its own story, one I gotta tell "
+      .. "you face to face. And thinkin' 'bout you, V. More'n I got any right to, all the way out here.",
+    "I'm done with the merc life for real this time. But I couldn't let you go on believin' you buried me. "
+      .. "Call me when you read this. Been countin' the days, chica. — Jackie",
+  },
+  shardLinesM = {
     "If you're readin' this, V, then the doc kept his word and you made it out here. It's me. I'm alive.",
     "Vik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.",
     "Mama Welles was so mad when she heard. Think she'd kill me if I went back runnin' the streets again "
@@ -91,20 +110,37 @@ M.Config = {
       fact  = "jackielives_shard_misty",
       pos   = { -1541.777, 1196.792, 15.905 }, radius = 8.0,
       title = "Shard — Misty",
+      -- v1.2: lines = Husbando (Misty as the ex — hurt, but releasing him, and she sees the V of it);
+      --       linesM = Hermano (canon — she's still his, grateful you brought him home). mvar() picks.
       lines = {
+        "You're the one who went out and found him. 'Course you were. He used to talk about you like the sun came up outta your smile — even back when it was still him an' me.",
+        "I won't lie to you, V. Some part of me knew long before that heist went sideways. Felt him driftin'. Every spread I turned showed two threads pullin' apart, and no shuffle in the world changed it.",
+        "We ended it gentle as two people can. I told him a heart can't live half in what's gone. He needs somethin' that makes him feel alive NOW — and I finally stopped pretendin' that was still me.",
+        "So whatever this is between you two — I'm not standin' in it. I turned the Lovers face-up for you both and left it there.",
+        "Just be good to him, V. He's been broken enough for three lifetimes. — Misty",
+      },
+      linesM = {
         "I keep the Death card turned face-down now. Couldn't look at it — for months it was all I saw when I shut my eyes.",
         "When Vik told me he'd made it, that he was out there breathin' in the Badlands, I sat down on the shop floor and cried till the incense burned out.",
         "I won't pretend I'm only happy, V. Some nights I'm so angry I could scream. He walked into that heist knowin' the risk. He almost left us. Almost left me.",
         "But the cards weren't wrong. His thread didn't cut. It just frayed... and held.",
         "Go easy on him. And thank you — for goin' to bring him home. — Misty",
       },
-      duration = 15.0,
+      duration = 15.0
     },
     {
       fact  = "jackielives_shard_mama",
       pos   = { -1262.463, -1002.345, 12.037 }, radius = 9.0,
       title = "Shard — Mama Welles",
+      -- v1.2: lines = Husbando (Mama's not blind to how her boy says V's name now); linesM = Hermano (canon).
       lines = {
+        "So. My Jackie is alive, and I am the last to hear of it. You wait until you are a mother, V, and someone keeps a thing like this from you — then we will talk about forgiveness.",
+        "I lit a candle for that boy every single day. I cooked for a ghost. And all the while he is out in the dust, breathin', lettin' me grieve. Dios mío.",
+        "And yet — he is ALIVE. My boy is alive. I have not stopped thankin' the Virgin since I heard. My knees are sore from it.",
+        "And do not think a mother is blind, mija. The way that boy says your name now — since Misty, since that desert — dios mío. I have eyes. So hear me: do not toy with my son's heart, and if he ever runs a gig like that heist again I will kill him myself before this city can.",
+        "Bring him to my table. Bring yourself. There has always been a plate waitin' — now set out two. — Mama Welles",
+      },
+      linesM = {
         "So. My Jackie is alive, and I am the last to hear of it. You wait until you are a mother, V, and someone keeps a thing like this from you — then we will talk about forgiveness.",
         "I lit a candle for that boy every single day. I cooked for a ghost. And all the while he is out in the dust, breathin', lettin' me grieve. Dios mío.",
         "And yet — he is ALIVE. My boy is alive. I have not stopped thankin' the Virgin since I heard. My knees are sore from it.",
@@ -130,6 +166,13 @@ local state = { fallbackStage = 0, mappinId = nil, lastStage = -1, vikFired = fa
                 clock = 0, callAt = nil, seq = nil }   -- seq: nil|"call"|"arrive"|"reunion"
 
 local function log(msg) if deps.log then pcall(deps.log, "[Retrieval] " .. tostring(msg)) end end
+
+-- v1.2: relationship-mode selector. init.lua binds `isHermano` (a function -> bool). When it
+-- returns true the male-V (Hermano) track is active, so the recovery texts show their canon /
+-- brotherly `*M` variant; otherwise the Husbando (base) text — flirtier, and Jackie's split with
+-- Misty — is shown. mvar(husbando, hermano) picks the active one (the hermano arg is optional).
+local function hermanoMode() return deps.isHermano and deps.isHermano() == true end
+local function mvar(h, m) if m ~= nil and hermanoMode() then return m end return h end
 
 -- ---------------------------------------------------------------------------
 -- Self-contained primitives (no init.lua locals needed)
@@ -337,14 +380,14 @@ end
 -- ---------------------------------------------------------------------------
 function M.giveTip()                                   -- LOCKED -> TIP
   if getStage() >= TIP then return false end
-  showTip(M.Config.tipTitle, M.Config.tipText, M.Config.tipDuration)
+  showTip(M.Config.tipTitle, mvar(M.Config.tipText, M.Config.tipTextM), M.Config.tipDuration)
   setStage(TIP)
   return true
 end
 
 local function reachHideout()                          -- TIP -> AWAITING_CALL
   if getStage() ~= TIP then return end
-  showTip(M.Config.shardTitle, table.concat(M.Config.shardLines, "\n"), M.Config.shardDuration)
+  showTip(M.Config.shardTitle, table.concat(mvar(M.Config.shardLines, M.Config.shardLinesM), "\n"), M.Config.shardDuration)
   log("Shard read at hideout -> AWAITING_CALL (V must call Jackie; he always answers now).")
   -- v0.85: no more auto-ring. Jackie now WAITS for V to call him (he always picks up in this
   -- stage — no schedule, never 'asleep'). init.lua plays Config.reunionCallTree, whose ending
@@ -367,7 +410,7 @@ local function postShardTick()
   if getStage() < REUNITED then return end             -- only after Jackie's back
   for _, sh in ipairs(M.Config.postShards or {}) do
     if sh.fact and factNum(sh.fact) < 1 and nearPoint(sh.pos, sh.radius or 8.0) then
-      showTip(sh.title, table.concat(sh.lines or {}, "\n"), sh.duration or 14.0)
+      showTip(sh.title, table.concat(mvar(sh.lines, sh.linesM) or {}, "\n"), sh.duration or 14.0)
       setFactNum(sh.fact, 1)
       log("Post-shard shown: " .. tostring(sh.title))
     end
@@ -383,7 +426,7 @@ end
 -- Debug: show both post-reunion shards right now (regardless of location / flags).
 function M.debugPostShards()
   for _, sh in ipairs(M.Config.postShards or {}) do
-    showTip(sh.title, table.concat(sh.lines or {}, "\n"), sh.duration or 14.0)
+    showTip(sh.title, table.concat(mvar(sh.lines, sh.linesM) or {}, "\n"), sh.duration or 14.0)
   end
 end
 
@@ -421,7 +464,7 @@ function M.notifyUnavailable() onscreen(M.unavailableMsg(), 2.5) end   -- native
 --   startReunion(onDone)                  -- first-sight dialogue (Phase 4)
 function M.bind(opts)
   opts = opts or {}
-  for _, k in ipairs({ "log", "showTip", "startCall", "startArrival", "startReunion", "spawnAt" }) do
+  for _, k in ipairs({ "log", "showTip", "startCall", "startArrival", "startReunion", "spawnAt", "isHermano" }) do
     if opts[k] ~= nil then deps[k] = opts[k] end
   end
 end

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.0"
+Config.version = "1.2"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -186,6 +186,25 @@ Config.dismiss = {
   choiceText      = "Head home, Jackie. I got this from here.",  -- silent V line in the choice box
   partingSfx      = "jl_1155727714874494976",   -- Jackie VO: "Time we were on our way, mamita."
   partingText     = "Time we were on our way, mamita.",
+  -- v0.94 (Antonia 2026-07-06): Jackie's parting line is now a POOL — startLeaving() picks one at random
+  -- each dismiss (partingText/partingSfx above stay as the safe fallback if the pool is empty). Antonia's
+  -- signature walk-away line "Ahí luego, V." goes here; she says at least 3 CLEAN in-game instances exist.
+  -- ⚠️ TODO(Windows/Audioware): scrape those 3 clips → add to audioware/JackieLives/JackieLives.yml → put
+  -- the clip's jl_ id in `sfx` below. Until then sfx=nil = text+grunt fallback (does NOT break the bank;
+  -- never invent a jl_ id — a missing .wav makes Audioware reject the WHOLE bank). Same line is the
+  -- designated goodbye for the #3b story-NPC gate (see docs/story_npc_gate.md).
+  partingPool     = {
+    { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" }, -- voiced (existing)
+    { text = "Ahí luego, V.",                    sfx = nil }, -- TODO sfx: 3 clean instances exist (scrape → bank)
+  },
+  -- v1.2: HERMANO (male-V) parting pool — used by startLeaving when the male-V track is active
+  -- (jlHermano()). Text-only entries play the fallback grunt + subtitle (mute), like other Hermano
+  -- lines with no clean clip. ⚠️ VERIFY any sfx by ear on Windows before trusting the subtitle.
+  partingPoolM    = {
+    { text = "Time we were on our way, mano." },
+    { text = "Ahí luego, mano.",  sfx = nil },
+    { text = "Make moves, mano.", sfx = "jl_jackie_vs_vset_jackie_m_1f119a05be52a008" }, -- ⚠️ VERIFY audio by ear
+  },
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
@@ -413,16 +432,18 @@ Config.date = {
     nodes = {
       open = {
         jackiePool = {
-          { text = "Man, this hits the spot. No gigs, no gunfire — just us." },
+          { text = "Man, this hits the spot. No gigs, no gunfire — just you an' me." },
           { text = "Could get used to this quiet-life thing, y'know?" },
-          { text = "Good to just sit a minute, huh, chica?" },
+          { text = "Good to just sit a minute, huh, chica?",
+            m = { text = "Good to just sit a minute, huh, hermano?" } },
           { text = "Anyway... what's on your mind, V?" },
         },
         choices = {
           { text = "You ever miss the merc life, Jackie?",        to = "merc",      chance = 0.6 },
           { text = "This city's been grindin' me down lately.",   to = "nightcity", chance = 0.6 },
           { text = "Think Arasaka ever pays for what they did?",  to = "arasaka",   chance = 0.5 },
-          { text = "How're things with you and Misty?",           to = "misty",     chance = 0.6 },
+          { text = "You doin' okay... since you and Misty split?", to = "misty",    chance = 0.6,
+            m = { text = "How're things with you and Misty?" } },
           { text = "Enough chillin', let's get movin'.",          to = "leave" },
         },
       },
@@ -438,7 +459,8 @@ Config.date = {
       },
       nightcity = {
         jackiePool = {
-          { text = "Night City don't care if you live or die, chica. All you can do is find your people and hold on tight." },
+          { text = "Night City don't care if you live or die, chica. All you can do is find your people and hold on tight.",
+            m = { text = "Night City don't care if you live or die, mano. All you can do is find your people and hold on tight." } },
           { text = "This town chews everybody up. Trick's not lettin' it swallow ya whole. You got me, I got you — that's the trick." },
         },
         choices = {
@@ -457,19 +479,25 @@ Config.date = {
         },
       },
       misty = {
+        -- v1.2: BASE = Husbando (he and Misty have split — raw, a door quietly opening toward V);
+        --       `m` = Hermano (canon: they're solid, she's his anchor).
         jackiePool = {
-          { text = "Misty's my anchor, V. Keeps me lookin' up when I wanna look down. Dunno what I'd be without her." },
-          { text = "Me an' Misty? Solid. She reads them cards, says the stars got a plan. I just tell her she's my plan." },
+          { text = "Me an' Misty... we ended it, V. For real, this time. She said I came back a different man from that desert — and maybe she's right. Maybe I been lookin' somewhere else without even meanin' to.",
+            m = { text = "Misty's my anchor, V. Keeps me lookin' up when I wanna look down. Dunno what I'd be without her." } },
+          { text = "Don't gimme that look. Misty and me are done. Some nights I still reach for the phone to text her... other nights, heh — I'm thinkin' 'bout someone else entirely.",
+            m = { text = "Me an' Misty? Solid. She reads them cards, says the stars got a plan. I just tell her she's my plan." } },
         },
         choices = {
-          { text = "She's good for you.", to = "open"  },
+          { text = "Someone else, huh? Anyone I know?", to = "open",
+            m = { text = "She's good for you." } },
           { text = "Let's get movin'.",   to = "leave" },
         },
       },
       leave = {
         -- terminal (no choices) + action -> after his line, dinnerTick stands him up + re-follows.
         jackiePool = {
-          { text = "Heh, alright. Let's roll, chica." },
+          { text = "Heh, alright. Let's roll, chica.",
+            m = { text = "Heh, alright. Let's roll, hermano." } },
           { text = "Yeah, we got a city to look after. Vamonos." },
           { text = "Right behind ya, hermano. Let's move." },
         },
@@ -477,6 +505,35 @@ Config.date = {
       },
     },
   },
+}
+
+-- ============================================================================
+-- HERMANO (male-V) LINE MAP — the male/female/unisex categorization, made executable.
+-- ============================================================================
+-- Jackie's VOICE is the same clip in both modes; a line only needs a male variant when its
+-- CONTENT is female-coded — the pet-names (chica/mamita) or a flirty beat. This table maps
+-- each such base (Husbando) line, BY ITS sfx KEY, to the Hermano replacement, and init.lua's
+-- jlVar() swaps it in EVERYWHERE that clip plays at once — so the "...chica" greeting is fixed
+-- here once, not in all five trees that reuse it. Lines NOT listed are UNISEX (content-neutral)
+-- and reused as-is in both modes. (Individual nodes/choices can still carry an inline `m = {...}`
+-- for one-off overrides — see the reunion/seated trees; that inline `m` wins over this map.)
+--   • entry WITH `sfx` = real MALE-V audio from the 68-clip male pool. ⚠️ Whisper mis-hears
+--        Jackie's Spanish (cabrón/mano/hermano), so each subtitle is a cleaned best-guess —
+--        VERIFY BY EAR on Windows (tagger) and fix the text if the clip actually differs.
+--   • entry TEXT-ONLY = no clean male clip yet -> subtitle + the neutral fallback grunt (mute),
+--        exactly like the existing text-only reunion beats. Add an `sfx` later if a clip turns up.
+Config.hermanoLines = {
+  -- signature greeting  "...chica."  ->  "...cabrón."  (real male-V mirror clip)
+  ["jl_1661700260668284928"] = { text = "Don't come here often, do ya? Good to see you, cabrón.",
+                                 sfx  = "jl_jackie_q000_m_170f8b95404ea000" },   -- ⚠️ VERIFY audio by ear
+  -- "Straight to biz, eh, chica?"  ->  "...mano?"  (real male-V mirror clip)
+  ["jl_1777946122915868672"] = { text = "Straight to biz, eh, mano?",
+                                 sfx  = "jl_jackie_q003_m_18ac88942e2ef000" },   -- ⚠️ VERIFY audio by ear
+  -- parting  "Time we were on our way, mamita."  ->  "...mano."  (text-only; also a voiced male
+  -- parting pool lives in Config.dismiss.partingPoolM below for the send-off path)
+  ["jl_1155727714874494976"] = { text = "Time we were on our way, mano." },
+  -- gig/dinner accept  "Right on, chica."  ->  "Right on, mano."  (text-only)
+  ["jl_1721407637774192672"] = { text = "Right on, mano." },
 }
 
 -- ---- branching dialogue tree (v0.23) -------------------------------------
@@ -665,7 +722,8 @@ Config.locationDialogue = {
           { text = "Ah, thanks, Misty. You're the best.",                          sfx = "jl_1255773314399088640" },
         },
         choices = {
-          { text = "Things good with Misty?", to = "her"   },
+          { text = "You still swing by Misty's?", to = "her",
+            m = { text = "Things good with Misty?" } },
           { text = "She read your cards yet?", to = "cards" },
           { text = "I'll leave you to it.",    to = "bye"   },
         },
@@ -673,7 +731,8 @@ Config.locationDialogue = {
       her = {
         jackie  = { text = "Now I go back, find Misty and we do somethin' to make me feel alive again.", sfx = "jl_1677043911795367936" },
         choices = {
-          { text = "Glad you got her. Take care, hermano.", to = "bye" },
+          { text = "You'll figure it out. Take care, hermano.", to = "bye",
+            m = { text = "Glad you got her. Take care, hermano." } },
           { text = "When you surface, got a side gig.",      to = "gig" },
         },
       },
@@ -793,6 +852,18 @@ Config.call = {
     { text = "Got me right behind you.",    sfx = "jl_1679806464288055296" },
     { text = "So? You ready?",              sfx = "jl_1902765821582520320" },
     { text = "V, hey! ¿Cómo te sientes?",   sfx = "jl_1867549271199477760" },
+  },
+
+  -- v1.2: HERMANO (male-V) arrival greetings — pickArrivalGreetLine uses this pool when the male-V
+  -- track is active. Mixes real male-V clips with a couple of unisex ones reused from above.
+  -- ⚠️ VERIFY the male clips by ear on Windows (Whisper mis-hears the address terms) and fix text.
+  arrivalGreetingsM = {
+    { text = "Man of the hour! Took you long enough — worked up an appetite just waitin'.", sfx = "jl_jackie_q001_m_15c159da7a325000" }, -- ⚠️ VERIFY
+    { text = "Straight to biz, eh, mano?",  sfx = "jl_jackie_q003_m_18ac88942e2ef000" },          -- ⚠️ VERIFY
+    { text = "Hey, you with me, mano?",     sfx = "jl_jackie_vs_vset_jackie_m_1b4957a4724e2004" }, -- ⚠️ VERIFY
+    { text = "Make moves, mano.",           sfx = "jl_jackie_vs_vset_jackie_m_1f119a05be52a008" }, -- ⚠️ VERIFY
+    { text = "Talk to me, choomba.",        sfx = "jl_2239163066690486272" },  -- unisex clip, reused
+    { text = "So? You ready?",              sfx = "jl_1902765821582520320" },  -- unisex clip, reused
   },
 }
 
@@ -1015,7 +1086,8 @@ Config.reunionCallTree = {
     },
     alive = {
       jackiePool = {
-        { text = "Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us." },
+        { text = "Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us.",
+          m = { text = "Yeah. Yeah, I'm alive, mano. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us." } },
       },
       choices = {
         { text = "Weeks, Jackie. You let me think you were GONE.",       to = "outrage" },
@@ -1051,7 +1123,8 @@ Config.reunionCallTree = {
     },
     deflect = {
       jackiePool = {
-        { text = "Hmm ...Complicated. Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now." },
+        { text = "Hmm ...Complicated. Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now.",
+          m = { text = "Hmm ...Complicated. Right. You always did go quiet on the heavy stuff, mano. A'ight. I won't push. For now." } },
       },
       choices = {
         { text = "So what about YOU — done hidin'? Or you livin' in that crusty desert forever?", to = "hiding" },
@@ -1076,7 +1149,8 @@ Config.reunionCallTree = {
     },
     quest = {
       jackiePool = {
-        { text = "You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can pull this thing outta my skull... maybe I get my life back." },
+        { text = "You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can pull this thing outta my skull... maybe I get my life back.",
+          m = { text = "You'd really do that? ... 'Course you would. A'ight, mano. We find someone who can pull this thing outta my skull... maybe I get my life back." } },
       },
       choices = {
         { text = "We'll get it done. No worries. I got your back till then.", to = "gigs" },
@@ -1117,7 +1191,8 @@ Config.reunionCallTree = {
     },
     coming = {
       jackiePool = {
-        { text = "Phew ... Gracias V. You got no idea what that means to me. Ok enough chatting, where you at? Nah — don't move, I'm already headed your way. Hang tight, chica." },
+        { text = "Phew ... Gracias V. You got no idea what that means to me. Ok enough chatting, where you at? Nah — don't move, I'm already headed your way. Hang tight, chica.",
+          m = { text = "Phew ... Gracias V. You got no idea what that means to me. Ok enough chatting, where you at? Nah — don't move, I'm already headed your way. Hang tight, mano." } },
       },
       choices = {
         { text = "Okay. I'll be right here. Hurry up, hermano.", to = "onmyway" },
@@ -1150,8 +1225,10 @@ Config.reunionMeetTree = {
     },
     -- bespoke text-only (no clip fits the hug beat) — full emotional subtitle.
     used = {
+      -- v1.2: BASE = Husbando (slow-burn — he lets the look linger); `m` = Hermano (brotherly).
       jackiePool = {
-        { text = "Yeah, yeah — desert don't do a man's looks any favors. But you? Damn, you're a sight, V." },
+        { text = "Yeah, yeah — desert don't do a man's looks any favors. But you? ...Damn. Sight for sore eyes, V. Missed that face more'n I got words for.",
+          m = { text = "Yeah, yeah — desert don't do a man's looks any favors. But you, hermano? Damn, you're a sight. Missed that ugly mug o' yours." } },
       },
       choices = {
         { text = "We're both still standin'. That's what counts.", to = "drivehome" },
