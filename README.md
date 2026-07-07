@@ -41,7 +41,9 @@ selector). The default is **Quiet Life**; switching to **Blaze of Glory** is a d
   **disables the main plot** (no Relic, no Johnny, no dying). Because it rewrites the Heist ending, it
   must be chosen **before the Heist** and **cannot be undone** — so the toggle is behind a two-step
   "Are you sure? → Yes" confirm, and lives only in the CET developer overlay (not the in-game Esc menu).
-  This mode is a **work-in-progress / throwaway-save toy**; see [TODO.md](TODO.md) and
+  The Heist set-piece (spawn Takemura → Smasher → escape heli, Jackie fighting alongside as a companion
+  with voiced barks, then wake at Vik's) is an early prototype. This mode is a
+  **work-in-progress / throwaway-save toy**; see [TODO.md](TODO.md) and
   [docs/DESIGN.md](docs/DESIGN.md) §11 for scope and status.
 
 ## Layout

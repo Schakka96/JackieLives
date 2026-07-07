@@ -8,6 +8,27 @@ Log last written: 2026-06-16 (day session)
 Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
 
 --------------------------------------------------------------------------------
+2026-07-08  -  v1.3 WALK-ABREAST: aggressive get-into-position
+--------------------------------------------------------------------------------
+- Problem (Antonia): at V's walking pace Jackie could NOT catch up to his beside/
+  ahead pocket. He engaged fine, but once he Ran to within catchUpDist (2 m) he
+  eased to Walk — then, matching V's walk exactly while the anchor kept drifting
+  forward, he could never close the last stretch. Net: he lagged at walk pace.
+- Fix (abreastTick + Config.abreast), a 3-phase model matching Antonia's spec:
+    1. ENGAGE after V holds the walk band 2 s (walkSustainSeconds 3.0 -> 2.0).
+    2. AGGRESSIVE catch-up: catchUpMovement Run -> SPRINT; aim at a near-INSTANT
+       heading (new catchUpSmoothSeconds 0.5) so the anchor sits where V is NOW;
+       and COMMIT via hysteresis (new inPositionDist 0.8) — he stays in catch-up
+       from gap>catchUpDist (2 m) until he's closed to <=0.8 m, so he can't ease
+       to a walk at 2 m and stall on a moving anchor.
+    3. HOLD: once in the pocket, back to Walk + the slow smoothSeconds (3.3) EMA
+       so his movement is "averaged over time" (Antonia's tuned drift, untouched).
+- inPos state resets to nil whenever abreast disengages, so every re-engage starts
+  in the aggressive sprint-in phase. ALL of Antonia's tuned HOLD values (angles,
+  radius, smoothSeconds, side hysteresis) are unchanged — only the catch-up phase
+  and the 2 s engage threshold were touched.
+
+--------------------------------------------------------------------------------
 2026-07-08  -  v1.3 APPROACH CAMEO (Jackie shows up where V actually is)
 --------------------------------------------------------------------------------
 - Problem: his appearance likelihood was too low. He only runs 3-4 of his 7
@@ -907,3 +928,27 @@ NEXT-SESSION open tasks are in TODO.md under "▶ NEXT SESSION — Track C". Tes
 (jl_1927336253241237504, anim f_1ABF461C612D2000).
 
 COMMITS THIS SESSION: 8041352 (probe v1), 2916af1 (probe v2), 3d27bfe (verdict + Track C brief).
+
+--------------------------------------------------------------------------------
+2026-07-08  -  BLAZE v0.99: set-piece running + 4 fixes (subtitles, companion, auto-start, scene-Jackie)
+--------------------------------------------------------------------------------
+- ROOT CAUSE of "startYorinobu/diagnose = nil": CET soft-reload re-runs init.lua but
+  require("blaze") returned the CACHED old module -> stale blaze.lua while init.lua was
+  current. Fix: package.loaded["blaze"]=nil before the require, + M.VERSION stamped and
+  logged on load ("Blaze module v0.99...") and shown in the overlay so a stale deploy is obvious.
+- Then, from Antonia's live test:
+  1. Real subtitles: say() -> speakJackieLine (real voice clip + real bottom subtitle band
+     + lip flap), replacing the blue notification band. Returns clip secs for VO-queue spacing.
+  2. Companion departed during the Heist -> gated the main-quest/cutscene "excuse himself"
+     block off when JL.mode == "blaze".
+  3. Auto-start: onUpdate fires Blaze.autoStartTick when (blaze + main-quest tracked + within
+     12 m of the balcony spot). Manual override button kept.
+  4. Scene's passive luggage Jackie: despawnLookAt bind + "Remove the Jackie I'm looking at"
+     button (aim at him; delete/dispose/hide+sink; skips our companion).
+- HELD / KNOWN-BAD (Antonia): the 12 m gate is a bad trigger -> can spawn Takemura BEFORE the
+  Yorinobu scene finishes. Next time: trigger off the real "go to the balcony door" objective /
+  a q005 fact / scene-end hook, not raw distance. Logged in TODO; left as-is for now.
+- Blaze remains POSTPONED after this wrap-up.
+COMMITS: 7085c79 (heli look-at grab), c72d23e (yorinobu set-piece), c97f9d3 (voiced barks +
+companion), 0d0c6d3 (diagnostics), e116b1e (version stamp), 0317627 (require cache-bust),
+23298d2 (subtitles + companion-stays + auto-start + scene-Jackie removal).

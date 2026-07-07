@@ -11,6 +11,21 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-08 (v1.3) — WALK-ABREAST: aggressive get-into-position
+
+He couldn't catch up to his beside/ahead pocket at V's **walking** pace (eased Run→Walk at 2 m, then
+stalled on the drifting anchor). Fix in `abreastTick` (init.lua) + `Config.abreast`, mirrored to
+`staging/`. **Awaiting Windows in-game test.**
+
+- [x] Engage after V holds the walk band **2 s** (`walkSustainSeconds` 3.0 → 2.0).
+- [x] Catch-up now **Sprints** (`catchUpMovement` Run → Sprint) at a **near-instant heading**
+  (`catchUpSmoothSeconds` 0.5) and **commits** until he's within `inPositionDist` (0.8 m) — no early
+  ease. Then holds with the tuned Walk + `smoothSeconds` (3.3) averaging.
+- [x] All of Antonia's tuned HOLD values (angles, radius, smoothSeconds, side hysteresis) untouched.
+- [ ] **TEST (Antonia):** walk (slow toggle) in a straight line and around corners — he should snap
+  into the pocket fast, then settle. Tune `catchUpMovement` / `inPositionDist` / `catchUpSmoothSeconds`
+  if the sprint-in looks too eager or he overshoots.
+
 ### 🆕 Added 2026-07-08 (v1.3) — APPROACH CAMEO: raise Jackie's appearance likelihood
 
 His idle presence was too rare (3-4 of 7 venues run per day). New `approachTick` (init.lua) +
@@ -164,6 +179,26 @@ Scripted editing required (once the spike confirms facts):
   safe (field on `JL`, globals only). luajit parse-checked OK. **Decision baked: ONE mod, not two** —
   Blaze `.archive` edits self-gate on the fact, so Quiet Life players get vanilla story. Staging NOT
   synced (Mac session; sync on Windows). `Config.version` left at 1.0 (no deploy).
+- 🔥 **BLAZE v0.99 (2026-07-08) — set-piece now LOADS & runs; 4 fixes + open items.** After the stale-
+  deploy fix (require cache-bust `package.loaded["blaze"]=nil` + `M.VERSION` stamp logged on load), the
+  fight runs. This session's fixes:
+  - **Real subtitles/voice:** `say()` → `speakJackieLine` (real clip + real bottom subtitle band + lip
+    flap), not the blue notification band. Still returns clip length for the VO-queue spacing.
+  - **Companion no longer walks off:** the main-quest/cutscene "excuse himself" block is skipped when
+    `JL.mode == "blaze"` (Blaze intentionally puts Jackie in the Heist to fight).
+  - **Auto-start** when V (Blaze + Heist/main-quest tracked) gets within `M.yori.autoRadius` (12 m) of the
+    balcony spot; manual "Start fight now (override)" kept.
+  - **Scene's 2nd (passive luggage) Jackie:** new "Remove the Jackie I'm looking at" button + `despawnLookAt`
+    bind (aim at him; delete → dispose → hide+sink; never touches our companion).
+  - **⚠️ HELD / KNOWN-BAD (Antonia, fix NEXT time):** the **12 m proximity gate is a bad trigger** — it can
+    spawn Takemura **before the real Yorinobu scene finishes**. Do NOT ship this. Replace with a proper
+    trigger: fire only **after** the Yorinobu conversation/scene ends AND the "go to the balcony door"
+    objective is actually active — likely a **q005 objective/fact** (ask the q005-extract workstream for the
+    id) or a scene-end hook, not a raw distance check. Left as-is for now, logged here.
+  - **Other open Blaze items:** auto-remove of the scene Jackie needs his entity id (manual look-at only for
+    now); real WolvenKit `.journal` objectives (MVP-B) still pending; fade is still a caption stand-in; full
+    q005/interlude/q101 graph completion still delegated to the other workstream. `- [ ] TEST (Windows):`
+    confirm subtitles/voice play, companion stays & fights, auto-start timing, scene-Jackie removal.
 - ⏸️ **BLAZE OF GLORY — POSTPONED (2026-07-07, Antonia's call).** The experimental Yorinobu set-piece
   below is left in a clean, committed, playable state; no further Blaze work until Antonia resumes it.
   **📌 NOTE FOR THE q005/q101 WORKSTREAM:** the Blaze `finale` deliberately delegates the world-open to
