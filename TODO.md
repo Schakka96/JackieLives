@@ -11,6 +11,38 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-08 — mourning suppression: test results, bug fix, next chunks
+
+**BUILT this session (v0.97–v0.98, pushed):**
+- ✅ Mourning fact-suppression framework (`JL_MOURNING_FACTS`): `sq018_active`→0 (ofrenda blocked, gate
+  confirmed), `holo_mama_welles_calls_v_*_activate`→0 (Mama grief calls). Preview/Apply/persisted toggle.
+- ✅ "Keep El Coyote OPEN" toggle (`JL_BAR_KEEPOPEN`): forces `mama_welles_default_on`,
+  `elcoyote_barman_default_on`, `coyote_community_activated`→1.
+- ✅ **v0.98 BUGFIX** — calling Jackie no longer triggers the vanilla "number unavailable / 'Jack I got
+  no idea where you are'" holocall over our authored call (`jlSilenceVanillaJackieCall` in the hijack hook:
+  dis-arms `holo_v_calls_jackie_*` + pulses `holo_interrupt_call`). **Needs in-game test.**
+
+**CONFIRMED from datamining:**
+- Vik = `vector` internally; Takemura = `takemura`; Mitch = `mitch` (NOT River — corrected).
+- Misty AND Vik world grief are quest-progress-keyed (`q005_active`, `q101_done`, `q005_14_body_at_victors`
+  …), NOT a toggle → manual scene edits only (Tier-3).
+
+**⚠️ OPEN TESTS (Antonia, when convenient — not priority):**
+1. El Coyote force-open with a **non-Street-Kid** V (Street Kid test showed bar open but **Mama absent** —
+   likely lifepath-gated; needs a Corpo/Nomad save to confirm the fact-force actually streams Mama in).
+2. With mourning-suppress ON, confirm the **ofrenda/Mama call does NOT fire** when the body was sent to
+   **Mama Welles** (the `q005_jackie_to_mama` branch — the case that arms Heroes).
+3. Re-test all of the above with a **male V** to verify voice lines.
+4. **INVESTIGATE:** after summon+dismiss, at ~10PM El Coyote was **closed**. Likely vanilla day/night bar
+   hours OR the community deactivated — determine which (is `keepBarOpen` being overwritten, or is it
+   just night hours?).
+
+**NEXT CHUNKS (Claude, one at a time):**
+- [ ] `onscreens.json` localization grep → exact "Jackie" line-IDs for Takemura/Mitch/Misty/Vik scene edits.
+- [ ] Misty dialogue surgery support (Antonia editing; Claude writes exact node steps once line-IDs known).
+
+---
+
 ### 🆕 Added 2026-07-06 — "SAVE JACKIE" alternate-timeline route + mourning removal (design + spike)
 Two Antonia asks this session. **Both are a deliberate pivot:** the existing quiet-life mod was built
 to NEVER touch the main story (`DESIGN.md` §2); this route DOES. It is a **separate "alternate-timeline"

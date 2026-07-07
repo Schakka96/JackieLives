@@ -2295,6 +2295,13 @@ local function callTick()
   local id  = (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
   local native = Config.nativeCall and Config.nativeCall.useNativeWindow
 
+  -- v0.98: reset the vanilla-call interrupt pulse (see jlSilenceVanillaJackieCall) so a one-shot
+  -- interrupt can't linger and block a legitimate later holocall.
+  if JL.call.clearInterruptAt and now >= JL.call.clearInterruptAt then
+    JL.call.clearInterruptAt = nil
+    pcall(function() Game.GetQuestsSystem():SetFactStr("holo_interrupt_call", 0) end)
+  end
+
   -- v0.55: asleep -> the call just rings out, then hangs up. No pickup, no convo.
   if JL.call.noAnswerAt and now >= JL.call.noAnswerAt then
     JL.call.noAnswerAt = nil
@@ -2349,6 +2356,27 @@ local function callTick()
   end
 end
 
+-- v0.98 BUGFIX. When V dials Jackie in the Heist->Ofrenda window, vanilla fires
+-- base\quest\holocalls\jackie\jackie_holocall.scene -> "number unavailable" + V's
+-- "Jack, I got no idea where you are" — and it plays OVER our authored call. Our call is a
+-- native PhoneSystem TriggerCall (contact 'jackie_dead'), which does NOT use these holo_* facts,
+-- so zeroing them is safe for us. We (1) dis-arm the request facts so the scene can't (re)fire,
+-- and (2) pulse holo_interrupt_call=1 — the scene's OWN interrupt branch — to cut it if it already
+-- started; callTick resets that pulse a few seconds later so it can't block a legit future call.
+-- Global (no top-level local) for the 200-cap. TEST: if this ever cuts our OWN call, drop the
+-- holo_interrupt_call line and rely on the dis-arm alone.
+function jlSilenceVanillaJackieCall()
+  pcall(function()
+    local qs = Game.GetQuestsSystem(); if not qs then return end
+    qs:SetFactStr("holo_v_calls_jackie_start_activate", 0)   -- dis-arm the request (whole window)
+    qs:SetFactStr("holo_v_calls_jackie_end_activate",   0)
+    qs:SetFactStr("holo_v_calls_jackie_start",          0)
+    qs:SetFactStr("holo_interrupt_call",                1)   -- cut it if already mid-play
+  end)
+  JL.call.clearInterruptAt = (JL.clock or 0) + 3.0           -- reset the interrupt pulse soon
+  log("[CallFix] silenced vanilla Jackie 'unavailable' holocall (dis-arm + interrupt pulse).")
+end
+
 -- The player dialled Jackie from the in-game phone (the game fired IncomingCall). Route it into
 -- our flow: the native ring is already playing, so we just arm callTick (STOP -> CONNECT -> convo)
 -- without re-firing IncomingCall ourselves.
@@ -2382,6 +2410,7 @@ local function setupCallHijack()
       local nm = tostring(callId)
       if not nm:find("jackie") then return end                 -- only Jackie's contact
       if not tostring(phase):find("IncomingCall") then return end
+      pcall(jlSilenceVanillaJackieCall)                        -- v0.98: kill the vanilla dead-number scene first
       pcall(onPlayerCalledJackie)
     end)
   end)
