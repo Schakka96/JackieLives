@@ -63,7 +63,7 @@ M.cfg = {
 -- COMPANION the moment Takemura appears, so his stock in-combat barks fire automatically on top of these.
 -- ---------------------------------------------------------------------------
 M.yori = {
-  goro    = { rec = "Character.Takemura", pos = { x = -2205.531, y = 1767.591, z = 313.370, yaw =   45.0 } }, -- facing NW
+  goro    = { rec = "Character.Takemura", pos = { x = -2204.920, y = 1764.812, z = 312.000, yaw =   40.0 } }, -- recaptured 2026-07-08
   smasher = { rec = "Character.Smasher",  pos = { x = -2226.165, y = 1765.743, z = 309.329, yaw = -157.5 } }, -- facing SSE
   heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 } },  -- facing NW; record from M.cfg.heliRecord (look-at grab)
   reachRadius = 5.0,
@@ -94,8 +94,11 @@ function M.bind(t)
   for k, v in pairs(t or {}) do M.bound[k] = v end
 end
 
+-- Always emit: use the injected logger if bound, else fall back to raw print so a set-piece that
+-- runs BEFORE Blaze.bind populated M.bound (e.g. a stale deploy) still tells us what happened.
 local function blog(msg)
-  if M.bound.log then M.bound.log("[Blaze] " .. tostring(msg)) end
+  local line = "[Blaze] " .. tostring(msg)
+  if M.bound.log then M.bound.log(line) else print("[JackieLives] " .. line) end
 end
 
 -- Push objective text to screen only when it CHANGES (so we don't spam the native
@@ -148,10 +151,13 @@ function M.hasRecords()   local c = M.cfg; return (c.goroRecord and c.smasherRec
 -- Run / stop
 -- ---------------------------------------------------------------------------
 local function spawnOne(slot, rec, pos, hostile)
-  if not (M.bound.spawnDyn and rec and pos) then blog("skip spawn " .. slot .. " (missing spawnDyn/record/pos)"); return end
+  if not M.bound.spawnDyn then blog("SPAWN FAIL " .. slot .. ": spawnDyn NOT BOUND -> Blaze.bind never ran (stale deploy? run DIAGNOSE)."); return end
+  if not rec then blog("SPAWN FAIL " .. slot .. ": no record."); return end
+  if not pos then blog("SPAWN FAIL " .. slot .. ": no position."); return end
   local id = M.bound.spawnDyn(rec, pos, pos.yaw, "JackieLives_blaze_" .. slot)
+  if not id then blog("SPAWN FAIL " .. slot .. ": spawnDyn returned nil for rec='" .. tostring(rec) .. "' (DES refused the record? see the CreateEntity line)."); return end
   M.st.ent[slot] = { id = id, pos = pos, yaw = pos.yaw, hostile = hostile, handle = nil, placed = false }
-  blog(slot .. " spawn id=" .. tostring(id) .. " rec=" .. tostring(rec))
+  blog(string.format("%s SPAWNED id=%s rec=%s at %.1f,%.1f,%.1f yaw %.1f", slot, tostring(id), tostring(rec), pos.x, pos.y, pos.z, pos.yaw or 0))
 end
 
 function M.start()
@@ -214,6 +220,22 @@ function M.status()
   end
   return "RUNNING   stage=" .. tostring(M.st.stage) .. "   smasherDead=" .. tostring(M.st.smasherDead) ..
          "   goroDead=" .. tostring(M.st.goroDead)
+end
+
+-- ⚠️ DIAGNOSE: prove whether the plumbing works, independent of the apartment/coords. Reports which
+-- bind helpers are present (if any are missing, Blaze.bind never ran -> stale deploy), then test-spawns
+-- Takemura & Smasher right in front of V via the injected spawner so we see if DES accepts the records.
+function M.diagnose()
+  blog("=== DIAGNOSE ===")
+  local function has(k) return M.bound[k] ~= nil end
+  blog(string.format("bound: log=%s spawnDyn=%s say=%s becomeCompanion=%s finale=%s diagnose=%s",
+    tostring(has("log")), tostring(has("spawnDyn")), tostring(has("say")),
+    tostring(has("becomeCompanion")), tostring(has("finale")), tostring(has("diagnose"))))
+  blog("heliRecord=" .. tostring(M.cfg.heliRecord) ..
+       "  goro.pos set=" .. tostring(M.yori.goro.pos ~= nil) ..
+       "  smasher.pos set=" .. tostring(M.yori.smasher.pos ~= nil))
+  if M.bound.diagnose then M.bound.diagnose()
+  else blog("M.bound.diagnose NOT BOUND -> Blaze.bind did NOT run. The deployed init.lua is stale: re-pull + re-deploy.") end
 end
 
 -- Fire the alternate-timeline world unlock on demand (overlay TEST button), so we can validate the

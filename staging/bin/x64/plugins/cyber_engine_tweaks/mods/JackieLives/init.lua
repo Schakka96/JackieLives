@@ -1548,22 +1548,30 @@ end
 
 -- v1.2: detect V's BODY GENDER once and LOCK the relationship-mode default (Female V -> Husbando,
 -- Male V -> Hermano). Player isn't ready in onInit, so this runs from onUpdate (world-ready-safe,
--- same pattern as nsTick) and only fires on the FIRST load after install — the persisted JL.modeInit
+-- same pattern as nsTick) and only fires on the FIRST load after install — the persisted JL.genderLock
 -- flag guards it, so afterwards the player's saved choice / manual toggle always wins. Global (200-cap).
 function jlDetectGenderOnce()
-  if JL.modeInit then return end                       -- already locked (persisted) -> respect saved choice
+  if JL.genderLock then return end                     -- already locked (persisted) -> respect saved/auto choice
   local pl = Game.GetPlayer(); if not pl then return end   -- world not ready this tick -> retry next frame
-  local female = nil
+  -- v1.3 FIX: read the gender as a STRING, not by comparing CName userdata with `==` (that comparison
+  -- is unreliable in CET, so it returned false even for a female V -> wrongly locked to Hermano). We
+  -- pull the CName's `.value` (with NameToString / tostring fallbacks) and compare the plain string.
+  local gname = nil
   pcall(function()
     local g = pl:GetResolvedGenderName()               -- CName "Female" / "Male"
-    if g ~= nil then female = (g == CName.new("Female")) end
+    if g ~= nil then
+      gname = g.value                                  -- reliable string accessor
+      if gname == nil then pcall(function() gname = Game.NameToString(g) end) end
+      if gname == nil then gname = tostring(g) end
+    end
   end)
-  if female == nil then return end                     -- unreadable this tick -> retry (never lock on a bad read)
-  JL.husbando  = female                                -- female V -> Husbando, male V -> Hermano
-  JL.modeInit  = true
+  if gname == nil or gname == "" or gname == "None" then return end   -- unreadable this tick -> retry (never lock on a bad read)
+  local female = (gname == "Female")
+  JL.husbando    = female                              -- female V -> Husbando, male V -> Hermano
+  JL.genderLock  = true
   pcall(jlSaveSettings)
   JL.ui.status = "Jackie mode auto-set: " .. (female and "Husbando (female V)" or "Hermano (male V)")
-  log("V body gender read -> relationship mode LOCKED to " ..
+  log("V body gender read as '" .. tostring(gname) .. "' -> relationship mode LOCKED to " ..
       (female and "Husbando (female V)" or "Hermano (male V)") .. " (switch it anytime in Esc -> Settings).")
 end
 
@@ -3979,12 +3987,18 @@ local function wanderTick()
   if not JL.idle.placed then
     if (now - (JL.idle.spawnedAt or 0)) < 0.6 then return end
     applyIdleCollision()                               -- v0.43b: kill collision BEFORE the snap so the chair can't block him
-    local startIdx = math.random(1, #wps)
+    -- v1.1 seat tuner: if the tuner drove this (re)spawn it pins the EXACT seat it's editing
+    -- (JL.idle.forceStartIdx) instead of a random waypoint, and HOLDS him there (long dwell) so he
+    -- doesn't wander off mid-tune. A fresh, standing puppet always sits where we place it — this is
+    -- why the tuner respawns him rather than teleporting a workspot-pinned (seated) puppet.
+    local forced       = JL.idle.forceStartIdx
+    JL.idle.forceStartIdx = nil
+    local startIdx     = (forced and wps[forced]) and forced or math.random(1, #wps)
     JL.idle.curIdx     = startIdx
     applyIdlePose(h, wps[startIdx], true)              -- force-teleport him onto the spot
     JL.idle.placed     = true
     JL.idle.phase      = "dwelling"
-    JL.idle.dwellUntil = now + dwellFor(wps[startIdx])
+    JL.idle.dwellUntil = forced and (now + 3600) or (now + dwellFor(wps[startIdx]))
     return
   end
 
@@ -4297,7 +4311,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeInit" }  -- persisted JL.* boolean flags (modeInit v1.2: has the first-load gender lock happened?)
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "genderLock" }  -- persisted JL.* boolean flags (genderLock v1.3: has the first-load gender lock happened? renamed from the old `modeInit`, so a save that was mis-locked to Hermano by the v1.2 CName-compare bug re-detects ONCE with the fixed read)
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
@@ -4975,6 +4989,17 @@ registerForEvent("onInit", function()
         end)
         log("[Blaze] FINALE: Watson open, retrieval shard skipped, V teleported to Vik's (companion Jackie follows).")
       end,
+      -- DIAGNOSE test-spawn: drop Takemura ~5 m and Smasher ~7 m in front of V, loudly, so we can see if
+      -- DES accepts the records at all (isolates the record/plumbing from the apartment coords).
+      diagnose = function()
+        local pt = pointAheadOfV(5.0)
+        if not pt then log("[Blaze] DIAGNOSE: no player / no point ahead of V."); return end
+        local id1 = spawnDynEntity("Character.Takemura", pt, 0.0, "JackieLives_blaze_diag")
+        log("[Blaze] DIAGNOSE spawn Character.Takemura ~5m ahead -> id=" .. tostring(id1) .. "  (nil => DES refused the record)")
+        local pt2 = pointAheadOfV(7.0) or pt
+        local id2 = spawnDynEntity("Character.Smasher", pt2, 0.0, "JackieLives_blaze_diag")
+        log("[Blaze] DIAGNOSE spawn Character.Smasher ~7m ahead -> id=" .. tostring(id2) .. "  (nil => DES refused the record)")
+      end,
       persist = function() blazeDumpConfig() end,   -- auto-write blaze_config.txt on every capture/grab
     }
   end)
@@ -5277,24 +5302,38 @@ local function tunerHere()   -- is idle Jackie present at the tuned venue?
   return JL.idle.spawn and JL.idle.spawn.handle and JL.idle.locationKey == JL.tuner.key
 end
 
--- Re-seat Jackie at the current working coords (stop pose -> teleport -> deferred sit).
+-- Re-seat Jackie at the current working coords by DESPAWN + RESPAWN onto the tuned seat.
+-- WHY not just teleport him? A puppet locked in an AMM sit-workspot REJECTS the teleport command
+-- (StopInDevice starts releasing him, but the AITeleportCommand is eaten while he's still pinned to
+-- the pose — that was the "slides but he's solid as a rock" bug, and v0.45's deferred timing never
+-- truly fixed it). A freshly-spawned puppet is standing and unpinned, so the normal placement path
+-- (wanderTick -> applyIdlePose) seats him EXACTLY where we point it, every time. So we stage the
+-- tuned coords onto the seat waypoint, despawn him, and let scheduleTick respawn him straight onto
+-- that seat (JL.idle.forceStartIdx). Brief blink as he pops out/in — fine for a dev tuner.
 local function tunerApply()
   if not tunerHere() then
-    JL.ui.status = "Tuner: Force venue -> " .. JL.tuner.key .. ", go stand near him first."
+    JL.ui.status = "Tuner: pick the venue above, then walk over to Jackie."
     return false
   end
-  local h = JL.idle.spawn.handle
-  local x, y, z, yaw = tunerCoords()
-  local v = Vector4.new(x, y, z, 1.0)
-  local wp = tunerSeatWaypoint()                 -- carry this seat's anim override (e.g. Misty's deep chair)
-  -- v0.45: he's currently SEATED (pinned by the workspot). Get him OUT first; the teleport+re-sit then
-  -- run via the two-step deferred path in wanderTick (placeAtExact -> gap -> workspot). Teleporting THIS
-  -- frame would be ignored (still pinned) — that was why the tuner did nothing. The 0.45s delay lets
-  -- StopInDevice actually release him before placeAtExact moves him.
-  stopWorkspotPose(h)
-  JL.idle.pendingSit = nil   -- cancel any in-flight sit so this re-seat wins
-  JL.idle.pendingPose = { pose = "sit", name = wp and wp.poseAnim, vec = v, yaw = yaw,
-                          at = (JL.clock or 0) + 0.45 }
+  if JL.idle.spawn and not JL.idle.placed then
+    JL.ui.status = "Re-seating..."   -- a respawn is already in flight; let it finish before another
+    return false
+  end
+  local x, y, z, yaw   = tunerCoords()
+  local wp, loc, seats = tunerSeatWaypoint()
+  if not (wp and loc and loc.waypoints) then return false end
+  -- stage the tuned coords onto the seat waypoint so the fresh-spawn placement seats him there
+  wp.pos = { x, y, z }; wp.yaw = yaw
+  if #seats <= 1 then loc.pos = { x, y, z }; loc.yaw = yaw end   -- single-seat venue: anchor tracks it
+  -- this seat's index within the venue's FULL waypoint list (placement indexes that list, not sit-only)
+  local startIdx
+  for i, w in ipairs(loc.waypoints) do if w == wp then startIdx = i; break end end
+  -- GUARANTEED re-seat: despawn -> respawn onto this exact seat.
+  JL.ui.forceVenue      = JL.tuner.key                   -- make scheduleTick respawn him HERE
+  clearIdle()                                            -- despawn = guaranteed un-seat (no teleport to reject)
+  JL.idle.forceStartIdx = startIdx                       -- wanderTick places him on THIS seat, not a random one
+  JL.timer              = Config.scheduleCheckInterval or 0   -- fire scheduleTick on the very next tick (respawn ASAP)
+  JL.ui.status = ("Re-seating at %s seat %d..."):format(JL.tuner.key, JL.tuner.seatIdx)
   return true
 end
 
@@ -5373,7 +5412,16 @@ registerForEvent("onDraw", function()
       "Vik's with a LIVING Jackie (the retrieval shard is skipped). Jackie barks along the way. Stand IN the " ..
       "apartment before starting; grab the heli record (look-at, above) first if you want the heli to appear. " ..
       "Use a THROWAWAY save.")
-    if ImGui.Button("EXPERIMENTAL: Start Yorinobu fight") then jlSetMode("blaze"); Blaze.startYorinobu(); JL.ui.status = "Blaze: Yorinobu fight started (experimental)." end
+    if ImGui.Button("EXPERIMENTAL: Start fight") then
+      local ok, err = pcall(function() Blaze.startYorinobu() end)   -- surface any error to the console
+      if ok then JL.ui.status = "Blaze: fight started (experimental)."
+      else log("[Blaze] startYorinobu ERROR: " .. tostring(err)); JL.ui.status = "Blaze start ERROR (see console)." end
+    end
+    ImGui.SameLine()
+    if ImGui.Button("DIAGNOSE (why no spawn?)") then
+      local ok, err = pcall(function() Blaze.diagnose() end)
+      if not ok then log("[Blaze] diagnose ERROR: " .. tostring(err)) end
+    end
   elseif JL.ui.blazeConfirm then
     -- v1.x SECOND LAYER: the toggle is armed but not committed. Show the description + a hard
     -- confirm; only "Yes" actually flips to Blaze (jlSetMode). "Cancel" disarms.
@@ -5655,7 +5703,8 @@ registerForEvent("onDraw", function()
 
     local here = tunerHere()
     ImGui.TextWrapped(here
-      and ("Jackie is here — slide and he re-seats live. (Editing " .. t.key .. " seat " .. t.seatIdx .. ".)")
+      and ("Jackie is here — slide and he re-seats live (he blinks out/in each time — that's the " ..
+           "respawn that guarantees he actually moves). Editing " .. t.key .. " seat " .. t.seatIdx .. ".")
       or  ("Jackie NOT at " .. t.key .. " yet — he's heading there (Force venue set). Walk over once he arrives."))
     ImGui.TextWrapped("Offsets from the captured seat. X/Y/Z = position (metres); YAW spins him to the " ..
                       "right seat angle (his facing is now forced from this, so it's the same no matter " ..
@@ -5672,12 +5721,14 @@ registerForEvent("onDraw", function()
     local x, y, z, yaw = tunerCoords()
     ImGui.Text(string.format("Working coords: { %.3f, %.3f, %.3f }  yaw %.1f", x, y, z, yaw))
 
-    t.live = ImGui.Checkbox("Live: re-seat him as I slide", t.live)
-    -- debounced live apply: only fire ~0.25 s after the last slider movement (avoids per-frame re-sit)
+    t.live = ImGui.Checkbox("Live: re-seat him as I slide (blinks each time)", t.live)
+    -- debounced live apply: only fire ~0.5 s after the last slider movement. Each apply is a
+    -- despawn+respawn (heavier than the old teleport), so we wait a touch longer to avoid thrash;
+    -- tunerApply also self-throttles while a respawn is mid-flight (spawn present but not yet placed).
     if t.live and here then
       local moved = math.abs(t.dx - t.prevX) > 1e-4 or math.abs(t.dy - t.prevY) > 1e-4
                  or math.abs(t.dz - t.prevZ) > 1e-4 or math.abs(t.dyaw - t.prevYaw) > 1e-4
-      if moved then t.pendingApplyAt = (JL.clock or 0) + 0.25 end
+      if moved then t.pendingApplyAt = (JL.clock or 0) + 0.5 end
     end
     t.prevX, t.prevY, t.prevZ, t.prevYaw = t.dx, t.dy, t.dz, t.dyaw
     if t.pendingApplyAt and (JL.clock or 0) >= t.pendingApplyAt then
