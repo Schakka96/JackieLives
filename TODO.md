@@ -88,6 +88,33 @@ Scripted editing required (once the spike confirms facts):
   safe (field on `JL`, globals only). luajit parse-checked OK. **Decision baked: ONE mod, not two** —
   Blaze `.archive` edits self-gate on the fact, so Quiet Life players get vanilla story. Staging NOT
   synced (Mac session; sync on Windows). `Config.version` left at 1.0 (no deploy).
+- ⚠️ **BUILT 2026-07-07 (v0.97) — Blaze EXPERIMENTAL "Yorinobu apartment fight" (one-button, WIP, SUSPENDED).**
+  Antonia's "leave it here" MVP before pausing Blaze work. New `Blaze.startYorinobu()` + a sequenced
+  branch in `M.tick` (`st.mode == "yorinobu"`). One overlay button ("EXPERIMENTAL: Start Yorinobu fight")
+  flips to Blaze mode and runs: spawn **Takemura** (hardcoded −2205.531/1767.591/313.370, yaw +45 = NW) +
+  objective "Defeat Takemura" → on his defeat (lethal OR non-lethal) spawn **Smasher** (−2226.165/1765.743/
+  309.329, yaw −157.5 = SSE) + objective → on his defeat spawn the **heli** (−2191/1752/310, yaw +45 = NW,
+  uses the look-at-grabbed `heliRecord`) + objective → V within **5 m** of the heli → **fade** → **finale**.
+  Yaw math: game_yaw = −compass_bearing (verified vs the mod's `yawToward`). Jackie **barks** at each beat
+  (goro-spawn / mid-fight / smasher-spawn / heli-reach) via a new `say()` bind helper — **text shows now,
+  sfx ids are TODO** (fill jl_ ids from the catalogue; text-first like the parting pool).
+  - **Finale** (new `finale` bind helper): fires the **world-unlock** lever (`watson_prolog_unlock=1`,
+    `watson_prolog_lock=0`) → **`Retrieval.forceReunion()`** so the Where's-Jackie **shard is SKIPPED** and
+    Jackie is "returned" → teleport V to **Vik's** (`Retrieval.Config.vikPos`) → **`ammSpawn(0)`** puts a
+    living Jackie beside her. Both files luajit parse-checked. `Config.version` untouched.
+  - **HONEST SCOPE:** full **q005/interlude/q101 graph autocompletion** is NOT done here — it's the OTHER
+    workstream's job (the `worldUnlock` fact lever + q005/q101 graph research). This finale delivers the
+    *playable* result (world opens, wake at Vik's, no Johnny) via the barrier lift + teleport, not a real
+    quest-graph completion. The **fade** is still a caption stand-in (no real black-screen), and objectives
+    are still the placeholder message band (native `.journal` = MVP-B).
+  - `- [ ] TEST (Windows):` stand in Yorinobu's apartment on a throwaway save → grab heli record (look-at)
+    → click the experimental button. Watch: do Takemura/Smasher spawn at the right spots/facings & fight?
+    Does defeat (non-lethal too) advance? Does the heli appear & the 5 m reach fire? Does the finale land V
+    at Vik's with Jackie? **Known caveat:** `forceReunion` unlocks Jackie's schedule, so the schedule MAY
+    also spawn a second idle Jackie elsewhere — acceptable for an experimental toy; note if it's ugly.
+  - **Questphase note (Antonia's Q):** for THIS manual button we need **no** questphase name — the click is
+    the trigger; stand in the apartment. Auto-triggering at the *real* Heist moment would need the q005
+    Yorinobu-apartment phase (the other session is extracting q005) — a later, non-MVP step.
 - ✅ **BUILT 2026-07-06 (v0.96) — Blaze "kill Smasher & Takemura → escape by VTOL" SET-PIECE (MVP-A).**
   New self-contained module **`blaze.lua`** (global `Blaze`, 200-cap safe, retrieval.lua pattern). Runs
   only while `JL.mode == "blaze"`. State machine: spawn Goro (elevator) + Smasher (balcony, hostile) + a

@@ -53,6 +53,29 @@ M.cfg = {
 }
 
 -- ---------------------------------------------------------------------------
+-- ⚠️ EXPERIMENTAL "Yorinobu apartment" scenario (v0.97) — HARDCODED, NOT FURTHER DEVELOPED.
+-- One-button scripted encounter: spawn Takemura -> (defeat, lethal OR non-lethal) -> spawn Smasher
+-- -> (defeat) -> spawn the escape heli -> V reaches it (5 m) -> fade -> world-unlock + wake at Vik's
+-- with a LIVING Jackie (the retrieval shard is skipped in Blaze mode). Coords from Antonia 2026-07-07.
+-- Yaw derived from compass facing (game yaw = -compass_bearing, matching the mod's yawToward).
+-- VO sfx ids are TODO: text shows now; audio plays once the jl_ ids are filled from the catalogue
+-- (same text-first pattern as the dismiss parting pool). This whole block is a throwaway-save toy.
+-- ---------------------------------------------------------------------------
+M.yori = {
+  goro    = { rec = "Character.Takemura", pos = { x = -2205.531, y = 1767.591, z = 313.370, yaw =   45.0 } }, -- facing NW
+  smasher = { rec = "Character.Smasher",  pos = { x = -2226.165, y = 1765.743, z = 309.329, yaw = -157.5 } }, -- facing SSE
+  heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 } },  -- facing NW; record from M.cfg.heliRecord (look-at grab)
+  reachRadius = 5.0,
+  fightLineDelay = 4.0,   -- seconds after Goro spawns before Jackie's mid-fight bark
+  vo = {   -- text-first (sfx = nil until the real jl_ ids are catalogued); "like" Antonia's examples
+    goroSpawn    = { text = "Shit, V — that's Takemura!",              sfx = nil },
+    fight        = { text = "Light 'em up, V — no mercy!",            sfx = nil },
+    smasherSpawn = { text = "Holy fuck, we're screwed — it's SMASHER!", sfx = nil },
+    heliReach    = { text = "That's our ride, V — we made it! Get in!",  sfx = nil },
+  },
+}
+
+-- ---------------------------------------------------------------------------
 -- Wiring
 -- ---------------------------------------------------------------------------
 function M.bind(t)
@@ -71,6 +94,12 @@ local function pushObjective(text)
   if text == st.lastObjective then return end
   st.lastObjective = text
   if M.bound.objective then M.bound.objective(text, 8.0) end
+end
+
+-- Jackie says an experimental-scenario line (audio if the sfx id is set, plus on-screen text).
+local function say(key)
+  local vo = M.yori.vo[key]
+  if vo and M.bound.say then M.bound.say(vo.text, vo.sfx) end
 end
 
 -- ---- config setters used by the overlay -----------------------------------
@@ -120,6 +149,21 @@ function M.start()
   spawnOne("heli",    c.heliRecord,    c.heliPos,    false)
   pushObjective("[ ] Kill Adam Smasher\n[ ] Kill Goro Takemura")
   blog("Set-piece STARTED.")
+  return true
+end
+
+-- ⚠️ EXPERIMENTAL: start the hardcoded Yorinobu-apartment fight. Spawns TAKEMURA FIRST; the tick
+-- sequences Smasher, then the heli, then the fade+finale. Coords/yaws from M.yori. Call from the
+-- overlay's experimental button (which also flips mode -> blaze). Uses M.cfg.heliRecord for the heli.
+function M.startYorinobu()
+  M.reset()
+  M.st = { active = true, mode = "yorinobu", stage = "goro", ent = {},
+           goroDead = false, smasherDead = false, lastObjective = "", firedFade = false,
+           saidGoroSpawn = false, saidFight = false, fightLineAt = nil }
+  spawnOne("goro", M.yori.goro.rec, M.yori.goro.pos, true)
+  say("goroSpawn")
+  pushObjective(">> Defeat Takemura")
+  blog("EXPERIMENTAL Yorinobu fight STARTED (Takemura first).")
   return true
 end
 
@@ -181,6 +225,42 @@ function M.tick(now, dt)
 
   if not st.smasherDead and isDead(st.ent.smasher) then st.smasherDead = true; blog("Adam Smasher is DOWN.") end
   if not st.goroDead    and isDead(st.ent.goro)    then st.goroDead    = true; blog("Goro Takemura is DOWN.") end
+
+  -- ⚠️ EXPERIMENTAL Yorinobu sequence: Takemura -> Smasher -> heli -> fade -> wake at Vik's.
+  if st.mode == "yorinobu" then
+    if st.stage == "goro" then
+      st.fightLineAt = st.fightLineAt or (now + (M.yori.fightLineDelay or 4.0))
+      if not st.saidFight and now >= st.fightLineAt then st.saidFight = true; say("fight") end
+      if st.goroDead then
+        st.stage = "smasher"
+        spawnOne("smasher", M.yori.smasher.rec, M.yori.smasher.pos, true)   -- Smasher only appears now
+        say("smasherSpawn")
+        pushObjective("[x] Takemura down\n>> Defeat Adam Smasher")
+      end
+
+    elseif st.stage == "smasher" then
+      if st.smasherDead then
+        st.stage = "escape"
+        if M.cfg.heliRecord then spawnOne("heli", M.cfg.heliRecord, M.yori.heli.pos, false) end  -- heli appears last
+        pushObjective("[x] Smasher down\n>> Get to the extraction helicopter")
+      end
+
+    elseif st.stage == "escape" then
+      local d = M.bound.distToPlayer and M.bound.distToPlayer(M.yori.heli.pos) or 1e9
+      if d <= (M.yori.reachRadius or 5.0) then st.stage = "cut" end
+
+    elseif st.stage == "cut" then
+      if not st.firedFade then
+        st.firedFade = true
+        say("heliReach")                                                     -- Jackie's "we made it" line
+        if M.bound.fade   then M.bound.fade("BLAZE OF GLORY — you and Jackie make the jump.") end
+        if M.bound.finale then M.bound.finale() end                          -- world-unlock + wake at Vik's w/ Jackie
+        blog("EXPERIMENTAL Yorinobu finale fired.")
+      end
+      st.stage = "done"
+    end
+    return
+  end
 
   if st.stage == "fight" then
     local s = st.smasherDead and "[x]" or "[ ]"

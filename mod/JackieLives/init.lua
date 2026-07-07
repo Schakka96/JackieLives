@@ -127,6 +127,11 @@ local JL = {
   -- choice and sets the jl_mode_blaze quest fact that the future questphase edit reads. Field on JL
   -- (not a new top-level local) to respect the 200-locals cap.
   mode   = "quietlife",   -- "quietlife" | "blaze"
+  -- v0.97 QUIET-LIFE MOURNING SUPPRESSION: hold the "Jackie is dead" grief facts down so a living
+  -- Jackie doesn't collide with the ofrenda / grief calls. SAFE-BY-DEFAULT (off until confirmed) —
+  -- persisted via JL_SETTINGS_KEYS; the actual fact list lives in JL_MOURNING_FACTS (below).
+  mourningSuppress = false,
+  mourningTimer    = 0,
   timer  = 0,
   clock  = 0,        -- accumulated game seconds (for talk cooldowns)
   lastTalk = -999,
@@ -4193,7 +4198,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals" }  -- persisted JL.* boolean flags
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress" }  -- persisted JL.* boolean flags
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
@@ -4293,6 +4298,87 @@ function jlSetMode(m)
   pcall(function() Game.GetQuestsSystem():SetFactStr("jl_mode_blaze", JL.mode == "blaze" and 1 or 0) end)
   jlSaveSettings()
   log("Story mode -> " .. JL.mode)
+end
+
+-- ===========================================================================
+-- MOURNING SUPPRESSION (v0.97, "Quiet Life") — hold the "Jackie is dead" grief
+-- facts down so a living Jackie doesn't collide with the ofrenda / grief calls.
+-- DATA-DRIVEN + SAFE-BY-DEFAULT. Forcing quest facts out of order can soft-lock
+-- (docs/research/main_quest_freeze_research.md), so this framework:
+--   * ONLY runs in Quiet Life mode AND when JL.mourningSuppress is ON,
+--   * NEVER writes the player's canon body-choice facts (JL_MOURNING_PROTECTED),
+--   * offers a dry-run PREVIEW that only LOGS what it would set (verify first!),
+--   * is reversible — we only pin narrative "on/active" facts to 0; flip the
+--     toggle off and we stop asserting them.
+-- This is the RUNTIME (CET) half of the A+B plan; the preferred long-term half is
+-- baked .questphase edits gated on quietlife (see docs/mourning_suppression.md).
+-- Fact NAMES below came from `strings` on the mourning binaries (docs/mounring_scenes/);
+-- exact target VALUES stay marked CONFIRM until the .questphase JSONs are read.
+-- Globals (no main-chunk `local`) for the 200-local cap.
+-- ===========================================================================
+
+-- The player's canon "where did Jackie's body go" decision. We suppress the
+-- DOWNSTREAM grief, NEVER these — hard-blocked so a bad list row can't corrupt a save.
+JL_MOURNING_PROTECTED = {
+  q005_jackie_to_mama     = true,
+  q005_jackie_to_hospital = true,
+  q005_jackie_stay_notell = true,
+}
+
+-- The grief levers. Each row: name = quest fact · hold = value we pin (0 = keep
+-- this content OFF) · note = what it gates. EDIT rows here once the JSONs land;
+-- the machinery below needs no other change. Rows marked CONFIRM are best-guess
+-- from the binaries and must be validated (JSON or in-game) before enabling.
+JL_MOURNING_FACTS = {
+  -- "Heroes" ofrenda side quest (sq018). Pinning sq018_active to 0 stops the whole
+  -- ofrenda arming without touching the body-choice above. Heroes is a narrative
+  -- dead-end (not a prerequisite), so pinning it is low-risk.
+  { name = "sq018_active",                  hold = 0, note = "Heroes/ofrenda quest arm flag" },        -- CONFIRM value
+  { name = "sq018_01_funeral_preparations", hold = 0, note = "ofrenda prep phase" },                   -- CONFIRM value
+  -- Grief holocalls (Mama Welles / Misty phone their condolences). Fact NAMES are
+  -- guesses — the holocall questphases didn't expose a clean *_on token via strings.
+  -- { name = "mama_welles_holocall_on",    hold = 0, note = "Mama grief call" },                       -- CONFIRM name+value
+  -- { name = "misty_holocall_on",          hold = 0, note = "Misty grief call" },                      -- CONFIRM name+value
+  -- World-bark grief (Misty at Esoterica / Mama at El Coyote switch to mourning
+  -- state). Tier-3 / ambient — leave COMMENTED until confirmed safe; some of these
+  -- may be desirable to keep (a somber-but-alive Misty is not lore-breaking).
+  -- { name = "misty_default_grief_on",     hold = 0, note = "Misty ambient grief state" },             -- CONFIRM name+value
+}
+
+-- Apply the mourning holds (or, dryRun=true, just LOG what it would do). Returns
+-- the number of facts it changed/would-change. Skips rows already at target and
+-- refuses any protected (body-choice) fact.
+function jlMourningApply(dryRun)
+  if JL.mode ~= "quietlife" then return 0 end
+  local qs; pcall(function() qs = Game.GetQuestsSystem() end)
+  if not qs then return 0 end
+  local n = 0
+  for _, e in ipairs(JL_MOURNING_FACTS) do
+    if JL_MOURNING_PROTECTED[e.name] then
+      log("[Mourning] REFUSED protected body-choice fact " .. tostring(e.name) .. " (never touched)")
+    else
+      local cur; pcall(function() cur = qs:GetFactStr(e.name) end)
+      if cur ~= e.hold then
+        if dryRun then
+          log(string.format("[Mourning] WOULD set %s: %s -> %d  (%s)", e.name, tostring(cur), e.hold, e.note or ""))
+        else
+          pcall(function() qs:SetFactStr(e.name, e.hold) end)
+          log(string.format("[Mourning] set %s: %s -> %d  (%s)", e.name, tostring(cur), e.hold, e.note or ""))
+        end
+        n = n + 1
+      end
+    end
+  end
+  return n
+end
+
+-- Short menu status line.
+function jlMourningStatus()
+  if JL.mode ~= "quietlife" then return "n/a — Blaze mode auto-suppresses grief" end
+  if not JL.mourningSuppress then return "OFF" end
+  local active = 0
+  for _, e in ipairs(JL_MOURNING_FACTS) do if not JL_MOURNING_PROTECTED[e.name] then active = active + 1 end end
+  return "ON — holding " .. tostring(active) .. " grief fact(s)"
 end
 
 -- Force-despawns EVERY Jackie (orphans included), wipes ALL transient state machines, then lets
@@ -4721,6 +4807,30 @@ registerForEvent("onInit", function()
         end)
         log("[Blaze] world unlock -> watson_prolog_unlock=1, watson_prolog_lock=0 (Watson barrier lifted)")
       end,
+      -- ⚠️ EXPERIMENTAL Yorinobu scenario helpers ----------------------------------
+      -- Jackie speaks: play the clip if an sfx id is set (none yet), and show the text on-screen.
+      say = function(text, sfx)
+        if sfx and sfx ~= "" then pcall(function() playVoice(sfx) end) end
+        if text and text ~= "" then showOnscreenMsg(text, 4.0) end
+      end,
+      -- The payoff: open Watson without q101 (world-unlock lever), SKIP the retrieval shard by marking
+      -- Jackie already returned, teleport V to Vik's clinic, and spawn a living Jackie there beside her.
+      -- (Full q005/interlude/q101 graph autocompletion is the OTHER workstream's job — this delivers the
+      -- playable result now via the barrier lift + teleport; see docs/research/q005_graph_findings.md.)
+      finale = function()
+        pcall(function()
+          local qs = Game.GetQuestsSystem()
+          if qs then qs:SetFactStr("watson_prolog_unlock", 1); qs:SetFactStr("watson_prolog_lock", 0) end
+        end)
+        pcall(function() Retrieval.forceReunion() end)   -- Blaze: skip the Where's-Jackie shard, mark him returned
+        local vik = (Retrieval.Config and Retrieval.Config.vikPos) or { -1546.551, 1229.270, 11.520 }
+        pcall(function()
+          local tf = Game.GetTeleportationFacility()
+          if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(vik[1], vik[2], vik[3], 1.0), EulerAngles.new(0.0, 0.0, 129.8)) end
+        end)
+        pcall(function() ammSpawn(0) end)   -- living Jackie appears at V (now standing in Vik's clinic)
+        log("[Blaze] FINALE: Watson open, retrieval shard skipped, V + living Jackie at Vik's.")
+      end,
       persist = function() blazeDumpConfig() end,   -- auto-write blaze_config.txt on every capture/grab
     }
   end)
@@ -4952,6 +5062,17 @@ registerForEvent("onUpdate", function(dt)
     JL.timer = 0
     pcall(scheduleTick)
   end
+
+  -- v0.97: Quiet-Life mourning suppression. Re-assert the grief holds every ~5 s
+  -- (cheap, and re-catches any fact the quest system flips back up). Gated so it
+  -- never runs in Blaze mode or when the player left it off.
+  if JL.mode == "quietlife" and JL.mourningSuppress then
+    JL.mourningTimer = (JL.mourningTimer or 0) + dt
+    if JL.mourningTimer >= 5.0 then
+      JL.mourningTimer = 0
+      pcall(jlMourningApply, false)
+    end
+  end
 end)
 
 -- ---------------------------------------------------------------------------
@@ -5096,10 +5217,41 @@ registerForEvent("onDraw", function()
     ImGui.TextWrapped("Records + positions AUTO-SAVE to blaze_config.txt (in the mod folder) and reload " ..
       "on launch -- no console copying, no re-capturing. Grab a Smasher record via AMM's menu FIRST, though.")
     if ImGui.Button("Re-write blaze_config.txt now") then blazeDumpConfig(); JL.ui.status = "Wrote blaze_config.txt in the mod folder." end
+
+    -- v0.97 EXPERIMENTAL: one-button Yorinobu-apartment fight (hardcoded, WIP, not further developed).
+    ImGui.Separator()
+    ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "EXPERIMENTAL — Yorinobu apartment fight")
+    ImGui.TextWrapped("WIP / not further developed. Flips to Blaze mode and runs a scripted encounter at " ..
+      "Yorinobu's apartment (HARDCODED coords): Takemura appears -> defeat him (lethal or not) -> Smasher " ..
+      "appears -> defeat him -> escape heli appears -> reach it (5 m) -> fade -> world opens & you wake at " ..
+      "Vik's with a LIVING Jackie (the retrieval shard is skipped). Jackie barks along the way. Stand IN the " ..
+      "apartment before starting; grab the heli record (look-at, above) first if you want the heli to appear. " ..
+      "Use a THROWAWAY save.")
+    if ImGui.Button("EXPERIMENTAL: Start Yorinobu fight") then jlSetMode("blaze"); Blaze.startYorinobu(); JL.ui.status = "Blaze: Yorinobu fight started (experimental)." end
   else
     ImGui.TextWrapped("Quiet Life: the main story plays out as normal, but Jackie secretly survived and " ..
       "returns as a living Heywood NPC. Less invasive -- but Jackie can only join SIDE jobs, never the " ..
       "main plot.")
+
+    -- v0.97 mourning suppression (WIP: fact list still being confirmed from WolvenKit).
+    ImGui.Separator()
+    ImGui.Text("Mourning content:")
+    ImGui.SameLine()
+    ImGui.TextColored(0.6, 0.8, 1.0, 1.0, jlMourningStatus())
+    ImGui.TextWrapped("Suppress the 'Jackie is dead' grief (the ofrenda / condolence calls) so they don't " ..
+      "contradict a living Jackie. WORK IN PROGRESS -- the fact list isn't fully confirmed yet, so PREVIEW " ..
+      "first (logs to jackie_debug.log without changing anything) and test on a throwaway save.")
+    local newVal = ImGui.Checkbox("Suppress mourning content", JL.mourningSuppress)  -- CET: 1st return = new value
+    if newVal ~= JL.mourningSuppress then JL.mourningSuppress = newVal; jlSaveSettings(); JL.mourningTimer = 999 end  -- fire next tick
+    if ImGui.Button("Preview (log only, no changes)") then
+      local n = jlMourningApply(true)
+      JL.ui.status = "Mourning preview: " .. tostring(n) .. " fact(s) would change -- see jackie_debug.log."
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Apply once now") then
+      local n = jlMourningApply(false)
+      JL.ui.status = "Mourning: applied " .. tostring(n) .. " grief hold(s)."
+    end
   end
   ImGui.Separator()
 
