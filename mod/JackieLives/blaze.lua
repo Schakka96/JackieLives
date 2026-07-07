@@ -34,7 +34,7 @@ local M = { bound = {}, cfg = nil, st = nil }
 -- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
 -- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
 -- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
-M.VERSION = "0.98 (2026-07-08 diagnostics)"
+M.VERSION = "0.99 (2026-07-08 subtitles + auto-start)"
 
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
@@ -72,6 +72,7 @@ M.yori = {
   smasher = { rec = "Character.Smasher",  pos = { x = -2226.165, y = 1765.743, z = 309.329, yaw = -157.5 } }, -- facing SSE
   heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 } },  -- facing NW; record from M.cfg.heliRecord (look-at grab)
   reachRadius = 5.0,
+  autoRadius  = 12.0,     -- auto-start when V (in Blaze mode, during the Heist) gets this close to the balcony
   fightLineDelay = 4.0,   -- seconds after each boss spawns before Jackie's one mid-fight bark
   vo = {
     -- Takemura appears: alarm, then "we're really fucked"
@@ -205,6 +206,18 @@ function M.startYorinobu()
   pushObjective(">> Defeat Takemura")
   blog("EXPERIMENTAL Yorinobu fight STARTED (Takemura first; Jackie -> companion).")
   return true
+end
+
+-- Auto-start the fight when V, in Blaze mode, is DURING the Heist (a main quest is tracked) and has
+-- reached the balcony area (distToTrigger <= autoRadius) — a reliable position proxy for the "go to the
+-- balcony door" objective. Fires once per session; the manual button still works as an override.
+function M.autoStartTick(mainQuestActive, distToTrigger)
+  if M.st or M.autoFired then return end                 -- already running / already auto-fired
+  if not mainQuestActive then return end                 -- only inside the Heist
+  if not distToTrigger or distToTrigger > (M.yori.autoRadius or 12.0) then return end
+  M.autoFired = true
+  blog("AUTO-START: Blaze + Heist + reached the balcony -> starting fight.")
+  M.startYorinobu()
 end
 
 function M.reset()

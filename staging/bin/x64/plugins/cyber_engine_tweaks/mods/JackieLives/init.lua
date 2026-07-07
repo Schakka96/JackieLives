@@ -3548,8 +3548,10 @@ end
 --  * CLOSEST SIDE. Two candidate anchors — `angleRight` and `angleLeft` (near-front on each side). Jackie
 --    takes whichever is closer to where he already is, with a small stickiness margin, so he doesn't cut
 --    across in front of V. He holds that side until the other is clearly closer.
---  * GET INTO POSITION, gently. When OUT of position (>`catchUpDist`) he moves at `catchUpMovement` (Run)
---    to close in, then eases to `movement` (Walk, matching V's walk pace) to hold the pocket.
+--  * GET INTO POSITION, AGGRESSIVELY (v1.3). When OUT of position (>`catchUpDist`) he SPRINTS
+--    (`catchUpMovement`) at a near-instant heading (catchUpSmoothSeconds) and COMMITS to catching up until
+--    he's closed to `inPositionDist` — only THEN easing to `movement` (Walk) + the smoothSeconds averaged
+--    hold. (Before, he eased Run->Walk at 2 m and could never close a moving anchor at V's walk pace.)
 --  * WALK-ONLY. Only active while V WALKS (jlVWalking); at jog/sprint abreastTick yields and the trail
 --    (followKeepCloseTick) takes over — V has 3 speeds, Jackie 2, so he can't out-pace a jogging V.
 -- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
@@ -3560,6 +3562,7 @@ function abreastTick()
      or (jlCruise and jlCruise.active)                      -- v0.85: not while cruising on his bike
      or not jlVWalking() then
     JL.abreast.smFwdX = nil   -- reset the heading EMA so it re-seeds cleanly when abreast resumes
+    JL.abreast.inPos  = nil   -- v1.3: re-engage always starts in the aggressive catch-up phase
     return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -3577,7 +3580,12 @@ function abreastTick()
   local now = JL.clock or 0
   local dt  = now - (JL.abreast.lastFrame or now); JL.abreast.lastFrame = now
   if not JL.abreast.smFwdX then JL.abreast.smFwdX, JL.abreast.smFwdY = fx, fy end
-  local tau   = A.smoothSeconds or 3.3
+  -- v1.3: PHASED smoothing. While catching up (not yet in the pocket) aim at a near-INSTANT heading
+  -- (catchUpSmoothSeconds) so the anchor is where V is NOW and he heads straight to it; once in
+  -- position, switch to the slow smoothSeconds EMA so the hold drifts, never snaps. inPos is updated
+  -- below from this frame's gap, so it lags one frame — fine.
+  local catching = (JL.abreast.inPos ~= true)              -- nil (seeding) / false (out of pocket) -> catch-up
+  local tau   = catching and (A.catchUpSmoothSeconds or 0.5) or (A.smoothSeconds or 3.3)
   local alpha = (tau > 0) and math.min(math.max(dt / tau, 0.0), 1.0) or 1.0
   local sx = JL.abreast.smFwdX + alpha * (fx - JL.abreast.smFwdX)
   local sy = JL.abreast.smFwdY + alpha * (fy - JL.abreast.smFwdY)
@@ -3607,12 +3615,20 @@ function abreastTick()
   local tx, ty, gap = (side == "R") and rX or lX, (side == "R") and rY or lY, (side == "R") and gapR or gapL
   local dest = Vector4.new(tx, ty, pp.z, 1.0)
 
-  -- --- issue on a short throttle; move in when out of position, ease when holding it ---------------
+  -- --- in-position hysteresis: COMMIT to catch-up until he's truly in the pocket -------------------
+  -- v1.3: he leaves the hold (starts sprinting in) the moment gap > catchUpDist, but only counts as
+  -- "in position" again once he's closed to inPositionDist. Between the two he stays in catch-up, so he
+  -- can't ease to a walk at 2 m and then stall forever chasing a moving anchor at walk pace.
+  local inPos = JL.abreast.inPos
+  if gap > (A.catchUpDist or 2.0) then inPos = false
+  elseif gap <= (A.inPositionDist or 0.8) then inPos = true end
+  JL.abreast.inPos = inPos
+
+  -- --- issue on a short throttle; SPRINT in when catching up, ease to the walk-hold once in pocket --
   if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 0.3) then return end
   JL.abreast.lastAt = now
-  local outOfPos = gap > (A.catchUpDist or 2.0)
-  local mv  = outOfPos and (A.catchUpMovement or "Run") or (A.movement or "Walk")
-  local tol = outOfPos and (A.catchUpTolerance or 0.35) or (A.tolerance or 0.5)
+  local mv  = (not inPos) and (A.catchUpMovement or "Sprint") or (A.movement or "Walk")
+  local tol = (not inPos) and (A.catchUpTolerance or 0.35) or (A.tolerance or 0.5)
   sendMoveToPoint(h, dest, mv, tol)
 end
 
@@ -4988,6 +5004,27 @@ registerForEvent("onInit", function()
         return math.sqrt(dx * dx + dy * dy + dz * dz)
       end,
       deleteById = function(id) deleteEntityById(id) end,
+      -- Remove the NPC V is LOOKING AT (used to clear the scene's own passive Jackie — the luggage
+      -- carrier — so only our fighting companion remains). Won't touch our companion. Tries a real
+      -- delete, then falls back to hiding + teleporting him far below the map (quest NPCs resist delete).
+      despawnLookAt = function()
+        local pl = Game.GetPlayer(); if not pl then return false end
+        local h
+        pcall(function() local ts = Game.GetTargetingSystem(); if ts then h = ts:GetLookAtObject(pl, false, false) end end)
+        if not h then log("[Blaze] remove-look-at: aim your crosshair AT the passive Jackie, then click."); return false end
+        local mine = false
+        pcall(function() mine = JL.summon.spawn and JL.summon.spawn.handle and h:GetEntityID().hash == JL.summon.spawn.handle:GetEntityID().hash end)
+        if mine then log("[Blaze] that's your COMPANION Jackie — not removing."); return false end
+        local cls = "?"; pcall(function() local c = h:GetClassName(); cls = tostring(c and (c.value or c)) end)
+        pcall(function() Game.GetDynamicEntitySystem():DeleteEntity(h:GetEntityID()) end)   -- works for DES entities
+        pcall(function() if h.Dispose then h:Dispose() end end)                              -- fallback
+        pcall(function()                                                                     -- last resort: hide + sink
+          local pp = pl:GetWorldPosition()
+          Game.GetTeleportationFacility():Teleport(h, Vector4.new(pp.x, pp.y, pp.z - 500.0, 1.0), EulerAngles.new(0,0,0))
+        end)
+        log("[Blaze] remove-look-at: removed targeted NPC [" .. cls .. "].")
+        return true
+      end,
       -- MVP-A objective/cutscene = native message band + caption. MVP-B swaps THESE TWO lines
       -- for real WolvenKit .journal calls / a real scene (docs/BLAZE_WOLVENKIT_OBJECTIVES.md).
       objective = function(text, dur) showOnscreenMsg(text, dur or 8.0) end,
@@ -5014,10 +5051,11 @@ registerForEvent("onInit", function()
       -- Jackie speaks: play the voiced clip + show the text. Returns the clip length (s) so blaze.lua's
       -- VO queue can space a multi-line beat by its real duration.
       say = function(text, sfx)
-        local dur
-        if sfx and sfx ~= "" then pcall(function() playVoice(sfx) end); dur = voiceDuration(sfx) end
-        if text and text ~= "" then showOnscreenMsg(text, (dur and dur > 0) and dur or 4.0) end
-        return dur
+        -- REAL voiced line: plays the clip + the game's REAL subtitle band + lip flap (not the blue
+        -- notification band). Returns the clip length so blaze.lua's VO queue spaces the beats.
+        local secs
+        pcall(function() secs = speakJackieLine(text, sfx) end)
+        return secs
       end,
       -- Takemura appears -> Jackie becomes a COMPANION (fights + auto combat barks) and the mod goes
       -- fully active. Bypasses the retrieval/main-quest gates (this is the Blaze route). Setting
@@ -5221,7 +5259,17 @@ end
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
   pcall(function() Retrieval.tick(dt) end)   -- retrieval questline: gate + Vik tip + Badlands shard + call/arrival/reunion sequence
-  if JL.mode == "blaze" then pcall(function() Blaze.tick(JL.clock, dt) end) end   -- v0.96: Heist set-piece state machine (self-guards when idle)
+  if JL.mode == "blaze" then
+    pcall(function() Blaze.tick(JL.clock, dt) end)   -- v0.96: Heist set-piece state machine (self-guards when idle)
+    pcall(function()                                 -- v0.99: auto-start the fight at the balcony beat (no manual button needed)
+      local pp = playerPos()
+      if pp then
+        local g = Blaze.yori.goro.pos
+        local dx, dy, dz = pp.x - g.x, pp.y - g.y, pp.z - g.z
+        Blaze.autoStartTick(isMainQuestActive(), math.sqrt(dx * dx + dy * dy + dz * dz))
+      end
+    end)
+  end
   pcall(jlDetectGenderOnce)   -- v1.2: one-shot — lock the Husbando/Hermano default from V's body gender
   pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
   pcall(updateTalkPrompt, dt)
@@ -5273,7 +5321,10 @@ registerForEvent("onUpdate", function(dt)
   -- Jackie's tagging along, he excuses himself and walks off (he won't be dragged into the story, and
   -- once he's gone his cruise bike can't spawn either). Same guards as the expiry exit: not mid-dinner,
   -- not already walking off; fires once (summon.active clears on despawn).
-  if JL.summon.active and JL.summon.companionSet and not JL.dinner.phase
+  -- v0.98: EXCEPTION for Blaze of Glory — that mode PUTS Jackie in the main quest on purpose (he fights
+  -- the Heist alongside V), so the main-quest/cutscene excuse must NOT fire, or our companion walks off.
+  if JL.mode ~= "blaze"
+     and JL.summon.active and JL.summon.companionSet and not JL.dinner.phase
      and JL.leaving.phase ~= "walking" and startLeaving and (isMainQuestActive() or jlInCutscene()) then
     log("Main quest / cutscene -> Jackie excuses himself and heads out.")
     pcall(function() startLeaving(Config.mainQuestExit) end)
@@ -5469,13 +5520,19 @@ registerForEvent("onDraw", function()
     -- v0.97 EXPERIMENTAL: one-button Yorinobu-apartment fight (hardcoded, WIP, not further developed).
     ImGui.Separator()
     ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "EXPERIMENTAL — Yorinobu apartment fight")
-    ImGui.TextWrapped("WIP / not further developed. Flips to Blaze mode and runs a scripted encounter at " ..
-      "Yorinobu's apartment (HARDCODED coords): Takemura appears -> defeat him (lethal or not) -> Smasher " ..
-      "appears -> defeat him -> escape heli appears -> reach it (5 m) -> fade -> world opens & you wake at " ..
-      "Vik's with a LIVING Jackie (the retrieval shard is skipped). Jackie barks along the way. Stand IN the " ..
-      "apartment before starting; grab the heli record (look-at, above) first if you want the heli to appear. " ..
+    ImGui.TextWrapped("WIP / not further developed. During the Heist it now AUTO-STARTS when you reach the " ..
+      "balcony (Blaze mode + main quest + within 12 m of the spot): Takemura appears -> defeat him (lethal or " ..
+      "not) -> Smasher appears -> defeat him -> escape heli -> reach it (5 m) -> fade -> world opens & you wake " ..
+      "at Vik's with a LIVING Jackie (retrieval shard skipped). Jackie becomes your fighting companion and " ..
+      "barks along the way. Grab the heli record (look-at, above) first if you want the heli to appear. " ..
       "Use a THROWAWAY save.")
-    if ImGui.Button("EXPERIMENTAL: Start fight") then
+    ImGui.TextWrapped("Scene has a SECOND, passive Jackie (the luggage carrier)? Aim your crosshair at HIM and:")
+    if ImGui.Button("Remove the Jackie I'm looking at") then
+      local ok = false; pcall(function() ok = Blaze.bound.despawnLookAt and Blaze.bound.despawnLookAt() end)
+      JL.ui.status = ok and "Removed the targeted Jackie." or "Aim at the passive Jackie first (see console)."
+    end
+    ImGui.TextWrapped("Manual override / testing:")
+    if ImGui.Button("Start fight now (override)") then
       local ok, err = pcall(function() Blaze.startYorinobu() end)   -- surface any error to the console
       if ok then JL.ui.status = "Blaze: fight started (experimental)."
       else log("[Blaze] startYorinobu ERROR: " .. tostring(err)); JL.ui.status = "Blaze start ERROR (see console)." end
