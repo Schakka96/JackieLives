@@ -73,7 +73,8 @@ local JL = {
   catchUp = { farSince = nil, lastAt = nil, teleTries = nil },
   -- v0.82 respawn-settle: after a respawn-at-V (catch-up FT recovery / persist) hide Jackie + drop his
   -- collision briefly so he doesn't visibly POP in or spawn into a wall, then reveal + re-collide by clock.
-  settle  = { hideUntil = nil, collideUntil = nil, handle = nil },
+  -- v1.40 reposePending/reposeAt/reposeLast: one-shot "move him off AMM's drop spot to V's front/side" latch.
+  settle  = { hideUntil = nil, collideUntil = nil, handle = nil, reposePending = nil, reposeAt = nil, reposeLast = nil },
   -- v0.67 keep-close: periodically re-assert our tight follow so AMM's long leash can't let him
   -- trail far behind V. Just a throttle timestamp.
   follow  = { lastAt = nil },
@@ -2776,6 +2777,57 @@ local function navmeshArrivalPoint(distance)
   return nil
 end
 
+-- v1.40 FRONT-SIDE RECOVERY POINT. When a fast-travel RESPAWNS or catch-up TELEPORTS Jackie back to V,
+-- put him slightly AHEAD and to V's SIDE — never BEHIND, which at a fast-travel point is usually a wall or
+-- structure (the bug this fixes: he "caught up" straight into the geometry behind V). Reuses the walk-abreast
+-- near-front anchors (Config.abreast.angleRight/angleLeft on the `positions` dial) so recovery lands him in
+-- the same spot he holds while strolling beside V. Order: the side he's already on first (from `jp`, his
+-- current pos — nil -> right first), then the other side, then straight ahead; each swept over a few nearby
+-- angles + shorter distances and navmesh-snapped + height-checked, exactly like navmeshArrivalPoint. Returns
+-- a snapped Vector4 or nil (caller falls back to navmeshArrivalPoint). GLOBAL: init.lua is at Lua's 200-local cap.
+function frontSideArrivalPoint(distance, jp)
+  local pl = Game.GetPlayer(); if not pl then return nil end
+  local pp; pcall(function() pp = pl:GetWorldPosition() end)
+  local fwd; pcall(function() fwd = pl:GetWorldForward() end)
+  if not pp or not fwd then return nil end
+  local fm = math.sqrt(fwd.x * fwd.x + fwd.y * fwd.y)
+  local sx, sy = (fm > 1e-4) and (fwd.x / fm) or 0.0, (fm > 1e-4) and (fwd.y / fm) or 1.0
+  local rx, ry = sy, -sx                                   -- V's right vector (forward rotated -90°)
+  local A   = Config.abreast or {}
+  local pos = A.positions or 12
+  -- world-space heading of an abreast anchor (same formula as abreastTick, resolved to an angle)
+  local function dirAngle(idx)
+    local ang = math.rad(idx * (360.0 / pos))
+    local ca, sa = math.cos(ang), math.sin(ang)
+    return math.atan2(sy * ca + ry * sa, sx * ca + rx * sa)
+  end
+  local rAng, lAng = dirAngle(A.angleRight or 0.85), dirAngle(A.angleLeft or 11.25)
+  local fwdAng     = math.atan2(sy, sx)
+  -- which side is he already on? dot of (jp - pp) with V's right vector: >= 0 -> right. Keeps him from
+  -- cutting across in front of V. No jp (fresh respawn, handle not resolved) -> right side first.
+  local rightFirst = true
+  if jp then rightFirst = ((jp.x - pp.x) * rx + (jp.y - pp.y) * ry) >= 0 end
+  local bases = rightFirst and { rAng, lAng, fwdAng } or { lAng, rAng, fwdAng }
+  local maxZ  = (Config.vehicle and Config.vehicle.maxSpawnZDelta) or 4.0
+  for _, baseAng in ipairs(bases) do
+    for _, df in ipairs({ 1.0, 0.8, 0.6 }) do
+      local d = distance * df
+      for _, deg in ipairs({ 0, 12, -12, 24, -24 }) do
+        local a    = baseAng + math.rad(deg)
+        local cand = Vector4.new(pp.x + math.cos(a) * d, pp.y + math.sin(a) * d, pp.z, 1.0)
+        local snapped = snapToNavmesh(cand)
+        if snapped and math.abs(snapped.z - pp.z) <= maxZ then
+          log(("Recovery: front-side point base=%+.0f off=%+.0f d=%.1f dZ=%+.1f -> { %.2f, %.2f, %.2f }")
+              :format(math.deg(baseAng), deg, d, snapped.z - pp.z, snapped.x, snapped.y, snapped.z))
+          return snapped
+        end
+      end
+    end
+  end
+  log("Recovery: NO front-side navmesh point found -> caller falls back to navmeshArrivalPoint.")
+  return nil
+end
+
 -- Make an NPC treat V as a friend (so a passive spawn doesn't flee / react as a threat).
 local function setFriendly(handle)
   pcall(function()
@@ -3728,9 +3780,13 @@ local function catchUpTick()
     return
   end
 
-  -- moderate gap, body still local: land him a few metres to V's SIDE on the navmesh (never ON V), then
-  -- re-assert follow. Count the attempt so a no-op teleport escalates to a respawn on the next eligible tick.
-  local pt = navmeshArrivalPoint(C.placeDistance or 3.0) or arrivalPoint()
+  -- moderate gap, body still local: land him a few metres AHEAD/beside V on the navmesh (never ON V, never
+  -- BEHIND into the wall at a fast-travel point), then re-assert follow. v1.40: prefer the front-side point
+  -- (reuses the walk-abreast angles, picks the side he's already on via `jp`); fall back to the old
+  -- side/behind navmesh sweep, then a plain forward point. Count the attempt so a no-op teleport escalates
+  -- to a respawn on the next eligible tick.
+  local pt = frontSideArrivalPoint(C.placeDistance or 3.0, jp)
+             or navmeshArrivalPoint(C.placeDistance or 3.0) or arrivalPoint()
   if not pt then return end
   local yaw = 0.0
   pcall(function() local f = Game.GetPlayer():GetWorldForward(); yaw = math.deg(math.atan2(f.y, f.x)) end)
@@ -4298,6 +4354,46 @@ local function wanderTick()
   if not wps then return end
   local now = JL.clock or 0
   local W   = Config.wander
+
+  -- v1.1 SEAT-TUNER WALK-IN (replaces the respawn/teleport re-seat that never took). Get him UP, walk
+  -- him to a start point a few metres out, then walk him INTO the exact tuned coordinate and sit. Uses
+  -- ONLY the walk command the idle wander already uses to move him between waypoints (proven to work) —
+  -- never a teleport on a workspot-pinned puppet (that was the "solid as a rock" failure). Collisions
+  -- stay off so he can walk into the bar-stool. Driven here (idle Jackie's per-frame tick) and RETURNS
+  -- while active so the normal dwell/wander loop can't fight it. Loud logs so we can see each step.
+  local TW = JL.tuner.walk
+  if TW and TW.phase then
+    local jp; pcall(function() jp = h:GetWorldPosition() end)
+    if TW.phase == "toStart" then
+      local d = jp and dist3(jp, { x = TW.startVec.x, y = TW.startVec.y, z = TW.startVec.z }) or 99
+      if d <= 1.0 or now >= TW.deadline then
+        TW.phase, TW.deadline, TW.nextAt = "toSeat", now + 6.0, 0
+        log(("TUNER walk: reached start (d=%.2f m) -> walking into seat."):format(d))
+      elseif now >= (TW.nextAt or 0) then
+        TW.nextAt = now + 1.5
+        pcall(function() sendMoveToPoint(h, TW.startVec, "Walk", 0.6) end)
+      end
+    elseif TW.phase == "toSeat" then
+      local d = jp and dist3(jp, { x = TW.seatVec.x, y = TW.seatVec.y, z = TW.seatVec.z }) or 99
+      if d <= 0.8 or now >= TW.deadline then
+        placeAtExact(h, TW.seatVec, TW.yaw)                 -- STANDING now -> exact lock works (unlike when seated)
+        TW.phase, TW.at = "sitting", now + 0.45
+        log(("TUNER walk: at seat (d=%.2f m) -> exact place + sit in 0.45 s."):format(d))
+      elseif now >= (TW.nextAt or 0) then
+        TW.nextAt = now + 1.5
+        pcall(function() sendMoveToPoint(h, TW.seatVec, "Walk", 0.4) end)
+      end
+    elseif TW.phase == "sitting" then
+      if now >= (TW.at or 0) then
+        pcall(function() tryWorkspotPose(h, "sit", TW.poseAnim) end)
+        JL.tuner.walk = nil
+        JL.idle.phase, JL.idle.dwellUntil = "dwelling", now + 3600   -- hold him seated while you judge the fit
+        log("TUNER walk: sit played. DONE — nudge sliders + 'Move Jackie here' to redo.")
+        JL.ui.status = "Seated. Nudge sliders + Move Jackie here to redo."
+      end
+    end
+    return   -- walk-in owns him this frame; skip the normal dwell/wander logic below
+  end
 
   -- v0.45 deferred sit/lean in TWO steps so the (async) exact-teleport lands BEFORE the workspot plays
   -- (playing it same-frame let the workspot re-pin him at the OLD spot — the "tuner does nothing" bug):
@@ -5212,6 +5308,12 @@ function respawnCompanionAtV()
     JL.settle.hideUntil    = now + (S.hideSeconds or 2.0)
     JL.settle.collideUntil = now + (S.collideSeconds or 4.0)
     JL.settle.handle       = nil   -- resolved live in settleTick (spawn.handle isn't ready yet)
+    -- v1.40: AMM drops the fresh body at its OWN spot (often the wall BEHIND V at a fast-travel point).
+    -- Arm a one-shot reposition to V's front/side, done by settleTick while he's still hidden. Clearing the
+    -- retry timers so it re-evaluates from scratch. Toggle with Config.catchUp.frontSideRespawn.
+    JL.settle.reposePending = (Config.catchUp and Config.catchUp.frontSideRespawn ~= false)
+    JL.settle.reposeAt      = nil
+    JL.settle.reposeLast    = nil
   end
   log("Persist: companion flag set but Jackie was absent -> respawned him at V.")
   return true
@@ -5225,9 +5327,34 @@ end
 -- GLOBAL (not a top-level local): init.lua is at Lua's 200-local hard cap — see companionPersistTick etc.
 function settleTick()
   local s = JL.settle
-  if not (s and (s.hideUntil or s.collideUntil)) then return end
+  if not (s and (s.hideUntil or s.collideUntil or s.reposePending)) then return end
   local now = JL.clock or 0
   local h = JL.summon.spawn and JL.summon.spawn.handle
+  -- v1.40 FRONT-SIDE REPOSITION. While he's still hidden after a respawn-at-V, move him off AMM's drop spot
+  -- (often the wall behind V at a fast-travel point) to a point AHEAD/beside V (frontSideArrivalPoint reuses
+  -- the walk-abreast angles). Wait ~0.15 s after the handle resolves so his AI can accept an AITeleportCommand,
+  -- then re-issue at most every ~0.4 s until he's within ~4 m of V or the hide window ends (so the reveal shows
+  -- him at V's side). aiTeleport is the same puppet-relocate the catch-up teleport + arrival flow already use.
+  if s.reposePending and h then
+    s.reposeAt = s.reposeAt or (now + 0.15)
+    if now >= s.reposeAt and (now - (s.reposeLast or -1e9)) >= 0.4 then
+      local jp; pcall(function() jp = h:GetWorldPosition() end)
+      local pp = playerPos()
+      if jp and pp and dist3(pp, jp) <= 4.0 then
+        s.reposePending = nil                 -- already beside V -> done
+      elseif jp then
+        local pt = frontSideArrivalPoint((Config.catchUp and Config.catchUp.placeDistance) or 3.0, jp)
+        if pt then
+          local yaw = 0.0
+          pcall(function() local f = Game.GetPlayer():GetWorldForward(); yaw = math.deg(math.atan2(f.y, f.x)) end)
+          aiTeleport(h, pt, yaw, false)
+          log("Settle: repositioned respawned Jackie to V's front/side (front-side recovery).")
+        end
+        s.reposeLast = now
+      end
+    end
+    if s.hideUntil and now >= s.hideUntil then s.reposePending = nil end  -- window's up -> stop trying
+  end
   -- still hiding? keep him invisible + collision-off (re-assert each frame; handle may have just resolved).
   if s.hideUntil and now < s.hideUntil then
     if h then setVisible(h, false) end
@@ -5897,38 +6024,44 @@ local function tunerHere()   -- is idle Jackie present at the tuned venue?
   return JL.idle.spawn and JL.idle.spawn.handle and JL.idle.locationKey == JL.tuner.key
 end
 
--- Re-seat Jackie at the current working coords by DESPAWN + RESPAWN onto the tuned seat.
--- WHY not just teleport him? A puppet locked in an AMM sit-workspot REJECTS the teleport command
--- (StopInDevice starts releasing him, but the AITeleportCommand is eaten while he's still pinned to
--- the pose — that was the "slides but he's solid as a rock" bug, and v0.45's deferred timing never
--- truly fixed it). A freshly-spawned puppet is standing and unpinned, so the normal placement path
--- (wanderTick -> applyIdlePose) seats him EXACTLY where we point it, every time. So we stage the
--- tuned coords onto the seat waypoint, despawn him, and let scheduleTick respawn him straight onto
--- that seat (JL.idle.forceStartIdx). Brief blink as he pops out/in — fine for a dev tuner.
+-- "Move Jackie here" — WALK-IN re-seat (v1.1, Antonia's design). Get him up out of the chair, walk
+-- him a few metres out, then walk him back INTO the exact tuned coordinate and play the sit. NO
+-- teleport on a seated puppet (that never took). Collisions off so he can walk into the bar-stool.
+-- The state machine + logs live in wanderTick's TUNER WALK-IN block; here we just arm it.
 local function tunerApply()
   if not tunerHere() then
-    JL.ui.status = "Tuner: pick the venue above, then walk over to Jackie."
+    JL.ui.status = "Move ignored: Jackie's not idle here yet — walk up to him first."
+    log(("TUNER: Move-here IGNORED — tuner key=%s but idle Jackie locationKey=%s (spawn=%s)."):format(
+        tostring(JL.tuner.key), tostring(JL.idle.locationKey), tostring(JL.idle.spawn ~= nil)))
     return false
   end
-  if JL.idle.spawn and not JL.idle.placed then
-    JL.ui.status = "Re-seating..."   -- a respawn is already in flight; let it finish before another
-    return false
-  end
+  local h = JL.idle.spawn.handle
   local x, y, z, yaw   = tunerCoords()
   local wp, loc, seats = tunerSeatWaypoint()
-  if not (wp and loc and loc.waypoints) then return false end
-  -- stage the tuned coords onto the seat waypoint so the fresh-spawn placement seats him there
+  if not (wp and loc) then return false end
+  -- stage the tuned coords onto the seat waypoint (persistence + fallback spot track it)
   wp.pos = { x, y, z }; wp.yaw = yaw
-  if #seats <= 1 then loc.pos = { x, y, z }; loc.yaw = yaw end   -- single-seat venue: anchor tracks it
-  -- this seat's index within the venue's FULL waypoint list (placement indexes that list, not sit-only)
-  local startIdx
-  for i, w in ipairs(loc.waypoints) do if w == wp then startIdx = i; break end end
-  -- GUARANTEED re-seat: despawn -> respawn onto this exact seat.
-  JL.ui.forceVenue      = JL.tuner.key                   -- make scheduleTick respawn him HERE
-  clearIdle()                                            -- despawn = guaranteed un-seat (no teleport to reject)
-  JL.idle.forceStartIdx = startIdx                       -- wanderTick places him on THIS seat, not a random one
-  JL.timer              = Config.scheduleCheckInterval or 0   -- fire scheduleTick on the very next tick (respawn ASAP)
-  JL.ui.status = ("Re-seating at %s seat %d..."):format(JL.tuner.key, JL.tuner.seatIdx)
+  if #seats <= 1 then loc.pos = { x, y, z }; loc.yaw = yaw end
+  local seatVec = Vector4.new(x, y, z, 1.0)
+  -- start point: ~2.5 m out FROM the seat toward V, so he walks in from your side (fallback: -X 2.5 m)
+  local sx, sy = x - 2.5, y
+  local pp = playerPos()
+  if pp then
+    local dx, dy = pp.x - x, pp.y - y
+    local len = math.sqrt(dx * dx + dy * dy)
+    if len > 0.3 then sx, sy = x + (dx / len) * 2.5, y + (dy / len) * 2.5 end
+  end
+  JL.ui.forceVenue = JL.tuner.key                        -- pin him here so scheduleTick can't walk him off mid-tune
+  stopWorkspotPose(h)                                    -- get him UP (this works — wander uses the same)
+  setNpcCollision(h, false)                              -- collisions OFF so he can walk into the stool
+  JL.idle.pendingPose, JL.idle.pendingSit = nil, nil     -- cancel any idle sit that would fight us
+  JL.idle.phase = "tuning"                               -- freeze the normal dwell/wander loop
+  JL.tuner.walk = { phase = "toStart", startVec = Vector4.new(sx, sy, z, 1.0), seatVec = seatVec,
+                    yaw = yaw, poseAnim = wp.poseAnim, deadline = (JL.clock or 0) + 5.0, nextAt = 0 }
+  pcall(function() sendMoveToPoint(h, JL.tuner.walk.startVec, "Walk", 0.6) end)
+  log(("TUNER: Move-here PRESSED -> walking Jackie in. seat={%.2f,%.2f,%.2f} yaw=%.1f start={%.2f,%.2f}")
+      :format(x, y, z, yaw, sx, sy))
+  JL.ui.status = "Walking Jackie in to the seat... (watch the CET console / jackie_debug.log)"
   return true
 end
 
@@ -6242,6 +6375,9 @@ registerForEvent("onDraw", function()
 
     -- v0.43 SEAT TUNER (v0.45: any venue + multi-seat): slide a seat until perfect, print for config.lua.
     ImGui.Separator()
+    -- BUILD STAMP: confirm the deployed build actually loaded. If this doesn't say WALK-IN, the game
+    -- had the mod files locked during deploy (deploy with the game CLOSED, then reload).
+    ImGui.TextColored(0.45, 0.85, 1.0, 1.0, "Seat tuner build: v" .. tostring(Config.version) .. " (WALK-IN)")
     if not JL.tuner.init then tunerInit() end
     local t = JL.tuner
 
@@ -6304,21 +6440,11 @@ registerForEvent("onDraw", function()
     local x, y, z, yaw = tunerCoords()
     ImGui.Text(string.format("Working coords: { %.3f, %.3f, %.3f }  yaw %.1f", x, y, z, yaw))
 
-    t.live = ImGui.Checkbox("Live: re-seat him as I slide (blinks each time)", t.live)
-    -- debounced live apply: only fire ~0.5 s after the last slider movement. Each apply is a
-    -- despawn+respawn (heavier than the old teleport), so we wait a touch longer to avoid thrash;
-    -- tunerApply also self-throttles while a respawn is mid-flight (spawn present but not yet placed).
-    if t.live and here then
-      local moved = math.abs(t.dx - t.prevX) > 1e-4 or math.abs(t.dy - t.prevY) > 1e-4
-                 or math.abs(t.dz - t.prevZ) > 1e-4 or math.abs(t.dyaw - t.prevYaw) > 1e-4
-      if moved then t.pendingApplyAt = (JL.clock or 0) + 0.5 end
-    end
-    t.prevX, t.prevY, t.prevZ, t.prevYaw = t.dx, t.dy, t.dz, t.dyaw
-    if t.pendingApplyAt and (JL.clock or 0) >= t.pendingApplyAt then
-      t.pendingApplyAt = nil; tunerApply()
-    end
+    -- Live re-seat RETIRED (it never took): slide freely, then press "Move Jackie here" to WALK him in.
+    ImGui.TextWrapped("Slide to set the target, then press Move Jackie here — he gets up, walks in, and " ..
+                      "sits at the exact spot. Redo as often as you like.")
 
-    if ImGui.Button("Move Jackie here (re-sit)") then tunerApply() end
+    if ImGui.Button("Move Jackie here (walk in + sit)") then tunerApply() end
     ImGui.SameLine()
     if ImGui.Button("Reset offsets") then t.dx, t.dy, t.dz, t.dyaw = 0, 0, 0, 0 end
     ImGui.SameLine()
