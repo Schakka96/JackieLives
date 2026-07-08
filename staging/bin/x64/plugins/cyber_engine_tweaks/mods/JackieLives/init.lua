@@ -73,7 +73,8 @@ local JL = {
   catchUp = { farSince = nil, lastAt = nil, teleTries = nil },
   -- v0.82 respawn-settle: after a respawn-at-V (catch-up FT recovery / persist) hide Jackie + drop his
   -- collision briefly so he doesn't visibly POP in or spawn into a wall, then reveal + re-collide by clock.
-  settle  = { hideUntil = nil, collideUntil = nil, handle = nil },
+  -- v1.40 reposePending/reposeAt/reposeLast: one-shot "move him off AMM's drop spot to V's front/side" latch.
+  settle  = { hideUntil = nil, collideUntil = nil, handle = nil, reposePending = nil, reposeAt = nil, reposeLast = nil },
   -- v0.67 keep-close: periodically re-assert our tight follow so AMM's long leash can't let him
   -- trail far behind V. Just a throttle timestamp.
   follow  = { lastAt = nil },
@@ -5326,9 +5327,34 @@ end
 -- GLOBAL (not a top-level local): init.lua is at Lua's 200-local hard cap — see companionPersistTick etc.
 function settleTick()
   local s = JL.settle
-  if not (s and (s.hideUntil or s.collideUntil)) then return end
+  if not (s and (s.hideUntil or s.collideUntil or s.reposePending)) then return end
   local now = JL.clock or 0
   local h = JL.summon.spawn and JL.summon.spawn.handle
+  -- v1.40 FRONT-SIDE REPOSITION. While he's still hidden after a respawn-at-V, move him off AMM's drop spot
+  -- (often the wall behind V at a fast-travel point) to a point AHEAD/beside V (frontSideArrivalPoint reuses
+  -- the walk-abreast angles). Wait ~0.15 s after the handle resolves so his AI can accept an AITeleportCommand,
+  -- then re-issue at most every ~0.4 s until he's within ~4 m of V or the hide window ends (so the reveal shows
+  -- him at V's side). aiTeleport is the same puppet-relocate the catch-up teleport + arrival flow already use.
+  if s.reposePending and h then
+    s.reposeAt = s.reposeAt or (now + 0.15)
+    if now >= s.reposeAt and (now - (s.reposeLast or -1e9)) >= 0.4 then
+      local jp; pcall(function() jp = h:GetWorldPosition() end)
+      local pp = playerPos()
+      if jp and pp and dist3(pp, jp) <= 4.0 then
+        s.reposePending = nil                 -- already beside V -> done
+      elseif jp then
+        local pt = frontSideArrivalPoint((Config.catchUp and Config.catchUp.placeDistance) or 3.0, jp)
+        if pt then
+          local yaw = 0.0
+          pcall(function() local f = Game.GetPlayer():GetWorldForward(); yaw = math.deg(math.atan2(f.y, f.x)) end)
+          aiTeleport(h, pt, yaw, false)
+          log("Settle: repositioned respawned Jackie to V's front/side (front-side recovery).")
+        end
+        s.reposeLast = now
+      end
+    end
+    if s.hideUntil and now >= s.hideUntil then s.reposePending = nil end  -- window's up -> stop trying
+  end
   -- still hiding? keep him invisible + collision-off (re-assert each frame; handle may have just resolved).
   if s.hideUntil and now < s.hideUntil then
     if h then setVisible(h, false) end

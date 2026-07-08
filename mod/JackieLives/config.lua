@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.39"
+Config.version = "1.40"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -332,6 +332,11 @@ Config.catchUp = {
   sustainSeconds  = 2.0,    -- he must stay that far for this long (rides out a fast-travel/load gap)
   cooldown        = 3.0,    -- minimum seconds between catch-up teleports (anti-thrash)
   placeDistance   = 3.0,    -- metres to V's side he's dropped (navmesh-snapped; never ON V)
+  -- v1.40: on both recovery paths, place him AHEAD/beside V (reusing the walk-abreast angles), never BEHIND —
+  -- the wall/structure behind a fast-travel point is where the old build dropped him. The teleport path uses
+  -- frontSideArrivalPoint directly; the respawn path repositions him there (invisibly) during the settle-hide
+  -- window. Set false to go back to AMM's own drop spot + the plain side/behind navmesh sweep.
+  frontSideRespawn = true,
   respawnWhenStranded = true,-- v0.79: fall back to despawn+respawn when a teleport can't reach him (set false to disable)
   respawnDistance = 150.0,  -- metres beyond which we skip the doomed teleport and respawn immediately (district-scale FT)
   maxTeleTries    = 1,      -- consecutive teleports that fail to close the gap before we escalate to a respawn
