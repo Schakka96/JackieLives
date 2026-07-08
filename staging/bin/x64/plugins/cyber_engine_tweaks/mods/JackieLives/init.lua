@@ -5948,6 +5948,28 @@ registerForEvent("onDraw", function()
   ImGui.SameLine()
   if ImGui.Button("Dismiss Jackie") then dismissJackie() end
 
+  -- v1.34: WALK-ABREAST PACE tuner (re-added on request; the v1.32 declutter removed the old abreast
+  -- sliders). While walking beside V he can't quite keep her pace on his Walk gait, so we scale his time
+  -- up a hair. LOWER "base walk speed" = he speeds up MORE. The live line shows V's measured speed, the
+  -- resulting time-scale, and which pace mode is actually active (so a silent no-op is visible).
+  local ab = Config.abreast
+  if ab then
+    ab.paceMatch = ImGui.Checkbox("Walk-abreast pace-match (walk at V's speed)", ab.paceMatch ~= false)
+    if ab.paceMatch then
+      ab.paceBaseWalk = ImGui.SliderFloat("Pace: base walk speed (m/s) — lower = faster", ab.paceBaseWalk or 1.5, 0.8, 3.0)
+      ab.paceMaxScale = ImGui.SliderFloat("Pace: max speed-up (x)", ab.paceMaxScale or 1.35, 1.0, 2.0)
+      ab.paceForceDutyCycle = ImGui.Checkbox("Force duty-cycle (use if the speed-up does nothing)", ab.paceForceDutyCycle == true)
+      local vsp  = JL.abreast.vSpeed or 0.0
+      local sc   = math.min(math.max(vsp / (ab.paceBaseWalk or 1.5), ab.paceMinScale or 1.0), ab.paceMaxScale or 1.35)
+      local mode = ab.paceForceDutyCycle and "duty-cycle (forced)"
+                   or (JL.abreast.tdOK == false and "duty-cycle (time-dilation absent)")
+                   or (JL.abreast.tdOK == true and "time-dilation OK")
+                   or "time-dilation (untested — walk to check)"
+      ImGui.Text(("Live: V %.2f m/s | scale %.2fx | %s"):format(vsp, sc, mode))
+    end
+  end
+  ImGui.Separator()
+
   -- v0.50: TWO arrival modes only — toggle FOOT <-> BIKE, live. Pick one, then Call Jackie (or hit
   -- "Test arrival now"). Both spawn via DES out at distance and share the sprint -> walk -> companion tail.
   local cc = Config.call

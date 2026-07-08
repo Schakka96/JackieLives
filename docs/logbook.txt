@@ -8,6 +8,21 @@ Log last written: 2026-06-16 (day session)
 Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
 
 --------------------------------------------------------------------------------
+2026-07-08  -  v1.34 WALK-ABREAST: live pace slider back in the CET window
+--------------------------------------------------------------------------------
+- Antonia went looking for a pace slider and there wasn't one: v1.33 shipped the
+  pace knobs in config.lua only, AND the v1.32 "CET declutter" had already removed
+  the old walk-abreast sliders. So the pace-match feature was live (committed in
+  7caef37, pushed) but untunable in-game.
+- Re-added a compact PACE tuner to the CET window (onDraw, under Summon/Dismiss):
+  pace-match on/off, "base walk speed" slider (LOWER = he speeds up more), max
+  speed-up cap, a "force duty-cycle" checkbox, and a LIVE line showing V's measured
+  speed + the resulting scale + which pace mode is active (so a silent time-dilation
+  no-op is visible at a glance). Version -> 1.34.
+- NOTE (contested init.lua): committed with EXPLICIT paths (init/config/staging +
+  this log), blaze.lua untouched — the other session still owns it.
+
+--------------------------------------------------------------------------------
 2026-07-08  -  v1.33 WALK-ABREAST: pace-match (walk at V's speed, not his)
 --------------------------------------------------------------------------------
 - Problem (Antonia): even calmed down, he kept needing catch-up bursts because V's
