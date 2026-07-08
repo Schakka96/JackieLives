@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.32"
+Config.version = "1.33"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -966,6 +966,19 @@ Config.nativeCall = {
                                    --   aborts the canned native call) -> CONNECT (StartCall, the empty
                                    --   transparent window) -> our branching voice convo runs over it ->
                                    --   random V farewell -> hang up (EndCall). false = text "Calling..." only.
+
+  -- v1.33 "temporarily unavailable" FIX (live-tunable in the CET "Call fix" section; these are the
+  -- persisted DEFAULTS). When the player dials Jackie, the game rings the DEAD contact (jackie_dead),
+  -- which flashes the "number temporarily unavailable" card before we take over. hijackMode picks how
+  -- we kill it:
+  --   "quick"   = let the dead ring play `hijackHangupDelay` s, then EndCall -> connect (short card).
+  --   "instant" = EndCall the dead ring immediately, then connect — no ring, no unavailable card.
+  --   "alive"   = EndCall the dead card, ring the ALIVE `jackie` avatar instead, then connect.
+  --   "vanilla" = don't hijack (A/B baseline — you hear the game's own call).
+  hijackMode        = "quick",
+  hijackHangupDelay = 0.75,           -- seconds (quick/alive): how long the ring plays before we connect
+  hijackOurRingSfx  = false,          -- ALSO play our WWise ring SFX? false avoids the "rings twice" overlap
+  aliveId           = "jackie",       -- the alive-contact CName used by hijackMode="alive"
 }
 
 -- The CALL conversation. Same node format as Config.dialogueTree. A choice may carry

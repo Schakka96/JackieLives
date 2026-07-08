@@ -11,6 +11,29 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-08 (v1.33) — "temporarily unavailable" call fix workbench (NO WolvenKit)
+
+The dialed-Jackie "number temporarily unavailable" card is the **dead contact's holo** (`jackie_dead`).
+The hijack fired at `IncomingCall` but let that dead ring play ~2.3 s (+ layered our own ring SFX =
+"rings twice"). New **live-switchable hijack** + CET tester so Antonia can find what dodges the card
+without WolvenKit. `mod/JackieLives/` (init/config), mirrored to `staging/` + fomod 1.33.
+**Awaiting Windows in-game test.**
+
+- [x] `onPlayerCalledJackie` now branches on `Config.nativeCall.hijackMode` (live via `jlCallFix()`):
+  - **quick** — short dead ring (`hijackHangupDelay`, default 0.75 s) → EndCall → connect.
+  - **instant** — EndCall the dead ring THIS frame, connect in 0.15 s (no ring, no card).
+  - **alive** — EndCall the dead card, ring the **alive `jackie`** avatar instead, then connect.
+  - **vanilla** — don't hijack (A/B baseline).
+- [x] Double-ring fixed: our WWise ring SFX now OFF by default (`hijackOurRingSfx`, toggle in CET).
+- [x] `JL.call.activeId` threads the rung contact through `callTick` / open+close window so alive-swap
+  ends/connects `jackie`, not `jackie_dead`. Cleared on hang-up.
+- [x] CET **"Call fix (temporarily-unavailable experiments)"** header: mode buttons, delay slider,
+  ring-SFX toggle, and RAW phase buttons (RING/CONNECT/END × dead/alive) to watch each in isolation.
+- [ ] **TEST (Antonia):** set a mode, CALL Jackie from the phone, see which kills the card. Report the
+  winner → I bake it into `Config.nativeCall.hijackMode` as the permanent default. (Open Q from the
+  probe doc: does ringing/CONNECTing the **alive** `jackie` contact also fire the game's canned Jackie
+  call content? The RAW "RING alive / CONNECT alive" buttons answer that directly.)
+
 ### 🆕 Added 2026-07-08 (v1.32) — CET declutter, main-mission toggle, no re-entrant call
 
 Batch from Antonia's feedback. `mod/JackieLives/` (init/config/retrieval), mirrored to `staging/` +
@@ -270,7 +293,18 @@ Scripted editing required (once the spike confirms facts):
     now); real WolvenKit `.journal` objectives (MVP-B) still pending; fade is still a caption stand-in; full
     q005/interlude/q101 graph completion still delegated to the other workstream. `- [ ] TEST (Windows):`
     confirm subtitles/voice play, companion stays & fights, auto-start timing, scene-Jackie removal.
-- 🔨 **BUILT 2026-07-08 (awaiting Windows in-game confirm) — blaze v1.01: Shigure-only + fact-gated start + roof escape.**
+- 🔨 **BUILT 2026-07-08 (awaiting Windows in-game confirm) — blaze v1.03: elevator spawns, tone-down, roof AV, trimmed overlay.**
+  - **Both bosses spawn at ONE elevator spot** (Takemura first; Smasher in the same place after he falls).
+    ⚠️ `M.yori.goro.pos` is a PLACEHOLDER (old glass-door capture) — `- [ ] NEED elevator coords from Antonia`.
+  - **Boss tone-down:** `hpMul` (Takemura 0.20, Smasher 0.50) via new `weaken` bind (×max Health on spawn).
+  - **Start gate = T-Bug phone call ends** — `startFact = "holo_v_calls_tbug_start_done"` (candidate; `- [ ]
+    VERIFY via JLFactDump`). Replaces the earlier `spiderbot_glass` guess.
+  - **Escape = roof AV** at `-2212.9,1764.67,320` (+2 m). Our spawned VTOL kept in code but dormant unless
+    `Blaze.cfg.heliRecord` set via console. Native `[F] Get in the AV` prompt on either.
+  - **Overlay trimmed:** removed record grabs / position capture / Start-Reset / config-txt button; added
+    **Defeat target (look at)** (force-kill; immortality bypass + test lever) and **Identify target (look at)**
+    (logs class/entityID/record/name — use on the luggage-Jackie). `blazeDumpConfig` slimmed to heliRecord.
+- 🔨 **BUILT 2026-07-08 (superseded by v1.03 above; awaiting Windows) — blaze v1.01: Shigure-only + fact-gated start + roof escape.**
   - **One weapon now:** dropped the Overture + Kongou spots (you can already grab 2 weapons in the
     penthouse). Only a **Shigure** at the first spot (-2238.37,1761.59,308), radius tightened to 4 m so it
     reads as "find a weapon". `- [ ] VERIFY (Windows):` `Items.Preset_Katana_Shigure` via console.

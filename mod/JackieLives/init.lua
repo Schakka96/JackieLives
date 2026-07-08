@@ -303,18 +303,16 @@ BLAZE_DESC = "You and Jackie fight out of the Heist -- taking down Smasher & Tak
   "no dyin'). Extremely experimental. Choose this BEFORE jumping off the building in the Heist -- " ..
   "WARNING: this can't be undone!"
 
+-- v1.03: records/positions capture was removed from the overlay — the bosses use hardcoded records +
+-- the fixed elevator spawn, and the escape is the roof AV (coords in blaze.lua M.yori). The only thing
+-- still worth persisting is the OPTIONAL spawned-VTOL record (if you ever set Blaze.cfg.heliRecord via
+-- the console). Everything else lives in blaze.lua now.
 function blazeDumpConfig()
   local c = Blaze.cfg
-  local function q(s)   return s and string.format("%q", tostring(s)) or "nil" end
-  local function pos(p) return p and string.format("{ x = %.3f, y = %.3f, z = %.3f, yaw = %.1f }", p.x, p.y, p.z, p.yaw or 0.0) or "nil" end
+  local function q(s) return s and string.format("%q", tostring(s)) or "nil" end
   local out = {
-    "-- Blaze of Glory captured config (AUTO-WRITTEN; re-loaded on launch). Move to Mac to bake into blaze.lua.",
-    "Blaze.cfg.smasherRecord = " .. q(c.smasherRecord),
-    "Blaze.cfg.goroRecord    = " .. q(c.goroRecord),
-    "Blaze.cfg.heliRecord    = " .. q(c.heliRecord),
-    "Blaze.cfg.smasherPos    = " .. pos(c.smasherPos),
-    "Blaze.cfg.goroPos       = " .. pos(c.goroPos),
-    "Blaze.cfg.heliPos       = " .. pos(c.heliPos),
+    "-- Blaze of Glory captured config (AUTO-WRITTEN; re-loaded on launch).",
+    "Blaze.cfg.heliRecord = " .. q(c.heliRecord),
   }
   pcall(function()
     local f = io.open(BLAZE_CONFIG_FILE, "w")
@@ -2222,7 +2220,7 @@ end
 -- Open the silent, persistent native holocall window (StartCall) as the call "canvas".
 local function openNativeCallWindow()
   if not (Config.nativeCall and Config.nativeCall.useNativeWindow) then return end
-  triggerNativeCall((Config.nativeCall and Config.nativeCall.id) or "jackie_dead", "StartCall", 2)
+  triggerNativeCall(JL.call.activeId or (Config.nativeCall and Config.nativeCall.id) or "jackie_dead", "StartCall", 2)
   JL.call.nativeOpen = true
 end
 
@@ -2230,7 +2228,8 @@ end
 local function closeNativeCallWindow()
   if not JL.call.nativeOpen then return end
   JL.call.nativeOpen = false
-  triggerNativeCall((Config.nativeCall and Config.nativeCall.id) or "jackie_dead", "EndCall", 3)
+  triggerNativeCall(JL.call.activeId or (Config.nativeCall and Config.nativeCall.id) or "jackie_dead", "EndCall", 3)
+  JL.call.activeId = nil    -- v1.33: clear the alive-swap override so the next call starts clean
 end
 
 -- A random V hang-up sign-off (text only; V has no voice).
@@ -2351,6 +2350,21 @@ function jlCallInProgress()
          and true or false
 end
 
+-- v1.33: live-tunable "temporarily unavailable" fix state, seeded ONCE from Config.nativeCall so the
+-- CET "Call fix" buttons/slider can change mode/delay at runtime. Global (not a top-level local) for
+-- the 200-locals cap. mode: "quick" | "instant" | "alive" | "vanilla".
+function jlCallFix()
+  if not JL.callfix then
+    local nc = Config.nativeCall or {}
+    JL.callfix = {
+      mode    = nc.hijackMode        or "quick",
+      delay   = nc.hijackHangupDelay or 0.75,
+      ourRing = nc.hijackOurRingSfx  == true,
+    }
+  end
+  return JL.callfix
+end
+
 -- Begin a holocall. With useNativeWindow: fire the native RING (IncomingCall) now; callTick
 -- then aborts it (STOP) and switches to the CONNECT window before running our convo.
 local function startCall()
@@ -2365,6 +2379,7 @@ local function startCall()
   Branch.busy = true                       -- reserve so the look-prompt / talk don't fight the ring
   pcall(hideJackieChoiceBox)
   local id   = (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
+  JL.call.activeId = id                        -- v1.33: keep callTick/window on the same contact
   local ring = (Config.call and Config.call.ringEvent) or ""
   if ring ~= "" then pcall(function() playVoice(ring) end) end
   if Config.nativeCall and Config.nativeCall.useNativeWindow then
@@ -2393,7 +2408,8 @@ end
 --  watchdogAt  -> safety: force hang up if a call somehow never completes (no permanent stuck call)
 local function callTick()
   local now = JL.clock or 0
-  local id  = (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
+  -- v1.33: EndCall/connect the SAME contact we rang (alive-swap mode rings "jackie", not "jackie_dead").
+  local id  = JL.call.activeId or (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
   local native = Config.nativeCall and Config.nativeCall.useNativeWindow
 
   -- v0.98: reset the vanilla-call interrupt pulse (see jlSilenceVanillaJackieCall) so a one-shot
@@ -2494,12 +2510,41 @@ local function onPlayerCalledJackie()
     log("Hijack: player called Jackie while asleep -> left it ringing (no pickup).")
     return
   end
+  -- v1.33: the "temporarily unavailable" fix. The Observer just caught the game ringing the DEAD
+  -- contact (jackie_dead), which flashes the "number unavailable" card. jlCallFix() holds the live
+  -- mode/delay (CET "Call fix" section; seeded from Config.nativeCall). Branch on how to kill it.
+  local cf  = jlCallFix()
+  local m   = cf.mode or "quick"
+  if m == "vanilla" then                                 -- A/B baseline: don't hijack at all
+    JL.ui.status = "Call: vanilla (not hijacking — game's own call rings out)."
+    log("Hijack: mode=vanilla -> left the game's call alone.")
+    return
+  end
+
   Branch.busy = true
-  local ring = (Config.call and Config.call.ringEvent) or ""
-  if ring ~= "" then pcall(function() playVoice(ring) end) end
-  JL.call.ringingAt = (JL.clock or 0) + ((Config.call and Config.call.ringSeconds) or 2.0)
-  JL.ui.status = "Jackie picking up..."
-  log("Hijack: player called Jackie from the phone -> running our flow.")
+  local id  = (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
+  local now = JL.clock or 0
+  if cf.ourRing then                                     -- optional (default OFF -> no "rings twice")
+    local ring = (Config.call and Config.call.ringEvent) or ""
+    if ring ~= "" then pcall(function() playVoice(ring) end) end
+  end
+
+  if m == "instant" then
+    JL.call.activeId = id                                         -- EndCall/connect the dead contact
+    pcall(function() triggerNativeCall(id, "EndCall", 3) end)     -- kill the dead ring THIS frame
+    JL.call.connectAt = now + 0.15                                -- straight to our window, no ring/card
+  elseif m == "alive" then
+    local aliveId = (Config.nativeCall and Config.nativeCall.aliveId) or "jackie"
+    JL.call.activeId = aliveId                                    -- callTick now EndCall/connects "jackie"
+    pcall(function() triggerNativeCall(id, "EndCall", 3) end)     -- drop the dead "unavailable" card
+    pcall(function() triggerNativeCall(aliveId, "IncomingCall", 1) end)  -- ring the ALIVE avatar
+    JL.call.ringingAt = now + (cf.delay or 0.75)
+  else                                                   -- "quick": short dead ring, then EndCall->connect
+    JL.call.activeId = id
+    JL.call.ringingAt = now + (cf.delay or 0.75)
+  end
+  JL.ui.status = "Jackie picking up... (" .. m .. ")"
+  log(("Hijack: mode=%s delay=%.2f ourRing=%s -> our flow."):format(m, cf.delay or 0.75, tostring(cf.ourRing)))
 end
 
 -- Observe PhoneSystem:TriggerCall; when the PLAYER calls Jackie's contact (IncomingCall on a
@@ -5196,6 +5241,47 @@ registerForEvent("onInit", function()
           choiceBox.shown = false
         end)
       end,
+      -- v1.03 BLAZE: TONE-DOWN a spawned boss — multiply its max Health by `mul` (e.g. 0.2 = 20%).
+      -- Story Takemura/Smasher spawned at full boss stats are near-unkillable at V's low Heist level.
+      weaken = function(h, mul)
+        if not h or not mul then return end
+        pcall(function()
+          local ss = Game.GetStatsSystem()
+          local mod = RPGManager.CreateStatModifier(gamedataStatType.Health, gameStatModifierType.Multiplier, mul)
+          ss:AddModifier(h:GetEntityID(), mod)
+        end)
+      end,
+      -- v1.03 BLAZE: EMERGENCY force-defeat whatever V is looking at (test lever / immortality bypass).
+      -- Tries the script Kill(), then falls back to zeroing the Health pool. Won't touch companion Jackie.
+      defeatLookAt = function()
+        local pl = Game.GetPlayer(); if not pl then return false end
+        local h; pcall(function() local ts = Game.GetTargetingSystem(); if ts then h = ts:GetLookAtObject(pl, false, false) end end)
+        if not h then log("[Blaze] defeat-target: aim your crosshair at an NPC first."); return false end
+        local mine = false
+        pcall(function() mine = JL.summon.spawn and JL.summon.spawn.handle and h:GetEntityID().hash == JL.summon.spawn.handle:GetEntityID().hash end)
+        if mine then log("[Blaze] that's your COMPANION Jackie — not killing."); return false end
+        local ok = false
+        pcall(function() if h.Kill then h:Kill(pl, false, false); ok = true end end)
+        if not ok then pcall(function()
+          local sps = Game.GetStatPoolsSystem()
+          if sps and h.GetEntityID then sps:RequestSettingStatPoolValue(h:GetEntityID(), gamedataStatPoolType.Health, 0.0, pl, false); ok = true end
+        end) end
+        log("[Blaze] defeat-target: " .. (ok and "killed the targeted NPC." or "could not kill (see console)."))
+        return ok
+      end,
+      -- v1.03 BLAZE: log the looked-at NPC's class / entityID / record / display name — how to grab the
+      -- passive luggage-Jackie's identity (aim at him, click Identify, read the console line).
+      identifyLookAt = function()
+        local pl = Game.GetPlayer(); if not pl then return end
+        local h; pcall(function() local ts = Game.GetTargetingSystem(); if ts then h = ts:GetLookAtObject(pl, false, false) end end)
+        if not h then log("[Blaze] identify: aim your crosshair at an NPC first."); return end
+        local cls, id, rec, disp = "?", "?", "?", "?"
+        pcall(function() cls  = tostring(h:GetClassName().value) end)
+        pcall(function() id   = tostring(h:GetEntityID().hash) end)
+        pcall(function() rec  = tostring(h:GetRecordID()) end)
+        pcall(function() disp = tostring(h:GetDisplayName()) end)
+        log(string.format("[Blaze] IDENTIFY -> class=%s  entityID=%s  record=%s  name=%s", cls, id, rec, disp))
+      end,
       -- Remove the NPC V is LOOKING AT (used to clear the scene's own passive Jackie — the luggage
       -- carrier — so only our fighting companion remains). Won't touch our companion. Tries a real
       -- delete, then falls back to hiding + teleporting him far below the map (quest NPCs resist delete).
@@ -5743,42 +5829,35 @@ registerForEvent("onDraw", function()
     -- kill-Smasher -> reach-VTOL -> cut-to-black flow). Positions/records are captured
     -- in-game; paste the console-logged values into blaze.lua M.cfg to make them stick.
     ImGui.Separator()
-    ImGui.Text("Heist set-piece (MVP-A):")
+    ImGui.Text("Blaze set-piece:")
     ImGui.TextWrapped(Blaze.status())
-    ImGui.TextWrapped("1. RECORDS -- spawn Smasher/Takemura (and an AV) via AMM's menu, then grab:")
-    if ImGui.Button("Grab Smasher record") then local r = discoverBlazeRecord("smasher");  if r then Blaze.setRecord("smasher", r) end end
+    ImGui.TextWrapped("Bosses use hardcoded records + a fixed elevator spawn spot -- no record/position " ..
+      "capture needed. Testing tools:")
+    if ImGui.Button("Defeat target (look at)") then
+      local ok = false; pcall(function() ok = Blaze.bound.defeatLookAt and Blaze.bound.defeatLookAt() end)
+      JL.ui.status = ok and "Defeated the targeted NPC." or "Aim at an NPC first (see console)."
+    end
     ImGui.SameLine()
-    if ImGui.Button("Grab Takemura record") then local r = discoverBlazeRecord("takemura"); if r then Blaze.setRecord("goro", r) end end
-    ImGui.TextWrapped("Heli is a VEHICLE (not in AMM's NPC list) -- aim your crosshair AT the floating heli, then:")
-    if ImGui.Button("Grab heli record (look at it)") then local r = discoverBlazeRecordFromTarget(); if r then Blaze.setRecord("heli", r) end end
-    ImGui.TextWrapped("2. POSITIONS -- stand on each spot (FACE the right way) & capture:")
-    if ImGui.Button("Capture Goro / elevator spot")  then Blaze.setPos("goro",    blazeCapture()) end
-    if ImGui.Button("Capture Smasher / balcony spot") then Blaze.setPos("smasher", blazeCapture()) end
-    if ImGui.Button("Capture Heli / hover spot")      then Blaze.setPos("heli",    blazeCapture()) end
-    ImGui.TextWrapped("3. RUN:")
-    if ImGui.Button("Start set-piece") then Blaze.start() end
-    ImGui.SameLine()
-    if ImGui.Button("Reset set-piece") then Blaze.reset(); JL.ui.status = "Blaze set-piece reset." end
+    if ImGui.Button("Identify target (look at)") then
+      pcall(function() if Blaze.bound.identifyLookAt then Blaze.bound.identifyLookAt() end end)
+      JL.ui.status = "Logged the targeted NPC's id / name / record (see console)."
+    end
     ImGui.TextWrapped("TEST: fire the world-unlock directly (same as the set-piece's ending) -- lifts the " ..
       "Watson barrier via watson_prolog_unlock. Use on a THROWAWAY save.")
     if ImGui.Button("TEST: World unlock now (Watson barrier)") then
       local ok = Blaze.testWorldUnlock()
       JL.ui.status = ok and "Fired world unlock (watson_prolog_unlock=1, watson_prolog_lock=0)." or "World unlock helper not bound."
     end
-    ImGui.TextWrapped("Records + positions AUTO-SAVE to blaze_config.txt (in the mod folder) and reload " ..
-      "on launch -- no console copying, no re-capturing. Grab a Smasher record via AMM's menu FIRST, though.")
-    if ImGui.Button("Re-write blaze_config.txt now") then blazeDumpConfig(); JL.ui.status = "Wrote blaze_config.txt in the mod folder." end
 
     -- v0.97 EXPERIMENTAL: one-button Yorinobu-apartment fight (hardcoded, WIP, not further developed).
     ImGui.Separator()
     ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "EXPERIMENTAL — Yorinobu apartment fight")
-    ImGui.TextWrapped("WIP / not further developed. During the Heist it now AUTO-STARTS when you reach the " ..
-      "balcony (Blaze mode + main quest + within 12 m of the spot): Takemura appears -> defeat him (lethal or " ..
-      "not) -> Smasher appears -> defeat him -> escape heli -> reach it (5 m) -> fade -> world opens & you wake " ..
-      "at Vik's with a LIVING Jackie (retrieval shard skipped). Jackie becomes your fighting companion and " ..
-      "barks along the way. Grab the heli record (look-at, above) first if you want the heli to appear. " ..
-      "Use a THROWAWAY save.")
-    ImGui.TextWrapped("Scene has a SECOND, passive Jackie (the luggage carrier)? Aim your crosshair at HIM and:")
+    ImGui.TextWrapped("WIP. During the Heist it AUTO-STARTS when the start-fact flips (the T-Bug phone call " ..
+      "ends): Takemura appears at the elevator -> defeat him -> Smasher appears in the same spot -> defeat him " ..
+      "-> escape (roof AV, +2 m [F] prompt) -> fade -> world opens & you wake at Vik's with a LIVING Jackie " ..
+      "(retrieval shard skipped). Jackie fights as your companion and barks along the way. Use a THROWAWAY save.")
+    ImGui.TextWrapped("Scene has a SECOND, passive Jackie (the luggage carrier)? Aim at HIM, use 'Identify " ..
+      "target' above to log his id/record, then:")
     if ImGui.Button("Remove the Jackie I'm looking at") then
       local ok = false; pcall(function() ok = Blaze.bound.despawnLookAt and Blaze.bound.despawnLookAt() end)
       JL.ui.status = ok and "Removed the targeted Jackie." or "Aim at the passive Jackie first (see console)."
@@ -5850,6 +5929,37 @@ registerForEvent("onDraw", function()
   JL.ui.forceMainQuest = ImGui.Checkbox("Force main-quest active (test decline)", JL.ui.forceMainQuest)
   ImGui.Text("Main quest detected: " .. (isMainQuestActive() and "YES (Jackie won't follow)" or "no"))
   ImGui.Text("In cutscene (tier>=4): " .. (jlInCutscene() and "YES (Jackie leaves)" or "no"))
+
+  ImGui.Separator()
+  -- v1.33: "temporarily unavailable" fix workbench. Pick a MODE, then CALL Jackie from your in-game
+  -- phone and watch what shows. The raw buttons fire single native-call phases so you can see each one
+  -- in isolation. Tell me which mode kills the "number unavailable" card and I'll bake it as default.
+  if ImGui.CollapsingHeader("Call fix (temporarily-unavailable experiments)") then
+    local cf = jlCallFix()
+    ImGui.TextWrapped("HOW: set a mode below, then open your phone and CALL Jackie. 'quick' = short " ..
+      "dead ring then connect; 'instant' = kill the ring, connect now (no card); 'alive' = ring the " ..
+      "ALIVE avatar instead; 'vanilla' = don't hijack (baseline, to compare).")
+    ImGui.Text("Mode: ")
+    ImGui.SameLine(); ImGui.TextColored(0.45, 0.85, 1.0, 1.0, cf.mode)
+    if ImGui.Button("quick")   then cf.mode = "quick"   end
+    ImGui.SameLine(); if ImGui.Button("instant") then cf.mode = "instant" end
+    ImGui.SameLine(); if ImGui.Button("alive")   then cf.mode = "alive"   end
+    ImGui.SameLine(); if ImGui.Button("vanilla") then cf.mode = "vanilla" end
+    cf.delay = ImGui.SliderFloat("Ring/hang-up delay (s)", cf.delay or 0.75, 0.1, 2.0)
+    cf.ourRing = ImGui.Checkbox("Also play our ring SFX (OFF avoids 'rings twice')", cf.ourRing and true or false)
+
+    ImGui.Separator()
+    ImGui.Text("Raw native-call phases (watch each in isolation):")
+    if ImGui.Button("RING dead (jackie_dead)")  then triggerNativeCall("jackie_dead", "IncomingCall", 1) end
+    ImGui.SameLine(); if ImGui.Button("RING alive (jackie)") then triggerNativeCall("jackie", "IncomingCall", 1) end
+    if ImGui.Button("CONNECT dead")  then triggerNativeCall("jackie_dead", "StartCall", 2) end
+    ImGui.SameLine(); if ImGui.Button("CONNECT alive") then triggerNativeCall("jackie", "StartCall", 2) end
+    if ImGui.Button("END dead")  then triggerNativeCall("jackie_dead", "EndCall", 3) end
+    ImGui.SameLine(); if ImGui.Button("END alive") then triggerNativeCall("jackie", "EndCall", 3) end
+    ImGui.TextWrapped("The disconnected 'temporarily unavailable' card is the DEAD contact's holo — no " ..
+      "WolvenKit needed to dodge it: 'instant'/'alive' avoid showing it at all. If a mode wins, tell me " ..
+      "and I'll set Config.nativeCall.hijackMode to it permanently.")
+  end
 
   ImGui.Separator()
   -- v1.32: minimal reunion-quest DEV jumps (the everyday "Unlock now" button lives up top with the
