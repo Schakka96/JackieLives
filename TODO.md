@@ -220,6 +220,36 @@ Scripted editing required (once the spike confirms facts):
   safe (field on `JL`, globals only). luajit parse-checked OK. **Decision baked: ONE mod, not two** —
   Blaze `.archive` edits self-gate on the fact, so Quiet Life players get vanilla story. Staging NOT
   synced (Mac session; sync on Windows). `Config.version` left at 1.0 (no deploy).
+- 🎬 **BLAZE v1.02 (2026-07-08) — real FADE TO BLACK + finale hardening (init.lua).** Built by the
+  fade/finale session; init.lua only (blaze.lua untouched):
+  - **Real fade to black → hold → back in** (`startBlazeFade`/`blazeFadeTick`/`drawBlazeFade`, all globals):
+    full-screen black ImGui overlay, alpha animated, drawn DURING gameplay (covers the HUD) but **skips the
+    pause/ESC/map menus** via `uiInMenu()` so it never blacks those out. `fade()` bind = start the visual;
+    `finale()` runs its actions in the fade's **at-full-black** callback so V never sees the teleport.
+  - **Finale now:** world-unlock facts → `Retrieval.forceReunion()` (skip shard) → **best-effort mark the
+    main quest complete** (succeed + untrack the tracked entry = q005 during the Heist) → teleport V to Vik's.
+  - `- [ ] TEST (Windows):` does the screen actually fade to black (not just a caption), stay covered during
+    the teleport, and fade back in at Vik's? Does the ESC menu stay visible if opened mid-fade?
+  - ▶ **UPCOMING TASKS FOR THE q005-GRAPH SESSION (quest completion — I could only do a cosmetic best-effort):**
+    * The finale's "mark complete" only **succeeds + untracks the tracked journal entry** (q005). It is NOT a
+      real graph completion, and **q101 isn't started so nothing there is completed**. Provide the **real
+      q005 + q101 completion** — the exact completion facts / journal paths from `q005_graph_extract.md` — and
+      wire them into the finale (replace/augment the `ChangeEntryState`+`UntrackEntry` best-effort). Verify
+      `gameJournalEntryState.Succeeded` / `gameJournalNotifyOption.Notify` enum names are right in-game.
+    * Confirm q101 truly never starts after this (the whole point) — or, if the design wants it "completed"
+      rather than "never started", decide which and implement accordingly.
+- ✅ **BLAZE BRANCH — NEXT THINGS TO DO / CHECK (running checklist):**
+  1. `- [ ]` **Capture `startFact`** — the real quest fact at the "T-Bug opens the glass doors" beat with
+     JLFactDump; replace the `spiderbot_glass` guess in `M.yori.startFact`.
+  2. `- [ ]` **Remove the dead `autoRadius = 12.0`** leftover in blaze.lua (12 m gate is gone; line is unused).
+  3. `- [ ]` **Real q005/q101 completion** (see UPCOMING TASKS above) — swap the cosmetic best-effort.
+  4. `- [ ]` **Scene luggage-Jackie auto-removal** — grab his class name via the "Remove the Jackie I'm
+     looking at" button's console log, then auto-target him at fight start (currently manual only).
+  5. `- [ ]` **Real WolvenKit `.journal` objectives** (MVP-B) — swap `objective()` in the bind (one line).
+  6. `- [ ]` **Verify the fade** (see v1.02 TEST) and **verify** real subtitles + companion-stays-and-fights.
+  7. `- [ ]` **Verify heli record / roof-AV escape** and that DES-spawned Takemura/Smasher actually fight.
+  8. `- [ ]` Keep the **`Blaze.bind` contract** complete as blaze.lua/init.lua evolve (every `M.bound.X`
+     used in blaze.lua has a matching bind in init.lua).
 - 🔥 **BLAZE v0.99 (2026-07-08) — set-piece now LOADS & runs; 4 fixes + open items.** After the stale-
   deploy fix (require cache-bust `package.loaded["blaze"]=nil` + `M.VERSION` stamp logged on load), the
   fight runs. This session's fixes:
@@ -240,7 +270,23 @@ Scripted editing required (once the spike confirms facts):
     now); real WolvenKit `.journal` objectives (MVP-B) still pending; fade is still a caption stand-in; full
     q005/interlude/q101 graph completion still delegated to the other workstream. `- [ ] TEST (Windows):`
     confirm subtitles/voice play, companion stays & fights, auto-start timing, scene-Jackie removal.
-- 🔨 **BUILT 2026-07-08 (awaiting Windows in-game confirm) — blaze v1.00: weapon hand-out + Jackie combat.**
+- 🔨 **BUILT 2026-07-08 (awaiting Windows in-game confirm) — blaze v1.01: Shigure-only + fact-gated start + roof escape.**
+  - **One weapon now:** dropped the Overture + Kongou spots (you can already grab 2 weapons in the
+    penthouse). Only a **Shigure** at the first spot (-2238.37,1761.59,308), radius tightened to 4 m so it
+    reads as "find a weapon". `- [ ] VERIFY (Windows):` `Items.Preset_Katana_Shigure` via console.
+  - **Fight now gated on a QUEST FACT, not proximity** (kills the KNOWN-BAD 12 m gate). `M.yori.startFact`
+    → `M.autoStartTick()` starts the fight when that fact flips = T-Bug opens the penthouse glass doors.
+    `getFact` bind added (`GetFactStr`). ⚠️ **`startFact` is a guess (`spiderbot_glass`)** — `- [ ] CAPTURE
+    the real fact with JLFactDump in-game AT the door-open beat`, then set it in `M.yori.startFact`.
+  - **Objective phases now:** P1 `[ ] Find a weapon / >> Defeat Takemura` → P2 `>> Defeat Adam Smasher`
+    → P3 `>> Get to the roof and escape`.
+  - **Two escape exits:** our spawned VTOL **and** the AV already on the roof (`M.yori.roofHeli.pos`,
+    `- [ ] FILL with Antonia's roof coords` to enable). Within reach of EITHER shows the **NATIVE yellow
+    `[F]` interaction prompt "Get in the AV"** (v1.02 — reuses the Talk-to-Jackie `InteractionChoiceHub`
+    via new `showPrompt`/`hidePrompt` binds; talk-prompt heartbeat yields while `Blaze.escapePromptActive()`).
+    The fade is gated on the **F press** (`Blaze.tryEscapePress` from the OnAction hook), not raw proximity.
+  - Existing helicopter kept — V can use either. Fade/finale unchanged (world-unlock + wake at Vik's).
+- 🔨 **BUILT 2026-07-08 (superseded by v1.01 above) — blaze v1.00: weapon hand-out + Jackie combat.**
   - **Staged weapon pickups:** `M.yori.weapons` in `blaze.lua` lists 3 weapons, each with a coord +
     50 m radius. `checkWeaponDrops()` (called every `M.tick`, both modes) adds each to V's inventory
     ONCE when V gets within radius. Records: `Items.Preset_Katana_Satori` (katana @ -2238.37,1761.59,308),

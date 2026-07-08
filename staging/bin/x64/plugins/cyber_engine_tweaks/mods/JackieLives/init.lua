@@ -975,6 +975,13 @@ local function setupInteractHook()
       if not actionJustPressed(action) then return end
       if Config.talk and Config.talk.logActions then log("OnAction: " .. tostring(name)) end
       if not INTERACT_ACTIONS[name] then return end
+      -- v1.0 BLAZE: at the "[F]: Get in the AV" escape moment, F triggers the final fade. Consumes the
+      -- press so it doesn't also grunt/talk. No-op (returns false) any other time.
+      if JL.mode == "blaze" then
+        local consumed = false
+        pcall(function() consumed = Blaze.tryEscapePress and Blaze.tryEscapePress() end)
+        if consumed then return end
+      end
       -- v0.32: try to start the location-based branching convo FIRST. Only if it doesn't
       -- start (not looking, busy, or the 'everywhere' tree is on its DONE cooldown) do we
       -- fall back to a one-off grunt. This both avoids grunt+dialogue overlapping AND gives
@@ -1192,6 +1199,11 @@ local function updateTalkPrompt(dt)
   talkUI.checkT = (talkUI.checkT or 0) + dt
   if talkUI.checkT < 0.2 then return end
   talkUI.checkT = 0
+  -- v1.01: while Blaze's "Get in the AV" prompt owns the native interaction box, don't touch it.
+  if JL.mode == "blaze" then
+    local esc = false; pcall(function() esc = Blaze.escapePromptActive and Blaze.escapePromptActive() end)
+    if esc then talkUI.shown = false; return end
+  end
   if jlInCutscene() then           -- v0.92: no talk prompt / dialogue picker during a cutscene
     if choiceBox.shown then hideJackieChoiceBox() end
     talkUI.shown = false
@@ -1802,6 +1814,67 @@ local function uiInMenu()
     v = bb:GetBool(defs.UI_System.IsInMenu)
   end)
   return v
+end
+
+-- ---------------------------------------------------------------------------
+-- v1.02 BLAZE: real FADE TO BLACK (then back in). A full-screen black ImGui overlay whose alpha
+-- animates out -> hold -> in. Covers ALL game UI, but SKIPS drawing while a game menu (pause/ESC/map)
+-- is up (uiInMenu) so it never blacks those out. At full black it runs the injected `atBlack` callback
+-- (the finale: teleport + quest-complete), so the swap is hidden. Stepped from onUpdate (tick) + onDraw
+-- (draw). Globals (not top-level locals) => 200-cap safe.
+-- ---------------------------------------------------------------------------
+function startBlazeFade(atBlackFn)
+  JL.blazeFade = JL.blazeFade or {}
+  local f = JL.blazeFade
+  f.outDur, f.holdDur, f.inDur = 0.8, 0.6, 0.9
+  if f.phase then                                   -- already fading: just (re)arm the callback
+    if atBlackFn then f.atBlack, f.ranBlack = atBlackFn, false end
+    return
+  end
+  f.phase, f.t, f.alpha, f.ranBlack, f.atBlack = "out", 0, 0, false, atBlackFn
+end
+
+function blazeFadeTick(dt)
+  local f = JL.blazeFade
+  if not f or not f.phase then return end
+  f.t = f.t + (dt or 0)
+  if f.phase == "out" then
+    f.alpha = math.min(1.0, f.t / (f.outDur or 0.8))
+    if f.t >= (f.outDur or 0.8) then
+      f.alpha = 1.0
+      if not f.ranBlack then f.ranBlack = true; if f.atBlack then pcall(f.atBlack) end end
+      f.phase, f.t = "hold", 0
+    end
+  elseif f.phase == "hold" then
+    f.alpha = 1.0
+    if f.t >= (f.holdDur or 0.6) then f.phase, f.t = "in", 0 end
+  elseif f.phase == "in" then
+    f.alpha = math.max(0.0, 1.0 - f.t / (f.inDur or 0.9))
+    if f.t >= (f.inDur or 0.9) then f.phase, f.alpha, f.atBlack = nil, 0, nil end
+  end
+end
+
+function drawBlazeFade()
+  local f = JL.blazeFade
+  if not f or not f.phase or (f.alpha or 0) <= 0.001 then return end
+  if uiInMenu() then return end                     -- never cover the pause/ESC/map menus
+  pcall(function()
+    local sw, sh = 1920, 1080
+    pcall(function() local x, y = ImGui.GetDisplaySize(); if x and x > 0 then sw, sh = x, y end end)
+    local flags = 0
+    for _, n in ipairs({ "NoTitleBar","NoResize","NoMove","NoCollapse","NoScrollbar",
+                         "NoSavedSettings","NoNav","NoFocusOnAppearing","NoInputs","NoBringToFrontOnFocus" }) do
+      local v = ImGuiWindowFlags[n]; if type(v) == "number" then flags = flags + v end
+    end
+    ImGui.SetNextWindowPos(0, 0, ImGuiCond.Always)
+    ImGui.SetNextWindowSize(sw, sh, ImGuiCond.Always)
+    ImGui.PushStyleColor(ImGuiCol.WindowBg, 0.0, 0.0, 0.0, f.alpha)
+    ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 0.0)
+    ImGui.Begin("##blazefade", flags)
+    ImGui.End()
+    ImGui.PopStyleVar()
+    ImGui.PopStyleColor()
+  end)
 end
 
 local function drawDialogueBox()
@@ -5083,6 +5156,46 @@ registerForEvent("onInit", function()
         pcall(function() Game.AddToInventory(rec, 1); ok = true end)
         return ok
       end,
+      -- v1.0 BLAZE: read a quest fact (numeric). Used to gate the fight on the "T-Bug opens the glass
+      -- doors" beat instead of a raw proximity check. Returns 0 if the fact/system isn't available.
+      getFact = function(name)
+        local v = 0
+        pcall(function() local qs = Game.GetQuestsSystem(); if qs then v = qs:GetFactStr(name) or 0 end end)
+        return v
+      end,
+      -- v1.01 BLAZE: show/clear the game's NATIVE yellow [F] interaction prompt (the same
+      -- InteractionChoiceHub the "Talk to Jackie" box uses) with a custom label, e.g. "Get in the AV".
+      -- Reuses choiceBox.id/.shown so updateTalkPrompt's heartbeat stays coordinated (it yields while
+      -- Blaze.escapePromptActive()). F is caught by the OnAction hook -> Blaze.tryEscapePress.
+      showPrompt = function(label)
+        pcall(function()
+          local hub = InteractionChoiceHubData.new()
+          hub.id, hub.active = choiceBox.id, true
+          pcall(function() hub.title = "" end)
+          local choice = InteractionChoiceData.new()
+          pcall(function() choice.localizedName = tostring(label or "Interact") end)
+          pcall(function() choice.inputAction = CName.new("Choice1") end)
+          hub.choices = { choice }
+          local idef = GetAllBlackboardDefs().UIInteractions
+          local bb   = Game.GetBlackboardSystem():Get(idef)
+          if bb and idef.InteractionChoiceHub then
+            bb:SetVariant(idef.InteractionChoiceHub, ToVariant(hub), true)
+            choiceBox.shown, choiceBox.lastPush = true, JL.clock or 0
+          end
+        end)
+      end,
+      hidePrompt = function()
+        pcall(function()
+          local idef = GetAllBlackboardDefs().UIInteractions
+          local bb   = Game.GetBlackboardSystem():Get(idef)
+          if bb and idef.InteractionChoiceHub then
+            local empty = InteractionChoiceHubData.new()
+            empty.id, empty.active, empty.choices = choiceBox.id, false, {}
+            bb:SetVariant(idef.InteractionChoiceHub, ToVariant(empty), true)
+          end
+          choiceBox.shown = false
+        end)
+      end,
       -- Remove the NPC V is LOOKING AT (used to clear the scene's own passive Jackie — the luggage
       -- carrier — so only our fighting companion remains). Won't touch our companion. Tries a real
       -- delete, then falls back to hiding + teleporting him far below the map (quest NPCs resist delete).
@@ -5107,7 +5220,9 @@ registerForEvent("onInit", function()
       -- MVP-A objective/cutscene = native message band + caption. MVP-B swaps THESE TWO lines
       -- for real WolvenKit .journal calls / a real scene (docs/BLAZE_WOLVENKIT_OBJECTIVES.md).
       objective = function(text, dur) showOnscreenMsg(text, dur or 8.0) end,
-      fade = function(caption) showOnscreenMsg(caption or "CUT TO BLACK", 8.0) end,
+      -- v1.02: REAL fade to black -> hold -> back in (drawBlazeFade). finale() re-arms it with the
+      -- teleport/quest-complete callback so those run at FULL BLACK (hidden). fade() alone = visual only.
+      fade = function(caption) startBlazeFade(nil); if caption and caption ~= "" then log("[Blaze] fade: " .. caption) end end,
       -- ALTERNATE-TIMELINE WORLD UNLOCK (v-next MVP slice): the Watson prologue barrier reads the
       -- quest fact `watson_prolog_unlock` directly (proven in docs/research/q005_graph_findings.md —
       -- set by NO quest condition, only the prevention-area system). Vanilla sets it deep inside q101
@@ -5156,17 +5271,38 @@ registerForEvent("onInit", function()
       -- spawn. (Full q005/interlude/q101 graph autocompletion is the OTHER workstream's job — this
       -- delivers the playable result via the barrier lift + teleport; see docs/research/q005_graph_findings.md.)
       finale = function()
-        pcall(function()
-          local qs = Game.GetQuestsSystem()
-          if qs then qs:SetFactStr("watson_prolog_unlock", 1); qs:SetFactStr("watson_prolog_lock", 0) end
+        -- Run everything AT FULL BLACK (via the fade's atBlack callback) so V never sees the teleport.
+        -- If the fade isn't running yet, startBlazeFade starts it; if it is, this just re-arms the callback.
+        startBlazeFade(function()
+          -- 1) open Watson without q101 (world-unlock lever)
+          pcall(function()
+            local qs = Game.GetQuestsSystem()
+            if qs then qs:SetFactStr("watson_prolog_unlock", 1); qs:SetFactStr("watson_prolog_lock", 0) end
+          end)
+          -- 2) skip the Where's-Jackie shard, mark him returned
+          pcall(function() Retrieval.forceReunion() end)
+          -- 3) BEST-EFFORT mark the main quest complete + stop it nagging. We succeed + untrack the
+          --    currently-tracked entry (q005 during the Heist). ⚠️ This is cosmetic/journal-level, NOT a
+          --    real graph completion, and q101 hasn't started so there's nothing to succeed there. The
+          --    proper q005/q101 completion (exact facts/journal paths) is an UPCOMING TASK for the q005-
+          --    graph workstream — see TODO. Enum names are guarded so a mismatch just no-ops.
+          pcall(function()
+            local jm = Game.GetJournalManager()
+            local tracked = jm and jm:GetTrackedEntry()
+            if tracked then
+              pcall(function() jm:ChangeEntryState(tracked, "gameJournalQuest", gameJournalEntryState.Succeeded, gameJournalNotifyOption.Notify) end)
+              pcall(function() jm:UntrackEntry(tracked) end)
+              log("[Blaze] finale: succeeded + untracked the tracked main quest (best-effort q005).")
+            end
+          end)
+          -- 4) teleport V to Vik's clinic (companion Jackie catches up)
+          local vik = (Retrieval.Config and Retrieval.Config.vikPos) or { -1546.551, 1229.270, 11.520 }
+          pcall(function()
+            local tf = Game.GetTeleportationFacility()
+            if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(vik[1], vik[2], vik[3], 1.0), EulerAngles.new(0.0, 0.0, 129.8)) end
+          end)
+          log("[Blaze] FINALE (at black): Watson open, shard skipped, quest untracked, V at Vik's.")
         end)
-        pcall(function() Retrieval.forceReunion() end)   -- Blaze: skip the Where's-Jackie shard, mark him returned
-        local vik = (Retrieval.Config and Retrieval.Config.vikPos) or { -1546.551, 1229.270, 11.520 }
-        pcall(function()
-          local tf = Game.GetTeleportationFacility()
-          if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(vik[1], vik[2], vik[3], 1.0), EulerAngles.new(0.0, 0.0, 129.8)) end
-        end)
-        log("[Blaze] FINALE: Watson open, retrieval shard skipped, V teleported to Vik's (companion Jackie follows).")
       end,
       -- DIAGNOSE test-spawn: drop Takemura ~5 m and Smasher ~7 m in front of V, loudly, so we can see if
       -- DES accepts the records at all (isolates the record/plumbing from the apartment coords).
@@ -5340,14 +5476,8 @@ registerForEvent("onUpdate", function(dt)
   pcall(function() Retrieval.tick(dt) end)   -- retrieval questline: gate + Vik tip + Badlands shard + call/arrival/reunion sequence
   if JL.mode == "blaze" then
     pcall(function() Blaze.tick(JL.clock, dt) end)   -- v0.96: Heist set-piece state machine (self-guards when idle)
-    pcall(function()                                 -- v0.99: auto-start the fight at the balcony beat (no manual button needed)
-      local pp = playerPos()
-      if pp then
-        local g = Blaze.yori.goro.pos
-        local dx, dy, dz = pp.x - g.x, pp.y - g.y, pp.z - g.z
-        Blaze.autoStartTick(isMainQuestActive(), math.sqrt(dx * dx + dy * dy + dz * dz))
-      end
-    end)
+    pcall(function() blazeFadeTick(dt) end)          -- v1.02: advance the fade-to-black animation (self-guards when idle)
+    pcall(function() Blaze.autoStartTick() end)      -- v1.0: auto-start when the start-fact flips (T-Bug opens the glass doors)
   end
   pcall(jlDetectGenderOnce)   -- v1.2: one-shot — lock the Husbando/Hermano default from V's body gender
   pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
@@ -5548,6 +5678,7 @@ end
 
 registerForEvent("onDraw", function()
   pcall(drawDialogueBox)                      -- v0.24: the styled choice box draws DURING gameplay
+  pcall(drawBlazeFade)                         -- v1.02: fade-to-black overlay draws DURING gameplay (covers HUD, not the ESC menu)
   if not JL.ui.overlayOpen then return end   -- the debug window only draws while the overlay is open
   if not JL.ui.open then return end
   ImGui.Begin("Jackie Lives")

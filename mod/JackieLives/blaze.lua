@@ -34,7 +34,7 @@ local M = { bound = {}, cfg = nil, st = nil }
 -- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
 -- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
 -- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
-M.VERSION = "0.99 (2026-07-08 subtitles + auto-start)"
+M.VERSION = "1.02 (2026-07-08 native [F] 'Get in the AV' prompt)"
 
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
@@ -70,7 +70,24 @@ M.cfg = {
 M.yori = {
   goro    = { rec = "Character.Takemura", pos = { x = -2204.920, y = 1764.812, z = 312.000, yaw =   40.0 } }, -- recaptured 2026-07-08
   smasher = { rec = "Character.Smasher",  pos = { x = -2226.165, y = 1765.743, z = 309.329, yaw = -157.5 } }, -- facing SSE
-  heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 } },  -- facing NW; record from M.cfg.heliRecord (look-at grab)
+  heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 } },  -- OUR spawned VTOL (existing extraction ride)
+  -- The AV that's ALREADY sitting on the roof in the base scene — V can escape via THIS one too. We
+  -- don't spawn it (it's already there); we just mark its position as a second valid escape point.
+  -- ⚠️ Fill pos with the roof coords Antonia will provide, then this becomes an active exit.
+  roofHeli = { pos = nil },   -- e.g. { x = ?, y = ?, z = ? }
+  -- Gate: the fight (spawns + start) fires when this quest fact flips — the moment T-Bug opens the
+  -- penthouse GLASS DOORS. ⚠️ VERIFY the exact fact name with JLFactDump in-game at that beat, then set
+  -- it here. `spiderbot_glass` is the best candidate from the q005 graph but is UNCONFIRMED for this moment.
+  startFact = "spiderbot_glass",
+  -- MVP weapon hand-out: ONE staged weapon. When V gets within `radius` m of the spot the weapon is
+  -- added straight to V's inventory (ONCE) — reads as "find/pick up a weapon". Small radius so V has to
+  -- actually walk to it (the phase-1 objective is "find a weapon"). Direct inventory-add is 100%
+  -- reliable vs a physical AMM ground-drop; the coord just gates the pickup.
+  -- (Antonia 2026-07-08: only ONE drop now — the 2 other spots removed; you can already grab 2 weapons
+  --  elsewhere in the penthouse.) ⚠️ VERIFY the record in-game: console `Game.AddToInventory("<rec>",1)`.
+  weapons = {
+    { key = "shigure", label = "Shigure", rec = "Items.Preset_Katana_Shigure", pos = { x = -2238.37, y = 1761.590, z = 308.000 }, radius = 4.0 },
+  },
   reachRadius = 5.0,
   autoRadius  = 12.0,     -- auto-start when V (in Blaze mode, during the Heist) gets this close to the balcony
   fightLineDelay = 4.0,   -- seconds after each boss spawns before Jackie's one mid-fight bark
@@ -203,21 +220,41 @@ function M.startYorinobu()
   if M.bound.becomeCompanion then M.bound.becomeCompanion() end
   spawnOne("goro", M.yori.goro.rec, M.yori.goro.pos, true)
   say("goroSpawn")
-  pushObjective(">> Defeat Takemura")
+  pushObjective("[ ] Find a weapon\n>> Defeat Takemura")
   blog("EXPERIMENTAL Yorinobu fight STARTED (Takemura first; Jackie -> companion).")
   return true
 end
 
--- Auto-start the fight when V, in Blaze mode, is DURING the Heist (a main quest is tracked) and has
--- reached the balcony area (distToTrigger <= autoRadius) — a reliable position proxy for the "go to the
--- balcony door" objective. Fires once per session; the manual button still works as an override.
-function M.autoStartTick(mainQuestActive, distToTrigger)
+-- Auto-start the fight when the START FACT flips — i.e. the exact story beat where T-Bug opens the
+-- penthouse glass doors. This replaces the old raw 12 m proximity gate (which could fire mid-scene,
+-- before the doors even open — flagged KNOWN-BAD in TODO). Fires once per session; the manual button
+-- still works as an override. Reads the fact via the injected getFact helper (blaze.lua stays pure Lua).
+function M.autoStartTick()
   if M.st or M.autoFired then return end                 -- already running / already auto-fired
-  if not mainQuestActive then return end                 -- only inside the Heist
-  if not distToTrigger or distToTrigger > (M.yori.autoRadius or 12.0) then return end
+  local f = M.yori.startFact; if not f or not M.bound.getFact then return end
+  local v = M.bound.getFact(f) or 0
+  if (tonumber(v) or 0) <= 0 then return end             -- doors not open yet
   M.autoFired = true
-  blog("AUTO-START: Blaze + Heist + reached the balcony -> starting fight.")
+  blog("AUTO-START: start fact '" .. f .. "'=" .. tostring(v) .. " (T-Bug opened the glass doors) -> starting fight.")
   M.startYorinobu()
+end
+
+-- Called from init.lua's OnAction hook when V presses the Interact (F) key. Only consumes the press
+-- (returns true) when we're in the escape stage AND V is at a heli — that's the "[F]: Get in the AV"
+-- moment. Consuming it advances to the fade; otherwise returns false so F keeps its normal behaviour.
+function M.tryEscapePress()
+  local st = M.st
+  if not st or not st.active or st.stage ~= "escape" or not st.escapeReady then return false end
+  if M.bound.hidePrompt then M.bound.hidePrompt() end
+  st.stage = "cut"
+  blog("[F] Get in the AV pressed -> escape.")
+  return true
+end
+
+-- True while the escape [F] prompt is up, so init.lua's talk-prompt heartbeat yields the native
+-- interaction box to us instead of clearing it every 0.2 s (they share the same blackboard slot).
+function M.escapePromptActive()
+  return (M.st and M.st.active and M.st.stage == "escape" and M.st.escapeReady) and true or false
 end
 
 function M.reset()
@@ -279,6 +316,25 @@ local function resolveAndPlace(e)
   e.placed = true
 end
 
+-- MVP weapon hand-out: when V comes within radius of a weapon's spot, drop it into V's inventory
+-- ONCE. `st.weaponGiven` keys reset each run (start/startYorinobu build a fresh st), so it re-arms.
+local function checkWeaponDrops()
+  local st = M.st; if not st then return end
+  if not M.bound.giveWeapon or not M.bound.distToPlayer then return end
+  st.weaponGiven = st.weaponGiven or {}
+  for _, w in ipairs(M.yori.weapons or {}) do
+    if not st.weaponGiven[w.key] then
+      local d = M.bound.distToPlayer(w.pos)
+      if d <= (w.radius or 50.0) then
+        st.weaponGiven[w.key] = true
+        local ok = M.bound.giveWeapon(w.rec)
+        blog(string.format("weapon '%s' given rec=%s dist=%.1f -> %s", w.key, tostring(w.rec), d, tostring(ok)))
+        if M.bound.objective then M.bound.objective("Picked up: " .. (w.label or w.key), 4.0) end
+      end
+    end
+  end
+end
+
 local function isDead(e)
   if not (e and e.placed) then return false end          -- don't count "not yet spawned" as dead
   if not M.bound.isDead then return false end
@@ -291,6 +347,8 @@ function M.tick(now, dt)
   for _, slot in ipairs({ "goro", "smasher", "heli" }) do
     resolveAndPlace(st.ent[slot])
   end
+
+  checkWeaponDrops()   -- MVP: hand V the staged weapons as they approach each spot (both modes)
 
   if not st.smasherDead and isDead(st.ent.smasher) then st.smasherDead = true; blog("Adam Smasher is DOWN.") end
   if not st.goroDead    and isDead(st.ent.goro)    then st.goroDead    = true; blog("Goro Takemura is DOWN.") end
@@ -316,13 +374,29 @@ function M.tick(now, dt)
       end
       if st.smasherDead then
         st.stage = "escape"
-        if M.cfg.heliRecord then spawnOne("heli", M.cfg.heliRecord, M.yori.heli.pos, false) end  -- heli appears last
-        pushObjective("[x] Smasher down\n>> Get to the extraction helicopter")
+        if M.cfg.heliRecord then spawnOne("heli", M.cfg.heliRecord, M.yori.heli.pos, false) end  -- our VTOL appears last
+        pushObjective("[x] Smasher down\n>> Get to the roof and escape")
       end
 
     elseif st.stage == "escape" then
-      local d = M.bound.distToPlayer and M.bound.distToPlayer(M.yori.heli.pos) or 1e9
-      if d <= (M.yori.reachRadius or 5.0) then st.stage = "cut" end
+      -- TWO valid exits: our spawned VTOL and the AV already on the roof (roofHeli.pos, once Antonia
+      -- fills it). When V is within reach of EITHER, show the "[F]: Get in the AV" prompt; the actual
+      -- fade is gated on the F press (M.tryEscapePress, driven from init.lua's OnAction hook).
+      local d1 = M.bound.distToPlayer and M.bound.distToPlayer(M.yori.heli.pos) or 1e9
+      local d2 = (M.bound.distToPlayer and M.yori.roofHeli and M.yori.roofHeli.pos) and M.bound.distToPlayer(M.yori.roofHeli.pos) or 1e9
+      local inRange = math.min(d1, d2) <= (M.yori.reachRadius or 5.0)
+      if inRange then
+        st.escapeReady = true
+        if now >= (st.escapePromptAt or 0) then       -- re-assert the NATIVE [F] interaction prompt on a heartbeat
+          st.escapePromptAt = now + 1.0
+          if M.bound.showPrompt then M.bound.showPrompt("Get in the AV") end
+        end
+      elseif st.escapeReady then                       -- walked back out of range -> drop the prompt, restore objective
+        st.escapeReady = false
+        if M.bound.hidePrompt then M.bound.hidePrompt() end
+        st.lastObjective = nil
+        pushObjective("[x] Smasher down\n>> Get to the roof and escape")
+      end
 
     elseif st.stage == "cut" then
       if not st.firedFade then
