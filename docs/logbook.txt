@@ -973,3 +973,39 @@ COMMITS THIS SESSION: 8041352 (probe v1), 2916af1 (probe v2), 3d27bfe (verdict +
 COMMITS: 7085c79 (heli look-at grab), c72d23e (yorinobu set-piece), c97f9d3 (voiced barks +
 companion), 0d0c6d3 (diagnostics), e116b1e (version stamp), 0317627 (require cache-bust),
 23298d2 (subtitles + companion-stays + auto-start + scene-Jackie removal).
+
+--------------------------------------------------------------------------------
+2026-07-08  -  OPEN THOUGHTS / HANDOFF (my Blaze session -> the concurrent blaze.lua session)
+--------------------------------------------------------------------------------
+Recording open items only (NOT pushing; a concurrent session owns blaze.lua/init.lua now
+and will push). The other session has already advanced Blaze to v1.01 (fact-gated start via
+`startFact`, Shigure weapon hand-out, roof-AV escape, [F] prompt) — so several things I'd
+flagged are being handled there. Genuinely-open thoughts:
+
+1. ⚠️ DOUBLE-TRIGGER RISK — reconcile the start. My 12 m proximity auto-start
+   (Blaze.autoStartTick + the onUpdate distance check in init.lua) is now SUPERSEDED by the
+   new fact-gated start (`startFact = "spiderbot_glass"`). If BOTH paths are still wired the
+   fight could start twice / at the wrong moment. Pick ONE (the fact gate) and delete the 12 m
+   proximity path. This was exactly the "12 m gate is bad" concern from earlier — good that it's
+   being replaced; just make sure the old path is removed, not left alongside.
+   (Also: `spiderbot_glass` is UNCONFIRMED — verify with JLFactDump at the "T-Bug opens the glass
+   doors" beat before trusting it.)
+
+2. VERIFY my init.lua-side fixes still hold under the v1.01 rewrite (they live in init.lua, not
+   blaze.lua, so they should survive):
+   - Real subtitles: say() -> speakJackieLine (real voice + real bottom subtitle band + flap),
+     NOT the blue notification band. Confirm in-game.
+   - Companion stays: the main-quest/cutscene "excuse himself and walk off" block is gated off
+     when JL.mode == "blaze". Confirm Jackie stays and fights (Companion: true).
+
+3. Scene's 2nd (passive luggage) Jackie: removal is still MANUAL only ("Remove the Jackie I'm
+   looking at" -> despawnLookAt). To AUTO-remove him at fight start we need his entity id / class
+   — despawnLookAt logs the class name when used; capture that in-game, then auto-targeting is easy.
+
+4. Still pending (unchanged): real WolvenKit .journal objectives (MVP-B, one-line-per-helper swap
+   of objective()/fade() in init.lua's Blaze.bind); real cinematic fade (currently a caption).
+
+5. Contract note: blaze.lua and init.lua are now co-edited by two sessions. Keep the Blaze.bind
+   contract complete — v1.01 needs giveWeapon (bound ~init.lua:5093), a fact read (GetFactStr),
+   and the [F] escape prompt (~init.lua:978); all present as of this note. If blaze.lua adds a new
+   M.bound.X, add the matching bind in init.lua or it silently no-ops.
