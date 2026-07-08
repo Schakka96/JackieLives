@@ -8,6 +8,26 @@ Log last written: 2026-06-16 (day session)
 Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
 
 --------------------------------------------------------------------------------
+2026-07-08  -  v1.39 WALK-ABREAST: leash confirmed good; drop pace-match, add opt-out
+--------------------------------------------------------------------------------
+- Antonia: the v1.36 angular leash FINALLY fixed the janky walk. But the v1.33
+  pace-match (SetIndividualTimeDilation speed-up) BROKE it — scaling his personal
+  time made his stride float/desync from the leash. So:
+  * REMOVED pace-match entirely: the time-dilation + duty-cycle block in abreastTick,
+    the JLPace dilation apply + disengage cleanup, and all Config.abreast.pace*
+    fields (paceMatch/BaseWalk/BaseRun/Min/MaxScale/DutyPeriod/ForceDutyCycle).
+    He now just walks his own natural Walk gait; the rear-arc sprint keeps him up.
+  * CET tuner trimmed to the angular knobs only (rear-arc / free-walk zone / lead)
+    + a simpler live readout (V speed + walk/SPRINT/OFF state).
+- NEW: native Settings opt-out. Esc -> Settings -> Jackie Lives -> Gameplay ->
+  "Walk beside me (custom follow style)". ON (default) = walk-abreast; OFF = revert
+  to the plain trailing follower (for players who dislike the walk-beside style).
+  Backed by persisted JL.disableCustomWalk (added to JL_SETTINGS_KEYS). abreastTick
+  yields when it's set, and followKeepCloseTick stops deferring to abreast so the
+  trail takes over.
+- Version -> 1.39.
+
+--------------------------------------------------------------------------------
 2026-07-08  -  v1.36 WALK-ABREAST: angular leash (rear-arc sprint trigger)
 --------------------------------------------------------------------------------
 - Problem (Antonia): abreast still janky — the distance-chase model kept fighting

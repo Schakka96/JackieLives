@@ -3804,7 +3804,8 @@ local function followKeepCloseTick()
   if F.enabled == false then return end
   if jlInCombat() then return end   -- v1.35: fighting -> don't re-leash; native combat AI runs him
   -- v0.85b: abreast owns positioning ONLY while V walks; at jog/sprint the trail takes back over.
-  if Config.abreast and Config.abreast.enabled and jlVWalking() then return end
+  -- v1.39: ...unless the player disabled the custom walk, in which case this trail is the default follower.
+  if Config.abreast and Config.abreast.enabled and not JL.disableCustomWalk and jlVWalking() then return end
   if not (JL.summon.active and JL.summon.companionSet) then return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active) then return end   -- v0.85: leave him on his cruising bike
@@ -3837,29 +3838,21 @@ end
 --    (`rearArcFrac` of the circle, centred directly behind her) — measured as the angle between V's forward
 --    and the V->Jackie vector, so it's independent of distance. He sprints to the set angle, and once back
 --    inside `zoneRadius` he CALMS to a walk and holds there until he falls into the rear arc again.
---  * PACE MATCH (v1.33). V's stroll is a touch faster than his Walk gait and there's no in-between gait,
---    so while HOLDING we scale his personal time up a hair (SetIndividualTimeDilation) to walk at V's pace;
---    if that API is absent on the build we fall back to a Walk<->Run duty-cycle (see Config.abreast.pace*).
 --  * WALK-ONLY. Only active while V WALKS (jlVWalking); at jog/sprint abreastTick yields and the trail
 --    (followKeepCloseTick) takes over — V has 3 speeds, Jackie 2, so he can't out-pace a jogging V.
+--  * OPT-OUT. `JL.disableCustomWalk` (Esc -> Settings -> Jackie Lives -> Gameplay) turns this whole
+--    behaviour off so Jackie reverts to the plain trailing follower for players who dislike walk-beside.
 -- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
 function abreastTick()
   local A = Config.abreast or {}
-  if not A.enabled or not (JL.summon.active and JL.summon.companionSet)
+  if not A.enabled or JL.disableCustomWalk                  -- v1.39: player reverted to the default follower
+     or not (JL.summon.active and JL.summon.companionSet)
      or JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active)                      -- v0.85: not while cruising on his bike
      or jlInCombat()                                        -- v1.35: fighting -> drop abreast, free him to fight
      or not jlVWalking() then
     JL.abreast.smFwdX = nil     -- reset the heading EMA so it re-seeds cleanly when abreast resumes
     JL.abreast.catching = nil   -- v1.36: re-engage re-evaluates behind/hold from scratch
-    if JL.abreast.tdApplied then  -- v1.33: drop any pace-match time dilation so he's normal-speed when not abreast
-      local hh = JL.summon.spawn and JL.summon.spawn.handle
-      if hh then
-        pcall(function() hh:SetIndividualTimeDilation("JLPace", 1.0, 0.0, "", "", true) end)
-        pcall(function() hh:UnsetIndividualTimeDilation("JLPace") end)
-      end
-      JL.abreast.tdApplied = nil
-    end
     return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -3937,44 +3930,13 @@ function abreastTick()
   local destY = sprinting and ty or (ty + sy * lead)
   local dest  = Vector4.new(destX, destY, pp.z, 1.0)
 
-  -- --- PACE MATCH (v1.33): V's stroll is a hair faster than Jackie's Walk gait, and there's no in-between
-  -- gait / no speed field on the move command. So while HOLDING (not arriving, not mid-burst) we scale his
-  -- personal time up a touch so his Walk covers ground at V's pace. Primary = SetIndividualTimeDilation;
-  -- if that errors on this build we mark tdOK=false ONCE and drop to a Walk<->Run duty-cycle (fallback B).
-  local vsp   = JL.abreast.vSpeed or (A.paceBaseWalk or 1.5)
-  local dutyRun = false                                    -- fallback-B: does THIS frame want a Run pulse?
-  local scale = 1.0
-  -- Use time-dilation unless: pace off, forced to the duty-cycle, or a prior probe already failed (tdOK=false).
-  local useTD = (A.paceMatch ~= false) and (not A.paceForceDutyCycle) and (JL.abreast.tdOK ~= false)
-  if (A.paceMatch ~= false) and (not sprinting) then
-    if useTD then
-      scale = math.min(math.max(vsp / (A.paceBaseWalk or 1.5), A.paceMinScale or 1.0), A.paceMaxScale or 1.35)
-    else
-      -- duty-cycle: run for the fraction of each period that makes his time-averaged speed == V's
-      local base, run = (A.paceBaseWalk or 1.5), (A.paceBaseRun or 3.5)
-      if vsp > base and run > base then
-        local f = math.min(math.max((vsp - base) / (run - base), 0.0), 1.0)
-        local P = A.paceDutyPeriod or 1.2
-        dutyRun = ((now % P) < (f * P))
-      end
-    end
-  end
-  -- Apply/refresh the dilation every frame so it never expires and tracks V's speed. scale==1.0 (arriving,
-  -- bursting, pace off, or already at V's pace) restores normal time. Probe the API once via pcall; a throw
-  -- means it's absent on this build -> latch tdOK=false and the duty-cycle takes over from here on.
-  if useTD then
-    local ok = pcall(function() h:SetIndividualTimeDilation("JLPace", scale, 3600.0, "", "", true) end)
-    if not ok then ok = pcall(function() h:SetIndividualTimeDilation("JLPace", scale) end) end
-    if JL.abreast.tdOK == nil then JL.abreast.tdOK = ok end
-    JL.abreast.tdApplied = (ok and scale ~= 1.0) or (JL.abreast.tdApplied and ok) or nil
-  end
-
-  -- --- issue on a short throttle; SPRINT while catching up (behind V), Run on a duty pulse, else Walk -----
-  -- Holding desiredDistance = zoneRadius (the WIDE leash) so he settles anywhere in the zone and strolls,
-  -- never fighting for the exact spot; sprinting uses the tight catchUpTolerance to actually reach the angle.
+  -- --- issue on a short throttle; SPRINT while catching up (behind V), else Walk his natural gait ---------
+  -- (v1.39: pace-match time-dilation removed — it made his stride float and broke the angular leash. He now
+  -- just walks his own Walk gait and only sprints when he falls into the rear arc.) Holding desiredDistance
+  -- = zoneRadius (the WIDE leash) so he settles anywhere in the zone and strolls, never fighting for a spot.
   if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 0.3) then return end
   JL.abreast.lastAt = now
-  local mv  = sprinting and (A.catchUpMovement or "Sprint") or (dutyRun and "Run") or (A.movement or "Walk")
+  local mv  = sprinting and (A.catchUpMovement or "Sprint") or (A.movement or "Walk")
   local tol = sprinting and (A.catchUpTolerance or 0.35) or (A.zoneRadius or 1.5)
   sendMoveToPoint(h, dest, mv, tol)
 end
@@ -4670,6 +4632,7 @@ local function nsTick()
   if JL.husbando == nil then JL.husbando = false end                              -- v0.47 (false = Hermano)
   if JL.disableVehicleArrivals == nil then JL.disableVehicleArrivals = false end  -- v0.51 (false = bike allowed)
   if JL.allowMainGigs == nil then JL.allowMainGigs = false end                    -- v1.32 (false = Quiet Life: no main-mission summons)
+  if JL.disableCustomWalk == nil then JL.disableCustomWalk = false end            -- v1.39 (false = custom walk-beside ON)
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
 
@@ -4729,6 +4692,22 @@ local function nsTick()
       end
     )
 
+    ns.addSwitch(
+      "/jackielives/gameplay",
+      "Walk beside me (custom follow style)",
+      "ON (default) = when you're WALKING, Jackie holds a spot BESIDE you (the tuned walk-abreast style) " ..
+      "instead of trailing behind. OFF = revert to the plain default follower — Jackie just trails you " ..
+      "like a normal companion. Turn this OFF if you don't like the walk-beside style.",
+      not JL.disableCustomWalk,   -- current state (ON = custom walk-beside enabled; persisted)
+      true,                       -- 'reset to default' value: ON (custom walk-beside)
+      function(state)
+        JL.disableCustomWalk = not state
+        pcall(jlSaveSettings)
+        JL.ui.status = "Walk-beside style: " .. (state and "ON (custom)" or "OFF (default trailing follower)")
+        log("Custom walk-beside -> " .. (state and "ON" or "OFF (default follower)"))
+      end
+    )
+
     ns.addSubcategory("/jackielives/recovery", "Recovery")
     ns.addButton(
       "/jackielives/recovery",
@@ -4756,7 +4735,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "genderLock", "allowMainGigs" }  -- persisted JL.* boolean flags (genderLock v1.3: has the first-load gender lock happened? renamed from the old `modeInit`, so a save that was mis-locked to Hermano by the v1.2 CName-compare bug re-detects ONCE with the fixed read)
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "genderLock", "allowMainGigs", "disableCustomWalk" }  -- persisted JL.* boolean flags (genderLock v1.3: has the first-load gender lock happened? renamed from the old `modeInit`, so a save that was mis-locked to Hermano by the v1.2 CName-compare bug re-detects ONCE with the fixed read)
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
@@ -6112,30 +6091,18 @@ registerForEvent("onDraw", function()
   ImGui.SameLine()
   if ImGui.Button("Dismiss Jackie") then dismissJackie() end
 
-  -- v1.34/v1.36: WALK-ABREAST tuner. PACE = how fast he walks (scale his time to V's). ANGULAR LEASH =
-  -- WHEN he may sprint (only once he falls into the rear arc behind V) + how wide his free-walk zone is +
-  -- how far ahead he aims. All live. Bottom line: V's speed, the pace scale, the pace mode, and whether he's
-  -- currently SPRINTING to catch up or holding a free walk.
+  -- v1.39: WALK-ABREAST (ANGULAR LEASH) tuner. Pace-match was removed (it broke the leash). These knobs
+  -- shape WHEN he may sprint (only once he falls into the rear arc behind V) + how wide his free-walk zone
+  -- is + how far ahead he aims. All live. Bottom line: V's speed + whether he's sprinting or free-walking.
   local ab = Config.abreast
   if ab then
-    ab.paceMatch = ImGui.Checkbox("Walk-abreast pace-match (walk at V's speed)", ab.paceMatch ~= false)
-    if ab.paceMatch then
-      ab.paceBaseWalk = ImGui.SliderFloat("Pace: base walk speed (m/s) — lower = faster", ab.paceBaseWalk or 1.5, 0.8, 3.0)
-      ab.paceMaxScale = ImGui.SliderFloat("Pace: max speed-up (x)", ab.paceMaxScale or 1.35, 1.0, 2.0)
-      ab.paceForceDutyCycle = ImGui.Checkbox("Force duty-cycle (use if the speed-up does nothing)", ab.paceForceDutyCycle == true)
-    end
     ab.rearArcFrac  = ImGui.SliderFloat("Sprint when behind: rear arc (frac of circle)", ab.rearArcFrac or 0.40, 0.15, 0.60)
     ab.zoneRadius   = ImGui.SliderFloat("Free-walk zone radius (m)", ab.zoneRadius or 1.5, 0.5, 3.5)
     ab.leadDistance = ImGui.SliderFloat("Walk lead ahead of anchor (m)", ab.leadDistance or 2.0, 0.0, 4.0)
     local vsp  = JL.abreast.vSpeed or 0.0
-    local sc   = math.min(math.max(vsp / (ab.paceBaseWalk or 1.5), ab.paceMinScale or 1.0), ab.paceMaxScale or 1.35)
-    local pmode = (ab.paceMatch == false and "pace off")
-                  or (ab.paceForceDutyCycle and "duty-cycle (forced)")
-                  or (JL.abreast.tdOK == false and "duty-cycle (time-dilation absent)")
-                  or (JL.abreast.tdOK == true and "time-dilation OK")
-                  or "time-dilation (untested — walk to check)"
-    local gait = (JL.abreast.catching == true) and "SPRINT (fell behind)" or "walk (free)"
-    ImGui.Text(("Live: V %.2f m/s | scale %.2fx | %s | %s"):format(vsp, sc, pmode, gait))
+    local gait = JL.disableCustomWalk and "OFF (default follower)"
+                 or ((JL.abreast.catching == true) and "SPRINT (fell behind)" or "walk (free)")
+    ImGui.Text(("Live: V %.2f m/s | %s"):format(vsp, gait))
   end
   ImGui.Separator()
 

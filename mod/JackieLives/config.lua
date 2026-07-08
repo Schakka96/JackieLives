@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.38"
+Config.version = "1.39"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -298,22 +298,10 @@ Config.abreast = {
   catchUpMovement= "Sprint",-- how he moves to GET into position when he's fallen behind (must out-pace a walking V)
   catchUpSmoothSeconds = 0.5, -- while sprinting in, aim at a near-INSTANT heading (where V is NOW), not the EMA
   catchUpTolerance = 0.35,  -- target distance while sprinting in
-  -- v1.33 PACE MATCH. Root cause of the constant catch-up: V's slow-walk is a touch FASTER than Jackie's
-  -- Walk gait, and there is NO in-between gait (NPCs only have Walk/Run/Sprint, no speed field on the move
-  -- command). So while HOLDING position we speed his personal time up a hair (SetIndividualTimeDilation) so
-  -- his Walk covers ground at V's pace: scale = clamp(V_speed / paceBaseWalk, paceMinScale, paceMaxScale).
-  -- If that API no-ops/errors on this game build we FALL BACK to a Walk<->Run duty-cycle whose time-averaged
-  -- speed equals V's. TUNING: if he still lags, LOWER paceBaseWalk (his assumed walk speed -> bigger speed-up)
-  -- or RAISE paceMaxScale; if he looks comically fast, do the opposite. Only ever active during the Walk hold.
-  paceMatch      = true,    -- master switch for the pace-match speed-up (false = plain Walk gait, may lag V)
-  -- If time-dilation silently NO-OPS on your build (he still lags but does NOT look sped-up), flip this
-  -- to true to force the guaranteed Walk<->Run duty-cycle instead (the auto-fallback only fires on a hard error).
-  paceForceDutyCycle = false,
-  paceBaseWalk   = 1.5,     -- m/s: Jackie's assumed WALK-gait ground speed (the calibration knob)
-  paceBaseRun    = 3.5,     -- m/s: his assumed RUN-gait speed (used ONLY by the duty-cycle fallback)
-  paceMinScale   = 1.0,     -- never SLOW him below normal (1.0 = his real walk speed)
-  paceMaxScale   = 1.35,    -- cap the speed-up so a fast V can't make him look sped-up/floaty
-  paceDutyPeriod = 1.2,     -- s: fallback Walk<->Run cycle length (only used if time-dilation is unavailable)
+  -- v1.39: pace-match (SetIndividualTimeDilation speed-up) REMOVED — scaling his time made his stride float
+  -- and broke the angular leash. He now just walks his own natural Walk gait; the rear-arc sprint handles
+  -- keeping up. Players who dislike walk-beside can turn it off entirely (Esc -> Settings -> Jackie Lives ->
+  -- Gameplay -> "Walk beside me"), which reverts him to the plain trailing follower (JL.disableCustomWalk).
   walkMaxSpeed   = 2.0,     -- m/s at/below which V counts as WALKING (abreast on)
   jogMinSpeed    = 2.8,     -- m/s above which V counts as jogging/sprinting (trail); band = hysteresis
   -- v0.93: abreast is a NARROW case — it only makes sense while V is genuinely STROLLING. Two extra gates
