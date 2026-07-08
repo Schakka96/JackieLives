@@ -8,6 +8,32 @@ Log last written: 2026-06-16 (day session)
 Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
 
 --------------------------------------------------------------------------------
+2026-07-08  -  v1.36 WALK-ABREAST: angular leash (rear-arc sprint trigger)
+--------------------------------------------------------------------------------
+- Problem (Antonia): abreast still janky — the distance-chase model kept fighting
+  to hit an exact moving offset point, and his sprint hurdle was low.
+- Redesign (Antonia's spec), abreastTick reworked from a DISTANCE trigger to an
+  ANGULAR one:
+    * FREE-WALK LEASH: he ambles inside a WIDE zone (zoneRadius) around his side
+      anchor, walk target LED ahead along V's heading (leadDistance) so he strolls
+      forward WITH her instead of stop-starting on the spot. Hold desiredDistance
+      == zoneRadius (loose), so he never fights for the exact offset.
+    * SPRINT ONLY WHEN BEHIND: `behind` = the angle between V's forward and the
+      V->Jackie vector entering the REAR ARC (rearArcFrac of the circle, centred
+      behind V; 0.40 -> rear 144°). Purely angular, distance-independent. Latch:
+      starts sprinting only on entering the rear arc, stops only once back inside
+      zoneRadius of the set angle — then calms to a walk until he falls behind again.
+    * Pace-match (v1.33 time-dilation + duty-cycle fallback) unchanged, still only
+      active while holding (sprinting resets his time scale to 1.0).
+- Retired the v1.32 burst model: inPositionDist, reSprint{AvgSeconds,DistFrac,Burst,
+  Cooldown}, and the hold `tolerance` field are gone; state arrived/burstUntil/gapAvg
+  -> single `catching` latch. New knobs: rearArcFrac, zoneRadius, leadDistance.
+- CET pace tuner extended with rear-arc / free-walk-zone / lead sliders + a live
+  "walk (free) | SPRINT (fell behind)" state readout. Version -> 1.36.
+- CONCURRENCY: committed with EXPLICIT paths + surgical staging so the other
+  session's uncommitted init/config/blaze/TODO work was left untouched.
+
+--------------------------------------------------------------------------------
 2026-07-08  -  v1.34 WALK-ABREAST: live pace slider back in the CET window
 --------------------------------------------------------------------------------
 - Antonia went looking for a pace slider and there wasn't one: v1.33 shipped the

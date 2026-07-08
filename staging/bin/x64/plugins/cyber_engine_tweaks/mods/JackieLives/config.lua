@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.34"
+Config.version = "1.36"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -261,13 +261,13 @@ Config.persist = {
 --  * CLOSEST SIDE. `angleRight` / `angleLeft` are the two near-front anchors; he takes whichever is closer
 --    to him (with `sideHysteresis` stickiness) so he doesn't cut across in front of V.
 --  * SMOOTH heading (EMA over `smoothSeconds`) so the anchor drifts, never snaps on a camera twitch.
---  * ARRIVAL only: when he first (re)engages he SPRINTS in (`catchUpMovement`) at a near-instant heading and
---    COMMITS until he's closed to `inPositionDist`, then eases to `movement` (Walk). (v1.3: easing too early
---    meant he could never catch a moving anchor at walk pace — so the arrival phase must sprint.)
---  * HOLD (v1.32): once arrived he no longer re-sprints on every wobble. He tracks a SLOW averaged gap
---    (`reSprintAvgSeconds`, ~2 s) and only when that settled gap passes `reSprintDistFrac` of the radius
---    (~30% -> ~1 m drift) fires ONE `reSprintBurst` (0.5 s) sprint to reclaim the pocket, then walks again.
--- All live-tunable from the CET "Walk abreast" panel. Angle values are FRACTIONAL dial steps (of `positions`).
+--  * ANGULAR LEASH (v1.36 — replaces the old chase-an-exact-point model that jittered). Jackie ambles
+--    inside a WIDE zone (`zoneRadius`) around his side anchor, walking FORWARD with V (target led ahead by
+--    `leadDistance`) at walk pace — no fighting for a precise spot. His hurdle to SPRINT is deliberately
+--    high: he only sprints when he drifts into the REAR ARC behind V (`rearArcFrac` of the full circle,
+--    centred directly behind her). Then he sprints up to the set angle and, once back inside `zoneRadius`,
+--    CALMS to a walk again — and stays walking until he falls behind into the rear arc once more.
+-- Angle values are FRACTIONAL dial steps (of `positions`). Pace + zone knobs live in the CET pace tuner.
 Config.abreast = {
   enabled        = true,    -- v0.85b: ON by default for a companion (Antonia confirmed it feels great)
   positions      = 12,      -- steps in the full dial the fractional angles are measured in
@@ -278,21 +278,18 @@ Config.abreast = {
   smoothSeconds  = 3.3,     -- EMA time-constant for V's heading (Antonia's tuned value)
   interval       = 0.3,     -- s between re-issues of the move-to-anchor command (short = tracks the drift)
   movement       = "Walk",  -- how he moves while HOLDING position (matches V's walk)
-  tolerance      = 0.5,     -- desiredDistanceFromTarget while holding
-  -- v1.3/v1.32: AGGRESSIVE get-into-position, but ONLY on ARRIVAL. He was easing Run->Walk at 2 m and then
-  -- couldn't close the last stretch on a MOVING anchor at walk pace (so he never caught up while V strolled).
-  -- The arrival phase SPRINTS at a FRESH (barely-smoothed) heading and COMMITS until he's in the pocket
-  -- (<= inPositionDist); after that the calm HOLD (reSprint* below) takes over instead of re-sprinting.
-  inPositionDist = 0.8,     -- m he must close to on ARRIVAL before he counts as "in position" (ends the sprint)
-  catchUpMovement= "Sprint",-- how he moves to GET into position (Sprint — he MUST out-pace a walking V)
+  -- v1.36 ANGULAR LEASH. The old distance-chase jittered; now the SPRINT trigger is purely ANGULAR.
+  -- rearArcFrac = the slice of the full 360° circle (centred DIRECTLY BEHIND V) that counts as "he's fallen
+  -- behind" and unlocks a sprint. 0.40 -> the rear 144° (he must be >108° off V's forward). zoneRadius = the
+  -- free-walk leash around the side anchor: he sprints in until within it, then calms to a walk and holds
+  -- (desiredDistance while holding == zoneRadius, so he doesn't fight for the exact spot). leadDistance pushes
+  -- his WALK target ahead of the anchor along V's heading so he strolls forward WITH her, not stop-start.
+  rearArcFrac    = 0.40,    -- rear slice of the circle (behind V) that permits a sprint (bigger = sprints sooner)
+  zoneRadius     = 1.5,     -- m free-walk leash around the anchor; sprint ends + hold-tolerance = this
+  leadDistance   = 2.0,     -- m his WALK target sits ahead of the anchor (along V's heading) so he keeps moving
+  catchUpMovement= "Sprint",-- how he moves to GET into position when he's fallen behind (must out-pace a walking V)
   catchUpSmoothSeconds = 0.5, -- while sprinting in, aim at a near-INSTANT heading (where V is NOW), not the EMA
-  catchUpTolerance = 0.35,  -- target distance while moving in
-  -- v1.32 CALM HOLD re-sprint. Once arrived he holds at Walk and only pokes a SHORT sprint when a SLOW
-  -- averaged gap says he's genuinely fallen out of his pocket — kills the near-constant sprinting of v1.3.
-  reSprintAvgSeconds = 2.0, -- s EMA window for the averaged gap that decides a re-sprint (the "2 s slider")
-  reSprintDistFrac   = 0.30,-- averaged gap > this FRACTION of radius -> fire a burst (0.30 * 3.5 m ≈ 1.05 m)
-  reSprintBurst      = 0.5, -- s each re-sprint burst lasts before he drops back to Walk
-  reSprintCooldown   = 2.0, -- min s between bursts (>= the avg window so the laggy average can't double-fire)
+  catchUpTolerance = 0.35,  -- target distance while sprinting in
   -- v1.33 PACE MATCH. Root cause of the constant catch-up: V's slow-walk is a touch FASTER than Jackie's
   -- Walk gait, and there is NO in-between gait (NPCs only have Walk/Run/Sprint, no speed field on the move
   -- command). So while HOLDING position we speed his personal time up a hair (SetIndividualTimeDilation) so

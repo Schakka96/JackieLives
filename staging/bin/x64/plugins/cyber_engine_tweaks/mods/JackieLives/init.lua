@@ -3680,15 +3680,12 @@ end
 --  * CLOSEST SIDE. Two candidate anchors — `angleRight` and `angleLeft` (near-front on each side). Jackie
 --    takes whichever is closer to where he already is, with a small stickiness margin, so he doesn't cut
 --    across in front of V. He holds that side until the other is clearly closer.
---  * GET INTO POSITION, AGGRESSIVELY (v1.3) — but ONLY on ARRIVAL (v1.32). On (re)engage he's not yet
---    "arrived": he SPRINTS (`catchUpMovement`) at a near-instant heading (catchUpSmoothSeconds) and COMMITS
---    until he first closes to `inPositionDist`. (Before, he eased Run->Walk at 2 m and could never close a
---    moving anchor at V's walk pace.) This is the ONLY unconditional sprint.
---  * CALM HOLD (v1.32). v1.3 kept RE-latching that sprint every time the moving anchor drifted past 2 m —
---    so he sprinted almost constantly = too aggressive. Now, once arrived, he tracks a SLOW averaged gap
---    (EMA over `reSprintAvgSeconds`, ~2 s) and only when that settled gap exceeds `reSprintDistFrac` of the
---    radius (~30% -> ~1 m drift) does he fire ONE short sprint burst (`reSprintBurst`, 0.5 s) to reclaim the
---    pocket, then drop straight back to Walk. `reSprintCooldown` stops the laggy average double-firing him.
+--  * ANGULAR LEASH (v1.36 — replaces the jittery distance-chase of v1.3/v1.32). Jackie ambles inside a WIDE
+--    zone (`zoneRadius`) around his side anchor, walking FORWARD with V (target led ahead by `leadDistance`)
+--    at walk pace. His hurdle to SPRINT is high: he sprints ONLY once he drifts into the REAR ARC behind V
+--    (`rearArcFrac` of the circle, centred directly behind her) — measured as the angle between V's forward
+--    and the V->Jackie vector, so it's independent of distance. He sprints to the set angle, and once back
+--    inside `zoneRadius` he CALMS to a walk and holds there until he falls into the rear arc again.
 --  * PACE MATCH (v1.33). V's stroll is a touch faster than his Walk gait and there's no in-between gait,
 --    so while HOLDING we scale his personal time up a hair (SetIndividualTimeDilation) to walk at V's pace;
 --    if that API is absent on the build we fall back to a Walk<->Run duty-cycle (see Config.abreast.pace*).
@@ -3702,9 +3699,7 @@ function abreastTick()
      or (jlCruise and jlCruise.active)                      -- v0.85: not while cruising on his bike
      or not jlVWalking() then
     JL.abreast.smFwdX = nil     -- reset the heading EMA so it re-seeds cleanly when abreast resumes
-    JL.abreast.arrived    = nil -- v1.32: re-engage always starts with the aggressive get-into-position sprint
-    JL.abreast.burstUntil = nil -- no re-sprint burst pending
-    JL.abreast.gapAvg     = nil -- clear the 2 s averaged gap so it re-seeds on the next engage
+    JL.abreast.catching = nil   -- v1.36: re-engage re-evaluates behind/hold from scratch
     if JL.abreast.tdApplied then  -- v1.33: drop any pace-match time dilation so he's normal-speed when not abreast
       local hh = JL.summon.spawn and JL.summon.spawn.handle
       if hh then
@@ -3730,14 +3725,11 @@ function abreastTick()
   local now = JL.clock or 0
   local dt  = now - (JL.abreast.lastFrame or now); JL.abreast.lastFrame = now
   if not JL.abreast.smFwdX then JL.abreast.smFwdX, JL.abreast.smFwdY = fx, fy end
-  -- v1.3: PHASED smoothing. While catching up (not yet in the pocket) aim at a near-INSTANT heading
-  -- (catchUpSmoothSeconds) so the anchor is where V is NOW and he heads straight to it; once in
-  -- position, switch to the slow smoothSeconds EMA so the hold drifts, never snaps. inPos is updated
-  -- below from this frame's gap, so it lags one frame — fine.
-  -- catching = seeking the pocket on ARRIVAL, or mid re-sprint burst -> aim at V's LIVE heading; else the
-  -- slow EMA hold. arrived/burstUntil are (re)set from the gap logic below, so this lags one frame — fine.
-  local catching = (JL.abreast.arrived ~= true)
-                   or (JL.abreast.burstUntil ~= nil and now < JL.abreast.burstUntil)
+  -- v1.3/v1.36: PHASED smoothing. While SPRINTING in (fallen behind) aim at a near-INSTANT heading
+  -- (catchUpSmoothSeconds) so he heads straight to where V is NOW; while HOLDING, use the slow smoothSeconds
+  -- EMA so the leash drifts, never snaps. Uses last frame's `catching` latch (updated below) -> lags one
+  -- frame, fine.
+  local catching = (JL.abreast.catching == true)
   local tau   = catching and (A.catchUpSmoothSeconds or 0.5) or (A.smoothSeconds or 3.3)
   local alpha = (tau > 0) and math.min(math.max(dt / tau, 0.0), 1.0) or 1.0
   local sx = JL.abreast.smFwdX + alpha * (fx - JL.abreast.smFwdX)
@@ -3766,34 +3758,32 @@ function abreastTick()
   elseif side == "L" and gapR < gapL - m then side = "R" end
   JL.abreast.side = side
   local tx, ty, gap = (side == "R") and rX or lX, (side == "R") and rY or lY, (side == "R") and gapR or gapL
-  local dest = Vector4.new(tx, ty, pp.z, 1.0)
 
-  -- --- ARRIVAL sprint, then a CALM averaged-gap HOLD (v1.32) ---------------------------------------
-  -- Phase 1 — ARRIVAL: on (re)engage he isn't "arrived" yet; sprint in aggressively (instant heading,
-  -- exactly like v1.3) until he FIRST closes to inPositionDist. This is the only unconditional sprint.
-  if JL.abreast.arrived ~= true then
-    if gap <= (A.inPositionDist or 0.8) then JL.abreast.arrived = true end
+  -- --- ANGULAR LEASH (v1.36): free-walk zone + sprint ONLY when he falls into the rear arc behind V ------
+  -- The old "chase an exact moving point" logic jittered. Now `behind` is purely ANGULAR: the angle between
+  -- V's forward and the V->Jackie vector. He's "behind" once that angle enters the rear arc (rearArcFrac of
+  -- the circle, centred directly behind V). LATCH: he only STARTS sprinting when he falls behind, and only
+  -- STOPS once he's sprinted back inside zoneRadius of the set angle — then he calms to a walk and holds.
+  local dvx, dvy = jp.x - pp.x, jp.y - pp.y
+  local rlen = math.sqrt(dvx * dvx + dvy * dvy)
+  local fdot = (rlen > 1e-3) and ((dvx * sx + dvy * sy) / rlen) or 1.0   -- cos(angle off V-forward): 1 ahead, -1 behind
+  local rearCos = math.cos(math.pi * (1.0 - (A.rearArcFrac or 0.40)))    -- behind when fdot < this (108° at 0.40)
+  local catchingNow = JL.abreast.catching == true
+  if not catchingNow then
+    if fdot < rearCos then catchingNow = true end                       -- fell into the rear arc -> sprint
   else
-    -- Phase 2 — HOLD: stop chasing every wobble. Track a SLOW (~2 s) averaged gap; only when that settled
-    -- gap says he's drifted past reSprintDistFrac of the radius do we fire ONE short sprint burst to
-    -- reclaim the pocket, then fall straight back to Walk. The cooldown stops the laggy average (which
-    -- can't drop instantly after a 0.5 s burst) from bouncing him into a second burst right away.
-    local ga   = JL.abreast.gapAvg or gap
-    local tauG = A.reSprintAvgSeconds or 2.0
-    local aG   = (tauG > 0) and math.min(math.max(dt / tauG, 0.0), 1.0) or 1.0
-    ga = ga + aG * (gap - ga)
-    JL.abreast.gapAvg = ga
-    if not (JL.abreast.burstUntil ~= nil and now < JL.abreast.burstUntil) then
-      JL.abreast.burstUntil = nil                                    -- previous burst (if any) has expired
-      local trigger = (A.radius or 3.5) * (A.reSprintDistFrac or 0.30) -- ~1.05 m drift at the tuned radius
-      if ga > trigger and (now - (JL.abreast.lastBurst or -1e9)) >= (A.reSprintCooldown or 2.0) then
-        JL.abreast.burstUntil = now + (A.reSprintBurst or 0.5)        -- fire ONE burst
-        JL.abreast.lastBurst  = now
-      end
-    end
+    if gap <= (A.zoneRadius or 1.5) then catchingNow = false end         -- reached the set angle -> calm down
   end
-  local sprinting = (JL.abreast.arrived ~= true)
-                    or (JL.abreast.burstUntil ~= nil and now < JL.abreast.burstUntil)
+  JL.abreast.catching = catchingNow
+  local sprinting = catchingNow
+
+  -- Target: while SPRINTING in, aim at the anchor itself (tight). While HOLDING, aim at a point a little
+  -- AHEAD of the anchor along V's heading (leadDistance) so he strolls FORWARD with V inside the wide leash
+  -- instead of stop-starting on the exact spot.
+  local lead = A.leadDistance or 2.0
+  local destX = sprinting and tx or (tx + sx * lead)
+  local destY = sprinting and ty or (ty + sy * lead)
+  local dest  = Vector4.new(destX, destY, pp.z, 1.0)
 
   -- --- PACE MATCH (v1.33): V's stroll is a hair faster than Jackie's Walk gait, and there's no in-between
   -- gait / no speed field on the move command. So while HOLDING (not arriving, not mid-burst) we scale his
@@ -3827,11 +3817,13 @@ function abreastTick()
     JL.abreast.tdApplied = (ok and scale ~= 1.0) or (JL.abreast.tdApplied and ok) or nil
   end
 
-  -- --- issue on a short throttle; SPRINT while arriving / mid-burst, Run on a duty pulse, else Walk -------
+  -- --- issue on a short throttle; SPRINT while catching up (behind V), Run on a duty pulse, else Walk -----
+  -- Holding desiredDistance = zoneRadius (the WIDE leash) so he settles anywhere in the zone and strolls,
+  -- never fighting for the exact spot; sprinting uses the tight catchUpTolerance to actually reach the angle.
   if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 0.3) then return end
   JL.abreast.lastAt = now
   local mv  = sprinting and (A.catchUpMovement or "Sprint") or (dutyRun and "Run") or (A.movement or "Walk")
-  local tol = sprinting and (A.catchUpTolerance or 0.35) or (A.tolerance or 0.5)
+  local tol = sprinting and (A.catchUpTolerance or 0.35) or (A.zoneRadius or 1.5)
   sendMoveToPoint(h, dest, mv, tol)
 end
 
@@ -5948,10 +5940,10 @@ registerForEvent("onDraw", function()
   ImGui.SameLine()
   if ImGui.Button("Dismiss Jackie") then dismissJackie() end
 
-  -- v1.34: WALK-ABREAST PACE tuner (re-added on request; the v1.32 declutter removed the old abreast
-  -- sliders). While walking beside V he can't quite keep her pace on his Walk gait, so we scale his time
-  -- up a hair. LOWER "base walk speed" = he speeds up MORE. The live line shows V's measured speed, the
-  -- resulting time-scale, and which pace mode is actually active (so a silent no-op is visible).
+  -- v1.34/v1.36: WALK-ABREAST tuner. PACE = how fast he walks (scale his time to V's). ANGULAR LEASH =
+  -- WHEN he may sprint (only once he falls into the rear arc behind V) + how wide his free-walk zone is +
+  -- how far ahead he aims. All live. Bottom line: V's speed, the pace scale, the pace mode, and whether he's
+  -- currently SPRINTING to catch up or holding a free walk.
   local ab = Config.abreast
   if ab then
     ab.paceMatch = ImGui.Checkbox("Walk-abreast pace-match (walk at V's speed)", ab.paceMatch ~= false)
@@ -5959,14 +5951,19 @@ registerForEvent("onDraw", function()
       ab.paceBaseWalk = ImGui.SliderFloat("Pace: base walk speed (m/s) — lower = faster", ab.paceBaseWalk or 1.5, 0.8, 3.0)
       ab.paceMaxScale = ImGui.SliderFloat("Pace: max speed-up (x)", ab.paceMaxScale or 1.35, 1.0, 2.0)
       ab.paceForceDutyCycle = ImGui.Checkbox("Force duty-cycle (use if the speed-up does nothing)", ab.paceForceDutyCycle == true)
-      local vsp  = JL.abreast.vSpeed or 0.0
-      local sc   = math.min(math.max(vsp / (ab.paceBaseWalk or 1.5), ab.paceMinScale or 1.0), ab.paceMaxScale or 1.35)
-      local mode = ab.paceForceDutyCycle and "duty-cycle (forced)"
-                   or (JL.abreast.tdOK == false and "duty-cycle (time-dilation absent)")
-                   or (JL.abreast.tdOK == true and "time-dilation OK")
-                   or "time-dilation (untested — walk to check)"
-      ImGui.Text(("Live: V %.2f m/s | scale %.2fx | %s"):format(vsp, sc, mode))
     end
+    ab.rearArcFrac  = ImGui.SliderFloat("Sprint when behind: rear arc (frac of circle)", ab.rearArcFrac or 0.40, 0.15, 0.60)
+    ab.zoneRadius   = ImGui.SliderFloat("Free-walk zone radius (m)", ab.zoneRadius or 1.5, 0.5, 3.5)
+    ab.leadDistance = ImGui.SliderFloat("Walk lead ahead of anchor (m)", ab.leadDistance or 2.0, 0.0, 4.0)
+    local vsp  = JL.abreast.vSpeed or 0.0
+    local sc   = math.min(math.max(vsp / (ab.paceBaseWalk or 1.5), ab.paceMinScale or 1.0), ab.paceMaxScale or 1.35)
+    local pmode = (ab.paceMatch == false and "pace off")
+                  or (ab.paceForceDutyCycle and "duty-cycle (forced)")
+                  or (JL.abreast.tdOK == false and "duty-cycle (time-dilation absent)")
+                  or (JL.abreast.tdOK == true and "time-dilation OK")
+                  or "time-dilation (untested — walk to check)"
+    local gait = (JL.abreast.catching == true) and "SPRINT (fell behind)" or "walk (free)"
+    ImGui.Text(("Live: V %.2f m/s | scale %.2fx | %s | %s"):format(vsp, sc, pmode, gait))
   end
   ImGui.Separator()
 
