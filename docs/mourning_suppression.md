@@ -74,6 +74,21 @@ edits for #3/#4.
   lines = **manual scene-node edit only** (Tier-3, subjective). The ofrenda-linked branches
   (`sq018_03_*`) are already dead once we block sq018.
 
+## Mourning TEXT (onscreens localization) — analysis 2026-07-08 (v1.31)
+Grepped `onscreens.json` (tool: `tools/loc_grep.py`; full dump: `docs/research/jackie_onscreens_mentions.tsv`).
+181 Jackie entries — **almost all neutral/lore** (weapon desc, ripperdoc bio, objectives, present-tense
+character bios, metajournal). Only **2 are active mourning**:
+- **pk=14016** — Mama's gift text: *"I found something that belonged to Jackie… in front of your apartment."*
+  → delivered by the **Heroes/ofrenda flow (sq018) we already block** → **likely already suppressed.**
+- **pk=19159** — message: *"…say goodbye to the people you love… Jackie Welles **was** your best choom"*
+  (past-tense loss framing). Trigger/context unconfirmed.
+- pk=78587 (Panam romance journal, *"Jackie would've loved you"*) — **KEEP** (lore/optional romance).
+
+**Decision:** do NOT ship a localization override yet — editing onscreens needs a full 21MB archive (safe
+but heavy/copyrighted) or a partial one (risks wiping other UI text), disproportionate for 1–2 entries that
+are probably already gated. **Verify first** (TODO below); only build the override if they actually appear.
+Spoken scene grief (Misty/Vik/Takemura/Mitch) is NOT in onscreens → Scene-Editor surgery, unchanged.
+
 ## Build status
 - [x] **CET framework BUILT + CONFIRMED** (v0.97, `init.lua`) — data-driven `JL_MOURNING_FACTS`
   (values now real, not guesses), safe-by-default toggle (`JL.mourningSuppress`, persisted),

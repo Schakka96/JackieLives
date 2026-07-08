@@ -4532,11 +4532,12 @@ JL_MOURNING_FACTS = {
   -- shared holocall system; zeroing it would break ALL phone calls in the game.)
   { name = "holo_mama_welles_calls_v_start_activate", hold = 0, note = "Mama grief call — request (start)" },
   { name = "holo_mama_welles_calls_v_end_activate",   hold = 0, note = "Mama grief call — request (end)"   },
-  -- Misty grief holocalls exist too (`holo_misty_calls_v_*_activate`) BUT Misty also phones V for
-  -- non-grief reasons (Evelyn, tarot). Left COMMENTED until we confirm these specific triggers are
-  -- Jackie-only — enabling them blindly could silence unrelated Misty calls.
-  -- { name = "holo_misty_calls_v_start_activate", hold = 0, note = "Misty call (start) — NOT grief-exclusive, verify first" },
-  -- { name = "holo_misty_calls_v_end_activate",   hold = 0, note = "Misty call (end) — NOT grief-exclusive, verify first" },
+  -- Misty grief holocalls (`holo_misty_calls_v_*_activate`). ENABLED per Antonia's call (v1.31).
+  -- ⚠️ Misty also phones V for non-grief reasons (Evelyn, tarot) — these *_activate triggers are
+  -- believed grief-specific but UNVERIFIED. TODO (TODO.md v1.31): confirm in-game no unrelated Misty
+  -- call is silenced; if one is, re-comment these two lines.
+  { name = "holo_misty_calls_v_start_activate", hold = 0, note = "Misty grief call — request (start) [verify not over-broad]" },
+  { name = "holo_misty_calls_v_end_activate",   hold = 0, note = "Misty grief call — request (end) [verify not over-broad]"   },
   -- World-bark grief (Misty at Esoterica / Mama at El Coyote switch to mourning state) is Tier-3 /
   -- ambient — handled by scene edits, not runtime pins; a somber-but-alive Misty isn't lore-breaking.
 }

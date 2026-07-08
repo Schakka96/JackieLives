@@ -70,6 +70,21 @@ in `config.lua` + `init.lua` (mirrored to `staging/`). **Awaiting Windows in-gam
       Now maps to a **voiced** male clip "Make moves, mano." (`jl_jackie_vs_vset_jackie_m_1f119a05be52a008`)
       so a male V never hears "mamita" and gets real audio. ⚠️ **VERIFY that clip by ear on Windows.**
 
+### 🆕 v1.31 (2026-07-08) — Misty call suppressed + mourning-text verify TODO
+
+- ✅ **Misty grief call ENABLED** in `JL_MOURNING_FACTS` (`holo_misty_calls_v_start/end_activate`→0).
+- ✅ **Mourning-text analysis** (`onscreens.json`): only **2** active-mourning entries (pk=14016 Mama's
+  gift text, pk=19159 "say goodbye" message); rest neutral/lore. No override shipped — verify-first.
+
+**⚠️ CHECK-IT-OUT TESTS (Antonia):**
+1. **Misty call not over-broad:** with suppress ON, confirm NO unrelated Misty call (Evelyn/tarot) is
+   silenced. If one is → re-comment the two `holo_misty_calls_v_*` lines in `JL_MOURNING_FACTS`.
+2. **Mourning text:** with suppress ON, check whether Mama's gift message (pk=14016) and pk=19159 still
+   arrive. If they DON'T → nothing to do (fact-block already covers it). If they DO → build a full
+   `onscreens` localization override (blank those 2 pks) per `docs/mourning_suppression.md`.
+
+---
+
 ### 🆕 Added 2026-07-08 — mourning suppression: test results, bug fix, next chunks
 
 **BUILT this session (v0.97–v0.98, pushed):**
