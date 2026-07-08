@@ -11,6 +11,10 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-08 (manual ToDO entry)
+Mourning work not done: Mama Welles still calls to tell V about finding something and then sends the bike key as gift.
+
+
 ### 🆕 Added 2026-07-08 (v1.33) — "temporarily unavailable" call fix workbench (NO WolvenKit)
 
 The dialed-Jackie "number temporarily unavailable" card is the **dead contact's holo** (`jackie_dead`).
@@ -264,7 +268,7 @@ Scripted editing required (once the spike confirms facts):
 - ✅ **BLAZE BRANCH — NEXT THINGS TO DO / CHECK (running checklist):**
   1. `- [ ]` **Capture `startFact`** — the real quest fact at the "T-Bug opens the glass doors" beat with
      JLFactDump; replace the `spiderbot_glass` guess in `M.yori.startFact`.
-  2. `- [ ]` **Remove the dead `autoRadius = 12.0`** leftover in blaze.lua (12 m gate is gone; line is unused).
+  2. `- [x]` **Removed the dead `autoRadius = 12.0`** leftover in blaze.lua (v1.05).
   3. `- [ ]` **Real q005/q101 completion** (see UPCOMING TASKS above) — swap the cosmetic best-effort.
   4. `- [ ]` **Scene luggage-Jackie auto-removal** — grab his class name via the "Remove the Jackie I'm
      looking at" button's console log, then auto-target him at fight start (currently manual only).
@@ -273,6 +277,30 @@ Scripted editing required (once the spike confirms facts):
   7. `- [ ]` **Verify heli record / roof-AV escape** and that DES-spawned Takemura/Smasher actually fight.
   8. `- [ ]` Keep the **`Blaze.bind` contract** complete as blaze.lua/init.lua evolve (every `M.bound.X`
      used in blaze.lua has a matching bind in init.lua).
+- 🔨 **BUILT 2026-07-08 (blaze v1.05; awaiting Windows in-game test) — Antonia's batch from the checked TODOs.**
+  Edits in `mod/JackieLives/{blaze.lua,init.lua}`, mirrored to `staging/`. Both files luajit-parse-checked.
+  - **Bosses no longer float:** `M.yori.goro.pos.z` lowered 1 m (309.329 → **308.329**) so the DES-placed
+    Takemura/Smasher land ON the elevator floor instead of hovering ~1 m up (both spawn at this spot).
+    `- [ ] TEST:` confirm they stand on the ground now; nudge z again if still off.
+  - **Finale lands V at El Coyote Cojo, not Vik's** (Antonia's call — was Afterlife, then Coyote). Teleport
+    target pulled from `Config.locations.coyote` (`-1262.463, -1002.345, 12.037`, yaw −50.9). Blaze also now
+    **forces El Coyote open** (the `JL_BAR_KEEPOPEN` facts) so V doesn't wake in a dead bar.
+  - **Jackie's "AV's on the roof" hint bark (item 9):** new `avOnRoof` VO beat = REAL voiced q005 line
+    `jl_1783599541039017984` *"Bien pensado. Old man Arasaka's AV should still be parked on the roof."*
+    (the line Antonia remembered as "bien pasada"). Fires **once**, in the escape stage (after Smasher's
+    down), when V comes within **3 m** (`avHintRadius`) of the elevator spot (`goro.pos`) OR the spawned-VTOL
+    spot (`heli.pos`). Points V to the roof AV.
+  - **Blaze auto-disables the Quiet-Life extras (Antonia):** while `JL.mode == "blaze"`, the retrieval
+    questline tick is **skipped** (no Vik reveal tip, no Badlands shard, no Misty/Mama post-reunion shards),
+    and mourning suppression now **always runs** (holds `sq018_active=0` → **ofrenda blocked**, plus the Mama
+    + Misty grief holocalls off). Previously mourning only ran in Quiet Life with the toggle on; the
+    "Blaze auto-suppresses grief" status line is now actually true.
+  - **Heist "gone wrong" music kill (item 10) — BEST-EFFORT, needs Windows capture.** New `blazeStopMusic()`
+    global + `stopMusic` bind, called at the finale (at full black). It resets candidate WWise music
+    switches and Stops candidate scene-music events — but the **exact event/switch names are guesses**
+    (can't verify on Mac). `- [ ] TEST (Antonia):` with the tension music playing, run `blazeStopMusic()` in
+    the CET console; if silent → done. If not, run `blazeStopMusic("<name>")` to try specific events and
+    tell me the winner → I lock it into `BLAZE_MUSIC_STOP`. (This is the one item that needs an in-game loop.)
 - 🔥 **BLAZE v0.99 (2026-07-08) — set-piece now LOADS & runs; 4 fixes + open items.** After the stale-
   deploy fix (require cache-bust `package.loaded["blaze"]=nil` + `M.VERSION` stamp logged on load), the
   fight runs. This session's fixes:

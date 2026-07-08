@@ -16,6 +16,27 @@ Config.enableSchedule        = true
 Config.scheduleCheckInterval = 2.0     -- seconds between schedule/proximity checks
 Config.proximityRadius       = 45.0    -- metres: idle Jackie appears when you're this close to his spot
 
+-- ---- Banner sound (v1.x) --------------------------------------------------
+-- Every native on-screen BANNER (blaze objectives, the dinner objective, call notices, refusals) plays
+-- this short UI sound so it isn't silent. All banners share one helper (showOnscreenMsg) so this is applied
+-- universally. Antonia picks the winner in the CET "Banner sound" tester (Debug window): each button
+-- PREVIEWS a candidate, and "Set as banner sound ✓" bakes the choice into Config.banner.sfx below.
+-- These are base-game 2D UI sound events played on the player; some candidates may not exist on every game
+-- build — that's exactly why the tester lets you audition them. Set sfx = "" to make banners silent again.
+Config.banner = {
+  sfx = "ui_menu_map_pin_created",   -- the chosen UI sound event (change via the tester, or edit here)
+  -- Candidates offered in the tester. label = button caption, evt = the WWise event name to try.
+  options = {
+    { label = "Map pin",         evt = "ui_menu_map_pin_created" },
+    { label = "Menu confirm",    evt = "ui_menu_onpress" },
+    { label = "Menu hover",      evt = "ui_menu_hover" },
+    { label = "Access granted",  evt = "ui_hacking_access_granted" },
+    { label = "Legendary loot",  evt = "ui_loot_rarity_legendary" },
+    { label = "Car call jingle", evt = "ui_jingle_car_call" },
+    { label = "Silent (none)",   evt = "" },
+  },
+}
+
 -- ---- Jackie's spawn record ------------------------------------------------
 -- Discover it once: spawn Jackie via AMM's menu, then click "Find Jackie" in our window.
 -- The console prints  DISCOVERED Jackie record = '...'  — paste that string here and summon
@@ -385,8 +406,9 @@ Config.date = {
   sitWaitSeconds    = 2.0,   -- seconds seated before he says his line + the clock resets
   getUpRadius       = 10.0,  -- metres: V this far from seated Jackie -> he gets up + re-follows
   resetCooldownHours = 24.0, -- the dinner FULL reset can only fire once per this many in-game hours
-  objectiveText     = "Grab some food with Jackie: Go to %s",  -- neon-left flash when the walk starts (%s = place)
-  objectiveDuration = 6.0,                                     -- seconds the flash stays up
+  objectiveText       = "Grab some food with Jackie: Go to %s",   -- neon-left flash when the walk starts (%s = place)
+  objectiveTextDrinks = "Grab some drinks with Jackie: Go to %s",  -- v1.x: used for bars (restaurant with drinks=true)
+  objectiveDuration   = 6.0,                                       -- seconds the flash stays up
 
   venuesShown       = 4,     -- v0.52: only this many RANDOM venues (of the full pool) are offered per picker
 
@@ -397,10 +419,10 @@ Config.date = {
   restaurants = {
     { key = "noodle",    name = "the noodle bar", pos = { -1441.064, 1257.748,  23.090 }, yaw =  -87.1 },  -- noodle bar
     { key = "redwood",   name = "Redwood Market", pos = {  -431.550,  669.948, 115.010 }, yaw =  -33.5 },  -- "noodle place" stall
-    { key = "afterlife", name = "Afterlife",      pos = { -1449.437, 1012.129,  17.357 }, yaw = -168.3,    -- barstool, right side
+    { key = "afterlife", name = "Afterlife",      pos = { -1449.437, 1012.129,  17.357 }, yaw = -168.3, drinks = true,  -- barstool, right side (bar -> "drinks")
       pickText = "...then I say we hit the Afterlife, hahaha... You know, do some shots.", pickSfx = "jl_1790891785270616064" },
     { key = "ginger",    name = "Ginger Panda",   pos = {  -485.426,  576.939,  31.302 }, yaw =  -17.1 },  -- the bar
-    { key = "lizzies",   name = "Lizzie's Bar",   pos = { -1174.427, 1572.135,  23.115 }, yaw =  -68.5,    -- rear bar
+    { key = "lizzies",   name = "Lizzie's Bar",   pos = { -1174.427, 1572.135,  23.115 }, yaw =  -68.5, drinks = true,  -- rear bar (bar -> "drinks")
       pickText = "Meet me at Lizzie's.", pickSfx = "jl_1691270077089771520" },
   },
 

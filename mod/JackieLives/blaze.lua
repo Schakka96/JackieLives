@@ -34,7 +34,7 @@ local M = { bound = {}, cfg = nil, st = nil }
 -- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
 -- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
 -- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
-M.VERSION = "1.04 (2026-07-08 tbug-call-end gate + elevator coord confirmed)"
+M.VERSION = "1.05 (2026-07-08 bosses drop to floor + AV-on-roof hint bark + dead autoRadius removed)"
 
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
@@ -72,7 +72,9 @@ M.yori = {
   -- Smasher appears in that same place after Takemura falls. ⚠️ pos is a PLACEHOLDER (the old glass-door
   -- capture) — REPLACE x/y/z/yaw with the real ELEVATOR coords.
   -- hpMul tones the bosses down (they were near-unkillable at V's low Heist level): Health ×mul on spawn.
-  goro    = { rec = "Character.Takemura", pos = { x = -2226.165, y = 1765.743, z = 309.329, yaw = -157.5 }, hpMul = 0.20 },  -- ELEVATOR spot (= Smasher's old default coord, Antonia 2026-07-08)
+  -- z lowered 1 m (309.329 -> 308.329) so the DES-placed bosses land ON the floor instead of hovering:
+  -- the exact-Z teleport was parking them ~1 m up and AMM's ragdoll/gravity didn't pull them down. (Antonia 2026-07-08)
+  goro    = { rec = "Character.Takemura", pos = { x = -2226.165, y = 1765.743, z = 308.329, yaw = -157.5 }, hpMul = 0.20 },  -- ELEVATOR spot (= Smasher's old default coord, Antonia 2026-07-08)
   smasher = { rec = "Character.Smasher",  hpMul = 0.50 },   -- spawns AT goro.pos (same elevator spot)
   heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 }, radius = 5.0 },  -- OUR optional VTOL (only if M.cfg.heliRecord set)
   -- The AV ALREADY on the roof in the base scene — primary escape, no spawn needed. +2 m reach.
@@ -93,8 +95,8 @@ M.yori = {
     { key = "shigure", label = "Shigure", rec = "Items.Preset_Katana_Shigure", pos = { x = -2238.37, y = 1761.590, z = 308.000 }, radius = 4.0 },
   },
   reachRadius = 5.0,
-  autoRadius  = 12.0,     -- auto-start when V (in Blaze mode, during the Heist) gets this close to the balcony
   fightLineDelay = 4.0,   -- seconds after each boss spawns before Jackie's one mid-fight bark
+  avHintRadius = 3.0,     -- after Smasher's down, V within this of the elevator OR heli spot -> Jackie's "AV's on the roof" bark
   vo = {
     -- Takemura appears: alarm, then "we're really fucked"
     goroSpawn    = { { sfx = "jl_1683596019292229632", text = "Oh, shit..." },
@@ -106,6 +108,9 @@ M.yori = {
     smasherSpawn = { { sfx = "jl_1683579060278317056", text = "Is tha— is that Adam Smasher?" },
                      { sfx = "jl_1695238193871003648", text = "Oh, SHIT!" } },
     smasherFight = { { sfx = "jl_1989544463892815872", text = "We ain't dyin' — not today!" } },
+    -- Smasher down, heading for the exit: Jackie points V to the escape ride (fires once when V nears
+    -- the elevator/heli spot in the escape stage). REAL voiced q005 line.
+    avOnRoof     = { { sfx = "jl_1783599541039017984", text = "Bien pensado. Old man Arasaka's AV should still be parked on the roof." } },
     -- At the heli
     heliReach    = { { sfx = "jl_1694028164799078400", text = "Jump!" } },
     -- Spare voiced alternates (swap in above if you like):
@@ -390,6 +395,15 @@ function M.tick(now, dt)
       end
 
     elseif st.stage == "escape" then
+      -- Jackie's "AV's on the roof" hint (once): after Smasher's down, when V comes within avHintRadius
+      -- of the elevator (goro.pos, where the fight happened) OR the spawned-VTOL spot, he points to the
+      -- roof AV — Antonia's item 9. Distinct from the [F]-prompt reach below.
+      if not st.saidAvLine and M.bound.distToPlayer then
+        local hr = M.yori.avHintRadius or 3.0
+        local dg = M.bound.distToPlayer(M.yori.goro.pos)
+        local dv = M.bound.distToPlayer(M.yori.heli.pos)
+        if dg <= hr or dv <= hr then st.saidAvLine = true; say("avOnRoof") end
+      end
       -- TWO valid exits: our spawned VTOL and the AV already on the roof (roofHeli.pos, once Antonia
       -- fills it). When V is within reach of EITHER, show the "[F]: Get in the AV" prompt; the actual
       -- fade is gated on the F press (M.tryEscapePress, driven from init.lua's OnAction hook).

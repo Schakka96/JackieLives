@@ -335,6 +335,45 @@ function blazeLoadConfig()
   return ok
 end
 
+-- v1.05 BLAZE (Antonia item 10): the Heist "everything goes wrong" music keeps playing into the
+-- finale (it's the scene's scripted music and we teleport V out without ending the scene). This is a
+-- BEST-EFFORT kill: reset the game's music switch to a neutral state and Stop the candidate scene
+-- music events. ⚠️ The exact WWise switch/event names aren't verified on Mac — call blazeStopMusic()
+-- from the CET console in-game (with the tension music playing) to find what actually silences it,
+-- then lock the winner into BLAZE_MUSIC_STOP below. All calls are pcall-guarded so a wrong name no-ops.
+-- Global => 200-cap safe.
+BLAZE_MUSIC_STOP = {
+  switches = {
+    -- {group, state} pairs — WWise music state resets. Guesses until confirmed in-game.
+    { "mus_gp_state", "mus_gp_state_none" },
+    { "combat_music", "combat_music_stop" },
+  },
+  events = {
+    -- one-shot "stop music" events to try. Add the real one once captured.
+    "stop_music", "mus_stop", "q005_music_stop",
+  },
+}
+function blazeStopMusic(oneEvent)
+  local a; pcall(function() a = Game.GetAudioSystem() end)
+  if not a then log("[Blaze] stopMusic: no AudioSystem."); return false end
+  local pid; pcall(function() pid = Game.GetPlayer():GetEntityID() end)
+  local empty = CName.new("")
+  if oneEvent then   -- console tester: blazeStopMusic("some_event") tries just that one, loudly
+    pcall(function() a:Stop(CName.new(oneEvent), pid, empty) end)
+    log("[Blaze] stopMusic TEST: Stop('" .. tostring(oneEvent) .. "') fired — did the music stop?")
+    return true
+  end
+  for _, s in ipairs(BLAZE_MUSIC_STOP.switches) do
+    pcall(function() a:Switch(CName.new(s[1]), CName.new(s[2]), pid, empty) end)
+  end
+  for _, ev in ipairs(BLAZE_MUSIC_STOP.events) do
+    pcall(function() a:Stop(CName.new(ev), pid, empty) end)
+  end
+  log("[Blaze] stopMusic: best-effort music kill fired (switches + stop events). If music persists, " ..
+      "capture the real event with blazeStopMusic('<name>') and add it to BLAZE_MUSIC_STOP.")
+  return true
+end
+
 local function resolveJackieRecord()
   if JL.jackie.record then return true end
 
@@ -1100,8 +1139,24 @@ end
 -- ---------------------------------------------------------------------------
 local talkUI = { shown = false, checkT = 0, lastShow = -999 }
 
+-- v1.x: play a short 2D UI sound event on the player (base-game AudioSystem, no entity/emitter needed).
+-- Gives the on-screen banners an audible cue, and previews candidates in the "Banner sound" tester.
+-- Defined ABOVE showOnscreenMsg so the banner can call it. Empty/nil event = no-op.
+-- GLOBAL (not a top-level local): init.lua is at Lua's 200-local cap, so cross-scope helpers are globals.
+function playUiSound(evt)
+  if not evt or evt == "" then return false end
+  local ok = pcall(function()
+    local pl = Game.GetPlayer()
+    if not pl then return end
+    Game.GetAudioSystem():Play(CName.new(evt), pl:GetEntityID(), CName.new(""))
+  end)
+  return ok
+end
+
 -- Show text via the game's native on-screen message blackboard (reliable, no attach).
-local function showOnscreenMsg(text, duration)
+-- v1.x: every banner now ALSO plays the configured UI sound (Config.banner.sfx) so it isn't silent —
+-- pass silent=true to suppress it for the noisy re-asserted cases (look heartbeat, subtitle fallback).
+local function showOnscreenMsg(text, duration, silent)
   pcall(function()
     local defs = GetAllBlackboardDefs()
     local bb = Game.GetBlackboardSystem():Get(defs.UI_Notifications)
@@ -1112,6 +1167,7 @@ local function showOnscreenMsg(text, duration)
     msg.message = text
     bb:SetVariant(defs.UI_Notifications.OnscreenMessage, ToVariant(msg), true)
   end)
+  if not silent then playUiSound(Config.banner and Config.banner.sfx) end
 end
 
 -- v0.93: MAIN-QUEST CALL REFUSAL notice. Calling/summoning Jackie during a MAIN quest is a deliberate
@@ -1188,7 +1244,7 @@ end
 -- if scnDialogLineData / the blackboard push isn't available on this build.
 local function showDialogueText(speaker, text, duration, speakerObj)
   if not showSubtitle(text, speaker, duration, speakerObj) then
-    showOnscreenMsg(tostring(speaker) .. ":   " .. tostring(text), (duration or 4.0) + 0.5)
+    showOnscreenMsg(tostring(speaker) .. ":   " .. tostring(text), (duration or 4.0) + 0.5, true)  -- silent: subtitle fallback, not a notice banner
   end
 end
 
@@ -1232,7 +1288,7 @@ local function updateTalkPrompt(dt)
       local now = JL.clock or 0
       if (now - (talkUI.lastShow or -999)) > 2.5 then          -- heartbeat so it stays up while looking
         local key = (Config.talk and Config.talk.keyLabel) or "="
-        showOnscreenMsg("Talk to Jackie   [ " .. key .. " ]", 3.0)
+        showOnscreenMsg("Talk to Jackie   [ " .. key .. " ]", 3.0, true)  -- silent: re-asserted every 2.5s while looking, don't beep
         talkUI.lastShow = now
       end
     end
@@ -1718,7 +1774,9 @@ local function startDinnerWalk(key)
   local av   = jlVar({ text = line, sfx = sfx })   -- v1.2: Hermano swap (e.g. "Right on, chica." -> "...mano.")
   pcall(function() speakJackieLine(av.text, av.sfx) end)
   -- v0.64: flash the objective as the native neon-left on-screen message (not a persistent ImGui box).
-  local fmt = (D.objectiveText) or "Grab some food with Jackie: Go to %s"
+  -- v1.x: bars (r.drinks = true, e.g. Lizzie's / Afterlife) read "grab some drinks" instead of "food".
+  local fmt = (r.drinks and (D.objectiveTextDrinks or "Grab some drinks with Jackie: Go to %s"))
+             or (D.objectiveText) or "Grab some food with Jackie: Go to %s"
   pcall(function() showOnscreenMsg(fmt:format(tostring(r.name)), D.objectiveDuration or 6.0) end)
   JL.ui.status = "Headin' to " .. tostring(r.name) .. " with Jackie."
   log("Dinner: walk to '" .. tostring(r.name) .. "' started.")
@@ -3540,11 +3598,36 @@ end
 -- NEVER on top of her. Gated to the settled companion state only (not mid-arrival/dinner/walk-off), so it
 -- can't reintroduce the arrival face-yank. NOTE: if a load-screen fast-travel CULLS his runtime entity
 -- (handle goes nil) this can't save him — that's the heavier "persist + respawn" task (see TODO Session 1).
+-- v1.35: is a FIGHT on? True if V or companion Jackie is in combat. While true, the SHORT LEASH
+-- (walk-abreast / keep-close follow / catch-up teleport) all yield, so AMM's native follower COMBAT AI
+-- takes over — Jackie breaks formation, takes cover, and fights freely instead of glued to V's side.
+-- pcall-guarded + cached per frame; defaults FALSE so a reflection hiccup can never freeze him mid-fight
+-- (worst case he just keeps following). ScriptedPuppet:IsInCombat() covers both the player and NPCs.
+-- Global -> 200-local cap safe.
+function jlInCombat()
+  local st = JL.combat; if not st then st = {}; JL.combat = st end
+  local now = JL.clock or 0
+  if st.frame == now then return st.val end          -- compute once per frame (3 ticks call this)
+  st.frame = now
+  local val = false
+  pcall(function()
+    local p = Game.GetPlayer()
+    if p and p:IsInCombat() then val = true; return end
+    local h = JL.summon.spawn and JL.summon.spawn.handle
+    if h and h:IsInCombat() then val = true end
+  end)
+  st.val = val
+  return val
+end
+
 local function catchUpTick()
   local C = Config.catchUp or {}
   if C.enabled == false then return end
   -- settled companion only: active + role applied, and NOT mid-arrival / dinner / walking-off.
   if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
+  -- v1.35: in COMBAT, let him roam/fight — don't yank him back to V's side. (Reset the far-timer so a
+  -- post-combat gap re-arms cleanly instead of teleporting instantly on a stale timer.)
+  if jlInCombat() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active) then   -- v0.85: don't teleport him off his cruising bike
     JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return
@@ -3652,6 +3735,7 @@ end
 local function followKeepCloseTick()
   local F = Config.follow or {}
   if F.enabled == false then return end
+  if jlInCombat() then return end   -- v1.35: fighting -> don't re-leash; native combat AI runs him
   -- v0.85b: abreast owns positioning ONLY while V walks; at jog/sprint the trail takes back over.
   if Config.abreast and Config.abreast.enabled and jlVWalking() then return end
   if not (JL.summon.active and JL.summon.companionSet) then return end
@@ -3697,6 +3781,7 @@ function abreastTick()
   if not A.enabled or not (JL.summon.active and JL.summon.companionSet)
      or JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active)                      -- v0.85: not while cruising on his bike
+     or jlInCombat()                                        -- v1.35: fighting -> drop abreast, free him to fight
      or not jlVWalking() then
     JL.abreast.smFwdX = nil     -- reset the heading EMA so it re-seeds cleanly when abreast resumes
     JL.abreast.catching = nil   -- v1.36: re-engage re-evaluates behind/hold from scratch
@@ -4799,11 +4884,15 @@ end
 -- Apply the mourning holds (or, dryRun=true, just LOG what it would do). Also forces the
 -- bar-open facts when JL.keepBarOpen. Returns the number of facts it changed/would-change.
 function jlMourningApply(dryRun)
-  if JL.mode ~= "quietlife" then return 0 end
+  local blaze = (JL.mode == "blaze")
+  -- Quiet Life pins the grief holds only when the player opted in (the tick gates on JL.mourningSuppress).
+  -- BLAZE always suppresses grief + the ofrenda (Blaze rewrites the ending so none of it fits — Antonia
+  -- 2026-07-08) AND forces El Coyote open, since the Blaze finale deposits V at the bar.
+  if not blaze and JL.mode ~= "quietlife" then return 0 end
   local qs; pcall(function() qs = Game.GetQuestsSystem() end)
   if not qs then return 0 end
   local n = jlApplyFactHolds(qs, JL_MOURNING_FACTS, dryRun)
-  if JL.keepBarOpen then n = n + jlApplyFactHolds(qs, JL_BAR_KEEPOPEN, dryRun) end
+  if blaze or JL.keepBarOpen then n = n + jlApplyFactHolds(qs, JL_BAR_KEEPOPEN, dryRun) end
   return n
 end
 
@@ -5340,7 +5429,9 @@ registerForEvent("onInit", function()
       end,
       -- MVP-A objective/cutscene = native message band + caption. MVP-B swaps THESE TWO lines
       -- for real WolvenKit .journal calls / a real scene (docs/BLAZE_WOLVENKIT_OBJECTIVES.md).
-      objective = function(text, dur) showOnscreenMsg(text, dur or 8.0) end,
+      -- v1.x: blaze's green objective banners hold 1.6x LONGER (Antonia) — applied here so it covers every
+      -- objective call regardless of the duration blaze.lua passes (8.0 -> 12.8, 6.0 -> 9.6, 4.0 -> 6.4).
+      objective = function(text, dur) showOnscreenMsg(text, (dur or 8.0) * 1.6) end,
       -- v1.02: REAL fade to black -> hold -> back in (drawBlazeFade). finale() re-arms it with the
       -- teleport/quest-complete callback so those run at FULL BLACK (hidden). fade() alone = visual only.
       fade = function(caption) startBlazeFade(nil); if caption and caption ~= "" then log("[Blaze] fade: " .. caption) end end,
@@ -5362,6 +5453,9 @@ registerForEvent("onInit", function()
         end)
         log("[Blaze] world unlock -> watson_prolog_unlock=1, watson_prolog_lock=0 (Watson barrier lifted)")
       end,
+      -- v1.05: kill the leftover Heist "gone wrong" scene music at the finale (Antonia item 10).
+      -- Best-effort; the console tester blazeStopMusic('<event>') finds the exact name in-game.
+      stopMusic = function() pcall(blazeStopMusic) end,
       -- ⚠️ EXPERIMENTAL Yorinobu scenario helpers ----------------------------------
       -- Jackie speaks: play the voiced clip + show the text. Returns the clip length (s) so blaze.lua's
       -- VO queue can space a multi-line beat by its real duration.
@@ -5387,9 +5481,10 @@ registerForEvent("onInit", function()
         end
       end,
       -- The payoff: open Watson without q101 (world-unlock lever), SKIP the retrieval shard by marking
-      -- Jackie already returned, and teleport V to Vik's clinic. Jackie is ALREADY a companion (from
-      -- becomeCompanion at the start), so his catch-up logic brings him to Vik's beside her — no second
-      -- spawn. (Full q005/interlude/q101 graph autocompletion is the OTHER workstream's job — this
+      -- Jackie already returned, stop the leftover Heist music, and teleport V to El Coyote Cojo (Jackie's
+      -- family bar). Jackie is ALREADY a companion (from becomeCompanion at the start), so his catch-up
+      -- logic brings him to the bar beside her — no second spawn. (Full q005/interlude/q101 graph
+      -- autocompletion is the OTHER workstream's job — this
       -- delivers the playable result via the barrier lift + teleport; see docs/research/q005_graph_findings.md.)
       finale = function()
         -- Run everything AT FULL BLACK (via the fade's atBlack callback) so V never sees the teleport.
@@ -5416,13 +5511,18 @@ registerForEvent("onInit", function()
               log("[Blaze] finale: succeeded + untracked the tracked main quest (best-effort q005).")
             end
           end)
-          -- 4) teleport V to Vik's clinic (companion Jackie catches up)
-          local vik = (Retrieval.Config and Retrieval.Config.vikPos) or { -1546.551, 1229.270, 11.520 }
+          -- 4) kill the Heist "gone wrong" scene music that was still playing at the destination
+          --    (Antonia item 10). Best-effort; see the stopMusic bind. Runs at full black.
+          if Blaze.bound and Blaze.bound.stopMusic then pcall(Blaze.bound.stopMusic) end
+          -- 5) teleport V to El Coyote Cojo — Jackie's family bar (Mama Welles') — NOT Vik's, per Antonia
+          --    2026-07-08. Companion Jackie catches up. Coords lifted from Config.locations.coyote.
+          local coy = (Config.locations and Config.locations.coyote and Config.locations.coyote.pos) or { -1262.463, -1002.345, 12.037 }
+          local coyYaw = (Config.locations and Config.locations.coyote and Config.locations.coyote.yaw) or -50.9
           pcall(function()
             local tf = Game.GetTeleportationFacility()
-            if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(vik[1], vik[2], vik[3], 1.0), EulerAngles.new(0.0, 0.0, 129.8)) end
+            if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(coy[1], coy[2], coy[3], 1.0), EulerAngles.new(0.0, 0.0, coyYaw)) end
           end)
-          log("[Blaze] FINALE (at black): Watson open, shard skipped, quest untracked, V at Vik's.")
+          log("[Blaze] FINALE (at black): Watson open, shard skipped, quest untracked, V at El Coyote Cojo.")
         end)
       end,
       -- DIAGNOSE test-spawn: drop Takemura ~5 m and Smasher ~7 m in front of V, loudly, so we can see if
@@ -5594,7 +5694,12 @@ end
 
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
-  pcall(function() Retrieval.tick(dt) end)   -- retrieval questline: gate + Vik tip + Badlands shard + call/arrival/reunion sequence
+  -- Retrieval questline (Vik reveal tip, Badlands shard, Misty/Mama post-reunion shards) is a QUIET-LIFE
+  -- thing — in Blaze mode Jackie is handed to you by the set-piece, so none of those custom shards should
+  -- fire (Antonia 2026-07-08). Blaze's finale calls Retrieval.forceReunion() directly for the unlock.
+  if JL.mode ~= "blaze" then
+    pcall(function() Retrieval.tick(dt) end)   -- retrieval questline: gate + Vik tip + Badlands shard + call/arrival/reunion sequence
+  end
   if JL.mode == "blaze" then
     pcall(function() Blaze.tick(JL.clock, dt) end)   -- v0.96: Heist set-piece state machine (self-guards when idle)
     pcall(function() blazeFadeTick(dt) end)          -- v1.02: advance the fade-to-black animation (self-guards when idle)
@@ -5678,10 +5783,10 @@ registerForEvent("onUpdate", function(dt)
     pcall(scheduleTick)
   end
 
-  -- v0.97: Quiet-Life mourning suppression. Re-assert the grief holds every ~5 s
-  -- (cheap, and re-catches any fact the quest system flips back up). Gated so it
-  -- never runs in Blaze mode or when the player left it off.
-  if JL.mode == "quietlife" and JL.mourningSuppress then
+  -- v0.97: mourning suppression. Re-assert the grief holds every ~5 s (cheap, and re-catches any fact
+  -- the quest system flips back up). Quiet Life runs it only when the player opted in; Blaze ALWAYS runs
+  -- it (v1.05: Blaze auto-suppresses grief + the ofrenda + forces El Coyote open — Antonia item).
+  if (JL.mode == "quietlife" and JL.mourningSuppress) or JL.mode == "blaze" then
     JL.mourningTimer = (JL.mourningTimer or 0) + dt
     if JL.mourningTimer >= 5.0 then
       JL.mourningTimer = 0
@@ -6021,6 +6126,40 @@ registerForEvent("onDraw", function()
     ImGui.TextWrapped("The disconnected 'temporarily unavailable' card is the DEAD contact's holo — no " ..
       "WolvenKit needed to dodge it: 'instant'/'alive' avoid showing it at all. If a mode wins, tell me " ..
       "and I'll set Config.nativeCall.hijackMode to it permanently.")
+  end
+
+  ImGui.Separator()
+  -- v1.x: BANNER SOUND tester. Every on-screen banner (blaze objectives, dinner objective, call notices,
+  -- refusals) shares one helper, so whatever you pick here is heard EVERYWHERE. Click a name to PREVIEW its
+  -- sound; click "Set ✓" to make it the banner sound. Some events may be silent on this build — just pick
+  -- one that actually plays. The current pick is baked into Config.banner.sfx.
+  if ImGui.CollapsingHeader("Banner sound (pick the beep for on-screen banners)") then
+    ImGui.TextWrapped("Preview a sound, then Set it. It plays on EVERY banner (blaze objectives, dinner " ..
+      "objective, call notices). If a preview is silent, that event isn't on this build — try another.")
+    ImGui.Text("Current banner sound: ")
+    ImGui.SameLine(); ImGui.TextColored(0.45, 0.85, 1.0, 1.0,
+      (Config.banner and Config.banner.sfx ~= "" and Config.banner.sfx) or "(silent)")
+    ImGui.Separator()
+    local opts = (Config.banner and Config.banner.options) or {}
+    for i, o in ipairs(opts) do
+      local chosen = Config.banner and (Config.banner.sfx == o.evt)
+      ImGui.Text((chosen and "-> " or "   ") .. o.label)
+      ImGui.SameLine()
+      if ImGui.Button("Preview##bs_" .. i) then
+        playUiSound(o.evt)
+        log("Banner sound: preview '" .. (o.label or "?") .. "' (" .. (o.evt ~= "" and o.evt or "silent") .. ").")
+      end
+      ImGui.SameLine()
+      if ImGui.Button((chosen and "Set ✓##bs_" or "Set##bs_") .. i) then
+        Config.banner.sfx = o.evt
+        log("Banner sound -> '" .. (o.label or "?") .. "' (" .. (o.evt ~= "" and o.evt or "silent") ..
+          "). Tell me and I'll bake it as the default in config.lua.")
+      end
+    end
+    ImGui.Separator()
+    if ImGui.Button("Test banner (shows a banner + plays the sound)") then
+      showOnscreenMsg("Banner sound test — Jackie's on the move.", 4.0)
+    end
   end
 
   ImGui.Separator()
