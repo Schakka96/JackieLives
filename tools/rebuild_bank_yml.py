@@ -22,13 +22,22 @@ THE MAPPING (no lookup table needed — it's arithmetic)
       jl_<decimal>     — how config.lua references lines
       jl_<full_stem>   — how the game-extracted lines are keyed
 
-USAGE (run it on the machine that HAS the audio files)
-  Easiest: copy this file into your game bank folder next to the .Wav files:
-      <game>\r6\audioware\JackieLives\
-  then open PowerShell there and run:
-      python rebuild_bank_yml.py
-  Or point it at the folder from anywhere:
-      python rebuild_bank_yml.py --bank "D:\...\Cyberpunk 2077\r6\audioware\JackieLives"
+USAGE (run it on the machine that HAS the audio files) — pick whichever is easiest:
+  A) Copy this file into your game bank folder next to the .Wav files:
+         <game>\r6\audioware\JackieLives\
+     then double-click it, or open PowerShell there and run:
+         python rebuild_bank_yml.py
+  B) Run it from anywhere and it will ASK you for the folder. Just paste the path
+     (or drag the folder onto the window) when prompted — no quotes or backslash
+     tricks needed.
+  C) Point it at the folder on the command line:
+         python rebuild_bank_yml.py --bank "D:\...\Cyberpunk 2077\r6\audioware\JackieLives"
+
+  DON'T edit this file to hardcode your path. A Windows path like
+  "I:\cyberpunk 2077\r6\audioware\JackieLives" contains \c \a etc. which Python
+  reads as escape codes, so the path gets mangled and the .Wav files "vanish".
+  (That's why doubling the backslashes to \\ appeared to fix it.) Use B or C
+  instead — those read the path literally and the problem can't happen.
 
   It rewrites JackieLives.yml in place (the old one is saved as JackieLives.yml.bak).
   Stdlib only — no pip installs.
@@ -36,6 +45,48 @@ USAGE (run it on the machine that HAS the audio files)
 
 import argparse
 import os
+import sys
+
+
+def clean_path(raw):
+    """Normalise a pasted/dragged folder path: strip whitespace and surrounding
+    quotes (Windows 'Copy as path' and drag-and-drop both add them)."""
+    p = raw.strip()
+    if len(p) >= 2 and p[0] == p[-1] and p[0] in "\"'":
+        p = p[1:-1]
+    return p.strip()
+
+
+def has_wavs(folder):
+    try:
+        return any(n.lower().endswith(".wav") for n in os.listdir(folder))
+    except OSError:
+        return False
+
+
+def prompt_for_bank(start):
+    """Ask the user to paste/drag the bank folder until we get one with .Wav files."""
+    print("\nNo .Wav files were found in:\n  %s" % start)
+    print("\nPaste the full path to your JackieLives bank folder and press Enter")
+    print("(you can also drag the folder onto this window). Leave blank to quit.")
+    print(r"  e.g.  I:\cyberpunk 2077\r6\audioware\JackieLives")
+    while True:
+        try:
+            raw = input("\nBank folder: ")
+        except EOFError:
+            return None
+        folder = clean_path(raw)
+        if not folder:
+            return None
+        folder = os.path.abspath(folder)
+        if not os.path.isdir(folder):
+            print("  ! Not a folder I can open: %s\n    Check the path and try again." % folder)
+            continue
+        if not has_wavs(folder):
+            print("  ! That folder has no .Wav files in it. Point me at the folder that")
+            print("    holds the Jackie .Wav clips (and JackieLives.yml).")
+            continue
+        return folder
 
 
 def trailing_hex(stem):
@@ -56,13 +107,18 @@ def main():
                     help="folder holding the .Wav files + JackieLives.yml "
                          "(default: this script's own folder)")
     args = ap.parse_args()
-    bank = os.path.abspath(args.bank)
+    bank = os.path.abspath(clean_path(args.bank))
 
-    # 1) collect every audio file (any case: .wav / .Wav / .WAV)
+    # 1) find the folder with the audio files. If the default/given folder has no
+    #    .Wav clips, ask the user to paste or drag the real one (no file editing).
+    if not has_wavs(bank):
+        bank = prompt_for_bank(bank)
+        if not bank:
+            print("No folder given. Nothing to do.")
+            return
+
+    # collect every audio file (any case: .wav / .Wav / .WAV)
     audio = sorted(n for n in os.listdir(bank) if n.lower().endswith(".wav"))
-    if not audio:
-        print("No .wav files found in:\n  %s\nNothing to do." % bank)
-        return
 
     # 2) build event -> filename aliases (first mapping for an event wins)
     entries = []           # ordered [(event, filename)]
@@ -117,4 +173,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:                       # never flash-and-close on an error
+        print("\nSomething went wrong: %s" % e)
+    # If launched by double-click (no console args), pause so the window stays open.
+    if len(sys.argv) == 1 and sys.stdin.isatty():
+        try:
+            input("\nPress Enter to close.")
+        except EOFError:
+            pass
