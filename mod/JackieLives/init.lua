@@ -514,6 +514,7 @@ local function entryIsMainQuest(jm, entry)
 end
 
 local function isMainQuestActive()
+  if JL.allowMainGigs then return false end             -- v1.32: player opted Jackie INTO main missions (Esc-menu toggle, not recommended)
   if JL.ui.forceMainQuest then return true end          -- debug override (CET checkbox)
   local now = JL.clock or 0
   if (now - mq.checkedAt) < 0.5 then return mq.val end   -- cached
@@ -2266,6 +2267,17 @@ local function runCallAction(name)
   log(("Call: %s arrival scheduled in %ss."):format(bike and "BIKE" or "FOOT", tostring(delay)))
 end
 
+-- v1.32: a call is "in progress" from the moment it's armed (ring) until the window closes
+-- (nativeOpen) and the queued hang-up/watchdog clear. Guards startCall / onPlayerCalledJackie so
+-- you can't stack a SECOND call over a live one (the old guards left a gap during the farewell/
+-- hang-up window, when Branch.busy is already false but the call window is still up). Global (not a
+-- top-level local) to respect the 200-locals cap.
+function jlCallInProgress()
+  local c = JL.call
+  return (c.ringingAt or c.noAnswerAt or c.connectAt or c.hangupAt or c.watchdogAt or c.nativeOpen)
+         and true or false
+end
+
 -- Begin a holocall. With useNativeWindow: fire the native RING (IncomingCall) now; callTick
 -- then aborts it (STOP) and switches to the CONNECT window before running our convo.
 local function startCall()
@@ -2273,6 +2285,7 @@ local function startCall()
   if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then
     JL.ui.status = Retrieval.unavailableMsg(); Retrieval.notifyUnavailable(); return       -- gated until the retrieval quest is done
   end
+  if jlCallInProgress() then JL.ui.status = "Already on a call with Jackie."; return end   -- v1.32: no re-entrant call
   if Branch.open or Branch.busy or dlg.active then JL.ui.status = "Busy - finish the current talk first."; return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
   if isMainQuestActive() then jlDeclineMainQuest(); return end
@@ -2397,6 +2410,7 @@ end
 -- without re-firing IncomingCall ourselves.
 local function onPlayerCalledJackie()
   if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then return end  -- gated: let the game's own call ring out (no hijack)
+  if jlCallInProgress() then return end                        -- v1.32: a call is already live — don't stack a second
   if Branch.open or Branch.busy or dlg.active then return end   -- already talking
   if JL.summon.active then return end                          -- already with you
   if isMainQuestActive() then jlDeclineMainQuest(); return end  -- v0.93: tell the player WHY (blue notice)
@@ -3548,10 +3562,15 @@ end
 --  * CLOSEST SIDE. Two candidate anchors — `angleRight` and `angleLeft` (near-front on each side). Jackie
 --    takes whichever is closer to where he already is, with a small stickiness margin, so he doesn't cut
 --    across in front of V. He holds that side until the other is clearly closer.
---  * GET INTO POSITION, AGGRESSIVELY (v1.3). When OUT of position (>`catchUpDist`) he SPRINTS
---    (`catchUpMovement`) at a near-instant heading (catchUpSmoothSeconds) and COMMITS to catching up until
---    he's closed to `inPositionDist` — only THEN easing to `movement` (Walk) + the smoothSeconds averaged
---    hold. (Before, he eased Run->Walk at 2 m and could never close a moving anchor at V's walk pace.)
+--  * GET INTO POSITION, AGGRESSIVELY (v1.3) — but ONLY on ARRIVAL (v1.32). On (re)engage he's not yet
+--    "arrived": he SPRINTS (`catchUpMovement`) at a near-instant heading (catchUpSmoothSeconds) and COMMITS
+--    until he first closes to `inPositionDist`. (Before, he eased Run->Walk at 2 m and could never close a
+--    moving anchor at V's walk pace.) This is the ONLY unconditional sprint.
+--  * CALM HOLD (v1.32). v1.3 kept RE-latching that sprint every time the moving anchor drifted past 2 m —
+--    so he sprinted almost constantly = too aggressive. Now, once arrived, he tracks a SLOW averaged gap
+--    (EMA over `reSprintAvgSeconds`, ~2 s) and only when that settled gap exceeds `reSprintDistFrac` of the
+--    radius (~30% -> ~1 m drift) does he fire ONE short sprint burst (`reSprintBurst`, 0.5 s) to reclaim the
+--    pocket, then drop straight back to Walk. `reSprintCooldown` stops the laggy average double-firing him.
 --  * WALK-ONLY. Only active while V WALKS (jlVWalking); at jog/sprint abreastTick yields and the trail
 --    (followKeepCloseTick) takes over — V has 3 speeds, Jackie 2, so he can't out-pace a jogging V.
 -- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
@@ -3561,8 +3580,10 @@ function abreastTick()
      or JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active)                      -- v0.85: not while cruising on his bike
      or not jlVWalking() then
-    JL.abreast.smFwdX = nil   -- reset the heading EMA so it re-seeds cleanly when abreast resumes
-    JL.abreast.inPos  = nil   -- v1.3: re-engage always starts in the aggressive catch-up phase
+    JL.abreast.smFwdX = nil     -- reset the heading EMA so it re-seeds cleanly when abreast resumes
+    JL.abreast.arrived    = nil -- v1.32: re-engage always starts with the aggressive get-into-position sprint
+    JL.abreast.burstUntil = nil -- no re-sprint burst pending
+    JL.abreast.gapAvg     = nil -- clear the 2 s averaged gap so it re-seeds on the next engage
     return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -3584,7 +3605,10 @@ function abreastTick()
   -- (catchUpSmoothSeconds) so the anchor is where V is NOW and he heads straight to it; once in
   -- position, switch to the slow smoothSeconds EMA so the hold drifts, never snaps. inPos is updated
   -- below from this frame's gap, so it lags one frame — fine.
-  local catching = (JL.abreast.inPos ~= true)              -- nil (seeding) / false (out of pocket) -> catch-up
+  -- catching = seeking the pocket on ARRIVAL, or mid re-sprint burst -> aim at V's LIVE heading; else the
+  -- slow EMA hold. arrived/burstUntil are (re)set from the gap logic below, so this lags one frame — fine.
+  local catching = (JL.abreast.arrived ~= true)
+                   or (JL.abreast.burstUntil ~= nil and now < JL.abreast.burstUntil)
   local tau   = catching and (A.catchUpSmoothSeconds or 0.5) or (A.smoothSeconds or 3.3)
   local alpha = (tau > 0) and math.min(math.max(dt / tau, 0.0), 1.0) or 1.0
   local sx = JL.abreast.smFwdX + alpha * (fx - JL.abreast.smFwdX)
@@ -3615,20 +3639,38 @@ function abreastTick()
   local tx, ty, gap = (side == "R") and rX or lX, (side == "R") and rY or lY, (side == "R") and gapR or gapL
   local dest = Vector4.new(tx, ty, pp.z, 1.0)
 
-  -- --- in-position hysteresis: COMMIT to catch-up until he's truly in the pocket -------------------
-  -- v1.3: he leaves the hold (starts sprinting in) the moment gap > catchUpDist, but only counts as
-  -- "in position" again once he's closed to inPositionDist. Between the two he stays in catch-up, so he
-  -- can't ease to a walk at 2 m and then stall forever chasing a moving anchor at walk pace.
-  local inPos = JL.abreast.inPos
-  if gap > (A.catchUpDist or 2.0) then inPos = false
-  elseif gap <= (A.inPositionDist or 0.8) then inPos = true end
-  JL.abreast.inPos = inPos
+  -- --- ARRIVAL sprint, then a CALM averaged-gap HOLD (v1.32) ---------------------------------------
+  -- Phase 1 — ARRIVAL: on (re)engage he isn't "arrived" yet; sprint in aggressively (instant heading,
+  -- exactly like v1.3) until he FIRST closes to inPositionDist. This is the only unconditional sprint.
+  if JL.abreast.arrived ~= true then
+    if gap <= (A.inPositionDist or 0.8) then JL.abreast.arrived = true end
+  else
+    -- Phase 2 — HOLD: stop chasing every wobble. Track a SLOW (~2 s) averaged gap; only when that settled
+    -- gap says he's drifted past reSprintDistFrac of the radius do we fire ONE short sprint burst to
+    -- reclaim the pocket, then fall straight back to Walk. The cooldown stops the laggy average (which
+    -- can't drop instantly after a 0.5 s burst) from bouncing him into a second burst right away.
+    local ga   = JL.abreast.gapAvg or gap
+    local tauG = A.reSprintAvgSeconds or 2.0
+    local aG   = (tauG > 0) and math.min(math.max(dt / tauG, 0.0), 1.0) or 1.0
+    ga = ga + aG * (gap - ga)
+    JL.abreast.gapAvg = ga
+    if not (JL.abreast.burstUntil ~= nil and now < JL.abreast.burstUntil) then
+      JL.abreast.burstUntil = nil                                    -- previous burst (if any) has expired
+      local trigger = (A.radius or 3.5) * (A.reSprintDistFrac or 0.30) -- ~1.05 m drift at the tuned radius
+      if ga > trigger and (now - (JL.abreast.lastBurst or -1e9)) >= (A.reSprintCooldown or 2.0) then
+        JL.abreast.burstUntil = now + (A.reSprintBurst or 0.5)        -- fire ONE burst
+        JL.abreast.lastBurst  = now
+      end
+    end
+  end
+  local sprinting = (JL.abreast.arrived ~= true)
+                    or (JL.abreast.burstUntil ~= nil and now < JL.abreast.burstUntil)
 
-  -- --- issue on a short throttle; SPRINT in when catching up, ease to the walk-hold once in pocket --
+  -- --- issue on a short throttle; SPRINT while arriving / mid-burst, else the gentle Walk-hold -------
   if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 0.3) then return end
   JL.abreast.lastAt = now
-  local mv  = (not inPos) and (A.catchUpMovement or "Sprint") or (A.movement or "Walk")
-  local tol = (not inPos) and (A.catchUpTolerance or 0.35) or (A.tolerance or 0.5)
+  local mv  = sprinting and (A.catchUpMovement or "Sprint") or (A.movement or "Walk")
+  local tol = sprinting and (A.catchUpTolerance or 0.35) or (A.tolerance or 0.5)
   sendMoveToPoint(h, dest, mv, tol)
 end
 
@@ -4322,6 +4364,7 @@ local function nsTick()
   -- defaults for the persisted flags (jlLoadSettings in onInit may already have set them)
   if JL.husbando == nil then JL.husbando = false end                              -- v0.47 (false = Hermano)
   if JL.disableVehicleArrivals == nil then JL.disableVehicleArrivals = false end  -- v0.51 (false = bike allowed)
+  if JL.allowMainGigs == nil then JL.allowMainGigs = false end                    -- v1.32 (false = Quiet Life: no main-mission summons)
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
 
@@ -4362,6 +4405,25 @@ local function nsTick()
       end
     )
 
+    ns.addSubcategory("/jackielives/gameplay", "Gameplay")
+    ns.addSwitch(
+      "/jackielives/gameplay",
+      "Allow Jackie on main missions",
+      "OFF (default, recommended) = the Quiet Life: Jackie only joins SIDE jobs. Try to summon or " ..
+      "call him during a MAIN mission and he bows out (\"not draggin' Jackie into this mess\"). " ..
+      "ON = you can pull Jackie into main missions too. NOT recommended: it breaks the immersion of " ..
+      "his Quiet Life, and main quests run scripted cutscenes where a tag-along companion can glitch, " ..
+      "freeze, or get left behind. Leave OFF unless you specifically want him everywhere.",
+      JL.allowMainGigs,   -- current state (persisted; default OFF)
+      false,              -- 'reset to default' value: OFF (Quiet Life)
+      function(state)
+        JL.allowMainGigs = state
+        pcall(jlSaveSettings)
+        JL.ui.status = "Jackie on main missions: " .. (state and "ALLOWED (not recommended)" or "blocked (Quiet Life)")
+        log("Allow main-mission summons -> " .. tostring(state))
+      end
+    )
+
     ns.addSubcategory("/jackielives/recovery", "Recovery")
     ns.addButton(
       "/jackielives/recovery",
@@ -4389,7 +4451,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "genderLock" }  -- persisted JL.* boolean flags (genderLock v1.3: has the first-load gender lock happened? renamed from the old `modeInit`, so a save that was mis-locked to Hermano by the v1.2 CName-compare bug re-detects ONCE with the fixed read)
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "genderLock", "allowMainGigs" }  -- persisted JL.* boolean flags (genderLock v1.3: has the first-load gender lock happened? renamed from the old `modeInit`, so a save that was mis-locked to Hermano by the v1.2 CName-compare bug re-detects ONCE with the fixed read)
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
@@ -4981,6 +5043,14 @@ registerForEvent("onInit", function()
           local pl = Game.GetPlayer()
           if pl and h and h.GetAttitudeAgent then
             h:GetAttitudeAgent():SetAttitudeTowards(pl:GetAttitudeAgent(), EAIAttitude.AIA_Hostile)
+            -- v1.0 BLAZE: make the boss MUTUALLY hostile to companion Jackie too. Setting the enemy
+            -- hostile only toward V left Jackie a neutral bystander (he'd follow but never swing).
+            -- With mutual hostility his AMM follower AI registers the boss as a threat and engages.
+            local jh = JL.summon and JL.summon.spawn and JL.summon.spawn.handle
+            if jh and jh.GetAttitudeAgent then
+              h:GetAttitudeAgent():SetAttitudeTowards(jh:GetAttitudeAgent(), EAIAttitude.AIA_Hostile)
+              jh:GetAttitudeAgent():SetAttitudeTowards(h:GetAttitudeAgent(), EAIAttitude.AIA_Hostile)
+            end
           end
         end)
       end,
@@ -5005,6 +5075,14 @@ registerForEvent("onInit", function()
         return math.sqrt(dx * dx + dy * dy + dz * dz)
       end,
       deleteById = function(id) deleteEntityById(id) end,
+      -- v1.0 BLAZE: hand a weapon straight into V's inventory (MVP for the staged fight pickups).
+      -- Direct inventory-add is 100% reliable vs a physical AMM ground-drop; the trigger coords in
+      -- blaze.lua just gate WHEN each is given. Returns true if AddToInventory didn't error.
+      giveWeapon = function(rec)
+        local ok = false
+        pcall(function() Game.AddToInventory(rec, 1); ok = true end)
+        return ok
+      end,
       -- Remove the NPC V is LOOKING AT (used to clear the scene's own passive Jackie — the luggage
       -- carrier — so only our fighting companion remains). Won't touch our companion. Tries a real
       -- delete, then falls back to hiding + teleporting him far below the map (quest NPCs resist delete).
@@ -5474,6 +5552,48 @@ registerForEvent("onDraw", function()
   if not JL.ui.open then return end
   ImGui.Begin("Jackie Lives")
 
+  -- === MAIN INFO (top of window, v1.32) ==================================
+  -- Reunion-quest status + the everyday "just unlock it" button, then the live diagnostics.
+  ImGui.Text("Reunion quest: ")
+  ImGui.SameLine()
+  ImGui.TextColored(0.45, 0.85, 1.0, 1.0, Retrieval.stageName())
+  -- The one button people actually want, right at the top so it's impossible to miss (only shown
+  -- while the mod is still locked). Skips the whole retrieval quest -> Jackie is back, mod unlocked.
+  if not Retrieval.isUnlocked() then
+    if ImGui.Button("Unlock now — skip the quest, Jackie's back") then Retrieval.completeReunion() end
+  end
+
+  local block, hour = currentScheduleBlock()
+  ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
+             "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
+  local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
+  ImGui.Text("Game time: " .. hhmm ..
+             "   Day-type: " .. tostring(JL.day.template or "?"))
+  if block then
+    if block.state == "at_location" then
+      local loc = Config.locations[block.locationKey]
+      ImGui.Text("Scheduled: " .. (loc and loc.name or block.locationKey) ..
+                 ((loc and loc.pos) and "" or "  (coords NOT captured)"))
+    else
+      ImGui.Text("Scheduled: unavailable (asleep / home / away)")
+    end
+  end
+  ImGui.SameLine()
+  if ImGui.Button("Cycle day-type") then          -- DEBUG: jump to the next day-type now
+    JL.day.template = nextDayTemplate()
+    log("Day-type forced -> " .. tostring(JL.day.template))
+  end
+  ImGui.Text("Companion: " .. tostring(JL.summon.active) ..
+             "   Idle-spawned: " .. tostring(JL.idle.spawn ~= nil))
+  if JL.idle.spawn then
+    ImGui.Text(("Wander: %s  wp %s/%s   collision: %s"):format(
+      tostring(JL.idle.phase or "-"),
+      tostring(JL.idle.curIdx or "?"),
+      tostring(JL.idle.tgtIdx or "-"),
+      JL.idle.collisionOff and "OFF" or "on"))
+  end
+  ImGui.Separator()
+
   -- v0.95 STORY MODE selector (Quiet Life vs Blaze of Glory). Buttons + wrapped description, using
   -- only idioms already proven in this file (Button/Text/SameLine/TextWrapped/TextColored).
   ImGui.Text("Story mode:  ")
@@ -5557,110 +5677,19 @@ registerForEvent("onDraw", function()
       "returns as a living Heywood NPC. Less invasive -- but Jackie can only join SIDE jobs, never the " ..
       "main plot.")
 
-    -- v0.97 mourning suppression (WIP: fact list still being confirmed from WolvenKit).
+    -- v1.32: mourning suppression, minimal — just the two persisted settings + status. (The long
+    -- help text and the dev Preview/Apply buttons were removed; ticking a box already applies it
+    -- next tick via JL.mourningTimer. jlMourningApply still exists if we need it from the console.)
     ImGui.Separator()
     ImGui.Text("Mourning content:")
     ImGui.SameLine()
     ImGui.TextColored(0.6, 0.8, 1.0, 1.0, jlMourningStatus())
-    ImGui.TextWrapped("Suppress the 'Jackie is dead' grief (the ofrenda / condolence calls) so they don't " ..
-      "contradict a living Jackie. WORK IN PROGRESS -- the fact list isn't fully confirmed yet, so PREVIEW " ..
-      "first (logs to jackie_debug.log without changing anything) and test on a throwaway save.")
-    local newVal = ImGui.Checkbox("Suppress mourning content", JL.mourningSuppress)  -- CET: 1st return = new value
+    local newVal = ImGui.Checkbox("Suppress 'Jackie is dead' grief (ofrenda / condolence calls)", JL.mourningSuppress)
     if newVal ~= JL.mourningSuppress then JL.mourningSuppress = newVal; jlSaveSettings(); JL.mourningTimer = 999 end  -- fire next tick
     local barVal = ImGui.Checkbox("Keep El Coyote / Mama's bar OPEN", JL.keepBarOpen)
     if barVal ~= JL.keepBarOpen then JL.keepBarOpen = barVal; jlSaveSettings(); JL.mourningTimer = 999 end
-    ImGui.TextWrapped("(Blocking the ofrenda also closes El Coyote -- tick this to force the bar/vendor " ..
-      "live. Post-Heist only. Mama's ambient lines may still sound somber; that's a separate scene edit.)")
-    if ImGui.Button("Preview (log only, no changes)") then
-      local n = jlMourningApply(true)
-      JL.ui.status = "Mourning preview: " .. tostring(n) .. " fact(s) would change -- see jackie_debug.log."
-    end
-    ImGui.SameLine()
-    if ImGui.Button("Apply once now") then
-      local n = jlMourningApply(false)
-      JL.ui.status = "Mourning: applied " .. tostring(n) .. " grief hold(s)."
-    end
   end
   ImGui.Separator()
-
-  -- Reunion-quest status, always shown at the very top of the window.
-  ImGui.Text("Reunion quest: ")
-  ImGui.SameLine()
-  ImGui.TextColored(0.45, 0.85, 1.0, 1.0, Retrieval.stageName())
-  ImGui.Separator()
-
-  local block, hour = currentScheduleBlock()
-  ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
-             "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
-  local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
-  ImGui.Text("Game time: " .. hhmm ..
-             "   Day-type: " .. tostring(JL.day.template or "?"))
-  if block then
-    if block.state == "at_location" then
-      local loc = Config.locations[block.locationKey]
-      ImGui.Text("Scheduled: " .. (loc and loc.name or block.locationKey) ..
-                 ((loc and loc.pos) and "" or "  (coords NOT captured)"))
-    else
-      ImGui.Text("Scheduled: unavailable (asleep / home / away)")
-    end
-  end
-  ImGui.SameLine()
-  if ImGui.Button("Cycle day-type") then          -- DEBUG: jump to the next day-type now
-    JL.day.template = nextDayTemplate()
-    log("Day-type forced -> " .. tostring(JL.day.template))
-  end
-  ImGui.Text("Companion: " .. tostring(JL.summon.active) ..
-             "   Idle-spawned: " .. tostring(JL.idle.spawn ~= nil))
-  if JL.idle.spawn then
-    ImGui.Text(("Wander: %s  wp %s/%s   collision: %s"):format(
-      tostring(JL.idle.phase or "-"),
-      tostring(JL.idle.curIdx or "?"),
-      tostring(JL.idle.tgtIdx or "-"),
-      JL.idle.collisionOff and "OFF" or "on"))
-  end
-
-  ImGui.Separator()
-
-  -- v0.7: LIVE companion-spacing tunables. These edit Config.follow / Config.catchUp in place, and the
-  -- follow/catch-up ticks read them every frame, so dragging a slider changes his behaviour instantly —
-  -- no redeploy. (Live-only: they reset to the config.lua defaults on reload; once a value feels right,
-  -- tell Claude and we bake it into config.lua.) Follow gap = how far he trails V; catch-up trigger =
-  -- how far he can drift before he teleports back; catch-up drop = how far to V's side he lands.
-  if Config.follow and Config.catchUp then
-    ImGui.Text("Companion spacing (live tuning):")
-    Config.follow.distance       = ImGui.SliderFloat("Follow gap (m behind V)",      Config.follow.distance or 2.5,       1.0, 8.0)
-    Config.catchUp.distance      = ImGui.SliderFloat("Catch-up trigger (m from V)",  Config.catchUp.distance or 25.0,     8.0, 60.0)
-    Config.catchUp.placeDistance = ImGui.SliderFloat("Catch-up drop (m beside V)",   Config.catchUp.placeDistance or 3.0, 1.5, 8.0)
-    ImGui.Separator()
-  end
-
-  -- v0.85b: WALK-ABREAST live tuner (now ON by default for a companion). He walks beside V when she WALKS,
-  -- trails when she jogs/sprints, and takes whichever near-front side (right/left) is closest to him. The
-  -- two Position sliders are the right/left anchors (fractional dial steps); Radius = how far out; Smoothing
-  -- = heading lag. Live-only (resets to config.lua defaults on reload) — tell Claude any value to bake in.
-  if Config.abreast then
-    local A = Config.abreast
-    if ImGui.Button("Walk abreast: " .. (A.enabled and "ON (beside V when walking)" or "OFF (always trails)")) then
-      A.enabled = not A.enabled
-      JL.abreast.lastAt, JL.abreast.side = nil, nil   -- re-issue + re-pick side immediately on toggle
-      log("Walk-abreast -> " .. (A.enabled and "ON" or "OFF"))
-    end
-    if A.enabled then
-      A.angleRight = ImGui.SliderFloat("Right position (near-front)", A.angleRight or 0.85, 0.0, 3.0)
-      A.angleLeft  = ImGui.SliderFloat("Left position (near-front)",  A.angleLeft or 11.25, 9.0, (A.positions or 12))
-      A.radius     = ImGui.SliderFloat("Abreast radius (m from V)",   A.radius or 3.5, 1.0, 6.0)
-      A.smoothSeconds = ImGui.SliderFloat("Heading smoothing (s)",    A.smoothSeconds or 3.3, 0.2, 6.0)
-      -- v0.93: report the real state — WALKING (abreast) vs the trail, split into STILL vs jog/sprint, plus
-      -- live speed and how long the walk band has held (so the walkSustainSeconds gate is visible).
-      local walk = jlVWalking()
-      local held = JL.abreast.walkSince and ((JL.clock or 0) - JL.abreast.walkSince) or 0
-      local state = walk and "WALKING (abreast)"
-                    or (JL.abreast.inBand and ("walk band, holding %.1fs..."):format(held) or "STILL/jog (trailing)")
-      ImGui.Text(("Live: V %s | %.2f m/s | side=%s"):format(state, JL.abreast.vSpeed or 0.0,
-        tostring(JL.abreast.side or "-")))
-    end
-    ImGui.Separator()
-  end
 
   if ImGui.Button("Summon Jackie (companion)") then summonJackie() end
   ImGui.SameLine()
@@ -5692,50 +5721,14 @@ registerForEvent("onDraw", function()
   ImGui.Text("In cutscene (tier>=4): " .. (jlInCutscene() and "YES (Jackie leaves)" or "no"))
 
   ImGui.Separator()
-  -- Retrieval questline gate: stage readout + debug jumps (the "Where's Jackie?" quest).
-  if ImGui.CollapsingHeader("Retrieval quest (Where's Jackie?)") then
+  -- v1.32: minimal reunion-quest DEV jumps (the everyday "Unlock now" button lives up top with the
+  -- status). All the call-flow / bike-cruise / reunion-beats / shard TEST controls were removed.
+  if ImGui.CollapsingHeader("Reunion quest — dev jumps") then
     ImGui.Text("Stage: " .. Retrieval.stageName())
-    -- v0.94: one-click "done" — jumps straight to REUNITED (Jackie back, calls/summon/schedule live).
     if ImGui.Button("Complete quest now (Jackie is back)") then Retrieval.completeReunion() end
     if ImGui.Button("Force tip (skip Vik)") then Retrieval.forceTip() end
     ImGui.SameLine(); if ImGui.Button("Force shard read") then Retrieval.forceShard() end
-    if ImGui.Button("Probe quest gate (console)") then Retrieval.debugQuestState() end
-    ImGui.SameLine(); if ImGui.Button("Reset to LOCKED") then Retrieval.reset() end
-    ImGui.TextWrapped("v0.85 flow: Vik's clinic -> tip + Badlands pin -> Rocky Ridge shard -> AWAITING " ..
-      "(CALL Jackie, he always answers) -> long reunion call -> he walks in -> short first-meeting -> UNLOCK.")
-
-    ImGui.Separator()
-    ImGui.Text("v0.85 reunion flow test:")
-    if ImGui.Button("Force AWAITING (then call Jackie)") then Retrieval.forceAwaiting() end
-    ImGui.SameLine(); if ImGui.Button("Call Jackie now") then startCall() end
-    ImGui.TextWrapped("  In AWAITING, press 'Call Jackie now' (or use the phone) -> the reunion call plays; " ..
-      "its end walks him in on foot -> the first-meeting dialogue -> mod unlocks.")
-    if ImGui.Button("Force REUNITED (skip, unlock)") then Retrieval.forceReunion() end
-
-    ImGui.Separator()
-    ImGui.Text("v0.85 bike CRUISE (companion + V on a bike -> Jackie trails on his Arch):")
-    ImGui.Text("  enabled: " .. tostring((Config.cruise or {}).enabled) .. "   active: " .. tostring(jlCruise and jlCruise.active))
-    if ImGui.Button((Config.cruise and Config.cruise.enabled == false) and "Cruise: OFF (enable)" or "Cruise: ON (disable)") then
-      Config.cruise = Config.cruise or {}
-      Config.cruise.enabled = (Config.cruise.enabled == false)
-      if not Config.cruise.enabled and jlCruise and jlCruise.active then jlCruiseStop() end
-    end
-    ImGui.SameLine()
-    if ImGui.Button("Force start cruise") then jlCruiseStart() end
-    ImGui.SameLine()
-    if ImGui.Button("Force stop") then jlCruiseStop() end
-    ImGui.TextWrapped("  Be his companion, then get on a BIKE -> his Arch spawns + he trails you (AI follow). " ..
-      "In a CAR, AMM seats him as passenger. Set Config.cruise.enabled=false to disable entirely.")
-
-    ImGui.Separator()
-    ImGui.Text("v0.84 reunion beats:")
-    ImGui.Text("  Bike returned: " .. tostring(jlBikeReturned and jlBikeReturned() or "?"))
-    if ImGui.Button("Give bike back now") then jlReturnJackiesBike() end
-    ImGui.SameLine(); if ImGui.Button("Restore bike (undo)") then jlRestoreJackiesBike() end
-    ImGui.TextWrapped("  (Or just call Jackie for the FIRST time after he's back — he asks for his Arch; " ..
-      "agreeing removes it from your garage.)")
-    if ImGui.Button("Show Misty + Mama shards") then Retrieval.debugPostShards() end
-    ImGui.SameLine(); if ImGui.Button("Reset post-shard flags") then Retrieval.resetPostShards() end
+    if ImGui.Button("Reset to LOCKED") then Retrieval.reset() end
   end
 
 
@@ -5745,10 +5738,6 @@ registerForEvent("onDraw", function()
     ImGui.Text("Last capture (also in console — copy into config.lua):")
     ImGui.TextWrapped(JL.ui.lastCapture)
   end
-
-  -- Mouth-flap live tuner: how fast the talking faces shuffle while Jackie speaks (default 0.82).
-  ImGui.Separator()
-  flap.interval = ImGui.SliderFloat("Mouth-flap shuffle interval (s)", flap.interval or 0.82, 0.4, 1.5)
 
   -- Consolidated "spots" tuning — idle collision, force-venue and the seat tuner, all in one place.
   ImGui.Separator()

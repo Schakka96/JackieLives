@@ -159,6 +159,9 @@ M.Config = {
 -- and ALWAYS answers V's call; the reunion call + walk-in drive the jump to REUNITED.
 local LOCKED, TIP, SHARD, AWAITING, REUNITED = 0, 1, 2, 3, 4
 local USE_GAME_FACT = true
+-- ⚠️ NEVER RENAME THIS. The player's quest progress lives in this per-save game fact, NOT in the mod
+-- files — which is exactly why updating the mod does NOT make them redo the recovery quest. Rename it
+-- and every existing save reads as stage 0 (LOCKED), i.e. Jackie "dead" again. Keep it "jackielives_stage".
 local FACT_NAME     = "jackielives_stage"
 
 local deps  = {}              -- bound from init.lua: log, showTip, startCall, startArrival, startReunion, spawnAt

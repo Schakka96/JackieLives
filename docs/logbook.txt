@@ -8,6 +8,27 @@ Log last written: 2026-06-16 (day session)
 Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
 
 --------------------------------------------------------------------------------
+2026-07-08  -  v1.32 WALK-ABREAST: calm the hold (arrival sprints, then bursts)
+--------------------------------------------------------------------------------
+- Problem (Antonia): v1.3's get-into-position was TOO aggressive as a steady state.
+  It re-latched the sprint every time the MOVING anchor drifted past catchUpDist
+  (2 m) and only released at inPositionDist (0.8 m) — so while V strolled he was
+  sprinting almost constantly, never settling into a calm walk beside her.
+- Fix (abreastTick + Config.abreast), Antonia's spec — split arrival from hold:
+    1. ARRIVAL: unchanged aggressive sprint (instant heading) until he FIRST closes
+       to inPositionDist (0.8 m). New state JL.abreast.arrived latches true there.
+       This is now the ONLY unconditional sprint. (catchUpDist is retired.)
+    2. HOLD: he holds at Walk and tracks a SLOW averaged gap (EMA over new
+       reSprintAvgSeconds = 2 s — Antonia's "2 s slider"). Only when that settled
+       gap exceeds reSprintDistFrac (0.30) * radius (~1.05 m) does he fire ONE short
+       sprint burst (reSprintBurst = 0.5 s) to reclaim the pocket, then drops back
+       to Walk. reSprintCooldown (2 s) stops the laggy average double-firing him.
+- arrived/burstUntil/gapAvg all reset when abreast disengages, so every re-engage
+  starts with a fresh arrival sprint. All tuned HOLD values (angles, radius,
+  smoothSeconds, side hysteresis) unchanged. All 4 new knobs are live in config.
+- Version bumped 1.31 -> 1.32.
+
+--------------------------------------------------------------------------------
 2026-07-08  -  v1.3 WALK-ABREAST: aggressive get-into-position
 --------------------------------------------------------------------------------
 - Problem (Antonia): at V's walking pace Jackie could NOT catch up to his beside/

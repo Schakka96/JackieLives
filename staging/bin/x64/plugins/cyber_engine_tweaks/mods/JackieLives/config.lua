@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.31"
+Config.version = "1.32"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -261,9 +261,12 @@ Config.persist = {
 --  * CLOSEST SIDE. `angleRight` / `angleLeft` are the two near-front anchors; he takes whichever is closer
 --    to him (with `sideHysteresis` stickiness) so he doesn't cut across in front of V.
 --  * SMOOTH heading (EMA over `smoothSeconds`) so the anchor drifts, never snaps on a camera twitch.
---  * When OUT of position (>`catchUpDist`) he SPRINTS in (`catchUpMovement`) at a near-instant heading and
---    COMMITS until he's closed to `inPositionDist`, only THEN easing to `movement` (Walk) + the smoothSeconds
---    averaged hold. (v1.3: he was easing too early and couldn't catch a moving anchor at walk pace.)
+--  * ARRIVAL only: when he first (re)engages he SPRINTS in (`catchUpMovement`) at a near-instant heading and
+--    COMMITS until he's closed to `inPositionDist`, then eases to `movement` (Walk). (v1.3: easing too early
+--    meant he could never catch a moving anchor at walk pace — so the arrival phase must sprint.)
+--  * HOLD (v1.32): once arrived he no longer re-sprints on every wobble. He tracks a SLOW averaged gap
+--    (`reSprintAvgSeconds`, ~2 s) and only when that settled gap passes `reSprintDistFrac` of the radius
+--    (~30% -> ~1 m drift) fires ONE `reSprintBurst` (0.5 s) sprint to reclaim the pocket, then walks again.
 -- All live-tunable from the CET "Walk abreast" panel. Angle values are FRACTIONAL dial steps (of `positions`).
 Config.abreast = {
   enabled        = true,    -- v0.85b: ON by default for a companion (Antonia confirmed it feels great)
@@ -276,15 +279,20 @@ Config.abreast = {
   interval       = 0.3,     -- s between re-issues of the move-to-anchor command (short = tracks the drift)
   movement       = "Walk",  -- how he moves while HOLDING position (matches V's walk)
   tolerance      = 0.5,     -- desiredDistanceFromTarget while holding
-  -- v1.3: AGGRESSIVE get-into-position. He was easing Run->Walk at 2 m and then couldn't close the last
-  -- stretch on a MOVING anchor at walk pace (so he never actually caught up while V strolled). Now the
-  -- catch-up phase SPRINTS at a FRESH (barely-smoothed) heading and COMMITS until he's truly in the
-  -- pocket (<= inPositionDist), only THEN easing to the Walk + smoothSeconds averaged hold.
-  catchUpDist    = 2.0,     -- m from the anchor beyond which he ENTERS catch-up (starts sprinting in)
-  inPositionDist = 0.8,     -- m he must close to before he's "in position" (hysteresis: no early ease)
+  -- v1.3/v1.32: AGGRESSIVE get-into-position, but ONLY on ARRIVAL. He was easing Run->Walk at 2 m and then
+  -- couldn't close the last stretch on a MOVING anchor at walk pace (so he never caught up while V strolled).
+  -- The arrival phase SPRINTS at a FRESH (barely-smoothed) heading and COMMITS until he's in the pocket
+  -- (<= inPositionDist); after that the calm HOLD (reSprint* below) takes over instead of re-sprinting.
+  inPositionDist = 0.8,     -- m he must close to on ARRIVAL before he counts as "in position" (ends the sprint)
   catchUpMovement= "Sprint",-- how he moves to GET into position (Sprint — he MUST out-pace a walking V)
-  catchUpSmoothSeconds = 0.5, -- while catching up, aim at a near-INSTANT heading (where V is NOW), not the EMA
+  catchUpSmoothSeconds = 0.5, -- while sprinting in, aim at a near-INSTANT heading (where V is NOW), not the EMA
   catchUpTolerance = 0.35,  -- target distance while moving in
+  -- v1.32 CALM HOLD re-sprint. Once arrived he holds at Walk and only pokes a SHORT sprint when a SLOW
+  -- averaged gap says he's genuinely fallen out of his pocket — kills the near-constant sprinting of v1.3.
+  reSprintAvgSeconds = 2.0, -- s EMA window for the averaged gap that decides a re-sprint (the "2 s slider")
+  reSprintDistFrac   = 0.30,-- averaged gap > this FRACTION of radius -> fire a burst (0.30 * 3.5 m ≈ 1.05 m)
+  reSprintBurst      = 0.5, -- s each re-sprint burst lasts before he drops back to Walk
+  reSprintCooldown   = 2.0, -- min s between bursts (>= the avg window so the laggy average can't double-fire)
   walkMaxSpeed   = 2.0,     -- m/s at/below which V counts as WALKING (abreast on)
   jogMinSpeed    = 2.8,     -- m/s above which V counts as jogging/sprinting (trail); band = hysteresis
   -- v0.93: abreast is a NARROW case — it only makes sense while V is genuinely STROLLING. Two extra gates

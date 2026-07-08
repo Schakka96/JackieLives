@@ -11,6 +11,32 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-08 (v1.32) — CET declutter, main-mission toggle, no re-entrant call
+
+Batch from Antonia's feedback. `mod/JackieLives/` (init/config/retrieval), mirrored to `staging/` +
+fomod bumped to 1.32. **Awaiting Windows in-game test.**
+
+- [x] **Q1 answered (no code needed):** updating the mod does NOT require redoing the recovery quest —
+  progress is the per-save game fact `jackielives_stage`, not a mod file. Added a ⚠️ "never rename"
+  guard comment in `retrieval.lua` so a future edit can't silently re-lock everyone's saves.
+- [x] **Unlock button made findable:** moved the Main-info block (reunion status, AMM/record, game
+  time, schedule, companion) to the TOP of the CET window, with an always-visible **"Unlock now — skip
+  the quest, Jackie's back"** button right under the status (shown only while still locked).
+- [x] **CET declutter:** removed the call-flow test (force AWAITING / call now / force REUNITED), bike
+  CRUISE, mouth-flap shuffle slider, v0.84 reunion beats, Misty/Mama shard testers, walk-abreast
+  sliders, and companion-spacing / catch-up sliders. Retrieval section reduced to a minimal
+  "Reunion quest — dev jumps" collapsing header. Mourning section trimmed to its two real toggles.
+- [x] **Native UI toggle (item 3):** Esc → Settings → Jackie Lives → **Gameplay → "Allow Jackie on main
+  missions"** (default OFF = Quiet Life; warns it's not recommended). Persisted via `allowMainGigs`;
+  short-circuits `isMainQuestActive()` so it also stops him auto-excusing himself mid-main-quest.
+- [x] **Re-entrant call fixed:** new `jlCallInProgress()` guards `startCall` + `onPlayerCalledJackie`,
+  closing the farewell/hang-up window where a second call could stack over a live one.
+- [ ] **STILL OPEN — "number temporarily unavailable" call bug + custom disconnected-phone resource.**
+  The mod rings via the native `jackie_dead` holocall contact, which briefly shows the vanilla
+  dead/unavailable card before we STOP→CONNECT. Real fix needs a WolvenKit resource override (replace
+  the `jackie_dead` / `jackie_holocall.scene` visual) OR switching `Config.nativeCall.id` to `"jackie"`.
+  **Needs Windows in-game testing** to confirm which path the "unavailable" text comes from.
+
 ### 🆕 Added 2026-07-08 (v1.3) — WALK-ABREAST: aggressive get-into-position
 
 He couldn't catch up to his beside/ahead pocket at V's **walking** pace (eased Run→Walk at 2 m, then
@@ -214,6 +240,20 @@ Scripted editing required (once the spike confirms facts):
     now); real WolvenKit `.journal` objectives (MVP-B) still pending; fade is still a caption stand-in; full
     q005/interlude/q101 graph completion still delegated to the other workstream. `- [ ] TEST (Windows):`
     confirm subtitles/voice play, companion stays & fights, auto-start timing, scene-Jackie removal.
+- 🔨 **BUILT 2026-07-08 (awaiting Windows in-game confirm) — blaze v1.00: weapon hand-out + Jackie combat.**
+  - **Staged weapon pickups:** `M.yori.weapons` in `blaze.lua` lists 3 weapons, each with a coord +
+    50 m radius. `checkWeaponDrops()` (called every `M.tick`, both modes) adds each to V's inventory
+    ONCE when V gets within radius. Records: `Items.Preset_Katana_Satori` (katana @ -2238.37,1761.59,308),
+    `Items.Preset_Overture` (revolver @ -2227.77,1751.086,308.6), `Items.Preset_Kongou` (Yorinobu's own
+    iconic pistol, my pick — normally looted in this very room @ -2203.09,1760.731,307.752). Bind:
+    `giveWeapon` in `init.lua` (`Game.AddToInventory`). MVP note: direct inventory-add, NOT a physical
+    ground-drop (far more reliable); coords just gate WHEN. `- [ ] VERIFY (Windows):` each record string
+    via console `Game.AddToInventory("<rec>",1)` before trusting; swap any that error.
+  - **Jackie now fights:** root cause = we set each boss hostile toward V ONLY, so companion Jackie stayed
+    a neutral bystander ("Companion: true" but never swings). Fix in `init.lua` `setHostile`: also set the
+    boss MUTUALLY hostile with Jackie's companion handle (`JL.summon.spawn.handle`), so his AMM follower
+    AI registers the boss as a threat and engages. `- [ ] TEST (Windows):` Jackie attacks Goro/Smasher.
+    If still passive, escalate to putting Jackie in the player squad (party/prevention) — noted as next lever.
 - ⏸️ **BLAZE OF GLORY — POSTPONED (2026-07-07, Antonia's call).** The experimental Yorinobu set-piece
   below is left in a clean, committed, playable state; no further Blaze work until Antonia resumes it.
   **📌 NOTE FOR THE q005/q101 WORKSTREAM:** the Blaze `finale` deliberately delegates the world-open to
