@@ -2415,9 +2415,10 @@ function jlCallFix()
   if not JL.callfix then
     local nc = Config.nativeCall or {}
     JL.callfix = {
-      mode    = nc.hijackMode        or "quick",
-      delay   = nc.hijackHangupDelay or 0.75,
-      ourRing = nc.hijackOurRingSfx  == true,
+      mode        = nc.hijackMode        or "quick",
+      delay       = nc.hijackHangupDelay or 0.75,
+      ourRing     = nc.hijackOurRingSfx  == true,
+      forceHijack = false,   -- v1.38 TEST: hijack even pre-shard (ignore the reachable-stage gate)
     }
   end
   return JL.callfix
@@ -2498,6 +2499,22 @@ local function callTick()
     return
   end
 
+  -- v1.38 DEFERRED ALIVE SWAP. The dead call is killed up-front in the observer; a couple frames later
+  -- (once it's really gone) we ring the ALIVE avatar HERE. Deferring stops the swap racing the game's
+  -- just-started dead call (synchronous swapping let the dead card + "unavailable" voicemail win).
+  if JL.call.aliveSwapAt and now >= JL.call.aliveSwapAt then
+    JL.call.aliveSwapAt = nil
+    local deadId  = (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
+    local aliveId = JL.call.activeId or (Config.nativeCall and Config.nativeCall.aliveId) or "jackie"
+    pcall(function() triggerNativeCall(deadId,  "EndCall",     3) end)   -- belt-and-suspenders: dead card gone
+    pcall(function() triggerNativeCall(aliveId, "IncomingCall", 1) end)  -- ring the alive avatar (see-through holo)
+    local aring = (Config.call and Config.call.ringEvent) or ""
+    if aring ~= "" then pcall(function() playVoice(aring) end) end
+    JL.call.ringingAt = now + jlAliveRingSecs()                          -- random 1.2-3.0s, then connect
+    JL.ui.status = "Jackie's phone ringing (alive)..."
+    log("Call: deferred alive-swap -> ringing the live avatar.")
+  end
+
   if JL.call.ringingAt and now >= JL.call.ringingAt then
     JL.call.ringingAt = nil
     if native then
@@ -2567,15 +2584,16 @@ end
 -- without re-firing IncomingCall ourselves.
 local function onPlayerCalledJackie()
   if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then return end  -- gated: let the game's own call ring out (no hijack)
-  if jlCallInProgress() then return end                        -- v1.32: a call is already live — don't stack a second
-  if Branch.open or Branch.busy or dlg.active then return end   -- already talking
-  if JL.summon.active then return end                          -- already with you
-  if isMainQuestActive() then jlDeclineMainQuest(); return end  -- v0.93: tell the player WHY (blue notice)
-  -- v0.55: asleep -> DON'T hijack. The game's own ring just plays out and auto-hangs-up; Jackie
-  -- never "picks up" (our connect hook never arms). Matches "rings until it auto hangs up".
+  -- v1.38: the dead call is ALREADY killed in the observer before we get here, so every bail below just
+  -- means "no call starts" — never "the dead voicemail plays". Log WHICH guard bails so we can diagnose.
+  if jlCallInProgress() then log("[Hijack] bail: a call is already in progress (jlCallInProgress)."); return end
+  if Branch.open or Branch.busy or dlg.active then log("[Hijack] bail: mid-conversation (Branch.open/busy or dlg.active)."); return end
+  if JL.summon.active then log("[Hijack] bail: Jackie already summoned (companion) — can't 'call' him."); return end
+  if isMainQuestActive() then log("[Hijack] bail: main quest active -> decline."); jlDeclineMainQuest(); return end
+  -- v0.55: asleep -> he doesn't pick up (dead card already killed; just no connect).
   if jackieAsleep() and not Retrieval.isAwaitingCall() then   -- v0.85: reunion call always connects
     JL.ui.status = "Jackie's not pickin' up (asleep)."
-    log("Hijack: player called Jackie while asleep -> left it ringing (no pickup).")
+    log("[Hijack] bail: Jackie asleep (schedule window) -> no pickup.")
     return
   end
   -- v1.33: the "temporarily unavailable" fix. The Observer just caught the game ringing the DEAD
@@ -2603,12 +2621,11 @@ local function onPlayerCalledJackie()
     JL.call.connectAt = now + 0.15                                -- straight to our window, no ring/card
   elseif m == "alive" then
     local aliveId = (Config.nativeCall and Config.nativeCall.aliveId) or "jackie"
-    JL.call.activeId = aliveId                                    -- callTick now EndCall/connects "jackie"
-    pcall(function() triggerNativeCall(id, "EndCall", 3) end)     -- drop the dead "unavailable" card
-    pcall(function() triggerNativeCall(aliveId, "IncomingCall", 1) end)  -- ring the ALIVE avatar (see-through holo)
-    local aring = (Config.call and Config.call.ringEvent) or ""   -- v1.37: alive ring is SILENT -> play ours
-    if aring ~= "" then pcall(function() playVoice(aring) end) end
-    JL.call.ringingAt = now + jlAliveRingSecs()                   -- v1.37: random 1.2-3.0s "pickup" delay
+    JL.call.activeId = aliveId                                    -- callTick EndCall/connects "jackie"
+    pcall(function() triggerNativeCall(id, "EndCall", 3) end)     -- kill the dead card again (attempt 2)
+    -- v1.38: DON'T ring alive this frame — the game's dead call is still settling. Defer ~0.35 s so it's
+    -- gone first, then callTick's aliveSwapAt block rings the live avatar + arms the connect->dialogue.
+    JL.call.aliveSwapAt = now + 0.35
   else                                                   -- "quick": short dead ring, then EndCall->connect
     JL.call.activeId = id
     JL.call.ringingAt = now + (cf.delay or 0.75)
@@ -2622,8 +2639,13 @@ end
 -- CET "Test ALIVE call" button (the raw RING/CONNECT buttons only fire one phase, no dialogue).
 -- callTick drives ring->EndCall->connect->Branch.start from the timers we arm here. Global -> cap safe.
 function jlStartAliveCall()
-  if jlCallInProgress() then JL.ui.status = "Already on a call with Jackie."; return end
-  if Branch.open or Branch.busy or dlg.active then JL.ui.status = "Finish the current talk first."; return end
+  -- v1.38: it's a TEST button — clear any stale/stuck call state so a prior aborted attempt (e.g. a
+  -- lingering Branch.busy) can't silently block it. Then run the full flow.
+  JL.call.ringingAt, JL.call.connectAt, JL.call.aliveSwapAt = nil, nil, nil
+  JL.call.noAnswerAt, JL.call.hangupAt, JL.call.watchdogAt = nil, nil, nil
+  if JL.call.nativeOpen then pcall(closeNativeCallWindow) end
+  Branch.busy = false
+  if Branch.open or dlg.active then JL.ui.status = "Finish the current talk first."; return end
   Branch.busy = true
   local aliveId = (Config.nativeCall and Config.nativeCall.aliveId) or "jackie"
   local deadId  = (Config.nativeCall and Config.nativeCall.id)      or "jackie_dead"
@@ -2647,11 +2669,20 @@ local function setupCallHijack()
       local nm = tostring(callId)
       if not nm:find("jackie") then return end                 -- only Jackie's contact
       if not tostring(phase):find("IncomingCall") then return end
-      -- v1.37: BEFORE the shard-read stage (AWAITING), let the vanilla "number disconnected" call play
-      -- out UNTOUCHED — Antonia wants the dead-phone experience early game (Jackie's believed dead). We
-      -- only take over (silence + hijack -> alive connect) once he's reachable in the retrieval quest.
-      if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then return end
-      pcall(jlSilenceVanillaJackieCall)                        -- v0.98: kill the vanilla dead-number scene first
+      -- v1.37/38: BEFORE the shard-read stage (AWAITING), let the vanilla "number disconnected" call play
+      -- out UNTOUCHED — Antonia wants the dead-phone experience early game (Jackie's believed dead). Only
+      -- take over once he's reachable (or the CET "force hijack" test toggle is on).
+      local reachable = Retrieval.isUnlocked() or Retrieval.isAwaitingCall()
+      if not reachable and not jlCallFix().forceHijack then
+        log("[Hijack] player dialed Jackie — pre-shard stage, letting the vanilla disconnected call play.")
+        return
+      end
+      -- Reachable: the DEAD-contact call the game just started is WRONG (he's alive). KILL IT NOW —
+      -- up front, before any guard in onPlayerCalledJackie can bail — so the dead card + voicemail never
+      -- win. Then hand off; onPlayerCalledJackie defers the alive ring so the dead call is gone first.
+      log("[Hijack] player dialed Jackie (reachable) -> killing the dead call, swapping to alive.")
+      pcall(jlSilenceVanillaJackieCall)                        -- disarm the vanilla dead-number scene
+      pcall(function() triggerNativeCall("jackie_dead", "EndCall", 3) end)  -- kill the dead card THIS instant
       pcall(onPlayerCalledJackie)
     end)
   end)
@@ -6150,6 +6181,14 @@ registerForEvent("onDraw", function()
     ImGui.SameLine(); if ImGui.Button("vanilla") then cf.mode = "vanilla" end
     cf.delay = ImGui.SliderFloat("Ring/hang-up delay (s) — quick mode", cf.delay or 0.75, 0.1, 2.0)
     cf.ourRing = ImGui.Checkbox("quick/instant: also play our ring SFX (OFF avoids 'rings twice')", cf.ourRing and true or false)
+    -- v1.38 DIAGNOSTICS: the hijack only fires once the quest is "reachable" (shard read / reunited). If
+    -- the phone still shows the DEAD card + voicemail, it's almost always because the stage is pre-shard
+    -- (below) OR Jackie's currently summoned/asleep. Watch jackie_debug.log for the [Hijack] lines.
+    ImGui.Text("Reunion stage: ")
+    ImGui.SameLine(); ImGui.TextColored(0.45, 0.85, 1.0, 1.0, Retrieval.stageName())
+    local reach = Retrieval.isUnlocked() or Retrieval.isAwaitingCall()
+    ImGui.Text("Phone hijack active: " .. ((reach or cf.forceHijack) and "YES (alive swap)" or "no — vanilla disconnected plays"))
+    cf.forceHijack = ImGui.Checkbox("Force hijack even pre-shard (test the alive swap now)", cf.forceHijack and true or false)
 
     ImGui.Separator()
     -- v1.37: the FULL alive flow (ring the alive avatar -> connect -> our branching dialogue), no phone
@@ -6169,40 +6208,6 @@ registerForEvent("onDraw", function()
     ImGui.TextWrapped("The disconnected 'temporarily unavailable' card is the DEAD contact's holo — no " ..
       "WolvenKit needed to dodge it: 'instant'/'alive' avoid showing it at all. If a mode wins, tell me " ..
       "and I'll set Config.nativeCall.hijackMode to it permanently.")
-  end
-
-  ImGui.Separator()
-  -- v1.x: BANNER SOUND tester. Every on-screen banner (blaze objectives, dinner objective, call notices,
-  -- refusals) shares one helper, so whatever you pick here is heard EVERYWHERE. Click a name to PREVIEW its
-  -- sound; click "Set ✓" to make it the banner sound. Some events may be silent on this build — just pick
-  -- one that actually plays. The current pick is baked into Config.banner.sfx.
-  if ImGui.CollapsingHeader("Banner sound (pick the beep for on-screen banners)") then
-    ImGui.TextWrapped("Preview a sound, then Set it. It plays on EVERY banner (blaze objectives, dinner " ..
-      "objective, call notices). If a preview is silent, that event isn't on this build — try another.")
-    ImGui.Text("Current banner sound: ")
-    ImGui.SameLine(); ImGui.TextColored(0.45, 0.85, 1.0, 1.0,
-      (Config.banner and Config.banner.sfx ~= "" and Config.banner.sfx) or "(silent)")
-    ImGui.Separator()
-    local opts = (Config.banner and Config.banner.options) or {}
-    for i, o in ipairs(opts) do
-      local chosen = Config.banner and (Config.banner.sfx == o.evt)
-      ImGui.Text((chosen and "-> " or "   ") .. o.label)
-      ImGui.SameLine()
-      if ImGui.Button("Preview##bs_" .. i) then
-        playUiSound(o.evt)
-        log("Banner sound: preview '" .. (o.label or "?") .. "' (" .. (o.evt ~= "" and o.evt or "silent") .. ").")
-      end
-      ImGui.SameLine()
-      if ImGui.Button((chosen and "Set ✓##bs_" or "Set##bs_") .. i) then
-        Config.banner.sfx = o.evt
-        log("Banner sound -> '" .. (o.label or "?") .. "' (" .. (o.evt ~= "" and o.evt or "silent") ..
-          "). Tell me and I'll bake it as the default in config.lua.")
-      end
-    end
-    ImGui.Separator()
-    if ImGui.Button("Test banner (shows a banner + plays the sound)") then
-      showOnscreenMsg("Banner sound test — Jackie's on the move.", 4.0)
-    end
   end
 
   ImGui.Separator()

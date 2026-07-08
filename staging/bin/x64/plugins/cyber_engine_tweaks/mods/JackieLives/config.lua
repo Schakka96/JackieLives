@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.37"
+Config.version = "1.38"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -18,23 +18,10 @@ Config.proximityRadius       = 45.0    -- metres: idle Jackie appears when you'r
 
 -- ---- Banner sound (v1.x) --------------------------------------------------
 -- Every native on-screen BANNER (blaze objectives, the dinner objective, call notices, refusals) plays
--- this short UI sound so it isn't silent. All banners share one helper (showOnscreenMsg) so this is applied
--- universally. Antonia picks the winner in the CET "Banner sound" tester (Debug window): each button
--- PREVIEWS a candidate, and "Set as banner sound ✓" bakes the choice into Config.banner.sfx below.
--- These are base-game 2D UI sound events played on the player; some candidates may not exist on every game
--- build — that's exactly why the tester lets you audition them. Set sfx = "" to make banners silent again.
+-- this short UI sound so it isn't silent. All banners share one helper (showOnscreenMsg) so this applies
+-- universally. sfx is a base-game 2D UI sound event played on the player; set sfx = "" for silent banners.
 Config.banner = {
-  sfx = "ui_menu_map_pin_created",   -- the chosen UI sound event (change via the tester, or edit here)
-  -- Candidates offered in the tester. label = button caption, evt = the WWise event name to try.
-  options = {
-    { label = "Map pin",         evt = "ui_menu_map_pin_created" },
-    { label = "Menu confirm",    evt = "ui_menu_onpress" },
-    { label = "Menu hover",      evt = "ui_menu_hover" },
-    { label = "Access granted",  evt = "ui_hacking_access_granted" },
-    { label = "Legendary loot",  evt = "ui_loot_rarity_legendary" },
-    { label = "Car call jingle", evt = "ui_jingle_car_call" },
-    { label = "Silent (none)",   evt = "" },
-  },
+  sfx = "ui_loot_rarity_legendary",   -- the chosen UI sound event (Antonia's pick). Set "" for silent banners.
 }
 
 -- ---- Jackie's spawn record ------------------------------------------------
