@@ -8,6 +8,34 @@ Log last written: 2026-06-16 (day session)
 Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
 
 --------------------------------------------------------------------------------
+2026-07-08  -  v1.33 WALK-ABREAST: pace-match (walk at V's speed, not his)
+--------------------------------------------------------------------------------
+- Problem (Antonia): even calmed down, he kept needing catch-up bursts because V's
+  slow-walk is a HAIR faster than Jackie's Walk gait. Root cause: NPCs have only
+  Walk/Run/Sprint gaits and AIMoveToCommand has NO speed field — there's no gait
+  that matches V's stroll (Walk lags, Run overshoots).
+- Fix (abreastTick + Config.abreast.pace*), the option Antonia picked (time-dilation
+  with an automatic duty-cycle fallback):
+    PRIMARY — while HOLDING (not arriving, not mid-burst) scale his personal time
+      up a touch via handle:SetIndividualTimeDilation("JLPace", scale, ...), where
+      scale = clamp(V_speed / paceBaseWalk, paceMinScale, paceMaxScale) — so his
+      Walk animation covers ground at V's pace. Cleared (scale 1.0 + Unset) whenever
+      abreast disengages, so he's normal-speed the rest of the time.
+    FALLBACK B — the pcall probes the API once; if the call throws (method absent on
+      this build) we latch JL.abreast.tdOK=false and switch to a Walk<->Run duty-cycle
+      whose time-averaged speed == V's (run fraction f=(V-walk)/(run-walk), period
+      paceDutyPeriod). Guaranteed to work with only the gait system.
+- New knobs (config, live): paceMatch, paceBaseWalk (the calibration knob — LOWER it
+  if he still lags), paceBaseRun, paceMinScale, paceMaxScale, paceDutyPeriod.
+- NOTE: SetIndividualTimeDilation for a SPEED-UP (>1.0) is unverified on our 2.31
+  build — needs Antonia's in-game confirmation. If he still lags AND doesn't look
+  sped-up, the API is no-opping: the duty-cycle fallback only triggers on a THROW,
+  not a silent no-op, so in that case set paceBaseWalk lower first, and if that does
+  nothing we force the duty-cycle (make tdOK=false the default).
+- NOT committed: init.lua is being edited by a concurrent session (seat-tuner auto-
+  point) — commit with explicit paths and reconcile first.
+
+--------------------------------------------------------------------------------
 2026-07-08  -  v1.32 WALK-ABREAST: calm the hold (arrival sprints, then bursts)
 --------------------------------------------------------------------------------
 - Problem (Antonia): v1.3's get-into-position was TOO aggressive as a steady state.

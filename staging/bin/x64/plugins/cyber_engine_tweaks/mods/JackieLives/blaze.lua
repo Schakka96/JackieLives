@@ -34,7 +34,7 @@ local M = { bound = {}, cfg = nil, st = nil }
 -- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
 -- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
 -- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
-M.VERSION = "1.02 (2026-07-08 native [F] 'Get in the AV' prompt)"
+M.VERSION = "1.04 (2026-07-08 tbug-call-end gate + elevator coord confirmed)"
 
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
@@ -68,17 +68,21 @@ M.cfg = {
 -- COMPANION the moment Takemura appears, so his stock in-combat barks fire automatically on top of these.
 -- ---------------------------------------------------------------------------
 M.yori = {
-  goro    = { rec = "Character.Takemura", pos = { x = -2204.920, y = 1764.812, z = 312.000, yaw =   40.0 } }, -- recaptured 2026-07-08
-  smasher = { rec = "Character.Smasher",  pos = { x = -2226.165, y = 1765.743, z = 309.329, yaw = -157.5 } }, -- facing SSE
-  heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 } },  -- OUR spawned VTOL (existing extraction ride)
-  -- The AV that's ALREADY sitting on the roof in the base scene — V can escape via THIS one too. We
-  -- don't spawn it (it's already there); we just mark its position as a second valid escape point.
-  -- ⚠️ Fill pos with the roof coords Antonia will provide, then this becomes an active exit.
-  roofHeli = { pos = nil },   -- e.g. { x = ?, y = ?, z = ? }
-  -- Gate: the fight (spawns + start) fires when this quest fact flips — the moment T-Bug opens the
-  -- penthouse GLASS DOORS. ⚠️ VERIFY the exact fact name with JLFactDump in-game at that beat, then set
-  -- it here. `spiderbot_glass` is the best candidate from the q005 graph but is UNCONFIRMED for this moment.
-  startFact = "spiderbot_glass",
+  -- Both bosses spawn at the SAME spot near the ELEVATOR (Antonia 2026-07-08): Takemura first, then
+  -- Smasher appears in that same place after Takemura falls. ⚠️ pos is a PLACEHOLDER (the old glass-door
+  -- capture) — REPLACE x/y/z/yaw with the real ELEVATOR coords.
+  -- hpMul tones the bosses down (they were near-unkillable at V's low Heist level): Health ×mul on spawn.
+  goro    = { rec = "Character.Takemura", pos = { x = -2226.165, y = 1765.743, z = 309.329, yaw = -157.5 }, hpMul = 0.20 },  -- ELEVATOR spot (= Smasher's old default coord, Antonia 2026-07-08)
+  smasher = { rec = "Character.Smasher",  hpMul = 0.50 },   -- spawns AT goro.pos (same elevator spot)
+  heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 }, radius = 5.0 },  -- OUR optional VTOL (only if M.cfg.heliRecord set)
+  -- The AV ALREADY on the roof in the base scene — primary escape, no spawn needed. +2 m reach.
+  roofHeli = { pos = { x = -2212.9, y = 1764.67, z = 320.0 }, radius = 2.0 },   -- Antonia's roof coords 2026-07-08
+  -- Gate: fires when the T-Bug PHONE CALL ENDS. From JLFactDump (docs/factdump.log): the fact
+  -- `phonecall_player_with_tbug` runs 1 -> 2 (call active) then drops back to 0 when the call ends.
+  -- So we fire on the FALLING edge (saw it active, now 0), NOT a raw >0 (that'd fire when it STARTS).
+  startFact = "phonecall_player_with_tbug",
+  startOnFall = true,        -- gate on active->0 transition
+  startActiveVal = 2,        -- "call active" value that must be seen before the drop counts
   -- MVP weapon hand-out: ONE staged weapon. When V gets within `radius` m of the spot the weapon is
   -- added straight to V's inventory (ONCE) — reads as "find/pick up a weapon". Small radius so V has to
   -- actually walk to it (the phase-1 objective is "find a weapon"). Direct inventory-add is 100%
@@ -173,13 +177,13 @@ function M.hasRecords()   local c = M.cfg; return (c.goroRecord and c.smasherRec
 -- ---------------------------------------------------------------------------
 -- Run / stop
 -- ---------------------------------------------------------------------------
-local function spawnOne(slot, rec, pos, hostile)
+local function spawnOne(slot, rec, pos, hostile, weaken)
   if not M.bound.spawnDyn then blog("SPAWN FAIL " .. slot .. ": spawnDyn NOT BOUND -> Blaze.bind never ran (stale deploy? run DIAGNOSE)."); return end
   if not rec then blog("SPAWN FAIL " .. slot .. ": no record."); return end
   if not pos then blog("SPAWN FAIL " .. slot .. ": no position."); return end
   local id = M.bound.spawnDyn(rec, pos, pos.yaw, "JackieLives_blaze_" .. slot)
   if not id then blog("SPAWN FAIL " .. slot .. ": spawnDyn returned nil for rec='" .. tostring(rec) .. "' (DES refused the record? see the CreateEntity line)."); return end
-  M.st.ent[slot] = { id = id, pos = pos, yaw = pos.yaw, hostile = hostile, handle = nil, placed = false }
+  M.st.ent[slot] = { id = id, pos = pos, yaw = pos.yaw, hostile = hostile, weaken = weaken, handle = nil, placed = false }
   blog(string.format("%s SPAWNED id=%s rec=%s at %.1f,%.1f,%.1f yaw %.1f", slot, tostring(id), tostring(rec), pos.x, pos.y, pos.z, pos.yaw or 0))
 end
 
@@ -218,7 +222,7 @@ function M.startYorinobu()
   -- The moment Takemura appears: Jackie -> COMPANION (fights + auto barks) and the Jackie Lives mod
   -- goes fully active, which gates his schedule so no SECOND Jackie can spawn while he's placed.
   if M.bound.becomeCompanion then M.bound.becomeCompanion() end
-  spawnOne("goro", M.yori.goro.rec, M.yori.goro.pos, true)
+  spawnOne("goro", M.yori.goro.rec, M.yori.goro.pos, true, M.yori.goro.hpMul)
   say("goroSpawn")
   pushObjective("[ ] Find a weapon\n>> Defeat Takemura")
   blog("EXPERIMENTAL Yorinobu fight STARTED (Takemura first; Jackie -> companion).")
@@ -232,10 +236,16 @@ end
 function M.autoStartTick()
   if M.st or M.autoFired then return end                 -- already running / already auto-fired
   local f = M.yori.startFact; if not f or not M.bound.getFact then return end
-  local v = M.bound.getFact(f) or 0
-  if (tonumber(v) or 0) <= 0 then return end             -- doors not open yet
+  local v = tonumber(M.bound.getFact(f) or 0) or 0
+  if M.yori.startOnFall then
+    -- Falling-edge gate (T-Bug call ends): require we FIRST saw it active, THEN it returned to 0.
+    if v >= (M.yori.startActiveVal or 1) then M.startSeenActive = true end
+    if not (M.startSeenActive and v <= 0) then return end
+  else
+    if v <= 0 then return end                            -- simple rising gate
+  end
   M.autoFired = true
-  blog("AUTO-START: start fact '" .. f .. "'=" .. tostring(v) .. " (T-Bug opened the glass doors) -> starting fight.")
+  blog("AUTO-START: '" .. f .. "'=" .. tostring(v) .. " (T-Bug call ended) -> starting fight.")
   M.startYorinobu()
 end
 
@@ -313,6 +323,7 @@ local function resolveAndPlace(e)
   if not e.handle then return end                       -- not streamed in yet; try again next frame
   if M.bound.teleport and e.pos then M.bound.teleport(e.handle, e.pos, e.yaw) end
   if e.hostile and M.bound.setHostile then M.bound.setHostile(e.handle) end
+  if e.weaken and M.bound.weaken then M.bound.weaken(e.handle, e.weaken) end   -- tone-down: Health ×weaken
   e.placed = true
 end
 
@@ -362,7 +373,7 @@ function M.tick(now, dt)
       if st.goroDead then
         st.stage = "smasher"
         say("goroDefeated")                                  -- "Luckily all clear for now..."
-        spawnOne("smasher", M.yori.smasher.rec, M.yori.smasher.pos, true)   -- Smasher only appears now
+        spawnOne("smasher", M.yori.smasher.rec, M.yori.goro.pos, true, M.yori.smasher.hpMul)   -- Smasher appears at the SAME elevator spot
         say("smasherSpawn")                                  -- "Is that Adam Smasher?" -> "Oh, SHIT!"
         st.smasherFightAt = now + (M.yori.fightLineDelay or 4.0)
         pushObjective("[x] Takemura down\n>> Defeat Adam Smasher")
@@ -384,7 +395,8 @@ function M.tick(now, dt)
       -- fade is gated on the F press (M.tryEscapePress, driven from init.lua's OnAction hook).
       local d1 = M.bound.distToPlayer and M.bound.distToPlayer(M.yori.heli.pos) or 1e9
       local d2 = (M.bound.distToPlayer and M.yori.roofHeli and M.yori.roofHeli.pos) and M.bound.distToPlayer(M.yori.roofHeli.pos) or 1e9
-      local inRange = math.min(d1, d2) <= (M.yori.reachRadius or 5.0)
+      local inRange = (d1 <= (M.yori.heli.radius or M.yori.reachRadius or 5.0))
+                   or (d2 <= (M.yori.roofHeli and M.yori.roofHeli.radius or M.yori.reachRadius or 5.0))
       if inRange then
         st.escapeReady = true
         if now >= (st.escapePromptAt or 0) then       -- re-assert the NATIVE [F] interaction prompt on a heartbeat

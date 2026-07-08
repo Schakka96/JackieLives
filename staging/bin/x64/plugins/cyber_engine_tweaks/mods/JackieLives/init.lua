@@ -3689,6 +3689,9 @@ end
 --    (EMA over `reSprintAvgSeconds`, ~2 s) and only when that settled gap exceeds `reSprintDistFrac` of the
 --    radius (~30% -> ~1 m drift) does he fire ONE short sprint burst (`reSprintBurst`, 0.5 s) to reclaim the
 --    pocket, then drop straight back to Walk. `reSprintCooldown` stops the laggy average double-firing him.
+--  * PACE MATCH (v1.33). V's stroll is a touch faster than his Walk gait and there's no in-between gait,
+--    so while HOLDING we scale his personal time up a hair (SetIndividualTimeDilation) to walk at V's pace;
+--    if that API is absent on the build we fall back to a Walk<->Run duty-cycle (see Config.abreast.pace*).
 --  * WALK-ONLY. Only active while V WALKS (jlVWalking); at jog/sprint abreastTick yields and the trail
 --    (followKeepCloseTick) takes over — V has 3 speeds, Jackie 2, so he can't out-pace a jogging V.
 -- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
@@ -3702,6 +3705,14 @@ function abreastTick()
     JL.abreast.arrived    = nil -- v1.32: re-engage always starts with the aggressive get-into-position sprint
     JL.abreast.burstUntil = nil -- no re-sprint burst pending
     JL.abreast.gapAvg     = nil -- clear the 2 s averaged gap so it re-seeds on the next engage
+    if JL.abreast.tdApplied then  -- v1.33: drop any pace-match time dilation so he's normal-speed when not abreast
+      local hh = JL.summon.spawn and JL.summon.spawn.handle
+      if hh then
+        pcall(function() hh:SetIndividualTimeDilation("JLPace", 1.0, 0.0, "", "", true) end)
+        pcall(function() hh:UnsetIndividualTimeDilation("JLPace") end)
+      end
+      JL.abreast.tdApplied = nil
+    end
     return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -3784,10 +3795,42 @@ function abreastTick()
   local sprinting = (JL.abreast.arrived ~= true)
                     or (JL.abreast.burstUntil ~= nil and now < JL.abreast.burstUntil)
 
-  -- --- issue on a short throttle; SPRINT while arriving / mid-burst, else the gentle Walk-hold -------
+  -- --- PACE MATCH (v1.33): V's stroll is a hair faster than Jackie's Walk gait, and there's no in-between
+  -- gait / no speed field on the move command. So while HOLDING (not arriving, not mid-burst) we scale his
+  -- personal time up a touch so his Walk covers ground at V's pace. Primary = SetIndividualTimeDilation;
+  -- if that errors on this build we mark tdOK=false ONCE and drop to a Walk<->Run duty-cycle (fallback B).
+  local vsp   = JL.abreast.vSpeed or (A.paceBaseWalk or 1.5)
+  local dutyRun = false                                    -- fallback-B: does THIS frame want a Run pulse?
+  local scale = 1.0
+  -- Use time-dilation unless: pace off, forced to the duty-cycle, or a prior probe already failed (tdOK=false).
+  local useTD = (A.paceMatch ~= false) and (not A.paceForceDutyCycle) and (JL.abreast.tdOK ~= false)
+  if (A.paceMatch ~= false) and (not sprinting) then
+    if useTD then
+      scale = math.min(math.max(vsp / (A.paceBaseWalk or 1.5), A.paceMinScale or 1.0), A.paceMaxScale or 1.35)
+    else
+      -- duty-cycle: run for the fraction of each period that makes his time-averaged speed == V's
+      local base, run = (A.paceBaseWalk or 1.5), (A.paceBaseRun or 3.5)
+      if vsp > base and run > base then
+        local f = math.min(math.max((vsp - base) / (run - base), 0.0), 1.0)
+        local P = A.paceDutyPeriod or 1.2
+        dutyRun = ((now % P) < (f * P))
+      end
+    end
+  end
+  -- Apply/refresh the dilation every frame so it never expires and tracks V's speed. scale==1.0 (arriving,
+  -- bursting, pace off, or already at V's pace) restores normal time. Probe the API once via pcall; a throw
+  -- means it's absent on this build -> latch tdOK=false and the duty-cycle takes over from here on.
+  if useTD then
+    local ok = pcall(function() h:SetIndividualTimeDilation("JLPace", scale, 3600.0, "", "", true) end)
+    if not ok then ok = pcall(function() h:SetIndividualTimeDilation("JLPace", scale) end) end
+    if JL.abreast.tdOK == nil then JL.abreast.tdOK = ok end
+    JL.abreast.tdApplied = (ok and scale ~= 1.0) or (JL.abreast.tdApplied and ok) or nil
+  end
+
+  -- --- issue on a short throttle; SPRINT while arriving / mid-burst, Run on a duty pulse, else Walk -------
   if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 0.3) then return end
   JL.abreast.lastAt = now
-  local mv  = sprinting and (A.catchUpMovement or "Sprint") or (A.movement or "Walk")
+  local mv  = sprinting and (A.catchUpMovement or "Sprint") or (dutyRun and "Run") or (A.movement or "Walk")
   local tol = sprinting and (A.catchUpTolerance or 0.35) or (A.tolerance or 0.5)
   sendMoveToPoint(h, dest, mv, tol)
 end
@@ -6029,6 +6072,20 @@ registerForEvent("onDraw", function()
     if not JL.tuner.init then tunerInit() end
     local t = JL.tuner
 
+    -- v1.1: AUTO-POINT the tuner at the venue where idle Jackie ACTUALLY is, so you can just walk up to
+    -- him and tune — no need to click the venue first (that trap gave "pick the venue, then walk over"
+    -- even while you were staring right at him). Only adopts when he's SETTLED at a sit-capable venue,
+    -- not while he's still walking to a venue you force-picked (locationKey != the forceVenue target).
+    if JL.idle.spawn and JL.idle.spawn.handle and JL.idle.locationKey then
+      local enroute = JL.ui.forceVenue and (JL.idle.locationKey ~= JL.ui.forceVenue)
+      local hisLoc  = Config.locations[JL.idle.locationKey]
+      if not enroute and JL.idle.locationKey ~= t.key
+         and hisLoc and #tunerSitWaypoints(hisLoc) > 0 then
+        t.key, t.seatIdx = JL.idle.locationKey, 1
+        tunerInit()
+      end
+    end
+
     -- LOCATION picker — only venues that have a sit waypoint. Picking one also Force-venues Jackie there.
     ImGui.Text("Venue:")
     local venues = tunerSitVenues()
@@ -6056,7 +6113,9 @@ registerForEvent("onDraw", function()
     ImGui.TextWrapped(here
       and ("Jackie is here — slide and he re-seats live (he blinks out/in each time — that's the " ..
            "respawn that guarantees he actually moves). Editing " .. t.key .. " seat " .. t.seatIdx .. ".")
-      or  ("Jackie NOT at " .. t.key .. " yet — he's heading there (Force venue set). Walk over once he arrives."))
+      or  ((JL.idle.spawn and JL.idle.spawn.handle)
+           and ("Jackie's still heading to " .. t.key .. " — walk over once he's settled on the seat.")
+           or  "No idle Jackie nearby yet. Get within range of his venue (or Force-pick one above), then walk up to him."))
     ImGui.TextWrapped("Offsets from the captured seat. X/Y/Z = position (metres); YAW spins him to the " ..
                       "right seat angle (his facing is now forced from this, so it's the same no matter " ..
                       "which way he walked in). Yaw range is wider so you can flip him fully around.")

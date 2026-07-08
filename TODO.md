@@ -879,6 +879,11 @@ retreat-follow). **Still open, grouped by area:**
       `JL.idle.forceStartIdx` (place him on THIS seat, not a random waypoint) + a long hold-dwell so he
       doesn't wander off mid-tune. Live-slide still works (debounced to 0.5 s, self-throttles while a respawn
       is in flight); he **blinks** out/in each re-seat — accepted as fine for a dev tuner.
+      **(A2) "pick the venue, then walk over" even while staring at him.** `tunerHere()` needs
+      `JL.idle.locationKey == JL.tuner.key`, but the tuner key defaulted to `noodle`, so tuning Jackie where
+      the SCHEDULE put him (e.g. Afterlife) silently no-op'd every slider + the re-seat button. Fix: the tuner
+      now **auto-points at the venue where idle Jackie actually is** (adopts `JL.idle.locationKey` when he's
+      settled at a sit-capable venue, unless he's still walking to a force-picked venue). Just walk up to him.
       **(B) Coords didn't survive a reload.** The tuner only live-patched in-memory `Config`; on reload
       config.lua was re-`require`d with its OLD baked coords. Fix: **"Save seat (survives reload)"** button
       write-backs each committed seat to `jl_seats.txt` (`key|sitSeatIdx|x|y|z|yaw`); `onInit` →
