@@ -2423,6 +2423,16 @@ function jlCallFix()
   return JL.callfix
 end
 
+-- v1.37: how long the ALIVE-mode ring plays before Jackie "picks up" — random in [alivePickupMin,
+-- alivePickupMax] (default 1.2-3.0 s) so it feels human, not a fixed beat. Global -> 200-local cap safe.
+function jlAliveRingSecs()
+  local nc = Config.nativeCall or {}
+  local lo, hi = nc.alivePickupMin or 1.2, nc.alivePickupMax or 3.0
+  if hi < lo then lo, hi = hi, lo end
+  local r = 0.5; pcall(function() r = math.random() end)   -- [0,1)
+  return lo + r * (hi - lo)
+end
+
 -- Begin a holocall. With useNativeWindow: fire the native RING (IncomingCall) now; callTick
 -- then aborts it (STOP) and switches to the CONNECT window before running our convo.
 local function startCall()
@@ -2595,14 +2605,36 @@ local function onPlayerCalledJackie()
     local aliveId = (Config.nativeCall and Config.nativeCall.aliveId) or "jackie"
     JL.call.activeId = aliveId                                    -- callTick now EndCall/connects "jackie"
     pcall(function() triggerNativeCall(id, "EndCall", 3) end)     -- drop the dead "unavailable" card
-    pcall(function() triggerNativeCall(aliveId, "IncomingCall", 1) end)  -- ring the ALIVE avatar
-    JL.call.ringingAt = now + (cf.delay or 0.75)
+    pcall(function() triggerNativeCall(aliveId, "IncomingCall", 1) end)  -- ring the ALIVE avatar (see-through holo)
+    local aring = (Config.call and Config.call.ringEvent) or ""   -- v1.37: alive ring is SILENT -> play ours
+    if aring ~= "" then pcall(function() playVoice(aring) end) end
+    JL.call.ringingAt = now + jlAliveRingSecs()                   -- v1.37: random 1.2-3.0s "pickup" delay
   else                                                   -- "quick": short dead ring, then EndCall->connect
     JL.call.activeId = id
     JL.call.ringingAt = now + (cf.delay or 0.75)
   end
   JL.ui.status = "Jackie picking up... (" .. m .. ")"
   log(("Hijack: mode=%s delay=%.2f ourRing=%s -> our flow."):format(m, cf.delay or 0.75, tostring(cf.ourRing)))
+end
+
+-- v1.37: run the FULL alive-call flow on demand — ring the live `jackie` avatar (see-through holo),
+-- random pickup delay, connect, then our branching dialogue — WITHOUT the in-game phone. Used by the
+-- CET "Test ALIVE call" button (the raw RING/CONNECT buttons only fire one phase, no dialogue).
+-- callTick drives ring->EndCall->connect->Branch.start from the timers we arm here. Global -> cap safe.
+function jlStartAliveCall()
+  if jlCallInProgress() then JL.ui.status = "Already on a call with Jackie."; return end
+  if Branch.open or Branch.busy or dlg.active then JL.ui.status = "Finish the current talk first."; return end
+  Branch.busy = true
+  local aliveId = (Config.nativeCall and Config.nativeCall.aliveId) or "jackie"
+  local deadId  = (Config.nativeCall and Config.nativeCall.id)      or "jackie_dead"
+  JL.call.activeId = aliveId
+  pcall(function() triggerNativeCall(deadId,  "EndCall",     3) end)  -- clear any lingering dead card
+  pcall(function() triggerNativeCall(aliveId, "IncomingCall", 1) end) -- ring the alive avatar
+  local aring = (Config.call and Config.call.ringEvent) or ""
+  if aring ~= "" then pcall(function() playVoice(aring) end) end
+  JL.call.ringingAt = (JL.clock or 0) + jlAliveRingSecs()
+  JL.ui.status = "Testing ALIVE call (ring -> connect -> dialogue)..."
+  log("Test: full alive-call flow armed.")
 end
 
 -- Observe PhoneSystem:TriggerCall; when the PLAYER calls Jackie's contact (IncomingCall on a
@@ -2615,6 +2647,10 @@ local function setupCallHijack()
       local nm = tostring(callId)
       if not nm:find("jackie") then return end                 -- only Jackie's contact
       if not tostring(phase):find("IncomingCall") then return end
+      -- v1.37: BEFORE the shard-read stage (AWAITING), let the vanilla "number disconnected" call play
+      -- out UNTOUCHED — Antonia wants the dead-phone experience early game (Jackie's believed dead). We
+      -- only take over (silence + hijack -> alive connect) once he's reachable in the retrieval quest.
+      if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then return end
       pcall(jlSilenceVanillaJackieCall)                        -- v0.98: kill the vanilla dead-number scene first
       pcall(onPlayerCalledJackie)
     end)
@@ -6103,17 +6139,24 @@ registerForEvent("onDraw", function()
   -- in isolation. Tell me which mode kills the "number unavailable" card and I'll bake it as default.
   if ImGui.CollapsingHeader("Call fix (temporarily-unavailable experiments)") then
     local cf = jlCallFix()
-    ImGui.TextWrapped("HOW: set a mode below, then open your phone and CALL Jackie. 'quick' = short " ..
-      "dead ring then connect; 'instant' = kill the ring, connect now (no card); 'alive' = ring the " ..
-      "ALIVE avatar instead; 'vanilla' = don't hijack (baseline, to compare).")
+    ImGui.TextWrapped("WINNER (default): 'alive' — rings/connects the live jackie contact, see-through " ..
+      "holo, NO 'unavailable' card. The dead/disconnected call is kept for EARLY GAME (before the shard " ..
+      "is read). Modes: 'quick'/'instant' dodge the card via the dead contact; 'vanilla' = no hijack.")
     ImGui.Text("Mode: ")
     ImGui.SameLine(); ImGui.TextColored(0.45, 0.85, 1.0, 1.0, cf.mode)
-    if ImGui.Button("quick")   then cf.mode = "quick"   end
+    if ImGui.Button("alive")   then cf.mode = "alive"   end
+    ImGui.SameLine(); if ImGui.Button("quick")   then cf.mode = "quick"   end
     ImGui.SameLine(); if ImGui.Button("instant") then cf.mode = "instant" end
-    ImGui.SameLine(); if ImGui.Button("alive")   then cf.mode = "alive"   end
     ImGui.SameLine(); if ImGui.Button("vanilla") then cf.mode = "vanilla" end
-    cf.delay = ImGui.SliderFloat("Ring/hang-up delay (s)", cf.delay or 0.75, 0.1, 2.0)
-    cf.ourRing = ImGui.Checkbox("Also play our ring SFX (OFF avoids 'rings twice')", cf.ourRing and true or false)
+    cf.delay = ImGui.SliderFloat("Ring/hang-up delay (s) — quick mode", cf.delay or 0.75, 0.1, 2.0)
+    cf.ourRing = ImGui.Checkbox("quick/instant: also play our ring SFX (OFF avoids 'rings twice')", cf.ourRing and true or false)
+
+    ImGui.Separator()
+    -- v1.37: the FULL alive flow (ring the alive avatar -> connect -> our branching dialogue), no phone
+    -- needed. The raw RING/CONNECT buttons below only fire ONE phase, so they never start the dialogue.
+    if ImGui.Button(">> Test full ALIVE call (with dialogue)") then jlStartAliveCall() end
+    ImGui.TextWrapped("Rings 1.2-3.0 s (random) with our ring SFX, connects the see-through holo, then " ..
+      "runs the branching call dialogue — exactly what happens when you phone Jackie in 'alive' mode.")
 
     ImGui.Separator()
     ImGui.Text("Raw native-call phases (watch each in isolation):")

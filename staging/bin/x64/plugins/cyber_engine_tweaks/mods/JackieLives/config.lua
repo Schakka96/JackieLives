@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.36"
+Config.version = "1.37"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -1008,12 +1008,21 @@ Config.nativeCall = {
   -- we kill it:
   --   "quick"   = let the dead ring play `hijackHangupDelay` s, then EndCall -> connect (short card).
   --   "instant" = EndCall the dead ring immediately, then connect — no ring, no unavailable card.
-  --   "alive"   = EndCall the dead card, ring the ALIVE `jackie` avatar instead, then connect.
+  --   "alive"   = EndCall the dead card, ring the ALIVE `jackie` avatar instead, then connect. <- DEFAULT.
   --   "vanilla" = don't hijack (A/B baseline — you hear the game's own call).
-  hijackMode        = "quick",
-  hijackHangupDelay = 0.75,           -- seconds (quick/alive): how long the ring plays before we connect
-  hijackOurRingSfx  = false,          -- ALSO play our WWise ring SFX? false avoids the "rings twice" overlap
+  -- v1.37 (Antonia in-game test): "alive" is the WINNER — RING/CONNECT on the live `jackie` contact
+  -- shows the see-through holo and NEVER triggers the "temporarily unavailable" card (only the DEAD
+  -- contact does). The dead/disconnected call is INTENTIONALLY kept for early game: the hijack only
+  -- engages once the retrieval quest reaches the shard-read stage (AWAITING), so before that V really
+  -- does get "number disconnected" (immersive — Jackie's still believed dead). See setupCallHijack.
+  hijackMode        = "alive",
+  hijackHangupDelay = 0.75,           -- seconds (quick mode): how long the dead ring plays before connect
+  hijackOurRingSfx  = false,          -- quick/instant: ALSO play our ring SFX? false avoids "rings twice"
   aliveId           = "jackie",       -- the alive-contact CName used by hijackMode="alive"
+  -- v1.37: the alive contact's IncomingCall is SILENT, so we play our own ring SFX (Config.call.ringEvent)
+  -- and randomise how long it rings before Jackie "picks up" — feels human, not a fixed beat.
+  alivePickupMin    = 1.2,            -- seconds: shortest ring before he answers (alive mode)
+  alivePickupMax    = 3.0,            -- seconds: longest ring before he answers (alive mode)
 }
 
 -- The CALL conversation. Same node format as Config.dialogueTree. A choice may carry

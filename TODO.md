@@ -11,6 +11,37 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-08 (v1.37) — "unavailable" call SOLVED (alive mode) + combat-leash release
+
+**Call fix — RESOLVED in-game (Antonia tested the workbench).** The "temporarily unavailable" card is
+ONLY the dead contact (`jackie_dead`); ringing/connecting the alive `jackie` contact shows the see-through
+holo with NO card. So:
+- [x] **Default `hijackMode = "alive"`** — phone calls now EndCall the dead card, ring the alive avatar,
+  connect, and run our branching dialogue.
+- [x] **Ringtone for alive mode** — the alive IncomingCall is silent, so we play `Config.call.ringEvent`.
+- [x] **Random pickup delay** — rings `alivePickupMin..alivePickupMax` (1.2–3.0 s) before he answers.
+- [x] **Early-game disconnected KEPT** — the hijack (and the vanilla-scene silence) only engage once the
+  retrieval quest hits the shard-read stage (AWAITING). Before that, V really does get "number
+  disconnected" (Jackie believed dead). Gated in `setupCallHijack`.
+- [x] **CET ">> Test full ALIVE call (with dialogue)"** button (`jlStartAliveCall`) — runs ring→connect→
+  dialogue without the phone (the raw RING/CONNECT buttons only fire one phase, no dialogue).
+- [x] **Combat-leash release (v1.35)** — `jlInCombat()`; abreast/keep-close/catch-up yield in combat so
+  AMM's native follower combat AI takes over. (Committed 8f0544e.)
+- [ ] **TEST (Antonia):** phone Jackie post-shard → alive holo, ringtone, ~1–3 s, then dialogue. And
+  confirm early-game (pre-shard) still gives the disconnected card.
+
+### 🔮 FUTURE (Antonia asked) — replace the see-through holo with a CUSTOM image / video
+
+The connected "transparent thingie" is the game's native holocall showing Jackie's live 3D holo-model.
+Replacing it (NO full scene rebuild needed for the image case):
+- **Custom STATIC image (feasible, ~1 WolvenKit step):** import the picture as a texture (`.xbm` in an
+  `.inkatlas`) and ship it in an `.archive` via ArchiveXL — that's the ONLY WolvenKit work, no scene
+  editing. Then our Lua/redscript draws it as an `inkImage` overlay on the call window during a call
+  (we already draw the dialogue box there, so the same hook adds the image). Moderate effort.
+- **Custom VIDEO (harder):** holocalls can play a pre-rendered Bink `.bk2` wired into the call `.scene`
+  — needs a `.bk2` encode + WolvenKit scene-graph edit. Bigger lift; only if a still image won't do.
+- Decision needed: static image (recommended) vs video, and supply the asset.
+
 ### 🆕 Added 2026-07-08 (manual ToDO entry)
 Mourning work not done: Mama Welles still calls to tell V about finding something and then sends the bike key as gift.
 
