@@ -79,3 +79,5 @@ docs/research/q005_raw/
 docs/research/q101_raw/
 # Raw base-game mourning/reaction scene dumps (~222MB of CDPR .scene JSON; local authoring reference only)
 docs/mounring_scenes/
+# Raw q005 heist scene tree (~141MB of CDPR .scene/.anims/.particle JSON; source for the mix-signpost find)
+docs/Heist_scene_tree_base/
