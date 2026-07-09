@@ -34,7 +34,7 @@ local M = { bound = {}, cfg = nil, st = nil }
 -- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
 -- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
 -- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
-M.VERSION = "1.10 (2026-07-09 Jackie beside V (no wall-clip) + midday escape + longer finale convo (Antonia script))"
+M.VERSION = "1.11 (2026-07-09 stuck-scene music: audio-event logger + Stop + guaranteed MusicVolume mute at finale)"
 
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
@@ -59,6 +59,11 @@ M.cfg = {
   -- (Antonia item 10, max-risk). Default ON. ⚠️ If the quest visibly jumps forward / Johnny starts after
   -- the finale on a test save, flip this false (init.lua blazeEndScene explains the risk).
   endSceneOnFinale  = true,
+  -- v1.11 (Antonia): the stuck q005 heist scene keeps its music and can't be ended (fast-travel/reload
+  -- black-screen). MusicVolume->0 at the finale is the only GUARANTEED silence. Default ON. ⚠️ Kills ALL
+  -- music until restored (blazeMuteMusic(false) / the overlay "Restore music" button) — toggle off here if
+  -- you'd rather keep music and hunt the exact event with blazeLogAudio() instead.
+  muteMusicOnFinale = true,
 }
 
 -- ---------------------------------------------------------------------------

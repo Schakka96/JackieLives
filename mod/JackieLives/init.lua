@@ -476,13 +476,76 @@ function blazeLoadCheckpoint()
   return ok
 end
 
+-- ===========================================================================
+-- v1.11 BLAZE (Antonia) — stuck-scene MUSIC tools. Fast-travel/checkpoint reload BLACK-SCREEN (the live
+-- q005 scene holds a hard world lock), so world-reload is OUT. Two real levers instead (verified via
+-- decompiled scripts + CET audio API research, docs/research/cet_scene_music_teardown.md):
+--   A) LOG the playing audio event (blazeLogAudio) -> capture its CName -> Stop it (blazeStopMusicEvent).
+--      Surgical, but only catches SCRIPT-routed audio; a scene bed fired natively in C++ shows nothing.
+--   B) GUARANTEED silence: drop the game's MusicVolume to 0 (blazeMuteMusic) — works even for a native
+--      bed. Heavy-handed (kills ALL music until restored), so it's a toggle, not auto-on.
+-- ===========================================================================
+
+-- (A) Observe every script-routed audio call so the console prints what's firing while the bed loops.
+-- Registers the hooks ONCE (they can't be removed); the print is gated on JL.audioLog so it's quiet by
+-- default. Reproduce the music with it ON, watch for a repeating Play(...) / Switch/State(...) line.
+function blazeLogAudio(on)
+  if on == nil then on = true end
+  JL.audioLog = on and true or false
+  if not JL.audioObsArmed then
+    JL.audioObsArmed = true
+    for _, m in ipairs({ "Play", "Stop", "Switch", "State", "Parameter", "PlayOnEmitter", "StopOnEmitter", "RequestSongOnRadioStation" }) do
+      pcall(function()
+        ObserveAfter("gameGameAudioSystem", m, function(_, a, b, c, d)
+          if not JL.audioLog then return end
+          log(("[Blaze][AUDIO] %s( %s | %s | %s | %s )"):format(m, tostring(a), tostring(b), tostring(c), tostring(d)))
+        end)
+      end)
+    end
+  end
+  log("[Blaze] audio logger " .. (JL.audioLog and "ON — reproduce the music, watch console for [AUDIO] lines (then blazeStopMusicEvent('<name>'))." or "OFF."))
+  return true
+end
+
+-- Stop a captured event CName (feed it what blazeLogAudio printed).
+function blazeStopMusicEvent(name)
+  if not name or name == "" then log("[Blaze] stopMusicEvent: pass the captured event name string."); return false end
+  local ok = false
+  pcall(function() Game.GetAudioSystem():Stop(CName.new(name), Game.GetPlayer():GetEntityID(), CName.new("")); ok = true end)
+  log("[Blaze] stopMusicEvent: Stop('" .. tostring(name) .. "') -> " .. tostring(ok) .. " — did the music stop?")
+  return ok
+end
+
+-- (B) GUARANTEED silence: MusicVolume -> 0 (on) / restore (off). Kills ALL music engine-wide, so it's a
+-- toggle. Saves the prior value to restore. This is the reliable finale fix if the event can't be captured.
+function blazeMuteMusic(on)
+  if on == nil then on = true end
+  local ss; pcall(function() ss = Game.GetSettingsSystem() end)
+  if not ss then log("[Blaze] muteMusic: no SettingsSystem."); return false end
+  local v; pcall(function() v = ss:GetVar("/audio/volume", "MusicVolume") end)
+  if not v then log("[Blaze] muteMusic: MusicVolume var not found (try DumpType in console)."); return false end
+  if on then
+    if JL.musicVolSaved == nil then pcall(function() JL.musicVolSaved = v:GetValue() end) end
+    pcall(function() v:SetValue(0) end)
+    log("[Blaze] muteMusic: MusicVolume -> 0 (was " .. tostring(JL.musicVolSaved) .. "). Restore with blazeMuteMusic(false).")
+  else
+    local restore = JL.musicVolSaved or 100
+    pcall(function() v:SetValue(restore) end)
+    JL.musicVolSaved = nil
+    log("[Blaze] muteMusic: MusicVolume restored -> " .. tostring(restore) .. ".")
+  end
+  return true
+end
+
 -- The combined at-black teardown the finale runs (music reset + combat clear, and scene fast-forward
 -- when Blaze.cfg.endSceneOnFinale). Order: clear combat first (so the mix re-evaluates clean), then music,
--- then end the scene. Each layer is independently guarded.
+-- then end the scene. Each layer is independently guarded. v1.11: also MUTE music at the finale when
+-- Blaze.cfg.muteMusicOnFinale (default true) — the only guaranteed way to kill the stuck q005 bed.
 function blazeFinaleTeardown()
   pcall(blazeClearCombat)
   pcall(blazeStopMusic)
   if Blaze and Blaze.cfg and Blaze.cfg.endSceneOnFinale ~= false then pcall(blazeEndScene) end
+  if not (Blaze and Blaze.cfg and Blaze.cfg.muteMusicOnFinale == false) then pcall(function() blazeMuteMusic(true) end) end
 end
 
 -- v1.07 BLAZE (Antonia): force SUNNY weather once Smasher's down + V reaches the heli. Weather is
@@ -6748,17 +6811,20 @@ registerForEvent("onDraw", function()
     if ImGui.Button("Set time -> midday") then blazeSetMidday(12); JL.ui.status = "Time -> 12:00." end
     ImGui.SameLine()
     if ImGui.Button("Reset weather (natural)") then blazeResetWeather(); JL.ui.status = "Weather -> natural cycle." end
-    -- v1.09 MUSIC/SCENE ESCAPE (Antonia): the stuck q005 scene keeps its music. A real fast-travel LOAD
-    -- unloads the sector = kills the scene + music (verified). Test it here; if it works we wire it into
-    -- the finale. Checkpoint reload is the nuclear fallback (rewinds before the teleport).
-    ImGui.TextWrapped("STUCK-SCENE / MUSIC escape (test — a real load screen kills the scene bed):")
-    if ImGui.Button("Fast-travel escape (kill scene+music)") then
-      local ok = blazeFastTravelEscape()
-      JL.ui.status = ok and "Fast-travel load queued (watch for the loading screen)." or "No FT points / failed (see console)."
+    -- v1.11 STUCK-SCENE MUSIC (Antonia): fast-travel/checkpoint reload BLACK-SCREEN (the live q005 scene
+    -- holds a world lock) — do NOT use them. Kill the music directly instead: capture the event & Stop it,
+    -- or the guaranteed MusicVolume->0 mute. (blazeFastTravelEscape/blazeLoadCheckpoint stay console-only.)
+    ImGui.TextWrapped("STUCK heist MUSIC (fast-travel reload softlocks — kill the AUDIO instead):")
+    if ImGui.Button(JL.audioLog and "Audio logger: ON" or "Log audio events (capture music)") then
+      blazeLogAudio(not JL.audioLog)
+      JL.ui.status = JL.audioLog and "Audio logger ON — reproduce the music, read console, then blazeStopMusicEvent('<name>')." or "Audio logger OFF."
+    end
+    if ImGui.Button("Mute ALL music (guaranteed)") then
+      blazeMuteMusic(true); JL.ui.status = "MusicVolume -> 0 (all music off; use Restore to bring it back)."
     end
     ImGui.SameLine()
-    if ImGui.Button("Load last checkpoint (nuclear)") then
-      blazeLoadCheckpoint(); JL.ui.status = "Loading last checkpoint (rewinds before the teleport)."
+    if ImGui.Button("Restore music") then
+      blazeMuteMusic(false); JL.ui.status = "MusicVolume restored."
     end
     ImGui.TextWrapped("Manual override / testing:")
     if ImGui.Button("Start fight now (override)") then

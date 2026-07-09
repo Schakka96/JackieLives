@@ -93,6 +93,25 @@ coords, and a load likely culls the AMM companion — so wiring it into the auto
 fast-travel → detect load done (poll: player pos jumped far from Konpeki) → soft-teleport to `finalePos` +
 RESPAWN Jackie + run `blazeFinaleTree`. Validate the music kill via the console/overlay buttons FIRST.
 
+## UPDATE 2026-07-09 (b) — fast-travel/reload SOFTLOCK; kill the AUDIO instead
+
+In-game, `blazeFastTravelEscape()` **black-screened with no recovery**. Cause (verified): a running `.scene`
+holds a hard lock on the player + world streaming; fast-travel tears down the sector but the prologue scene
+never releases its lock / never gets a completion signal, so the load waits forever. **No CET-reachable safe
+world/sector reload exists while a scene is active** — so world-reload (fast-travel AND checkpoint) is OUT.
+`blazeFastTravelEscape` / `blazeLoadCheckpoint` are kept console-only; the overlay buttons were removed.
+
+Kill the music DIRECTLY instead (v1.11):
+- **`blazeLogAudio(true)`** — `ObserveAfter("gameGameAudioSystem", m, …)` on Play/Stop/Switch/State/Parameter/
+  PlayOnEmitter/StopOnEmitter/RequestSongOnRadioStation; prints `[Blaze][AUDIO] …` while the bed loops so you
+  can read the event/state CName, then **`blazeStopMusicEvent("<name>")`** (`AudioSystem:Stop`). Surgical, but
+  only catches SCRIPT-routed audio — a scene bed fired natively in C++ shows nothing (likely for a quest bed).
+- **`blazeMuteMusic(true)`** — GUARANTEED silence: `Game.GetSettingsSystem():GetVar("/audio/volume","MusicVolume")
+  :SetValue(0)` (restores the saved value on `false`). Works even for a native/unnamed bed. Kills ALL music, so
+  it's a toggle; wired into the finale via `Blaze.cfg.muteMusicOnFinale` (default true). This is the reliable fix.
+
+Recommended: try the logger+Stop first (surgical); if the logger shows nothing, the finale mute is the answer.
+
 ## Sources
 - decompiled `fastTravelSystem.script`, `playerCombatController.script`, `audioSystem.script`
   (CDPR-Modding-Documentation/Cyberpunk-Scripts)
