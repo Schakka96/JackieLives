@@ -85,5 +85,31 @@ if (Test-Path $awSrc) {
   Write-Host "(no audioware\$modName folder - skipping sound bank)"
 }
 
+# --- TweakXL records (v1.51) -> <game>\r6\tweaks\JackieLives ----------------
+# Loose TweakXL yaml. Currently just jl_force_stand.yaml, which defines
+# GameplayRestriction.JLForceStand -- the status effect the Blaze finale uses to UNCROUCH V.
+#
+# This step did not exist before v1.51, so a dev-loop deploy only ever refreshed the CET folder and the
+# Audioware bank. On a fresh game directory the record was therefore missing, ApplyStatusEffect silently
+# did nothing (it does not raise on an unknown TweakDBID), and V stayed crouched through the finale while
+# the log insisted the effect had been applied. Deploy it, and that whole class of "it used to work" goes away.
+#
+# NOTE: no /PURGE here. r6\tweaks is SHARED with every other TweakXL mod -- mirroring it would delete theirs.
+$twSrc = Join-Path $PSScriptRoot ("tweaks\" + $modName)
+if (Test-Path $twSrc) {
+  $twDest = Join-Path $game ("r6\tweaks\" + $modName)
+  robocopy $twSrc $twDest /E /NFL /NDL /NJH /NJS /NP /R:2 /W:1 | Out-Null
+  $trc = $LASTEXITCODE
+  if ($trc -ge 8) {
+    Write-Host "TweakXL deploy FAILED (robocopy code $trc): a file is locked by the running game."
+    Write-Host "Close Cyberpunk 2077, then run .\deploy.ps1 again."
+    exit 1
+  }
+  Write-Host "Deployed TweakXL records to $twDest"
+} else {
+  Write-Host "(no tweaks\$modName folder - skipping TweakXL records)"
+  Write-Host "WARNING: without jl_force_stand.yaml the Blaze finale cannot uncrouch V." -ForegroundColor Yellow
+}
+
 Write-Host "Restart the game (or reload the mod) to load JackieLives v$version." -ForegroundColor Green
 exit 0

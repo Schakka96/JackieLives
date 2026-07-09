@@ -86,13 +86,20 @@ M.yori = {
   goro    = { rec = "Character.Takemura", pos = { x = -2226.165, y = 1765.743, z = 308.329, yaw = -157.5 }, hpMul = 0.20 },  -- ELEVATOR spot (= Smasher's old default coord, Antonia 2026-07-08)
   smasher = { rec = "Character.Smasher",  hpMul = 0.50 },   -- spawns AT goro.pos (same elevator spot)
   heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 }, radius = 5.0 },  -- OUR optional VTOL (only if M.cfg.heliRecord set)
-  -- The AV ALREADY on the roof in the base scene — primary escape, no spawn needed.
-  -- v1.49: radius was 2.0 and NEVER FIRED. `distToPlayer` is 3-D, and this z (320.0) is the AV's own origin,
-  -- which sits above the roof deck V walks on — so the height difference alone could exceed a 2 m sphere even
-  -- with V standing right at it. 8 m comfortably swallows that dz and is still ~12 m clear of the Smasher
-  -- floor below (goro.pos z=308.3), so it cannot fire during the fight. Tune from the live distance the
-  -- escape-stage log now prints each second.
-  roofHeli = { pos = { x = -2212.9, y = 1764.67, z = 320.0 }, radius = 8.0 },   -- Antonia's roof coords 2026-07-08
+  -- The AV ALREADY on the roof in the base scene.
+  -- ⚠️ v1.51: DELIBERATELY UNREACHABLE. Antonia's explicit call (2026-07-09): *"the button never appearing was
+  -- better… we'll knowingly spawn the button at some impossible place because it's disruptive and slowing us
+  -- down."* This is a KNOWN-DISABLED exit, not a bug — do not "fix" the radius without asking her first.
+  --
+  -- The v1.49 diagnosis still stands: `distToPlayer` is a 3-D distance, and this z (320.0) is the AV's own
+  -- origin, which sits ABOVE the roof deck V stands on. The height difference alone can exceed a 2 m sphere
+  -- even with V right at it, so a 2 m radius here can never fire. Widening it to 8 m did make the prompt
+  -- appear — but in the wrong place. When we return to this, the fix is a HORIZONTAL (X/Y) check with a
+  -- vertical tolerance (a true 2 m footprint on the deck), NOT a bigger sphere.
+  --
+  -- Escape still works via the spawned VTOL (`heli`, 5 m) when `M.cfg.heliRecord` is set.
+  roofHeli = { pos = { x = -2212.9, y = 1764.67, z = 320.0 }, radius = 2.0 },   -- Antonia's roof coords 2026-07-08
+  escapeDebug = false,   -- v1.51: true = log live distance to both exits once a second while out of reach
   -- v1.07 (Antonia): the finale destination — V wakes here, Jackie (normal outfit) appears next to her
   -- facing her, and the finale conversation plays. Coords/yaw captured in-game 2026-07-09.
   finalePos = { x = -1787.921, y = -450.040, z = 7.747, yaw = -1.4 },
@@ -488,7 +495,9 @@ function M.tick(now, dt)
       local d1 = M.bound.distToPlayer and M.bound.distToPlayer(M.yori.heli.pos) or 1e9
       local d2 = (M.bound.distToPlayer and M.yori.roofHeli and M.yori.roofHeli.pos) and M.bound.distToPlayer(M.yori.roofHeli.pos) or 1e9
       local inRange = (d1 <= r1) or (d2 <= r2)
-      if not inRange and now >= (st.escapeDbgAt or 0) then
+      -- v1.51: OFF by default. roofHeli is deliberately unreachable now, so this would print every second for
+      -- the whole escape stage. Flip M.yori.escapeDebug when you actually want to re-tune the radius.
+      if M.yori.escapeDebug and not inRange and now >= (st.escapeDbgAt or 0) then
         st.escapeDbgAt = now + 1.0
         blog(("[F] prompt NOT shown — spawned VTOL %.1f m away (need <= %.1f), roof AV %.1f m away (need <= %.1f). "
               .. "Walk to the AV and read the smaller number: that's what roofHeli.radius must exceed.")

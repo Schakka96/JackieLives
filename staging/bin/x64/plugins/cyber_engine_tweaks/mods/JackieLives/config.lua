@@ -353,6 +353,19 @@ Config.stealth = {
   stealthGait    = true,
 }
 
+-- ---- Blaze finale "transport calm" (v1.51) --------------------------------
+-- At full black the finale holsters V's weapon, clears combat and force-stands her (uncrouch). That fired
+-- ONCE, in the same frame as V's async teleport — a race, and the log claimed success either way.
+-- Now it re-asserts on a heartbeat until V is OBSERVED standing (read from the PlayerStateMachine
+-- Locomotion blackboard via jlVCrouched), then reports how long it took, or says plainly that it failed.
+-- The usual real cause of failure: `GameplayRestriction.JLForceStand` doesn't exist because
+-- `tweaks/JackieLives/jl_force_stand.yaml` was never copied to `<game>\r6\tweaks\JackieLives\`.
+Config.blazeCalm = {
+  holdSeconds         = 3.0,   -- keep re-asserting for this long, or until V is seen standing
+  interval            = 0.25,  -- s between re-asserts (and between crouch checks)
+  maxHolsterReasserts = 3,     -- re-queue the holster at most this many times (the state we land in can re-draw)
+}
+
 -- ---- follower takedown (v1.47, MVP) ---------------------------------------
 -- The Heist's "Jackie takes down the second guard while V takes the first" is NOT a cutscene. It is one
 -- parameterised AI command issued to Jackie, confirmed in the decompiled scripts:
@@ -1620,9 +1633,16 @@ Config.poses = {
 -- the real width, so it stays under the crosshair rather than drifting left).
 --
 -- v1.47 (Antonia): the lower-fifth placement OVERLAPPED THE NATIVE SUBTITLE LINE, which lives at the bottom
--- of the screen. The box top now sits at `topFrac` (36%) of screen height — high enough to clear the
--- subtitle band, still comfortably in the lower half. `bottomMargin` stays purely as a safety clamp so the
--- box can never run off the bottom at an extreme aspect ratio / scale clamp; it should never bind at 36%.
+-- of the screen. So the box top is positioned by `topFrac` instead.
+--
+-- ⚠️ v1.51: `topFrac` is measured DOWN FROM THE TOP of the screen. v1.47 set it to 0.36 by reading Antonia's
+-- "36%" as 36% from the top — which put the box just ABOVE centre ("VERY high"). She meant 36% UP FROM THE
+-- BOTTOM, so the correct value is 1 - 0.36 = 0.64. Since the box is baseH/refH ≈ 22% of screen height, it now
+-- spans 64%..86%: lower half, clear of the subtitle band. If you retune this, remember the axis points DOWN —
+-- a BIGGER topFrac means LOWER on screen. (History: lower-fifth ≈ 0.78 was too low and hit the subtitles;
+-- 0.36 was far too high; 0.64 is the value Antonia picked from a mock-up.)
+-- `bottomMargin` stays purely a safety clamp so the box can never run off the bottom at an extreme aspect
+-- ratio / scale clamp; it should not bind at 0.64.
 Config.picker = {
   refH        = 1080.0,  -- the resolution the base sizes below were designed at
   baseW       = 620.0,   -- box width  @ refH
@@ -1630,7 +1650,7 @@ Config.picker = {
   baseFont    = 1.45,    -- ImGui font scale @ refH
   nameW       = 128.0,   -- "JACKIE" name plate @ refH
   nameH       = 34.0,
-  topFrac     = 0.36,    -- TOP EDGE of the box, as a fraction of screen height (clears the subtitle line)
+  topFrac     = 0.64,    -- TOP EDGE of the box, as a fraction of screen height DOWN FROM THE TOP (bigger = lower)
   bottomMargin= 0.02,    -- safety clamp only: keep at least this fraction of the screen below the box
   minScale    = 0.8,     -- clamp so a tiny window can't make it unreadable...
   maxScale    = 3.0,     -- ...or a huge one make it cartoonish

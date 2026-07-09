@@ -55,6 +55,7 @@ local Config = require("config")
 Retrieval = require("retrieval")   -- "Where's Jackie?" questline + master mod gate (see retrieval.lua)
 pcall(function() package.loaded["blaze"] = nil end)   -- v0.98: force a FRESH read on CET soft-reload; else the cached old module sticks (stale startYorinobu/diagnose)
 Blaze     = require("blaze")       -- v0.96 GLOBAL (200-cap): "Blaze of Glory" Heist set-piece (see blaze.lua)
+Session   = require("session")     -- v1.49 GLOBAL (200-cap): session guard + crash log (see session.lua)
 -- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
 -- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
 -- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
@@ -420,14 +421,37 @@ end
 -- (verified in locomotionTransitions CrouchDecisions). We ship a tiny TweakXL clone of the stock ForceCrouch
 -- with the tag swapped (r6/tweaks/JackieLives/jl_force_stand.yaml -> GameplayRestriction.JLForceStand); we
 -- try that first, then the stock name as a fallback. Removed again when the finale convo ends (blazeReleaseStand).
+-- ⚠️ v1.51 — THE OLD LOOP COULD NOT FAIL, AND SO COULD NOT FALL BACK.
+-- It did `pcall(function() ApplyStatusEffect(pl, rec); ok = true end)` and treated "nothing threw" as
+-- success. But ApplyStatusEffect is a native import: handed a TweakDBID that doesn't exist it simply does
+-- nothing — it does NOT raise. So `ok` was ALWAYS true for the first record, we logged
+-- "applied GameplayRestriction.JLForceStand", returned, and never tried the stock fallback. If the TweakXL
+-- record wasn't installed, V stayed crouched while the log insisted the effect had been applied.
+--
+-- `GameplayRestriction.JLForceStand` only exists if `tweaks/JackieLives/jl_force_stand.yaml` is deployed to
+-- `<game>\r6\tweaks\JackieLives\`. Until v1.51 `deploy.ps1` NEVER copied it (it only ever deployed the CET
+-- folder and the Audioware bank), so a dev-loop deploy into a fresh game dir silently lost the record.
+--
+-- Fix: choose the record by whether TweakDB actually HAS it — a synchronous, reliable discriminator — instead
+-- of by whether ApplyStatusEffect declined to throw. (We deliberately do NOT verify with
+-- StatusEffectSystem.ObjectHasStatusEffect here: on the frame the effect is applied it can still read false,
+-- which would send us down the fallback for no reason. blazeCalmHoldTick does the real outcome check, by
+-- watching whether V actually stands up.)
 function blazeForceStand(pl)
   pl = pl or Game.GetPlayer(); if not pl then return false end
   for _, rec in ipairs({ "GameplayRestriction.JLForceStand", "GameplayRestriction.ForceStand" }) do
-    local ok = false
-    pcall(function() StatusEffectHelper.ApplyStatusEffect(pl, rec); ok = true end)
-    if ok then JL.forceStandRec = rec; log("[Blaze] forceStand: applied " .. rec); return true end
+    local present
+    pcall(function() present = TweakDB:GetRecord(rec) end)
+    if present == nil then
+      log("[Blaze] forceStand: record " .. rec .. " is NOT in TweakDB -> skipping it.")
+    else
+      local sent = pcall(function() StatusEffectHelper.ApplyStatusEffect(pl, rec) end)
+      if sent then JL.forceStandRec = rec; log("[Blaze] forceStand: applied " .. rec); return true end
+      log("[Blaze] forceStand: " .. rec .. " exists but ApplyStatusEffect errored.")
+    end
   end
-  log("[Blaze] forceStand: no ForceStand record applied (uncrouch may not take).")
+  log("[Blaze] forceStand: NO ForceStand record exists -> V will STAY CROUCHED. Install the TweakXL file at "
+      .. "<game>\\r6\\tweaks\\JackieLives\\jl_force_stand.yaml (deploy.ps1 copies it since v1.51).")
   return false
 end
 
@@ -450,8 +474,53 @@ function blazeTransportCalm()
   pcall(function() blazeHolsterWeapon(pl) end)
   -- STAND UP / uncrouch (filled from research).
   pcall(function() blazeForceStand(pl) end)
-  log("[Blaze] transportCalm: out-of-combat + holster + stand (best-effort).")
+  -- v1.51: ARM THE HOLD. This runs in the SAME FRAME as V's teleport, and the teleport is ASYNC (the very
+  -- reason the finale re-issues Jackie's placement until he lands). Firing the holster/uncrouch once into
+  -- that frame is a race: whichever of the two the engine processes second can swallow the first. So we
+  -- keep re-asserting on a short heartbeat until V is OBSERVED standing, then stop and say how long it took.
+  -- If the window expires with V still crouched, we say THAT — instead of the old log's confident "applied".
+  local C = Config.blazeCalm or {}
+  JL.blazeCalm = { startedAt = JL.clock or 0, deadline = (JL.clock or 0) + (C.holdSeconds or 3.0),
+                   nextAt = (JL.clock or 0) + (C.interval or 0.25), holsters = 0 }
+  log("[Blaze] transportCalm: out-of-combat + holster + stand issued; verifying for "
+      .. tostring(C.holdSeconds or 3.0) .. " s.")
   return true
+end
+
+-- v1.51: watch the calm to a conclusion. Stepped from onUpdate. Cheap: does nothing unless armed.
+-- Re-asserts ForceStand quietly (we already know which record works — no repeat of its log line), and
+-- re-queues the holster a couple of times, since a weapon can be re-drawn by the state the teleport lands in.
+function blazeCalmHoldTick()
+  local h = JL.blazeCalm; if not h then return end
+  local C = Config.blazeCalm or {}
+  local now = JL.clock or 0
+  if now < (h.nextAt or 0) then return end
+  h.nextAt = now + (C.interval or 0.25)
+  local pl; pcall(function() pl = Game.GetPlayer() end)
+  if not pl then return end
+
+  if not jlVCrouched() then                       -- the outcome we actually wanted
+    log(("[Blaze] transportCalm: V is STANDING (took %.2f s)."):format(now - (h.startedAt or now)))
+    JL.blazeCalm = nil
+    return
+  end
+  if now >= (h.deadline or 0) then
+    log("[Blaze] transportCalm: V is STILL CROUCHED after " .. tostring(C.holdSeconds or 3.0)
+        .. " s — the ForceStand effect never took. See the `forceStand:` line above; the usual cause is that "
+        .. "<game>\\r6\\tweaks\\JackieLives\\jl_force_stand.yaml isn't installed in the game directory.")
+    JL.blazeCalm = nil
+    return
+  end
+  -- still crouched, still inside the window -> re-assert.
+  if JL.forceStandRec then                        -- known-good record: re-apply it without re-logging
+    pcall(function() StatusEffectHelper.ApplyStatusEffect(pl, JL.forceStandRec) end)
+  else
+    pcall(function() blazeForceStand(pl) end)     -- never resolved one; this logs why
+  end
+  if (h.holsters or 0) < (C.maxHolsterReasserts or 3) then
+    h.holsters = (h.holsters or 0) + 1
+    pcall(function() blazeHolsterWeapon(pl) end)
+  end
 end
 
 -- (3) END THE ACTIVE SCENE — there is NO scripted per-scene abort in 2.x; the only script handle on a
@@ -770,14 +839,21 @@ local function ammSpawn(companionFlag, appearance)
   -- false makes companionFlag 0 truly passive (no follower role, no teleport).
   pcall(function() if amm.userSettings then amm.userSettings.spawnAsCompanion = (companionFlag == 1) end end)
   local spawn
+  Session.mark("AMM NewSpawn " .. tostring(app))
   local ok = pcall(function()
     -- arg 3 = the appearance NAME AS A STRING (see the note above). arg 5 (`path`) is the record that
     -- actually spawns; arg 2 (`id`) is only AMM's bookkeeping key, so the record string is harmless there.
     spawn = amm.Spawn:NewSpawn(JL.jackie.name or "Jackie", recStr, app, companionFlag, recStr)
   end)
+  Session.clear()
   if not ok or not spawn then return nil, "NewSpawn failed" end
+  Session.mark("AMM SpawnNPC")
   local ok2 = pcall(function() amm.Spawn:SpawnNPC(spawn) end)
+  Session.clear()
   if not ok2 then return nil, "SpawnNPC failed" end
+  -- v1.49: stamp the record with the session that created it. Session.stale() reads this to know the
+  -- handle is a dead pointer after a load, so callers drop it instead of dereferencing it.
+  Session.stamp(spawn)
   -- v1.43: REMEMBER what the companion is wearing. Every companion respawn (culled body, stranded
   -- fast-travel) used to call ammSpawn(1) with no appearance and silently put him back in
   -- Config.defaultAppearance — which is why the Blaze heist Jackie lost his suit at Konpeki, where
@@ -2335,11 +2411,14 @@ local function drawDialogueBox()
     local W, H = (P.baseW or 620.0) * s, (P.baseH or 240.0) * s
 
     local px = (sw - W) * 0.5 + (P.xOffset or 0.0) * s     -- genuinely centred (the old -150 nudge is gone)
-    -- v1.47: TOP EDGE at `topFrac` of screen height (36%). The old lower-fifth placement overlapped the
-    -- native subtitle line at the bottom of the screen. `bottomMargin` is now only a safety clamp for
-    -- extreme aspect ratios / scale clamps; at 36% it never binds. Both are fractions of the screen, so
-    -- this holds identically at any resolution.
-    local py = (P.topFrac or 0.36) * sh
+    -- TOP EDGE of the box at `topFrac` of screen height, measured DOWN FROM THE TOP.
+    -- v1.51: was 0.36, which parked the box just ABOVE the middle of the screen (Antonia: "now it's VERY
+    -- high"). The "36%" she asked for was 36% measured UP FROM THE BOTTOM — i.e. topFrac = 1 - 0.36 = 0.64.
+    -- The box is baseH/refH ≈ 22% of screen height, so it now spans 64%..86%: squarely in the lower half and
+    -- still clear of the native subtitle band at the very bottom, which the old lower-fifth placement hit.
+    -- `bottomMargin` stays a safety clamp for extreme aspect ratios / scale clamps; at 0.64 it doesn't bind.
+    -- Both are fractions of the screen, so this holds identically at any resolution.
+    local py = (P.topFrac or 0.64) * sh
     py = math.min(py, sh - H - (P.bottomMargin or 0.02) * sh)
     py = math.max(py, 0.0)
 
@@ -3855,7 +3934,7 @@ local function vehicleArrivalFootFallback(reason)
     JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, (spawn ~= nil), false
     va.phase = nil; return
   end
-  JL.summon.spawn = { id = jid, handle = nil }
+  JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.49: stamp so a post-load stale ref is dropped, not dereferenced
   JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
   va.bikeId, va.bikeHandle = nil, nil
   va.phase          = "sprinting"                        -- reuse the on-foot sprint -> walk -> handoff
@@ -3886,7 +3965,7 @@ local function beginFootApproach(dist, reason)
   if not pt then JL.ui.status = "Arrival: no valid spawn point."; log(("FootApproach: NO navmesh/height-valid point at %.0f m."):format(dist)); return false end
   local jid = spawnDynEntity(Config.jackieRecord or "Character.Jackie", pt, yawToward(pt, pp), "JackieLives_jackie")
   if not jid then JL.ui.status = "Arrival spawn failed (see console)."; log("FootApproach: spawn failed."); return false end
-  JL.summon.spawn = { id = jid, handle = nil }
+  JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.49: stamp so a post-load stale ref is dropped, not dereferenced
   JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
   va.pt             = pt
   va.bikeId, va.bikeHandle = nil, nil
@@ -3941,7 +4020,7 @@ local function vehicleArrivalTick()
       log("VehArrival: spawn failed (bike=" .. tostring(va.bikeId ~= nil) .. ", jackie=" .. tostring(jid ~= nil) .. ")")
       despawnArrivalBike(); if jid then deleteEntityById(jid) end; return
     end
-    JL.summon.spawn = { id = jid, handle = nil }
+    JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.49: stamp so a post-load stale ref is dropped, not dereferenced
     JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
     va.bikeHandle = nil
     va.placeAt    = (JL.clock or 0) + 1.0
@@ -4403,13 +4482,10 @@ function jlSneakStates()
   return t
 end
 
-function jlVSneaking()
-  local S = Config.stealth or {}
-  if S.enabled == false then return false end
-  local st = JL.abreast
-  local now = JL.clock or 0
-  if st.snFrame == now then return st.sneaking end     -- compute once per frame (two ticks ask)
-  st.snFrame = now
+-- v1.51: the RAW read — "is V crouched right now?" — with no mod-feature gate on it. The Blaze finale's
+-- calm-hold needs this to verify V actually stood up, and that must not depend on Config.stealth.enabled.
+-- jlVSneaking() below is this plus the stealth feature's on/off switch and a per-frame cache.
+function jlVCrouched()
   local val = false
   pcall(function()
     local pl = Game.GetPlayer(); if not pl then return end
@@ -4422,8 +4498,18 @@ function jlVSneaking()
     if not bb then return end
     val = (jlSneakStates())[bb:GetInt(defs.Locomotion)] == true
   end)
-  st.sneaking = val
   return val
+end
+
+function jlVSneaking()
+  local S = Config.stealth or {}
+  if S.enabled == false then return false end
+  local st = JL.abreast
+  local now = JL.clock or 0
+  if st.snFrame == now then return st.sneaking end     -- compute once per frame (two ticks ask)
+  st.snFrame = now
+  st.sneaking = jlVCrouched()
+  return st.sneaking
 end
 
 -- v1.46 DIAGNOSTIC (logs once). The engine hides a companion from enemy perception automatically —
@@ -6368,6 +6454,40 @@ function settleTick()
   end
 end
 
+-- v1.49 SESSION RESET — called by Session.tick() the frame a new session begins (game load, load-from-
+-- save, new game). Every entity handle we hold belongs to the world that just went away.
+--
+-- ⚠️ DROP the references. Do NOT despawn, do NOT read a position, do NOT null-check by dereferencing.
+-- Those handles point at freed native memory; touching one is the crash we are here to prevent. AMM
+-- rebuilds its own spawn table on load, so its bodies are its problem, not ours — there is nothing for
+-- us to clean up, only references for us to forget.
+function jlResetSessionState(id, why)
+  JL.summon   = { spawn = nil, active = false, companionSet = false, walkIn = false }
+  JL.idle     = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
+                  spawnedAt = 0, dwellUntil = 0, arriveBy = 0, lastReissue = 0,
+                  leaving = false, leaveTarget = nil, leaveDeadline = 0, leaveReissue = 0,
+                  collisionOff = false }
+  JL.settle   = { hideUntil = nil, collideUntil = nil, handle = nil,
+                  reposePending = nil, reposeAt = nil, reposeLast = nil }
+  JL.smile    = { until_ = 0, nextRoll = 0, nextApply = 0, cooldownUntil = 0, handle = nil,
+                  reunionActive = false, reunionForceUntil = 0, reunionSafety = 0, idle = nil }
+  JL.varrival = { at = nil, phase = nil, pt = nil, bikeId = nil, bikeHandle = nil,
+                  placeAt = nil, driveAt = nil, sprintAt = nil, lastReissue = 0, deadline = nil, driveCmd = nil }
+  JL.arrival  = { at = nil, phase = nil, pt = nil, placeAt = nil, moveAt = nil, deadline = nil, lastReissue = 0 }
+  JL.leaving  = { phase = nil, deadline = nil, lastReissue = 0 }
+  JL.catchUp  = { farSince = nil, lastAt = nil, teleTries = nil }
+  JL.follow   = { lastAt = nil }
+  JL.abreast  = { lastAt = nil }
+  JL.persist  = { gapSince = nil, lastRespawn = nil, worldReadyAt = nil }
+  -- dinner: clear only the in-flight outing, keep the cross-session offer schedule
+  if JL.dinner then
+    JL.dinner.phase, JL.dinner.dest, JL.dinner.destName, JL.dinner.destYaw = nil, nil, nil, nil
+    JL.dinner.mappinId, JL.dinner.satAt, JL.dinner.seatDeadline, JL.dinner.sitFireAt = nil, nil, nil, nil
+    JL.dinner.collisionOff = false
+  end
+  log(("[SESSION] #%d state reset (%s) — all entity handles dropped."):format(id or -1, tostring(why)))
+end
+
 -- Per-frame guard: keep the saved companion fact in sync with reality, and if the save says Jackie
 -- should be with V but his body is gone (fresh load wiped Lua state, or a load-screen fast-travel
 -- culled him), bring him back. Reuses JL.clock for all timing (no dt needed).
@@ -6394,14 +6514,30 @@ function companionPersistTick()
   if (now - JL.persist.worldReadyAt) < (P.startupGrace or 8.0) then return end  -- let the world finish streaming
 
   -- Is a LIVE, settled companion actually present right now?
+  -- v1.49: Session.stale() FIRST. A spawn record from a previous session holds a dead native pointer;
+  -- the GetWorldPosition() below would be a use-after-free. Drop it without touching it.
   local live = false
+  if JL.summon.spawn and Session.stale(JL.summon.spawn) then
+    log("[SESSION] persist: dropping stale spawn record from a previous session (not dereferenced).")
+    JL.summon.spawn, JL.summon.active, JL.summon.companionSet = nil, false, false
+  end
   if JL.summon.active and JL.summon.companionSet and JL.summon.spawn and JL.summon.spawn.handle then
     local jp; pcall(function() jp = JL.summon.spawn.handle:GetWorldPosition() end)
     live = (jp ~= nil)
   end
 
   if live then
-    if not companionFlagSet() then setCompanionFlag(true) end   -- self-heal: he's here, record it
+    -- v1.49 CROSS-SAVE LEAK FIX: only self-heal the fact if THIS save already claimed him when the
+    -- session began. Previously a stale handle that still happened to resolve made `live` true, and
+    -- this line wrote the companion fact into a freshly-loaded save that never had a Jackie — a
+    -- one-way ratchet that made him "come with" into other saves. Never create the fact, only repair it.
+    if not companionFlagSet() then
+      if Session.companionAtStart then
+        setCompanionFlag(true)                                  -- self-heal: this save DID claim him
+      else
+        log("[SESSION] persist: live companion but this save never claimed him — NOT writing the fact.")
+      end
+    end
     JL.persist.gapSince = nil
     return
   end
@@ -6432,7 +6568,12 @@ function companionPersistTick()
 end
 
 registerForEvent("onInit", function()
-  pcall(function() local f = io.open("jackie_debug.log", "w"); if f then f:close() end end)  -- v0.76: fresh log each load
+  -- v1.49: ROTATE, don't truncate. The old `io.open("...","w")` here destroyed the log of the run that
+  -- crashed, on the very next launch — i.e. exactly when you went looking for it. The crashing run now
+  -- survives as jackie_debug.log.prev; read its tail for the last [MARK] before the process died.
+  Session.bind{ log = log, onNewSession = jlResetSessionState }
+  Session.rotateLog()
+  Session.header(JL.mode)
   pcall(function() math.randomseed((os.time and os.time() or 0)) end)  -- v0.36: random day-bag shuffle
   getAMM()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
@@ -7112,6 +7253,11 @@ end
 
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
+  -- v1.49 SESSION GUARD — MUST BE FIRST. onUpdate keeps ticking through a load screen, so on the frame a
+  -- new session starts every handle below this line is a pointer into the world that just died. Nothing
+  -- that can touch a handle may run before this. (`pcall` cannot save us from a native use-after-free.)
+  pcall(function() Session.tick() end)
+  if Session.id == 0 then return end   -- main menu / load screen: no world, no session — touch nothing
   -- Retrieval questline (Vik reveal tip, Badlands shard, Misty/Mama post-reunion shards) is a QUIET-LIFE
   -- thing — in Blaze mode Jackie is handed to you by the set-piece, so none of those custom shards should
   -- fire (Antonia 2026-07-08). Blaze's finale calls Retrieval.forceReunion() directly for the unlock.
@@ -7139,8 +7285,18 @@ registerForEvent("onUpdate", function(dt)
   pcall(bikeTestTick)        -- v0.63: read back what the bike-model test actually spawned
   pcall(arrivalGreetTick)    -- v0.46/v0.48: one-shot fresh greeting when an arrived Jackie closes to 4 m
   pcall(leavingTick)    -- v0.33: dismissed Jackie walking off -> despawn at distance
+  -- v1.49: THE CRASH SITE. This block ran every frame against JL.summon.spawn.handle — including the
+  -- frames right after a load-from-save, when that handle points into the world that was just torn down.
+  -- SetNPCAsCompanion on freed memory is a native use-after-free, and the pcall below never caught it
+  -- (pcall catches Lua errors, not native faults). Session.tick() should already have reset us; this
+  -- stamp check is the belt to that braces, because this is where the dead handle was actually touched.
+  if JL.summon.spawn and Session.stale(JL.summon.spawn) then
+    log("[SESSION] promote: dropping stale spawn record from a previous session (not dereferenced).")
+    JL.summon.spawn, JL.summon.active, JL.summon.companionSet = nil, false, false
+  end
   if JL.summon.spawn and JL.summon.spawn.handle and not JL.summon.companionSet and not JL.summon.walkIn then
     local amm = getAMM()
+    Session.mark("AMM SetNPCAsCompanion (promote)")
     pcall(function()
       if amm and amm.Spawn and amm.Spawn.SetNPCAsCompanion then
         amm.Spawn:SetNPCAsCompanion(JL.summon.spawn.handle)
@@ -7150,6 +7306,7 @@ registerForEvent("onUpdate", function(dt)
         h:GetAttitudeAgent():SetAttitudeTowards(pl:GetAttitudeAgent(), EAIAttitude.AIA_Friendly)
       end
     end)
+    Session.clear()
     JL.summon.companionSet = true
     setCompanionFlag(true)   -- v0.72: persist "is companion" (this is the summon/respawn promote path)
     JL.ui.status = "Jackie is following."
@@ -7207,6 +7364,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(abreastTick)      -- v0.84: OR (when enabled) hold him beside/ahead of V instead of trailing
   pcall(jlTakedownTick)   -- v1.48: watch an ordered takedown to a conclusion (grapple / down / timeout)
+  pcall(blazeCalmHoldTick) -- v1.51: re-assert holster/uncrouch after the async finale teleport, and verify
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
   pcall(companionPersistTick)  -- v0.72: saved "is companion" but his body is gone (reload / culling FT) -> respawn at V
   pcall(settleTick)       -- v0.82: hide + no-collision for a beat after a respawn-at-V so he doesn't pop/clip in

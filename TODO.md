@@ -11,6 +11,72 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-09 (v1.51) — V's uncrouch/holster: NOT a regression, a silent no-op that was always possible
+
+Antonia: *"V doesn't exit crouch correctly and didn't unholster gun during teleport → before this worked, has
+anything changed?"*
+
+**Answer: nothing in that code changed.** Verified with `git log -L` over the exact line ranges:
+`blazeHolsterWeapon` / `blazeForceStand` / `blazeTransportCalm` last changed in **v1.13** (`a002b6d`), and the
+at-black callback that calls them last changed in **v1.12** (`49898f7`). Nothing from v1.41→v1.50 touched
+either, and v1.50 moved only *Jackie*, never V. So it did not deteriorate — it was **always able to fail
+silently, and the log always claimed success.** Three causes, all now fixed:
+
+1. 🐛 **`blazeForceStand` could not fail, so it could never fall back.** It ran
+   `pcall(function() ApplyStatusEffect(pl, rec); ok = true end)` and treated *"nothing threw"* as success. But
+   `ApplyStatusEffect` is a **native import**: handed a TweakDBID that does not exist it simply does nothing —
+   it does **not** raise. So `ok` was always true for the first record, we logged
+   `forceStand: applied GameplayRestriction.JLForceStand`, returned, and **never tried the stock fallback**.
+   With the TweakXL record absent, V stayed crouched while the log insisted otherwise.
+   → The record is now chosen by **`TweakDB:GetRecord(rec)`** — a synchronous, reliable discriminator — and
+   total failure is reported loudly, naming the missing yaml.
+
+2. 🚚 **`deploy.ps1` never deployed the TweakXL record.** `GameplayRestriction.JLForceStand` exists only if
+   `tweaks/JackieLives/jl_force_stand.yaml` sits at `<game>\r6\tweaks\JackieLives\`. The script only ever
+   copied `mod\JackieLives` → CET mods and `audioware\JackieLives` → `r6\audioware`. **This is almost certainly
+   the "it used to work" trigger** — a fresh game dir or reinstall loses the record, and no deploy restores it.
+   → `deploy.ps1` now copies `tweaks\JackieLives` too (deliberately **no** `/PURGE`: `r6\tweaks` is shared with
+   every other TweakXL mod), and warns when the folder is absent.
+
+3. ⏱️ **The single at-black attempt was a race.** `blazeTransportCalm` fires in the *same frame* as V's
+   **async** teleport — the same asynchrony that forced v1.47/v1.50 to re-issue Jackie's placement.
+   → New `blazeCalmHoldTick`: re-asserts ForceStand (quietly, reusing the record that worked) and re-queues the
+   holster up to `maxHolsterReasserts` times, until V is **observed standing** via the PlayerStateMachine
+   Locomotion blackboard — then logs how long it took, or says plainly that she is still crouched and points at
+   the missing yaml. Knobs in `Config.blazeCalm`.
+   → Factored `jlVCrouched()` out of `jlVSneaking()` so the raw crouch read no longer depends on
+   `Config.stealth.enabled`.
+
+→ **TEST:** run `.\deploy.ps1` (it now prints `Deployed TweakXL records to …`), then play the finale. In
+`jackie_debug.log` expect `transportCalm: V is STANDING (took 0.XX s)`. If you instead see
+`record GameplayRestriction.JLForceStand is NOT in TweakDB`, the yaml still isn't in your game directory.
+
+**Tests:** `tools/test_blaze_calm.lua` — 24 assertions; extracts the real `blazeForceStand` /
+`blazeCalmHoldTick` out of `init.lua` so they cannot drift. Confirmed it *catches* the old bug: run against
+`git show HEAD`, the old function applies the **nonexistent** record and logs "applied"; the new one skips it
+and falls back to the stock record.
+
+### 🆕 Added 2026-07-09 (v1.51) — picker was VERY high; heli prompt deliberately disabled
+
+- [x] 🖥️ **Picker vertical placement.** `topFrac` is measured **down from the top**, so v1.47's `0.36` parked
+  the box just *above* centre. Antonia's "36%" meant **36% up from the bottom** → `topFrac = 1 - 0.36 = 0.64`.
+  The box is ≈22% of screen height, so it now spans **64%→86%**: lower half, clear of the subtitle band. The
+  config comment now spells out that **a bigger `topFrac` means LOWER on screen**, with the history (0.78 too
+  low and hit the subtitles · 0.36 far too high · 0.64 chosen from a mock-up) so nobody re-guesses the axis.
+- [x] 🚁 **Heli `[F]` prompt: reverted to the version that never appears — Antonia's explicit call.**
+  *"The button never appearing was better… we'll knowingly spawn the button at some impossible place because
+  it's disruptive and slowing us down."* `roofHeli.radius` is back to `2.0`, which (per the v1.49 diagnosis)
+  can never trigger: `distToPlayer` is 3-D and that `z` is the AV's origin **above** the deck V stands on.
+  **This is a KNOWN-DISABLED exit, not a bug — do not "fix" the radius without asking her first.** The
+  per-second distance log now sits behind `M.yori.escapeDebug` (default `false`) so it cannot spam.
+  When we return to it, the right fix is a **horizontal (X/Y) check with a vertical tolerance** — a true 2 m
+  footprint on the deck — not a bigger sphere. Escape still works via the spawned VTOL (`heli`, 5 m).
+- [x] ✅ Jackie arrives at the finale in the correct outfit — Antonia confirmed in-game. v1.43 + v1.50 hold.
+- ℹ️ **Where is the takedown test button?** CET overlay (`~`) → the **"Jackie Lives"** window (*not* the Esc
+  menu), scroll near the bottom → heading **"Follower takedown (experimental)"** →
+  `TEST: Jackie takedown (look at)`. It only draws while the overlay is open: aim at the guard, open the
+  overlay, click.
+
 ### 🆕 Added 2026-07-09 (v1.50) — finale Jackie clipped into the fence: WRONG MOVER + WRONG TARGET
 
 Antonia: "he does spawn now, but in front of V and clipped into the fence. When we spawn Jackie after fast
