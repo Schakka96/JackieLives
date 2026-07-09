@@ -365,18 +365,31 @@ Scripted editing required (once the spike confirms facts):
       `gameJournalEntryState.Succeeded` / `gameJournalNotifyOption.Notify` enum names are right in-game.
     * Confirm q101 truly never starts after this (the whole point) — or, if the design wants it "completed"
       rather than "never started", decide which and implement accordingly.
-- ✅ **BLAZE BRANCH — NEXT THINGS TO DO / CHECK (running checklist):**
-  1. `- [ ]` **Capture `startFact`** — the real quest fact at the "T-Bug opens the glass doors" beat with
-     JLFactDump; replace the `spiderbot_glass` guess in `M.yori.startFact`.
-  2. `- [x]` **Removed the dead `autoRadius = 12.0`** leftover in blaze.lua (v1.05).
-  3. `- [ ]` **Real q005/q101 completion** (see UPCOMING TASKS above) — swap the cosmetic best-effort.
-  4. `- [ ]` **Scene luggage-Jackie auto-removal** — grab his class name via the "Remove the Jackie I'm
-     looking at" button's console log, then auto-target him at fight start (currently manual only).
-  5. `- [ ]` **Real WolvenKit `.journal` objectives** (MVP-B) — swap `objective()` in the bind (one line).
-  6. `- [ ]` **Verify the fade** (see v1.02 TEST) and **verify** real subtitles + companion-stays-and-fights.
-  7. `- [ ]` **Verify heli record / roof-AV escape** and that DES-spawned Takemura/Smasher actually fight.
-  8. `- [ ]` Keep the **`Blaze.bind` contract** complete as blaze.lua/init.lua evolve (every `M.bound.X`
-     used in blaze.lua has a matching bind in init.lua).
+- 🎉 **BLAZE OF GLORY — SHIPPABLE (2026-07-09, v1.13). Confirmed in-game end-to-end by Antonia** (lands at the
+  finale spot, sunlit/midday, no music, fresh Jackie beside V, holstered/standing/calm, full branching convo).
+  Green-lit to publish. See the 2026-07-09 logbook entry for the full batch. **Pre-publish:** deploy
+  `r6/tweaks/JackieLives/jl_force_stand.yaml` (fomod covers it); audio logger off by default; mute-on-finale on.
+  - ✅ Bosses drop to floor · Takemura removed · scene-Jackie auto-removed by id · dirty-suit fight Jackie ·
+    heli line→fade · weather+midday at black · transport-calm (holster/stand/out-of-combat) · fresh-respawn
+    Jackie beside V · 1.8s settle · reconciled branching finale convo · Blaze auto-disables quiet-life extras.
+  - ✅ **Stuck-scene MUSIC solved as far as CET allows:** the q005 score is fired NATIVELY (proven via 2 audio
+    logs) → no Stop() and no scene-abort exist → **MusicVolume=0 mute** is the fix (wired into the finale).
+    See [[jackielives-heist-music-native]] + `docs/research/cet_scene_music_teardown.md`.
+  - ✅ **BLAZE BRANCH checklist (superseded — kept for history):**
+    1. `- [~]` `startFact` = `phonecall_player_with_tbug` falling edge (working in-game; the `spiderbot_glass`
+       guess is gone). Fine for ship.
+    2. `- [x]` Removed the dead `autoRadius` (v1.05).
+    3. `- [ ]` **Real q005/q101 completion** — still the cosmetic best-effort (succeed+untrack). Blaze avoids
+       q101 by never completing q005, so this is a polish/nicety, NOT a blocker for ship.
+    4. `- [x]` Scene luggage-Jackie auto-removal — done (by persistent id 9001273, v1.07).
+    5. `- [ ]` **Real WolvenKit `.journal` objectives** (MVP-B) — still the message-band placeholder. Optional polish.
+    6. `- [x]` Fade / subtitles / companion-stays-and-fights — all verified in-game.
+    7. `- [x]` Roof-AV escape + bosses fight — verified.
+    8. `- [x]` `Blaze.bind` contract complete (holster/stand/weather/mute/scene-Jackie/teardown all bound).
+  - **Post-ship polish backlog (optional, non-blocking):** real `.journal` objectives (#5); real q005 graph
+    completion (#3); soften the global music-mute (needs a WolvenKit `.scene` edit so the q005 scene actually
+    ENDS — only then can music be restored without the bed returning); tuck the CET dev buttons behind a
+    "dev tools" collapse for the released overlay.
 - 🔨 **BUILT 2026-07-09 (blaze v1.07–v1.08; awaiting Windows in-game test) — immersion batch + finale conversation.**
   `mod/JackieLives/{blaze.lua,init.lua,config.lua}`, mirrored to `staging/`, all three parse-checked.
   - **Jackie fights in the dirty heist suit** — `becomeCompanion(fightAppearance)`; `M.yori.fightAppearance =

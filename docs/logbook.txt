@@ -8,6 +8,59 @@ Log last written: 2026-06-16 (day session)
 Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
 
 --------------------------------------------------------------------------------
+2026-07-09  -  BLAZE OF GLORY finale COMPLETE & shippable (v1.05 -> v1.13)
+--------------------------------------------------------------------------------
+The "Blaze of Glory" alternate-Heist set-piece reached a shippable end-to-end state
+this session (Antonia confirmed in-game: lands at the finale spot, sunlit, no music,
+Jackie beside V, full conversation). Batch, by area:
+
+FINALE SET-PIECE (blaze.lua / init.lua Blaze.bind):
+- Bosses drop to the floor (goro.pos z 309.329 -> 308.329); Takemura removed (commented
+  out) so the fight is Smasher-only at the elevator; scene luggage-Jackie auto-removed by
+  persistent id 9001273 (despawnSceneJackie).
+- Jackie fights in the dirty heist suit (fightAppearance jackie_welles__q005_suit); heli
+  bark "Jump!" -> "C'mon, V - let's get outta here", fade WAITS for the line.
+- Finale teleports V to Antonia's captured spot {-1787.921,-450.040,7.747} yaw -1.4, then
+  RESPAWNS a fresh Jackie in normal outfit BESIDE V (the fight companion is culled by the
+  long teleport), facing her (V's right vector, navmesh-snapped, Blaze.yori.finaleSide).
+- Weather->sunny + time->MIDDAY flipped at FULL BLACK (was too early at the heli).
+- Transport-calm at full black: OUT OF COMBAT + HOLSTER (EquipmentSystem UnequipWeapon
+  request) + FORCE-STAND (a ForceStand-tagged status effect — the PSM blackboard can't force
+  it; ship a TweakXL clone of ForceCrouch: r6/tweaks/JackieLives/jl_force_stand.yaml).
+- Convo starts only after the fade fully lifts + a 1.8s settle (was appearing on the black).
+- Blaze auto-disables the Quiet-Life extras (retrieval tip/shard, Misty/Mama post-shards,
+  mourning + ofrenda) while JL.mode == "blaze".
+
+FINALE CONVERSATION (Config.blazeFinaleTree, reuses the reunion Branch engine):
+- Data-driven branching subtitle convo. Antonia's script + notes: longer preamble (catch a
+  breath / pause / "shame nobody'll know it was us") -> V asks about the case -> Jackie
+  deflects -> destroyed-chip reveal -> V 3 options (ONE angry) forking to mad/easy -> "nobody's
+  gonna believe it" -> subtitle-only "Okay soo... What's next?" -> V "...nobody's writing our
+  story but us." Long lines length-paced (isReunionBeat extended to blazeFinaleTree).
+
+THE STUCK-SCENE MUSIC (the hard one - RESOLVED as far as CET allows):
+- Root cause: teleporting V out of the live q005 Heist leaves the SCENE running, and its music
+  bed keeps playing. Three research passes + two in-game audio-logger captures proved the
+  heist/combat score is fired NATIVELY (C++/scene) - a CET ObserveAfter on gameGameAudioSystem
+  catches only the pocket-radio Switch + UI jingles, never the score. So: no observable event to
+  Stop(), and 2.x exposes NO scripted scene-abort.
+- Dead ends (verified, don't retry): fast-travel LOAD and LoadLastCheckpoint BLACK-SCREEN/softlock
+  (the scene holds a hard world lock so the load never completes); FastForwardingActivate doesn't
+  stop the bed.
+- THE FIX: MusicVolume -> 0 via the settings system (blazeMuteMusic), wired into the finale
+  (Blaze.cfg.muteMusicOnFinale, default on). Acts at the volume bus, below the native music, so it
+  kills everything incl. combat music. Tradeoff: all music off until "Restore music" (the scene
+  never ends, so un-muting brings the bed back). Full detail: docs/research/cet_scene_music_teardown.md
+  + memory jackielives-heist-music-native.
+
+Dev tools added (overlay + console): blazeLogAudio / blazeStopMusicEvent, blazeMuteMusic /
+Restore, weather A/B + Set-time-midday, "Remove scene Jackie by id". Fast-travel/checkpoint kept
+console-only (softlock). All research: docs/research/cet_scene_music_teardown.md.
+
+STATUS: shippable. Pre-publish: deploy r6/tweaks/JackieLives/jl_force_stand.yaml (fomod covers it);
+audio logger off by default; mute-on-finale on by default.
+
+--------------------------------------------------------------------------------
 2026-07-08  -  v1.39 WALK-ABREAST: leash confirmed good; drop pace-match, add opt-out
 --------------------------------------------------------------------------------
 - Antonia: the v1.36 angular leash FINALLY fixed the janky walk. But the v1.33
