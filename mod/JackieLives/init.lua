@@ -2094,10 +2094,15 @@ local function pickerWindowFlags()
   return f
 end
 
+-- v1.42: the picker scales with the display, so the name plate has to scale with it too — otherwise a
+-- 4K box gets a 1080p-sized "JACKIE" tag rattling around in the corner of it. drawDialogueBox stashes
+-- the live scale on JL.ui.pickerScale just before it calls us.
 local function drawNameChild(name)
+  local P = Config.picker or {}
+  local s = JL.ui.pickerScale or 1.0
   ImGui.PushStyleColor(ImGuiCol.Border, COL.frame[1], COL.frame[2], COL.frame[3], 1.0)
   ImGui.PushStyleVar(ImGuiStyleVar.ChildBorderSize, 1.0)   -- thin frame
-  ImGui.BeginChild("##jkname", 128, 34, true)
+  ImGui.BeginChild("##jkname", (P.nameW or 128.0) * s, (P.nameH or 34.0) * s, true)
   ImGui.PushStyleColor(ImGuiCol.Text, 0.80, 0.32, 0.30, 1.0)
   ImGui.Text(" " .. tostring(name or "JACKIE"):upper())
   ImGui.PopStyleColor(1)
@@ -2220,16 +2225,30 @@ local function drawDialogueBox()
   if uiInMenu() then return end
   local style = JL.ui.pickerStyle or 1
   local ok, err = pcall(function()
-    -- v0.33: centre the box on the screen's X axis and sit it a little lower than before.
-    local W, H = 620, 240
-    local sw, sh = 1920, 1080
-    pcall(function() local x, y = ImGui.GetDisplaySize(); if x and x > 0 then sw, sh = x, y end end)
-    local px = (sw - W) * 0.5 - 150      -- centred, then nudged left (v0.33e)
-    local py = sh * 0.46                 -- a bit below mid-screen (was a fixed 360)
+    -- v1.42: TRUE-centre horizontally + sit in the lower fifth, at ANY resolution. See Config.picker.
+    local P = Config.picker or {}
+    local sw, sh = 1920.0, 1080.0
+    pcall(function() local x, y = ImGui.GetDisplaySize(); if x and x > 0 and y and y > 0 then sw, sh = x, y end end)
+
+    -- Uniform scale off the screen HEIGHT (not width): width varies wildly with ultrawides/21:9, height
+    -- is what actually tracks "how big is a pixel here". Clamped so extremes stay usable.
+    local s = math.max(P.minScale or 0.8, math.min(P.maxScale or 3.0, sh / (P.refH or 1080.0)))
+    JL.ui.pickerScale = s                                  -- drawNameChild reads this
+    local W, H = (P.baseW or 620.0) * s, (P.baseH or 240.0) * s
+
+    local px = (sw - W) * 0.5 + (P.xOffset or 0.0) * s     -- genuinely centred (the old -150 nudge is gone)
+    -- Centre the box inside the lower band, then bottom-clamp. H is ~22% of sh, a shade taller than the
+    -- 20% band, so in practice the clamp is what lands it — which is exactly what we want: it can never
+    -- hang off the bottom edge, at any aspect ratio.
+    local band = (P.bandTop or 0.80) * sh
+    local py   = band + (sh - band - H) * 0.5
+    py = math.min(py, sh - H - (P.bottomMargin or 0.02) * sh)
+    py = math.max(py, 0.0)
+
     ImGui.SetNextWindowPos(px, py, ImGuiCond.Always)
     ImGui.SetNextWindowSize(W, H, ImGuiCond.Always)       -- fixed (transparent) -> stable layout
     ImGui.Begin("##jkpicker", pickerWindowFlags())
-    ImGui.SetWindowFontScale(1.45)
+    ImGui.SetWindowFontScale((P.baseFont or 1.45) * s)
     if style == 3 then
       ImGui.PushStyleColor(ImGuiCol.Text, 0.80, 0.32, 0.30, 1.0)
       ImGui.Text("[ " .. tostring(menu.title or "JACKIE"):upper() .. " ]")

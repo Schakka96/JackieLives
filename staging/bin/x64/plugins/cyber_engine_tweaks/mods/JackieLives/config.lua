@@ -1508,6 +1508,33 @@ Config.poses = {
   lean    = "stand_wall_lean180__2h_on_wall__01",
 }
 
+-- ---- DIALOGUE PICKER placement (v1.42) -------------------------------------
+-- The choice box used to sit at a fixed 620x240 px, horizontally centred then nudged 150 px LEFT, at
+-- 46% screen height — i.e. middle-left-ish, and it drifted with resolution (on 4K it read as a tiny box
+-- floating in the upper-left quadrant, because the pixel size never changed while the screen doubled).
+--
+-- Now: everything is expressed RELATIVE to the display. The box is uniformly scaled by `sh / refH`, then
+-- horizontally CENTRED and dropped into the lower band of the screen. Because the box scales with the
+-- screen, it occupies the same fraction of it at 1080p, 1440p, 4K and on ultrawides (where centring uses
+-- the real width, so it stays under the crosshair rather than drifting left).
+--
+-- Note the box height works out to ~22% of screen height (baseH/refH), i.e. very slightly taller than the
+-- 20% band. It is therefore BOTTOM-anchored `bottomMargin` above the screen edge, which lands it in the
+-- lower fifth and — unlike a naive `y = 0.80 * sh` — can never run off the bottom of the screen.
+Config.picker = {
+  refH        = 1080.0,  -- the resolution the base sizes below were designed at
+  baseW       = 620.0,   -- box width  @ refH
+  baseH       = 240.0,   -- box height @ refH (must fit the tallest choice list, unscrollable)
+  baseFont    = 1.45,    -- ImGui font scale @ refH
+  nameW       = 128.0,   -- "JACKIE" name plate @ refH
+  nameH       = 34.0,
+  bandTop     = 0.80,    -- top of the "lower 20%" band, as a fraction of screen height
+  bottomMargin= 0.02,    -- keep at least this fraction of the screen below the box
+  minScale    = 0.8,     -- clamp so a tiny window can't make it unreadable...
+  maxScale    = 3.0,     -- ...or a huge one make it cartoonish
+  xOffset     = 0.0,     -- px @ refH: nudge horizontally if you want it off-centre (+right / -left)
+}
+
 -- ---- LOOK-AT / head tracking (v1.41) ---------------------------------------
 -- As a COMPANION Jackie already head-tracks V, because sendWalkToPlayer's AIFollowTargetCommand carries
 -- `lookAtTarget = Game.GetPlayer()`. A venue Jackie has no follow command, so he was frozen at whatever
