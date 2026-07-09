@@ -200,27 +200,28 @@ scene that would have released it never ran.
 
 ## The fix, in order of preference
 
-### 1. Post the closing signpost from CET (try this first — one console line, no archive)
+### 1. Post the closing signpost from CET — ❌ **TESTED IN-GAME 2026-07-09, DOES NOT WORK**
 
-If the signpost can be posted from script, the finale becomes a one-liner and stays **conditional**. Test
-these in the CET console **while the bed is stuck**, in order — the first that silences it wins:
+The hypothesis was that the scripted audio system could post a mixer signpost. All four candidate calls
+were run in the console **while the bed was stuck**. **None silenced it:**
 
 ```lua
-Game.GetAudioSystem():NotifyGameTone("q005_heist_escape_end")   -- most likely: signposts are mixer tones
-Game.GetAudioSystem():Play("q005_heist_escape_end")             -- if signposts are posted as Wwise events
-Game.GetAudioSystem():NotifyGameTone("q005_attack_end_scene")   -- fallback: the other "end" signpost
-Game.GetAudioSystem():Play("q005_attack_end_scene")
+Game.GetAudioSystem():NotifyGameTone("q005_heist_escape_end")   -- no effect
+Game.GetAudioSystem():Play("q005_heist_escape_end")             -- no effect
+Game.GetAudioSystem():NotifyGameTone("q005_attack_end_scene")   -- no effect
+Game.GetAudioSystem():Play("q005_attack_end_scene")             -- no effect
 ```
 
-Confidence this works: **medium.** `questAudioMixNodeType` is a native node, and I could not verify from
-here whether the scripted `gameGameAudioSystem` exposes the mixer-signpost path. `NotifyGameTone` is the
-best candidate because it's the one verified method that changes the *mix* rather than plays a sound —
-it's what `LeaveCombat` goes through. But it may be native-only, in which case all four lines no-op
-silently. **The test is free and takes 30 seconds, so do it before building anything.**
+**Conclusion: `questAudioMixNodeType`'s signpost path is native-only.** It is not reachable through
+`gameGameAudioSystem`, so no CET call can close the escape mix. This is now a verified dead end alongside
+fast-travel, `LoadLastCheckpoint`, `FastForwardingActivate`, and `AudioSystem:Stop()`. **Do not retry it.**
+
+That result is not a loss — it's the last open question closed. The music can only be stopped by (a) never
+starting it, which requires a packed archive edit, or (b) the volume bus. There is no third option.
 
 ### 2. Delete the opening signpost in WolvenKit (the true "never start that music")
 
-If the console test fails, this is the fix, and it's now a genuinely small edit: open
+With fix #1 falsified, this is the only surgical fix left, and it's a genuinely small edit: open
 `q005_09_attack.scene`, find the embedded `questAudioMixNodeType` node carrying
 `q005_heist_escape_start`, and delete that one node. The escape bed then never starts, so it can never
 get stuck.
@@ -236,15 +237,31 @@ A gentler variant worth trying first: instead of deleting `q005_heist_escape_sta
 CName to `q005_heist_escape_end`.** The scene then immediately posts the closing signpost, the mixer
 never enters escape state, and you've touched one string rather than removed a node.
 
-### 3. Keep `blazeMuteMusic(true)` as the backstop
+### 3. ✅ SHIPPING: `blazeMuteMusic(true)` — `MusicVolume = 0` on the volume bus
 
-Still correct, still ugly, still global. Leave it wired in as the default until option 1 or 2 is confirmed
-in-game.
+**This is the decision.** With #1 falsified and #2 carrying an unconditional cost, the volume-bus mute is
+the right call for a mod that ships to other people. It acts *below* the mixer, so it doesn't care that
+the mix is parked in escape state. Already wired in via `Blaze.cfg.muteMusicOnFinale` (default `true`).
 
-## Status
+Its two known costs, accepted knowingly:
+- Kills **all** music globally, not just the bed, until restored.
+- The mixer never leaves escape state, so un-muting during the same session brings the bed back. Mute is
+  effectively one-way for the rest of the finale.
+
+Both are strictly better than the alternative (silently stripping the escape score from every user's
+vanilla playthrough), and neither is visible to a player who just watches the finale play out.
+
+Revisit **only** if one of these changes: RED4ext/Codeware exposes the native mixer-signpost call (then #1
+becomes live and is strictly better), or JackieLives moves Blaze into its own custom quest rather than
+hosting it inside live q005 (then #2 stops being unconditional, because we'd own the scene).
+
+## Status — CLOSED
 - [x] Quest graph ruled out as the music source (from `q005_raw/`).
 - [x] Scene shortlist derived; journal tree mapped.
-- [x] Scenes exported (`docs/Heist_scene_tree_base/`) → **music source identified: mix signposts.**
-- [ ] **NEXT — Antonia (30 s, in-game):** with the bed stuck, run the four console lines in fix #1 and
-      report which (if any) silences it.
-- [ ] Then: wire the winning call into the finale, or spec the `q005_09_attack.scene` signpost edit.
+- [x] Scenes exported (`docs/Heist_scene_tree_base/`) → music source identified: **mix signposts**.
+- [x] CET signpost-posting **tested in-game and falsified** — the path is native-only.
+- [x] **Decision: ship `blazeMuteMusic`.** WolvenKit scene edit (#2) documented but not taken, because an
+      archive edit is unconditional and would strip the score from vanilla playthroughs.
+
+Nothing further is open here. The remaining CET-side dead ends (fast-travel, checkpoint load,
+fast-forward, `AudioSystem:Stop`) are catalogued in `cet_scene_music_teardown.md`.
