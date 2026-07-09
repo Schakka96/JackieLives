@@ -4311,6 +4311,66 @@ function jlVWalking()
   return st.walking
 end
 
+-- v1.46 VERTICAL GATE — "is V on stairs / a slope / a ladder / a lift right now?"
+-- Walking abreast assumes FLAT ground. Two things break on an incline:
+--   * a staircase is rarely wide enough for two, so the side anchor lands in a wall or over a drop;
+--   * the anchor's z was V's z, so a point ~5.5 m ahead of a CLIMBING V sat buried inside the steps ahead
+--     (or, descending, floated above them). AIMoveToCommand then projected that point onto whichever
+--     floor's navmesh happened to be nearest, flipping between the lower and upper level on successive
+--     re-issues. That flip is the "he teleports jaggedly in front of V" report.
+-- Either trigger fires: V's own vertical speed (she is climbing NOW), or a standing height gap between
+-- the two of them (he's on a different step/landing). `slopeReleaseSeconds` latches the trail on for a
+-- moment after she levels out, so a mid-staircase landing or a kerb can't flip him back and forth.
+-- NOTE: a jump also trips slopeRate. That's harmless — he trails for ~1.5 s and resumes.
+-- Cached once per frame (jlAbreastOn is asked by two ticks). Global -> 200-local cap safe.
+function jlVertical()
+  local A, st = Config.abreast or {}, JL.abreast
+  local now = JL.clock or 0
+  if st.vFrame ~= now then
+    st.vFrame = now
+    local pp = playerPos()
+    if pp then
+      if st.vzP then
+        local dt = now - (st.vzT or now)
+        if dt > 1e-4 then
+          local inst = math.abs(pp.z - st.vzP) / dt
+          local a = math.min(dt / 0.25, 1.0)      -- same ~0.25 s smoothing as the walk-speed signal
+          st.vRate = (st.vRate or inst) + a * (inst - (st.vRate or inst))
+        end
+      end
+      st.vzP, st.vzT = pp.z, now
+    end
+    local gapZ = 0.0                              -- standing height gap: he's a step (or a floor) away
+    local h = JL.summon.spawn and JL.summon.spawn.handle
+    if h and pp then
+      local jp; pcall(function() jp = h:GetWorldPosition() end)
+      if jp then gapZ = math.abs(jp.z - pp.z) end
+    end
+    if ((st.vRate or 0.0) > (A.slopeRate or 0.45)) or (gapZ > (A.maxZDelta or 1.0)) then
+      st.slopeUntil = now + (A.slopeReleaseSeconds or 1.5)
+    end
+    st.vertical = (st.slopeUntil ~= nil) and (now < st.slopeUntil)
+  end
+  return st.vertical
+end
+
+-- v1.46 THE SINGLE HANDOFF PREDICATE. followKeepCloseTick (the trail) runs BEFORE abreastTick each frame
+-- and yields to abreast; abreastTick then decides whether it actually wants him. Before v1.46 the two asked
+-- DIFFERENT questions (the trail yielded on bare `jlVWalking()`), so any gate added to abreastTick alone
+-- opened a hole: on stairs the trail stood down AND abreast stood down, nobody drove Jackie, and he fell
+-- back to AMM's long native leash. Both ticks now ask this one question, so exactly one of them owns him.
+-- Global -> 200-local cap safe.
+function jlAbreastOn()
+  local A = Config.abreast or {}
+  if not A.enabled or JL.disableCustomWalk then return false end   -- player reverted to the plain follower
+  if not (JL.summon.active and JL.summon.companionSet) then return false end
+  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return false end
+  if jlCruise and jlCruise.active then return false end            -- not while cruising on his bike
+  if jlInCombat() then return false end                            -- fighting -> free him to fight
+  if jlVertical() then return false end                            -- v1.46: stairs/slope -> single file
+  return jlVWalking()
+end
+
 -- v0.67 KEEP-CLOSE FOLLOW. After handoff we issue ONE tight follow (followDistance), but AMM's own
 -- companion follow then takes over with a much LONGER leash, so Jackie trails far behind V. This
 -- re-asserts our tight AIFollowTargetCommand on a throttle so he holds `Config.follow.distance` (a few
@@ -4323,7 +4383,9 @@ local function followKeepCloseTick()
   if jlInCombat() then return end   -- v1.35: fighting -> don't re-leash; native combat AI runs him
   -- v0.85b: abreast owns positioning ONLY while V walks; at jog/sprint the trail takes back over.
   -- v1.39: ...unless the player disabled the custom walk, in which case this trail is the default follower.
-  if Config.abreast and Config.abreast.enabled and not JL.disableCustomWalk and jlVWalking() then return end
+  -- v1.46: ask jlAbreastOn() — the SAME predicate abreastTick uses — so the two can never both stand down
+  -- (on stairs the old `jlVWalking()` test here yielded to an abreast that had already gated itself off).
+  if jlAbreastOn() then return end
   if not (JL.summon.active and JL.summon.companionSet) then return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active) then return end   -- v0.85: leave him on his cruising bike
@@ -4363,12 +4425,9 @@ end
 -- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
 function abreastTick()
   local A = Config.abreast or {}
-  if not A.enabled or JL.disableCustomWalk                  -- v1.39: player reverted to the default follower
-     or not (JL.summon.active and JL.summon.companionSet)
-     or JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
-     or (jlCruise and jlCruise.active)                      -- v0.85: not while cruising on his bike
-     or jlInCombat()                                        -- v1.35: fighting -> drop abreast, free him to fight
-     or not jlVWalking() then
+  -- v1.46: every gate now lives in jlAbreastOn() (shared with followKeepCloseTick's yield test), so the
+  -- trail picks him up in exactly the cases abreast declines him — stairs and slopes included.
+  if not jlAbreastOn() then
     JL.abreast.smFwdX = nil     -- reset the heading EMA so it re-seeds cleanly when abreast resumes
     JL.abreast.catching = nil   -- v1.36: re-engage re-evaluates behind/hold from scratch
     return
@@ -4446,7 +4505,6 @@ function abreastTick()
   local lead = A.leadDistance or 2.0
   local destX = sprinting and tx or (tx + sx * lead)
   local destY = sprinting and ty or (ty + sy * lead)
-  local dest  = Vector4.new(destX, destY, pp.z, 1.0)
 
   -- --- issue on a short throttle; SPRINT while catching up (behind V), else Walk his natural gait ---------
   -- (v1.39: pace-match time-dilation removed — it made his stride float and broke the angular leash. He now
@@ -4454,6 +4512,17 @@ function abreastTick()
   -- = zoneRadius (the WIDE leash) so he settles anywhere in the zone and strolls, never fighting for a spot.
   if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 0.3) then return end
   JL.abreast.lastAt = now
+  -- v1.46: GROUND THE ANCHOR (built here, past the throttle — the navmesh query is not free, and only the
+  -- point we're about to send needs to be correct). Copying V's z verbatim only holds on flat ground: on an
+  -- incline the point several metres ahead of her is under the surface (climbing) or above it (descending),
+  -- and the nav projection then picks a different floor from one re-issue to the next. Snap it down onto the
+  -- human navmesh instead. If the snap fails, or lands far enough from V's height to be a DIFFERENT floor (a
+  -- balcony/metro deck the downward sphere search happened to find), distrust it and keep V's z — the old
+  -- behaviour, harmless on flat ground. jlVertical() already puts him single-file on stairs, so this only
+  -- has to cope with ramps and gentle slopes.
+  local dest   = Vector4.new(destX, destY, pp.z, 1.0)
+  local ground = snapToNavmesh(dest)
+  if ground and math.abs(ground.z - pp.z) <= (A.maxAnchorZDelta or 2.5) then dest = ground end
   local mv  = sprinting and (A.catchUpMovement or "Sprint") or (A.movement or "Walk")
   local tol = sprinting and (A.catchUpTolerance or 0.35) or (A.zoneRadius or 1.5)
   sendMoveToPoint(h, dest, mv, tol)

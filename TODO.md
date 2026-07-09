@@ -11,6 +11,53 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-09 (v1.46) — walk-abreast on STAIRS + SLOPES (the jagged teleport in front of V)
+
+Antonia: *"We can't walk up stairs or slopes well because V's elevation changes and so he teleports in a
+jagged way in front of V."* Her read was right — the leash had no vertical dimension at all.
+
+**Root cause (two bugs, one symptom).**
+
+1. **The anchor was never grounded.** `abreastTick` built its target as
+   `Vector4.new(destX, destY, pp.z, 1.0)` — x/y from a polar offset around V, but **z copied verbatim from
+   V**. That is only correct on flat ground. Walking *up* stairs, the point ~5.5 m ahead of V (radius 3.5 +
+   leadDistance 2.0) sits **buried inside the steps ahead**; walking *down*, it **floats above them**.
+   `AIMoveToCommand` (with `ignoreNavigation = false`) then projects that invalid point onto whatever
+   navmesh is nearest — which flips between the **lower and upper floor** from one 0.3 s re-issue to the
+   next. Jackie snaps back and forth between the two: the "jagged teleport".
+2. **`jlVWalking()` only measures HORIZONTAL speed** (`dx,dy`). On a staircase V's 2-D speed sits right in
+   the walk band, so abreast stayed engaged on exactly the geometry it cannot handle.
+
+**Fixes (`init.lua`, `config.lua`):**
+
+- [x] 🪜 **`jlVertical()` — a vertical gate.** Trips on either V's own smoothed `|dz/dt|` (> `slopeRate`,
+  0.45 m/s: she's climbing *now*) **or** a standing Jackie-vs-V height gap (> `maxZDelta`, 1.0 m: he's on a
+  different step/landing). While it's tripped, abreast stands down and Jackie **trails single-file** —
+  which is what you'd actually do on a staircase. `slopeReleaseSeconds` (1.5 s) latches the trail on
+  briefly after V levels out, so a mid-staircase landing or a kerb can't flip him back and forth.
+  *(A jump also trips it: he trails ~1.5 s, then resumes. Harmless.)*
+- [x] 🧭 **The anchor is now snapped down onto the human navmesh** (`snapToNavmesh`, the same helper the
+  arrival spawn uses) before it's sent. Built *past* the re-issue throttle, so the navmesh query runs at
+  most ~3×/s, not every frame. If the snap fails, or lands further than `maxAnchorZDelta` (2.5 m) from V's
+  height — i.e. it found a *different floor*, a balcony or metro deck below — we distrust it and fall back
+  to V's z, the old behaviour, which is fine on the flat ground this now runs on. Handles ramps + slopes;
+  stairs are handled by the gate above.
+- [x] ⚠️ **The handoff hole this would otherwise have opened.** `followKeepCloseTick` (the trail) runs
+  **before** `abreastTick` each frame and yields to it — but it yielded on bare `jlVWalking()`, a
+  *different* condition from abreast's own gate. Adding a stairs gate to `abreastTick` alone would mean
+  that on stairs **the trail stands down AND abreast stands down**, nobody drives Jackie, and he falls back
+  to AMM's long native leash. Both ticks now ask **one shared predicate, `jlAbreastOn()`**, so exactly one
+  of them owns him at any moment.
+- [x] Both new functions are **globals** (`jlVertical`, `jlAbreastOn`) — `init.lua` is at Lua's hard
+  200-top-level-`local` limit. Verified: local count unchanged at 186; `luac -p` clean.
+
+→ **TEST:** walk (V's slow walk toggle) up and down a long staircase — e.g. Misty's steps in Little China,
+or any megabuilding stairwell — and up a car-ramp/slope. Expected: Jackie drops **behind** you on the
+stairs and walks up single-file, then **slides back to your side** ~1.5 s after you reach flat ground. No
+snapping, no popping to the far side of the landing.
+
+**Still open (next):** stealth behaviour — see the sneak/takedown section below.
+
 ### 🆕 Added 2026-07-09 (v1.45) — Watson barrier is now HELD open (was a one-shot write)
 
 Antonia asked whether switching Blaze → Quiet Life re-closes Watson ("or else they can't use the bridges").

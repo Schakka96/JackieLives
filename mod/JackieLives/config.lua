@@ -309,6 +309,22 @@ Config.abreast = {
   -- jerking as the camera pans):
   walkMinSpeed      = 0.6,  -- m/s V must EXCEED to count as walking. Below this she's STILL -> he trails close.
   walkSustainSeconds= 2.0,  -- s V must hold the walk band CONTINUOUSLY before abreast engages (no snap on a step)
+  -- v1.46 VERTICAL GATE (stairs / slopes / ladders / lifts). Walking abreast is a FLAT-GROUND idea: a
+  -- staircase is rarely two-abreast wide, and the old build copied V's z straight into the anchor, so the
+  -- point 5.5 m "ahead" of a climbing V was buried inside the stairs (or floating over them). The nav
+  -- projection then flip-flopped between the lower and upper floor each re-issue — that is the "jagged
+  -- teleport in front of V" on stairs. Two independent triggers drop him back to the single-file trail:
+  --   * slopeRate  — V's own |dz/dt| (smoothed): she's climbing/descending right now.
+  --   * maxZDelta  — Jackie is already this far above/below V (he's on a different step/landing).
+  -- releaseSeconds keeps the trail latched briefly after the climb ends, so a landing mid-staircase (or a
+  -- single step off a kerb) can't flip him back and forth between trail and abreast.
+  slopeRate         = 0.45, -- m/s of V's vertical speed above which we call it a slope/stairs (a jump also trips it)
+  maxZDelta         = 1.0,  -- m of Jackie-vs-V height difference that means "not on the same floor"
+  slopeReleaseSeconds = 1.5,-- s the trail stays latched after V levels out (anti flip-flop on landings)
+  -- GROUND THE ANCHOR. Even on a gentle ramp the anchor must sit on the walkable surface, not at V's z.
+  -- We snap it down onto the human navmesh; if the snap lands more than maxAnchorZDelta from V it's a
+  -- different floor (a balcony/metro deck the downward search found) -> reject it and keep V's z.
+  maxAnchorZDelta   = 2.5,  -- m the navmesh-snapped anchor may differ from V's height before we distrust it
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
