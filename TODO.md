@@ -11,6 +11,40 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-09 (v1.50) — finale Jackie clipped into the fence: WRONG MOVER + WRONG TARGET
+
+Antonia: "he does spawn now, but in front of V and clipped into the fence. When we spawn Jackie after fast
+travel or a foot approach he spawns sideways, walks in, becomes companion — why is this so hard??"
+
+**It wasn't hard. The finale just wasn't using the two things that already solve it.**
+
+- [x] 🐛 **WRONG MOVER — this is the whole bug.** The finale relocated him with
+  `Game.GetTeleportationFacility():Teleport()` *alone*. `placeAtExact`'s own comment (init.lua, and
+  `docs/research/spawn_at_distance_research.md`) already says it: **the world TeleportationFacility often
+  NO-OPS on a spawned puppet — `AITeleportCommand` is what actually relocates one.** So the move never
+  happened and he simply stayed where AMM's `SpawnNPC` drops every body: **1 m in front of V**, which at the
+  finale spot is the fence. Now uses `placeAtExact()` (AI command first, facility as a second write).
+  *This is why normal arrivals work:* they all go through `aiTeleport`/`placeAtExact`. The finale was the
+  only placement in the mod hand-rolling a bare facility call.
+- [x] 🐛 **WRONG TARGET.** `finaleSide` was a raw ±right-vector offset, and when that single point landed
+  inside geometry `snapToNavmesh` returned nil and the code shrugged (`or jp`) and used the bad point anyway.
+  Now it asks **`frontSideArrivalPoint()`** first — the v1.40 helper written for exactly this
+  ("he caught up straight into the geometry behind V"): it sweeps the walk-abreast side anchors, tries the
+  side he's already on, then the other side, then straight ahead, over several angles and shrinking
+  distances, navmesh-snapping and height-checking each. `finaleSide` survives only as a fallback.
+- [x] 🐛 **The success check could never have caught this.** It measured distance **to V** with a 6 m
+  tolerance — standing inside the railing 1 m in front of her *passed*. It now measures distance to the
+  **target point** (`finalePlaceTolerance` = 1.5 m) and re-issues the AI teleport until he's on the mark.
+  Simulated: the old test reports "PLACED OK" for the exact fence case; the new one catches it.
+- [x] Collision is dropped while he relocates (so the fence can't hold him) and restored once he's on solid
+  navmesh — a follower must collide.
+
+New knob: `Blaze.yori.finalePlaceDistance` (2.5 m, how far out the front-side search looks).
+→ **TEST:** expect `finale: place target (…) via front-side search` then
+`finale: Jackie placed on the mark (0.x m off target, ~2.5 m from V)`. If you see `via side fallback`, the
+search found nothing and the raw offset was used. If you see `STILL N m off target after retries`, the AI
+teleport itself is being refused — **send that line**.
+
 ### 🆕 Added 2026-07-09 (v1.47) — picker clears the subtitle line; finale Jackie actually gets placed
 
 ⚠️ **UNCOMMITTED on purpose** — the sneak session was live in `init.lua`/`config.lua`, so these edits sit in

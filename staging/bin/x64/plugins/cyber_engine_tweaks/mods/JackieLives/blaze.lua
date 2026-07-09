@@ -96,7 +96,12 @@ M.yori = {
   -- v1.07 (Antonia): the finale destination — V wakes here, Jackie (normal outfit) appears next to her
   -- facing her, and the finale conversation plays. Coords/yaw captured in-game 2026-07-09.
   finalePos = { x = -1787.921, y = -450.040, z = 7.747, yaw = -1.4 },
-  finaleSide = 1.4,     -- v1.10: metres to place Jackie BESIDE V at the finale (+ = V's right, - = left). Tune if he clips.
+  -- v1.50: `finaleSide` is now only a FALLBACK. The finale asks frontSideArrivalPoint() for the spot first —
+  -- the same angle-sweeping, navmesh-snapped, height-checked search that fast-travel/catch-up respawns use
+  -- ("he caught up straight into the geometry behind V"). That is why a normal arrival lands him cleanly
+  -- sideways; the finale simply wasn't calling it, and a raw ±right-vector offset put him in the fence.
+  finaleSide = 1.4,     -- v1.10: FALLBACK metres beside V (+ = V's right, - = left), used only if the search fails.
+  finalePlaceDistance = 2.5,  -- v1.50: how far from V the front-side search should look for his spot
   finaleSettle = 1.8,   -- v1.11: seconds after the fade fully lifts before the convo starts (so it isn't during the blackscreen).
   -- v1.47: the finale used to spawn Jackie the same frame V was teleported, at full black. AMM drops the body
   -- 1 m in front of V *at CreateEntity time*, so that could leave him at V's PRE-teleport spot (Konpeki), and
@@ -105,7 +110,9 @@ M.yori = {
   finaleSpawnDelay     = 0.6,   -- s to let V's teleport land + the world stream in before spawning him
   finaleResolveTimeout = 4.0,   -- s to wait for the spawned body's handle before despawning + respawning
   finaleSpawnRetries   = 3,     -- how many spawn attempts before giving up and running the convo without him
-  finalePlaceTolerance = 6.0,   -- m: if he's farther than this from V after the teleport, re-issue it
+  -- v1.50: measured against the TARGET POINT, not against V. Distance-to-V could never catch the fence clip —
+  -- standing inside the railing 1 m in front of her already passed the old 6 m "close enough" test.
+  finalePlaceTolerance = 1.5,   -- m: how close to the target spot counts as "placed" before we stop re-issuing
   -- Gate: fires when the T-Bug PHONE CALL ENDS. From JLFactDump (docs/factdump.log): the fact
   -- `phonecall_player_with_tbug` runs 1 -> 2 (call active) then drops back to 0 when the call ends.
   -- So we fire on the FALLING edge (saw it active, now 0), NOT a raw >0 (that'd fire when it STARTS).

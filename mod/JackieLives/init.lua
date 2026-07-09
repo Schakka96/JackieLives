@@ -7014,35 +7014,69 @@ function blazeFinaleSceneTick()
     -- Tear the window down and force him visible + solid before we place him.
     JL.settle.hideUntil, JL.settle.collideUntil, JL.settle.reposePending = nil, nil, nil
     setVisible(h, true)
-    setNpcCollision(h, true)
-    -- Stand him BESIDE V (V's right vector), snapped to navmesh, facing her. Blaze.yori.finaleSide tunes
-    -- the side/distance (+right / -left) if he clips at this spot.
-    pcall(function()
-      local pl = Game.GetPlayer(); local pp = pl and pl:GetWorldPosition()
-      local rt; pcall(function() rt = pl:GetWorldRight() end)
-      if pp then
-        local side = (Blaze.yori and Blaze.yori.finaleSide) or 1.4
-        local jp = rt and Vector4.new(pp.x + rt.x * side, pp.y + rt.y * side, pp.z, 1.0)
-                       or Vector4.new(pp.x + side, pp.y, pp.z, 1.0)
-        jp = snapToNavmesh(jp) or jp
-        local yaw = yawToward(jp, pp)   -- face V
-        Game.GetTeleportationFacility():Teleport(h, jp, EulerAngles.new(0, 0, yaw or 0))
-      end
-    end)
-    -- v1.47: VERIFY he actually arrived. The teleport is async, so the first pass always still reads his old
-    -- position — we simply re-issue on the next tick until he's near V (or we run out of patience). This is
-    -- what turns "spawned but 300 m away at Konpeki" from an invisible failure into a self-correcting one.
-    local jp; pcall(function() jp = h:GetWorldPosition() end)
+
+    -- ── v1.50: THE FENCE CLIP. Two separate reasons he stood in front of V, inside the railing. ──
+    -- (1) WRONG MOVER. This used `Game.GetTeleportationFacility():Teleport()` alone. Per placeAtExact's own
+    --     note (and docs/research/spawn_at_distance_research.md): the facility **often no-ops on a spawned
+    --     puppet** — `AITeleportCommand` is what actually relocates one. So the move never happened and he
+    --     simply stayed where AMM dropped him: 1 m in FRONT of V, which at this spot is the fence.
+    --     `placeAtExact` issues the AI command first and uses the facility only as a second write.
+    -- (2) WRONG TARGET. `finaleSide` was a raw ±right-vector offset. If that one point is inside geometry,
+    --     `snapToNavmesh` returns nil and the code shrugged (`or jp`) and used the bad point anyway.
+    --     `frontSideArrivalPoint` is the helper that already solves exactly this for fast-travel/catch-up
+    --     respawns ("he caught up straight into the geometry behind V"): it sweeps the walk-abreast side
+    --     anchors, tries his current side first, then the other side, then straight ahead, over several
+    --     angles and shrinking distances, navmesh-snapping and height-checking each. That is *why* a normal
+    --     arrival lands him sideways and clean — the finale just wasn't calling it.
+    -- Collision stays OFF until he's actually there, so the fence can't hold him mid-relocate.
     local pp = playerPos()
-    local d  = (jp and pp) and dist3(pp, jp) or nil
-    local tol = (Blaze.yori and Blaze.yori.finalePlaceTolerance) or 6.0
+    local jp; pcall(function() jp = h:GetWorldPosition() end)
+    if not f.placePt then
+      local want = (Blaze.yori and Blaze.yori.finalePlaceDistance) or 2.5
+      local how = "front-side search"
+      f.placePt = frontSideArrivalPoint(want, jp)          -- proven side-point search (navmesh + height checked)
+      if not f.placePt and pp then                          -- fallback: the old raw side offset, but only if it snaps
+        local rt; pcall(function() rt = Game.GetPlayer():GetWorldRight() end)
+        local side = (Blaze.yori and Blaze.yori.finaleSide) or 1.4
+        local cand = rt and Vector4.new(pp.x + rt.x * side, pp.y + rt.y * side, pp.z, 1.0)
+                        or Vector4.new(pp.x + side, pp.y, pp.z, 1.0)
+        f.placePt = snapToNavmesh(cand)                     -- nil -> no valid ground; retry next tick
+        how = "side fallback"
+      end
+      if f.placePt then
+        setNpcCollision(h, false)
+        log(("[Blaze] finale: place target (%.1f,%.1f,%.1f) via %s."):format(
+            f.placePt.x, f.placePt.y, f.placePt.z, how))
+      end
+    end
+    if not f.placePt then                                   -- no navmesh anywhere yet; keep trying briefly
+      f.placeTries = (f.placeTries or 0) + 1
+      if f.placeTries <= 20 then return end
+      log("[Blaze] finale: no navmesh point beside V — leaving Jackie where he spawned.")
+      setNpcCollision(h, true)
+      f.placePt = nil
+    else
+      -- AITeleportCommand + facility, exact (no nav snap — the point is already snapped), facing V.
+      pcall(function() placeAtExact(h, f.placePt, yawToward(f.placePt, pp) or 0.0) end)
+    end
+
+    -- v1.47/v1.50: VERIFY he actually arrived — measured against the TARGET POINT, not against V. Measuring
+    -- distance-to-V could not catch this bug at all: standing inside the fence 1 m in front of her already
+    -- passed a 6 m "close enough" test. aiTeleport is ASYNC (lands a frame or two later), so the first pass
+    -- always reads his old position; we simply re-issue until he's on the mark.
+    pcall(function() jp = h:GetWorldPosition() end)
+    local d   = (jp and f.placePt) and dist3(f.placePt, jp) or nil
+    local tol = (Blaze.yori and Blaze.yori.finalePlaceTolerance) or 1.5
     if d and d > tol then
       f.placeTries = (f.placeTries or 0) + 1
-      if f.placeTries <= 8 then return end   -- stay in `place`, re-teleport next tick
-      log(("[Blaze] finale: Jackie STILL %.1f m from V after %d teleports — continuing anyway."):format(d, f.placeTries))
-    else
-      log(("[Blaze] finale: Jackie placed %.1f m from V."):format(d or -1))
+      if f.placeTries <= 12 then return end   -- stay in `place`, re-issue the AI teleport next tick
+      log(("[Blaze] finale: Jackie STILL %.1f m off the mark after %d AI teleports — continuing anyway. " ..
+           "If he's clipped again, raise Blaze.yori.finalePlaceDistance."):format(d, f.placeTries))
+    elseif d then
+      local dv = pp and jp and dist3(pp, jp) or -1
+      log(("[Blaze] finale: Jackie placed on the mark (%.1f m off target, %.1f m from V)."):format(d, dv))
     end
+    setNpcCollision(h, true)                 -- v1.50: he's on solid navmesh now — a follower must collide
     pcall(promoteToCompanion)                -- keep him a proper follower (living Jackie going forward)
     -- SETTLE: don't start the convo until the fade fully lifts AND a beat passes (Antonia: subtitle+picker
     -- showed during the blackscreen). Configurable via Blaze.yori.finaleSettle.

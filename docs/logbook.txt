@@ -1220,3 +1220,30 @@ SMALLER, BUT LOAD-BEARING:
 9. Config.stealth (v1.46 sneak work) was read by init.lua but the TABLE ITSELF was never committed --
    `Config.stealth or {}` fell back to {} and stealth was inert on a fresh clone. Committed here.
    staging/ had also drifted from mod/ (v1.46 synced neither file). Re-synced all four.
+
+--------------------------------------------------------------------------------
+2026-07-09 (later) — FINALE JACKIE IN THE FENCE (v1.50)
+--------------------------------------------------------------------------------
+Antonia: "why is this so hard? a normal arrival spawns him sideways, he walks in, done."
+It wasn't hard. The finale was the ONE placement in the mod that didn't use the mod's own tools.
+
+10. THE WORLD TELEPORTATION FACILITY NO-OPS ON SPAWNED PUPPETS. `placeAtExact` has said so in a
+    comment since v0.45 ("the AITeleportCommand (doNavTest=false) is what ACTUALLY relocates a
+    spawned puppet -- the world TeleportationFacility often no-ops on them"). The Blaze finale
+    hand-rolled a bare `Game.GetTeleportationFacility():Teleport(h, ...)`. It silently did nothing,
+    so Jackie stayed exactly where AMM's SpawnNPC drops every body -- 1 m in FRONT of V, i.e. in the
+    fence. Every other placement in the mod goes through aiTeleport/placeAtExact and works.
+    => When a subsystem "mysteriously" misbehaves, check whether it is using the shared helper or a
+       hand-rolled version of it. The helper usually encodes a hard-won fact in a comment.
+
+11. AND THE SUCCESS CHECK COULDN'T SEE IT. v1.47's verify measured distance TO V with a 6 m
+    tolerance. Clipped into the railing 1 m in front of her, that PASSES. Measure against the
+    TARGET POINT, not against the thing you happen to be near. Simulated both: the old test says
+    "PLACED OK" for the exact failing case.
+
+12. frontSideArrivalPoint() (v1.40) already existed for precisely this problem -- "he caught up
+    straight into the geometry behind V" -- sweeping the abreast side anchors, both sides then
+    ahead, over several angles + shrinking distances, navmesh-snapped and height-checked. The
+    finale used a raw +/-right-vector offset instead, and when snapToNavmesh returned nil it
+    shrugged (`or jp`) and used the bad point anyway. A nil from a validity check is an answer,
+    not an inconvenience to fall back past.
