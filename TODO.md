@@ -11,6 +11,75 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-09 (v1.41) — venue polish batch: head-tracking, daily hello, bike anti-crash
+
+Three small immersion items (Antonia). **All three are code-complete + parse-clean on the Mac; ALL await a
+Windows in-game test.** `init.lua` was NOT committed this session — the Blaze session was editing it
+concurrently (see the Problems log). Staging is NOT synced yet for the same reason.
+
+- [x] 🙂 **Look-at / head tracking at venues (`Config.lookAt`).** A venue Jackie was locked to the yaw his
+  seat/waypoint baked in. As a companion he head-tracks V because `sendWalkToPlayer`'s
+  `AIFollowTargetCommand` carries `lookAtTarget` — a venue Jackie has no follow command, so nothing ever
+  told him to look. Fixed with the engine's own `entLookAtAddEvent`: queued ONCE onto the puppet, after
+  which the engine tracks V by itself (no per-frame loop, no yaw math, no jitter). It's an additive
+  animation-graph overlay, so it composes with the AMM sit workspot and turns his HEAD, not his body —
+  it can't eject him from the barstool. Applies to idle-at-venue Jackie *and* seated-at-dinner Jackie
+  (both lack a follow command); the on-foot companion is skipped since he already tracks.
+  Arms at 12 m, drops at 15 m (hysteresis), re-arms across a sit/stand. Full write-up +
+  the dead ends: `docs/research/lookat_research.md`.
+  ⚠️ **The CET-Lua marshalling is UNVERIFIED** (no shipped Lua mod constructs this event). `jlNewLookAtEvent`
+  tries all three constructor forms and caches the winner; on total failure it logs once and disables
+  tracking — Jackie then behaves exactly as before, so it cannot break him.
+  → **TEST:** walk up to Jackie at a venue. Does his head follow you, seated and standing? Check
+  `jackie_debug.log` for `LookAt: now tracking V (ctor=…)` and **tell Claude which ctor won** so the dead
+  branches can be dropped.
+
+- [x] 👋 **Spoken hello on the first approach of each in-game day (`Config.venueGreet`).** Walking within
+  **5 m** of an idle Jackie the first time on a given in-game day now makes him speak a real line (jl_ clip
+  + subtitle) instead of only the WWise greet grunt. Later approaches that day fall through to the existing
+  grunt bark, so he doesn't recite a full greeting every time you pass his stool. Gender-aware pools; the
+  female/male clips of "Don't come here often, do ya? … It's good to see you, chica/cabrón" are the same
+  source line, so it reads identically across tracks. All 6 clips verified present in the bank.
+  The daily gate uses a **new** `jlGameDay()` (= `floor(total game seconds / 86400)`), NOT `JL.day.count` —
+  see the Problems log.
+  → **TEST:** approach him at a venue → full spoken hello. Walk away + back the same day → grunt only.
+  Sleep to the next day → spoken hello again.
+
+- [x] 🏍️ **Bike anti-crash (`Config.bikePhysics`).** Users report Jackie crashes a lot; the assumed fix was
+  "turn his bike's collisions off". **That is impossible AND was the wrong target** — see the Problems log
+  and `docs/research/bike_crash_research.md`. Real cause: `HandleBikeCollisionReaction` force-ragdolls an
+  NPC off his bike whenever an impact exceeds `KnockOffForce × aiBikeKnockOffModifier`. Shipped:
+  (1) raise `AIGeneralSettings.aiBikeKnockOffModifier` to 1000 **only while his Arch exists** (ref-counted
+  across the arrival + cruise systems, restored to the *captured original* so a co-installed mod isn't
+  clobbered, force-restored in `onShutdown`); (2) god-mode the Arch Invulnerable so a hard hit can't destroy
+  it under him; (3) `jlCruiseRightingTick` — if the bike flips or he's thrown anyway (`IsBeingDragged()`
+  bypasses the threshold entirely), right it behind V, `PhysicsWakeUp`, re-mount, re-issue the follow.
+  → **TEST:** first, in the CET console: `print(TweakDB:GetFlat("AIGeneralSettings.aiBikeKnockOffModifier"))`
+  — expect `1.0`. Then cruise with him through traffic. Does he stay on the bike? Is `1000.0` right, or does
+  he feel unnaturally glued? Watch for the log line `Cruise: bike recovered` — if it fires constantly,
+  something else is wrong.
+
+**Problems & Resolutions (2026-07-09):**
+1. **"Disable the bike's collisions" — impossible, and the wrong goal.** The only scriptable collision
+   toggle is `PhysicalMeshComponent.ToggleCollision`, on the *visual* branch
+   (`entIPlacedComponent → entIVisualComponent → entMeshComponent → entPhysicalMeshComponent`).
+   `vehicleChassisComponent` and `entColliderComponent` descend **straight from `entIPlacedComponent`**, so
+   it's unreachable — re-verified against the RTTI dump, confirming the older `bike_cruise_research.md` §3.
+   The real cause is a dedicated NPC knock-off mechanic. **Notably, that engine code path contains no
+   god-mode check**, so the obvious "make the bike invulnerable" fix provably cannot work on its own.
+   → Attacked the actual threshold instead.
+2. **`JL.day.count` can silently miss a day.** It only advances when `ensureDayTemplate` catches the game
+   hour *wrapping* past midnight. A flat 24 h sleep (10:00 → 10:00) never decreases the hour, so the day is
+   missed and the "once per day" hello would never re-arm. Verified with a table of sleep scenarios.
+   → New `jlGameDay()` derives an absolute day from the monotonic total-seconds clock; it cannot miss.
+3. **`useKinematic` on the arrival ride-in is NOT a bug.** It looked like one (cruise sets it, arrival
+   doesn't). But AMM ships the identical `useKinematic/useTraffic` config for its own bike followers, and our
+   arrival is confirmed-good in-game — so it was left alone rather than regress a working path. Documented as
+   a knob to revisit only if arrivals still topple after the knock-off fix.
+4. **`init.lua` was contested again.** Mid-session the Blaze session rewrote `blazeFinaleSceneTick` (v1.10,
+   "stand him BESIDE V") in the same working tree. Nothing was clobbered this time (my edit failed loudly on
+   a stale read instead of overwriting), but per the standing rule `init.lua` was **left uncommitted**.
+
 ### 🆕 Added 2026-07-08 (v1.37) — "unavailable" call SOLVED (alive mode) + combat-leash release
 
 **Call fix — RESOLVED in-game (Antonia tested the workbench).** The "temporarily unavailable" card is

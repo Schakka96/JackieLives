@@ -4426,6 +4426,150 @@ local function applyIdlePose(handle, wp, forceSnap)
 end
 
 -- ===========================================================================
+-- v1.41 LOOK-AT / head tracking. See the long note on Config.lookAt. We queue ONE `entLookAtAddEvent`
+-- onto the puppet and the engine head-tracks V by itself from then on — including through a sit
+-- workspot, because it's an additive animation-graph overlay rather than a body rotation. We only
+-- decide WHEN he should be tracking; we never drive the rotation, so there's nothing to jitter.
+-- All GLOBAL functions -> cost no top-level local (200-cap).
+-- ===========================================================================
+
+-- Resolve a named enum value, tolerating CET exposing it as a global table, via Enum.new, or not at all.
+-- Returns nil on failure so the caller can skip that setter — the event still works on its defaults.
+function jlAnimEnum(enumName, valueName)
+  local v
+  pcall(function() local t = _G[enumName]; if t and t[valueName] ~= nil then v = t[valueName] end end)
+  if v == nil then pcall(function() v = Enum.new(enumName, valueName) end) end
+  return v
+end
+
+-- Construct the look-at event. CET's marshalling for this class is UNVERIFIED (no shipped Lua mod builds
+-- one), so try each construction form in turn and remember the one that worked to keep the log quiet.
+function jlNewLookAtEvent()
+  local evt
+  if JL.lookAtCtor ~= "NewObject" and JL.lookAtCtor ~= "handle" then
+    pcall(function() evt = entLookAtAddEvent.new() end)
+    if evt then JL.lookAtCtor = "new"; return evt end
+  end
+  if JL.lookAtCtor ~= "handle" then
+    pcall(function() evt = NewObject("entLookAtAddEvent") end)
+    if evt then JL.lookAtCtor = "NewObject"; return evt end
+  end
+  pcall(function() evt = NewObject("handle:entLookAtAddEvent") end)
+  if evt then JL.lookAtCtor = "handle"; return evt end
+  return nil
+end
+
+-- Begin head-tracking V. Stores the event on JL.lookAt because the matching REMOVE has to reference the
+-- same event object (it carries the outLookAtRef the engine handed back).
+function jlLookAtStart(h)
+  local L  = Config.lookAt or {}
+  local pl = Game.GetPlayer()
+  if not (h and pl) then return false end
+  JL.lookAt = JL.lookAt or { on = false }   -- self-init: callable from a debug button before the first tick
+  local evt = jlNewLookAtEvent()
+  if not evt then
+    if not JL.lookAtWarned then
+      JL.lookAtWarned = true
+      log("LookAt: cannot construct entLookAtAddEvent -> head tracking OFF (Jackie behaves exactly as before).")
+    end
+    return false
+  end
+  local ok = pcall(function()
+    pcall(function() evt.bodyPart = CName.new(L.bodyPart or "Eyes") end)
+    -- Target the PLAYER ENTITY (not a static position): the engine then follows her as she moves,
+    -- which is the whole reason we don't need a per-frame update.
+    evt:SetEntityTarget(pl, CName.new(L.targetSlot or "pla_default_tgt"), Vector4.new(0, 0, 0, 0))
+    pcall(function() evt:SetStyle(jlAnimEnum("animLookAtStyle", "Normal")) end)
+    pcall(function()
+      evt:SetLimits(jlAnimEnum("animLookAtLimitDegreesType",  L.softLimit or "Wide"),
+                    jlAnimEnum("animLookAtLimitDegreesType",  L.hardLimit or "Wide"),
+                    jlAnimEnum("animLookAtLimitDistanceType", L.distLimit or "None"),
+                    jlAnimEnum("animLookAtLimitDegreesType",  L.backLimit or "Normal"))
+    end)
+    h:QueueEvent(evt)
+  end)
+  if not ok then
+    if not JL.lookAtWarned then
+      JL.lookAtWarned = true
+      log("LookAt: setup/QueueEvent threw -> head tracking OFF (Jackie behaves exactly as before).")
+    end
+    return false
+  end
+  JL.lookAt.evt, JL.lookAt.handle, JL.lookAt.on = evt, h, true
+  log(("LookAt: now tracking V (ctor=%s, bodyPart=%s)."):format(tostring(JL.lookAtCtor), tostring(L.bodyPart or "Eyes")))
+  return true
+end
+
+-- Stop head-tracking. Preferred path is the engine's own static helper; if CET won't dispatch the static,
+-- hand-build the remove event and point it at the ref the add event returned. Failing BOTH is harmless —
+-- the look-at simply stays on, which is the pretty failure rather than the ugly one.
+function jlLookAtStop()
+  local st = JL.lookAt
+  if not (st and st.on) then return end
+  local h, evt = st.handle, st.evt
+  st.on, st.evt, st.handle = false, nil, nil
+  if not (h and evt) then return end
+  local ok = pcall(function() LookAtRemoveEvent.QueueRemoveLookatEvent(h, evt) end)
+  if not ok then
+    pcall(function()
+      local rm = NewObject("entLookAtRemoveEvent")
+      rm.lookAtRef = evt.outLookAtRef
+      h:QueueEvent(rm)
+    end)
+  end
+  log("LookAt: stopped.")
+end
+
+-- Which Jackie (if any) should be head-tracking V right now? The on-foot COMPANION is excluded: his
+-- AIFollowTargetCommand already carries `lookAtTarget`, so he head-tracks already and stacking a second
+-- look-at on him buys nothing. The two cases that have NO follow command — and so a frozen stare — are:
+--   * IDLE Jackie at a venue (standing, leaning, or parked on his barstool)
+--   * SEATED-at-dinner Jackie (still a companion, but the follow role is dropped while he eats)
+function jlLookAtSubject()
+  if JL.idle.spawn and JL.idle.spawn.handle and not JL.idle.leaving then
+    return JL.idle.spawn.handle
+  end
+  if JL.dinner and JL.dinner.phase == "seated" and JL.summon.spawn then
+    return JL.summon.spawn.handle
+  end
+  return nil
+end
+
+function jlLookAtTick()
+  local L = Config.lookAt or {}
+  JL.lookAt = JL.lookAt or { on = false }
+  if not L.enabled then if JL.lookAt.on then jlLookAtStop() end; return end
+  local st  = JL.lookAt
+  local now = JL.clock or 0
+  if now < (st.checkAt or 0) then return end
+  st.checkAt = now + (L.check or 0.5)
+
+  local h = jlLookAtSubject()
+  if not h then if st.on then jlLookAtStop() end; return end
+  if st.on and st.handle ~= h then jlLookAtStop() end   -- respawned/swapped body: old event is orphaned
+
+  local pp = playerPos(); if not pp then return end
+  local jp; pcall(function() jp = h:GetWorldPosition() end)
+  if not jp then return end
+  local d = dist3(pp, jp)
+
+  if st.on then
+    -- Re-arm across a pose change: playing a workspot rebuilds his animation graph, which can drop the
+    -- overlay. `posed` only flips when he sits/stands, so this is not a per-frame cost.
+    if st.posed ~= JL.idle.posed then
+      st.posed = JL.idle.posed
+      jlLookAtStop()
+      if d <= (L.range or 12.0) then jlLookAtStart(h) end
+      return
+    end
+    if d > (L.dropRange or 15.0) then jlLookAtStop() end
+  elseif d <= (L.range or 12.0) then
+    st.posed = JL.idle.posed
+    jlLookAtStart(h)
+  end
+end
+
+-- ===========================================================================
 -- DINNER state machine (v0.43, seat reworked v0.44). Defined here (not with startDinnerWalk)
 -- because it needs the pose/move helpers above. Phases: walking -> seating -> seated. Jackie stays
 -- our companion (JL.summon.active) the whole time; we only swap his AI ROLE (follow <-> sit).
@@ -6352,6 +6496,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
   pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap
 
+  pcall(jlLookAtTick)     -- v1.41: venue/seated Jackie turns his head to follow V (engine look-at overlay)
   pcall(wanderTick)       -- v0.35: idle Jackie free-roams between his location's waypoints
   pcall(idleLeavingTick)  -- v0.38: idle Jackie walking off to a venue exit before despawning
   pcall(function() proximityBarkTick(dt) end)  -- v0.42: greet on approach (6 m) + grunt on bump (1.2 m)
@@ -6898,6 +7043,7 @@ registerForEvent("onShutdown", function()
   pcall(closeNativeCallWindow)   -- never leave a holocall window stuck open
   pcall(hideJackieChoiceBox)
   pcall(hideSubtitle)
+  pcall(jlLookAtStop)            -- v1.41: never leave a look-at overlay on a puppet we're about to drop
   pcall(clearIdle)
   pcall(clearVehicleArrival)     -- v0.34: never orphan the arrival bike
   pcall(bikeTestDespawn)         -- v0.63: never orphan the bike-model test spawn
