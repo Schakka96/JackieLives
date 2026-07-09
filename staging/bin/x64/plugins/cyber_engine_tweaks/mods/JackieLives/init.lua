@@ -399,6 +399,26 @@ function blazeClearCombat()
   return true
 end
 
+-- v1.11 (Antonia): holster V's weapon + force-stand. ⚠️ PENDING VERIFIED CALLS — stubbed no-ops for now
+-- so the rest of transportCalm ships; filled in the next slice once the exact 2.x calls are confirmed.
+function blazeHolsterWeapon(_) end
+function blazeForceStand(_) end
+
+-- v1.11 (Antonia): put V in a CALM state for the finale fade-in — out of combat, weapon HOLSTERED, and
+-- STANDING (not crouched). Exact holster/uncrouch calls verified separately; each is pcall-guarded so a
+-- wrong/absent one just no-ops. Called at full black in the finale.
+function blazeTransportCalm()
+  pcall(blazeClearCombat)   -- out of combat (verified)
+  local pl; pcall(function() pl = Game.GetPlayer() end)
+  if not pl then return false end
+  -- HOLSTER the weapon (filled from research).
+  pcall(function() blazeHolsterWeapon(pl) end)
+  -- STAND UP / uncrouch (filled from research).
+  pcall(function() blazeForceStand(pl) end)
+  log("[Blaze] transportCalm: out-of-combat + holster + stand (best-effort).")
+  return true
+end
+
 -- (3) END THE ACTIVE SCENE — there is NO scripted per-scene abort in 2.x; the only script handle on a
 -- running .scene is FAST-FORWARD (what the game's skip-cutscene uses). We activate it to blow the active
 -- heist scene through to its end (killing its music bed), then auto-deactivate a few seconds later
@@ -6216,13 +6236,17 @@ registerForEvent("onInit", function()
             if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(fp.x, fp.y, fp.z, 1.0), EulerAngles.new(0.0, 0.0, fp.yaw or 0.0)) end
           end)
           -- 5) NOW (V is away from the fight) "escape the scene": clear V's combat state, reset the music
-          --    mix, and fast-forward the lingering heist scene to kill its music bed (Antonia item 10,
-          --    max-risk). Runs last so the combat-clear isn't re-asserted by the bosses. See blazeFinaleTeardown.
+          --    mix, mute the stuck bed, and fast-forward the lingering heist scene. See blazeFinaleTeardown.
           if Blaze.bound and Blaze.bound.finaleTeardown then pcall(Blaze.bound.finaleTeardown) end
-          -- 6) arm the finale scene: place the (existing) companion Jackie next to V in his NORMAL outfit,
-          --    facing her, then run the finale conversation once the fade lifts (blazeFinaleSceneTick).
-          JL.blazeFinale = { phase = "place", startedAt = JL.clock or 0 }
-          log("[Blaze] FINALE (at black): Watson open, shard skipped, quest untracked, V at finale spot, scene torn down; convo armed.")
+          -- 6) v1.11 (Antonia): flip weather->sunny + time->midday HERE, at full black (was too early at the
+          --    heli). And put V in a calm state for the fade-in: holster, out of combat, stand (uncrouch).
+          pcall(function() blazeSetWeather() end)
+          pcall(function() blazeSetMidday(12) end)
+          pcall(function() blazeTransportCalm() end)
+          -- 7) arm the finale scene: (re)spawn Jackie next to V in his NORMAL outfit facing her, then run the
+          --    finale conversation once the fade lifts + the scene settles (blazeFinaleSceneTick).
+          JL.blazeFinale = { phase = "spawn", startedAt = JL.clock or 0 }
+          log("[Blaze] FINALE (at black): Watson open, shard skipped, quest untracked, V at finale spot, day+sun, calm; convo armed.")
         end)
       end,
       -- DIAGNOSE test-spawn: drop Takemura ~5 m and Smasher ~7 m in front of V, loudly, so we can see if
@@ -6428,26 +6452,43 @@ local function proximityBarkTick(dt)
   end
 end
 
--- v1.07 BLAZE finale scene: after the fade drops V at the finale spot (JL.blazeFinale armed by the finale
--- bind), place the EXISTING companion Jackie next to her in his NORMAL outfit facing her (180°), then run
--- the finale conversation (Config.blazeFinaleTree) once the fade lifts. Reuses the companion + branch engine
--- (no fragile respawn). Global => 200-cap safe; defined here so it can see the late local helpers.
+-- v1.11 BLAZE finale scene: after the fade drops V at the finale spot (JL.blazeFinale armed by the finale
+-- bind), RESPAWN Jackie fresh in his NORMAL outfit (the fight companion gets culled by the long teleport —
+-- "Jackie didn't load in"), stand him BESIDE V facing her, then run the finale conversation once the fade
+-- lifts AND the scene has settled (Antonia: it appeared too early, during the blackscreen). Reuses the
+-- companion + branch engine. Global => 200-cap safe; defined here so it can see the late local helpers.
 function blazeFinaleSceneTick()
   local f = JL.blazeFinale
   if not f or not f.phase then return end
+  local app = (Blaze.yori and Blaze.yori.finaleAppearance) or "jackie_welles_default"
+
+  if f.phase == "spawn" then
+    -- The fight companion (dirty suit) is likely culled by the teleport. Throw him out and spawn a FRESH
+    -- companion in the normal outfit right here, so Jackie reliably appears at the finale.
+    pcall(function() if JL.summon.spawn then ammDespawn(JL.summon.spawn) end end)
+    JL.summon.spawn, JL.summon.active, JL.summon.companionSet = nil, false, false
+    local sp = ammSpawn(1, app)
+    if sp then
+      JL.summon.spawn, JL.summon.active, JL.summon.companionSet = sp, true, false
+      f.phase, f.spawnAt = "place", (JL.clock or 0)
+      log("[Blaze] finale: fresh Jackie spawned (normal outfit).")
+    elseif (JL.clock or 0) - (f.startedAt or 0) > 8.0 then
+      f.phase, f.talkAt = "talk", (JL.clock or 0)         -- give up spawning; still run the convo
+      log("[Blaze] finale: ammSpawn kept failing — running convo without a placed Jackie.")
+    end
+    return
+  end
+
   if f.phase == "place" then
     local h = resolveJackieHandle()
-    if not h then                            -- companion not resolved yet; retry, but don't hang forever
-      if (JL.clock or 0) - (f.startedAt or 0) > 8.0 then f.phase, f.talkAt = "talk", (JL.clock or 0) end
+    if not h then                            -- fresh spawn not resolved yet; retry, but don't hang forever
+      if (JL.clock or 0) - (f.spawnAt or f.startedAt or 0) > 8.0 then f.phase, f.talkAt = "talk", (JL.clock or 0) end
       return
     end
-    -- swap to his NORMAL outfit (best-effort live appearance change; if it no-ops he stays in the suit)
-    local app = (Blaze.yori and Blaze.yori.finaleAppearance) or "jackie_welles_default"
-    pcall(function() h:PrefetchAppearanceChange(CName.new(app)) end)
+    pcall(function() h:PrefetchAppearanceChange(CName.new(app)) end)   -- belt-and-suspenders normal outfit
     pcall(function() h:ScheduleAppearanceChange(CName.new(app)) end)
-    -- v1.10 (Antonia): "in front" bugged him into a wall at this spot. Stand him BESIDE V instead (to her
-    -- side, using V's own right vector), snapped to navmesh, still facing her. Side/dist configurable via
-    -- Blaze.yori.finaleSide (metres; +right / -left) so it's tunable if the spot needs the other side.
+    -- Stand him BESIDE V (V's right vector), snapped to navmesh, facing her. Blaze.yori.finaleSide tunes
+    -- the side/distance (+right / -left) if he clips at this spot.
     pcall(function()
       local pl = Game.GetPlayer(); local pp = pl and pl:GetWorldPosition()
       local rt; pcall(function() rt = pl:GetWorldRight() end)
@@ -6461,11 +6502,14 @@ function blazeFinaleSceneTick()
       end
     end)
     pcall(promoteToCompanion)                -- keep him a proper follower (living Jackie going forward)
-    f.phase, f.talkAt = "talk", (JL.clock or 0) + 0.3
+    -- SETTLE: don't start the convo until the fade fully lifts AND a beat passes (Antonia: subtitle+picker
+    -- showed during the blackscreen). Configurable via Blaze.yori.finaleSettle.
+    f.phase, f.talkAt = "talk", (JL.clock or 0) + ((Blaze.yori and Blaze.yori.finaleSettle) or 1.8)
     return
   end
+
   if f.phase == "talk" then
-    local fadeDone = not (JL.blazeFade and JL.blazeFade.phase)   -- wait until the screen is clear
+    local fadeDone = not (JL.blazeFade and JL.blazeFade.phase)   -- wait until the screen is fully clear
     if fadeDone and (JL.clock or 0) >= (f.talkAt or 0) then
       f.phase = "talking"
       pcall(function() Branch.start(nil, Config.blazeFinaleTree) end)

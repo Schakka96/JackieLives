@@ -1401,7 +1401,7 @@ Config.blazeFinaleTree = {
         { text = "Barely caught a breath since Konpeki. ...Feels good to just stop a second.", to = "pause" },
       },
     },
-    -- the pause beat + "shame nobody'll know it was us" (moved up here, per Antonia).
+    -- the pause beat + "shame nobody'll know it was us" (Antonia's verbal note, this turn).
     pause = {
       jackiePool = { { text = "Heh... yeah. It does. ...Shame nobody's ever gonna know it was us up there." } },
       choices = {
@@ -1418,33 +1418,41 @@ Config.blazeFinaleTree = {
     deflect = {
       jackiePool = { { text = "I had it. Right in my hands, V, I swear I did..." } },
       choices = {
-        { text = "Jackie! The biochip -- the fucking case with the biochip, WHERE IS IT?!", to = "reveal" },
+        { text = "Jackie! The biochip -- the fucking case with the biochip, where is it?!", to = "reveal" },
       },
     },
+    -- reveal wording = Antonia's file (docs/jackie_V_final_convo.txt).
     reveal = {
       jackiePool = { { text = "I tried to hold onto it, I swear. Smasher -- that hijo de puta... Case took a round, cracked wide open. Chip's slag. So I dropped it. ...I'm sorry, V. I really am." } },
-      -- 3 options, ONE angry (-> mad); the other two let-it-go (-> easy). Per Antonia.
+      -- 3 options, ONE angry (-> mad); the other two let-it-go (-> easy). Wording from Antonia's file.
       choices = {
-        { text = "Fuck! That was our ticket, Jackie! Everything we worked for!",           to = "mad"  },
-        { text = "Honestly? That thing woulda been more trouble than it was worth.",         to = "easy" },
-        { text = "We're both breathing, cabron. That's the only score that matters.",        to = "easy" },
+        { text = "Fuck! That was our ticket Jackie! Everything we worked for!",            to = "mad"  },
+        { text = "Honestly? Thing probably woulda been more trouble than it was worth.",    to = "easy" },
+        { text = "We're both breathing, cabrón. That's the only score that matters.",       to = "easy" },
       },
     },
     mad = {
       jackiePool = { { text = "Yeah... I know. Chinga'o. But hey -- you're still here to be pissed about it, right?" } },
       choices = {
-        { text = "(let out a breath) ...Guess I am.", to = "whatnow" },
+        { text = "(let out a breath) ...Guess I am.", to = "legend" },
       },
     },
     easy = {
       jackiePool = { { text = "...Yeah. Maybe you're right. Corpo tech like that only ever buys you a shorter life." } },
       choices = {
-        { text = "Damn right.", to = "whatnow" },
+        { text = "Damn right.", to = "legend" },
+      },
+    },
+    -- Antonia's file line: pride in the feat (distinct from the earlier "shame nobody'll KNOW it was us").
+    legend = {
+      jackiePool = { { text = "You and me. Walked outta Konpeki Plaza. Nobody's ever gonna believe it." } },
+      choices = {
+        { text = "Let 'em not believe it.", to = "whatnow" },
       },
     },
     whatnow = {
-      -- VOICED closer: real clip "So what now?" (jl_1812693583769038848).
-      jackiePool = { { text = "Okay... so. What now?", sfx = "jl_1812693583769038848" } },
+      -- SUBTITLE-ONLY (Antonia: the voiced 'So what now?' clip was bad — use her literal line, no audio).
+      jackiePool = { { text = "Okay soo... What's next?" } },
       choices = {
         { text = "Whatever we want, hermano. For once, nobody's writing our story but us.", to = "done" },
       },
