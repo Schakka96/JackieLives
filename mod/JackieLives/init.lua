@@ -3257,7 +3257,11 @@ end
 
 -- Set a COMPANION's continuous follow at `desiredDistance` (used after handoff so Jackie holds a
 -- gap and doesn't clip into V). AIFollowTargetCommand tracks the moving player; teleport=false.
-local function sendWalkToPlayer(handle, movementType, desiredDistance)
+-- v1.46 `stealth`: there is NO crouch/sneak entry in `moveMovementType` (it is only Walk/Run/Sprint).
+-- The stealth gait is instead a BOOL on the command — `alwaysUseStealth`, inherited from AIMoveCommand —
+-- whose handler puts the NPC into the Stealth high-level state, and THAT drives the crouched locomotion.
+-- Set on its own field so an older/renamed build just ignores it (the follow still works).
+local function sendWalkToPlayer(handle, movementType, desiredDistance, stealth)
   if not handle then return false end
   return (pcall(function()
     local cmd = NewObject('handle:AIFollowTargetCommand')
@@ -3269,6 +3273,7 @@ local function sendWalkToPlayer(handle, movementType, desiredDistance)
     cmd.movementType               = resolveMoveType(movementType)
     cmd.teleport                   = false        -- KEY: no command-level catch-up teleport
     cmd.lookAtTarget               = Game.GetPlayer()
+    if stealth then pcall(function() cmd.alwaysUseStealth = true end) end   -- v1.46: crouched gait
     handle:GetAIControllerComponent():SendCommand(cmd)
   end))
 end
@@ -4390,13 +4395,40 @@ function jlVSneaking()
   pcall(function()
     local pl = Game.GetPlayer(); if not pl then return end
     local defs = GetAllBlackboardDefs().PlayerStateMachine
-    local bb   = Game.GetBlackboardSystem():GetLocalInstanced(pl:GetEntityID(), defs)
+    local bb                                            -- the documented accessor...
+    pcall(function() bb = pl:GetPlayerStateMachineBlackboard() end)
+    if not bb then                                      -- ...falling back to the route blazeClearCombat uses
+      pcall(function() bb = Game.GetBlackboardSystem():GetLocalInstanced(pl:GetEntityID(), defs) end)
+    end
     if not bb then return end
-    local loco = bb:GetInt(defs.Locomotion)
-    val = (jlSneakStates())[loco] == true
+    val = (jlSneakStates())[bb:GetInt(defs.Locomotion)] == true
   end)
   st.sneaking = val
   return val
+end
+
+-- v1.46 DIAGNOSTIC (logs once). The engine hides a companion from enemy perception automatically —
+-- `SenseComponent.ShouldIgnoreIfPlayerCompanion` short-circuits sensing, threat-tracking AND reactions for
+-- anyone `AIHumanComponent.IsPlayerCompanion()` accepts. That returns true only when BOTH hold: his AI role
+-- is Follower, and his `FriendlyTarget` behaviour arg is the player. AMM's "set as companion" establishes
+-- both, so a properly-promoted Jackie should be invisible to guards for free.
+-- Antonia nevertheless reports guards spotting him while sneaking. Either he is NOT truly a Follower-role
+-- companion (this log settles it), or he was simply being walked into their faces by walk-abreast's
+-- lead-ahead anchor (which v1.46 now stops). Print the answer once so the next test run tells us which.
+function jlCompanionCheck()
+  if JL.companionChecked then return end
+  JL.companionChecked = true
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  if not h then JL.companionChecked = nil; return end   -- no body yet; ask again next tick
+  local ok, val = pcall(function() return h:GetAIControllerComponent():IsPlayerCompanion() end)
+  if not ok then
+    log("Stealth: IsPlayerCompanion() unavailable on this build (cannot verify enemy-perception immunity).")
+  elseif val then
+    log("Stealth: Jackie IS a Follower-role player companion -> enemies should ignore him entirely.")
+  else
+    log("Stealth: ⚠ Jackie is NOT registered as a player companion -> enemies CAN see him. "
+        .. "The Follower role / FriendlyTarget arg did not stick; AMM's companion promotion needs re-running.")
+  end
 end
 
 -- v1.46 THE SINGLE HANDOFF PREDICATE. followKeepCloseTick (the trail) runs BEFORE abreastTick each frame
@@ -4448,7 +4480,8 @@ local function followKeepCloseTick()
   -- her and ends up in front, which is how he kept walking into the enemy she was creeping up on).
   local S = Config.stealth or {}
   if S.enabled ~= false and jlVSneaking() then
-    sendWalkToPlayer(h, S.movement or "Walk", S.followDistance or 3.0)
+    jlCompanionCheck()   -- v1.46: one-time diagnostic — is he really a Follower-role companion?
+    sendWalkToPlayer(h, S.movement or "Walk", S.followDistance or 3.0, S.stealthGait ~= false)
     return
   end
   sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)

@@ -339,10 +339,18 @@ Config.abreast = {
 -- than erroring. `locomotionStates` is the list we treat as "V is sneaking".
 Config.stealth = {
   enabled        = true,
-  -- PSM Locomotion state names that mean "V is crouched". CrouchSprint is the crouch-run; both count.
-  locomotionStates = { "Crouch", "CrouchSprint" },
+  -- PSM Locomotion state names that mean "V is crouched". Confirmed against `gamePSMLocomotionStates`
+  -- (psmImports.script): Default=0, Crouch=1, Sprint=2, Kereznikov=3, Jump=4, Vault=5, Dodge=6, DodgeAir=7,
+  -- Workspot=8, Slide=9, SlideFall=10, CrouchSprint=11, CrouchDodge=12. The game's own crouch indicator
+  -- treats the crouch FAMILY as {Crouch, CrouchDodge, Slide}; we take the three deliberate ones and leave
+  -- Slide out (a slide is a sprint manoeuvre, not sneaking). Resolved BY NAME at runtime, never hardcoded.
+  locomotionStates = { "Crouch", "CrouchSprint", "CrouchDodge" },
   followDistance = 3.0,     -- m he trails BEHIND V while she sneaks (single file, never abreast)
   movement       = "Walk",  -- his gait while shadowing (never Run — he'd clatter past her into the cone)
+  -- There is NO crouch entry in `moveMovementType` (Walk/Run/Sprint only). The crouched gait comes from the
+  -- `alwaysUseStealth` BOOL on the follow command: its handler pushes the NPC into the Stealth high-level
+  -- state, which is what actually makes him sneak. Set false if the crouched walk ever looks wrong.
+  stealthGait    = true,
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------

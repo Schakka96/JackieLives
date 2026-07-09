@@ -102,7 +102,81 @@ or any megabuilding stairwell — and up a car-ramp/slope. Expected: Jackie drop
 stairs and walks up single-file, then **slides back to your side** ~1.5 s after you reach flat ground. No
 snapping, no popping to the far side of the landing.
 
-**Still open (next):** stealth behaviour — see the sneak/takedown section below.
+### 🆕 Added 2026-07-09 (v1.46) — Jackie SHADOWS V when she sneaks (was: walked straight into the enemy)
+
+Antonia: *"currently he crouches right into the enemy who then detects him… definitely disable walk abreast
+when sneaking!"*
+
+**Root cause.** Walk-abreast parks Jackie 3.5 m to the side and ~2 m **ahead** of V (`leadDistance`) — exactly
+the space she is trying to keep clear while creeping up on a target. And the trail's fallback gait is **`Run`**,
+which overshoots a crouch-walking V and leaves him in front of her even once abreast is off.
+
+- [x] 🥷 **`jlVSneaking()`** — reads `Locomotion` from the PlayerStateMachine blackboard. Values resolved **by
+  name** via `jlAnimEnum` (`gamePSMLocomotionStates` → `Crouch`, `CrouchSprint`, `CrouchDodge`) and cached,
+  never hardcoded. If no name resolves it logs once and reports "not sneaking" — degrading to the old
+  behaviour rather than erroring. *(Enum confirmed against `psmImports.script`: Crouch=1, CrouchSprint=11,
+  CrouchDodge=12. `Slide=9` is deliberately excluded — a slide is a sprint manoeuvre, not sneaking.)*
+- [x] **Abreast is disabled while V crouches** (through the shared `jlAbreastOn()` predicate); the trail takes
+  over at `Config.stealth.followDistance` (3 m), behind her, never leading.
+- [x] 🐈 **He now actually CROUCHES.** There is no sneak entry in `moveMovementType` (Walk/Run/Sprint only) —
+  the crouched gait is the **`alwaysUseStealth` bool** on `AIMoveCommand`, inherited by `AIFollowTargetCommand`.
+  Its handler pushes the NPC into the `Stealth` high-level state, and that drives the animation. Set on its own
+  `pcall` so a build without the field just ignores it and the follow still works.
+- [x] 🔎 **`jlCompanionCheck()` — a one-time diagnostic that should settle the detection bug.** The engine
+  hides companions from enemies *for free*: `SenseComponent.ShouldIgnoreIfPlayerCompanion` short-circuits
+  sensing, threat-tracking **and** reactions for anyone `AIHumanComponent.IsPlayerCompanion()` accepts — which
+  requires his AI role to be `Follower` **and** his `FriendlyTarget` behaviour arg to be the player. AMM's
+  companion promotion sets both. So a correctly-promoted Jackie **should already be invisible to guards**, and
+  the fact that he wasn't means either (a) the role never stuck, or (b) abreast was simply walking him into
+  their faces. We now print which, once, on the first sneak.
+- [x] New `Config.stealth` block: `enabled`, `locomotionStates`, `followDistance`, `movement`, `stealthGait`.
+
+→ **TEST:** crouch and creep toward an unaware enemy. Jackie should fall in **behind** you at ~3 m, crouched,
+and stay there. Then check `jackie_debug.log` for these two lines:
+  * `Stealth: crouch locomotion states resolved -> Crouch=1, CrouchSprint=11, CrouchDodge=12`
+    — if instead you see `could NOT resolve any gamePSMLocomotionStates crouch value`, the enum names changed
+    and the sneak gate is inert. **Tell Claude.**
+  * `Stealth: Jackie IS a Follower-role player companion` — if instead you see
+    `⚠ Jackie is NOT registered as a player companion`, **that is the real cause of him being detected**, and
+    the takedown work below will not function either until it's fixed. **Tell Claude.**
+
+### ⏳ NEXT (v1.47) — the parallel takedown from The Heist
+
+**Big finding: it is NOT a cutscene, and it IS reusable.** From the extracted
+`docs/research/q005_raw/…/q005_06c_playstyles_floor.questphase.json`, Jackie's synchronised takedown is one
+parameterised AI command issued to him — no synced-anim pair, no `.scene`, nothing bespoke:
+
+- Params class **`AIFollowerTakedownCommandParams`** → runtime class **`AIFollowerTakedownCommand`**
+  (`scripts/core/ai/aiCommand.script`), fields `targetRef : EntityReference`, `target : weak<GameObject>`,
+  `approachBeforeTakedown : Bool`, `doNotTeleportIfTargetIsVisible : Bool`.
+- **We do not need to build the NodeRef.** `AIFollowerTakedownCommandHandler.Update` (`FollowerTasks.script`)
+  checks the runtime `target` handle **first** and only falls back to resolving `targetRef`. So from CET:
+  `cmd.target = victimHandle` against any arbitrary NPC, then the usual
+  `GetAIControllerComponent():SendCommand(cmd)`.
+- The engine owns the animation: the handler sets `CombatTarget`, calls
+  `NPCPuppet.ChangeHighLevelState(jackie, Stealth)`, and the **follower behaviour tree's** takedown subtree
+  plays the grapple — which is why q005 watches for `BaseStatusEffect.Grappled` on the victim.
+- The "synchronisation" with V is **not a feature**: the quest simply waits for V to enter trigger volume
+  `#q005_tr_takedown_sync`, then fires the command. We reproduce it by choosing *when* to issue.
+
+**Prerequisite (the whole ballgame):** the takedown task only exists inside the **Follower role's** behaviour
+tree. Same prerequisite as the stealth-immunity above — so `jlCompanionCheck()` gates both. AMM's
+`Spawn:SetNPCAsCompanion` does `SetAIRole(AIFollowerRole.new())` with `followerRef = #player`, which satisfies it.
+
+**Caveat:** no in-the-wild CET call-site for `AIFollowerTakedownCommand` was found anywhere (GitHub, AMM,
+Nexus). The class is RTTI-registered and the send route is native, so it *should* work — but **we would be the
+first**, so this needs a real in-game test before it can be trusted.
+
+**Design decided with Antonia (2026-07-09):**
+- **Shadow + opportunistic takedown.** Jackie shadows V and, when V takes a target down, fires the follower
+  takedown on a *second* enemy in range. He never acts on his own initiative (that would wreck a planned
+  approach).
+- **Fallback if the command no-ops:** a silent, non-alerting kill with **no animation**. Explicitly *not* a
+  faked grapple.
+
+**Still to design:** how to detect "V is taking someone down" (best candidate: poll for a nearby enemy gaining
+`BaseStatusEffect.Grappled` — the same signal q005 itself waits on), and how to enumerate nearby unaware
+hostiles to pick Jackie's victim.
 
 ### 🆕 Added 2026-07-09 (v1.45) — Watson barrier is now HELD open (was a one-shot write)
 
