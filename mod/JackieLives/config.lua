@@ -327,6 +327,24 @@ Config.abreast = {
   maxAnchorZDelta   = 2.5,  -- m the navmesh-snapped anchor may differ from V's height before we distrust it
 }
 
+-- ---- stealth / sneaking (v1.46) -------------------------------------------
+-- When V CROUCHES, walking abreast is exactly wrong: it parks Jackie 3.5 m out to the side and slightly
+-- AHEAD of her — straight into the enemy's vision cone she is trying to stay out of. (Antonia, in-game:
+-- "he crouches right into the enemy who then detects him.") So sneaking flips him into a SHADOW: he drops
+-- behind V, single-file, at `followDistance`, and never leads.
+--
+-- Detection is by NAME, not by a hardcoded enum number: `gamePSMLocomotionStates` member names are resolved
+-- through jlAnimEnum() at first use and cached. If a name ever stops resolving (a game patch renames it) the
+-- lookup degrades to "not sneaking" — the pre-v1.46 behaviour — and says so once in jackie_debug.log rather
+-- than erroring. `locomotionStates` is the list we treat as "V is sneaking".
+Config.stealth = {
+  enabled        = true,
+  -- PSM Locomotion state names that mean "V is crouched". CrouchSprint is the crouch-run; both count.
+  locomotionStates = { "Crouch", "CrouchSprint" },
+  followDistance = 3.0,     -- m he trails BEHIND V while she sneaks (single file, never abreast)
+  movement       = "Walk",  -- his gait while shadowing (never Run — he'd clatter past her into the cone)
+}
+
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
 -- Once Jackie is a SETTLED companion (arrived, role applied, not dismissed/expired), if V gets far
 -- away — FAST-TRAVEL, a long sprint, or he just got left behind — he teleports back to V's SIDE.

@@ -1151,3 +1151,72 @@ flagged are being handled there. Genuinely-open thoughts:
    contract complete — v1.01 needs giveWeapon (bound ~init.lua:5093), a fact read (GetFactStr),
    and the [F] escape prompt (~init.lua:978); all present as of this note. If blaze.lua adds a new
    M.bound.X, add the matching bind in init.lua or it silently no-ops.
+
+
+================================================================================
+2026-07-09 — VENUE POLISH + THREE OLD BUGS (v1.41-v1.45)
+================================================================================
+
+Session brief: head-tracking at venues, a daily hello bark, "turn the bike's collisions off",
+then the picker placement, the Konpeki outfit bug, and the Blaze finale no-show.
+
+THE THREE FINDINGS WORTH REMEMBERING (each overturned the framing of the request):
+
+1. OUTFITS NEVER APPLIED. AMM's Spawn:NewSpawn(name, id, parameters, ...) wants `parameters` to be
+   the appearance-name STRING. We passed `{ app = name }`. AMM stores it on spawn.parameters and
+   hands it straight to PrefetchAppearanceChange/ScheduleAppearanceChange -> a table where a CName
+   is required -> SILENT no-op. The decoy: AMM's `obj.appearanceName = (parameters or {}).app` reads
+   exactly our `.app` key, so the shape looked researched -- but that field is written once and NEVER
+   READ anywhere in AMM. Lesson: verify a field against its CONSUMER, not its assignment. This was
+   never heist-specific; the venue outfits never worked either, hidden for ~20 versions because 3 of
+   7 venues want jackie_welles_default, which is what the silent fallback produced.
+   Names were always right. Character.Jackie carries all 17; quest-tagged ones take a DOUBLE
+   underscore (jackie_welles__q005_suit). See docs/research/amm_appearance_research.md.
+
+2. THE BIKE DOESN'T CRASH, JACKIE GETS THROWN OFF. Collision cannot be disabled from Lua (re-verified:
+   ToggleCollision lives on the VISUAL branch; vehicleChassisComponent/entColliderComponent descend
+   straight from entIPlacedComponent). But that was the wrong target. vehicleComponent.script's
+   HandleBikeCollisionReaction force-ragdolls an NPC off his bike when impact >
+   KnockOffForce * aiBikeKnockOffModifier -- a multiplier applied ONLY when the driver is an NPCPuppet.
+   Crucially that path has NO god-mode check, so "make the bike invulnerable" provably cannot work on
+   its own. The fix is one TweakDB float. Our arrival tick already had a failsafe for the symptom
+   ("Jackie NOT on the bike -> he comes on foot") without anyone knowing the cause.
+   See docs/research/bike_crash_research.md.
+
+3. THE ESCAPE BROKE ITS OWN FINALE. blazeSetMidday(12) shoves the clock ~10 h forward; the companion
+   duration clock is stored in ABSOLUTE game seconds, so it instantly blew past maxGameHours (6) and
+   Jackie walked home seconds before the finale needed him. Fixing the clock alone was NOT enough: a
+   walk-off already in progress would have had leavingTick despawn the FRESH Jackie the finale spawns.
+   Also found: Blaze.reset() was only ever called when a NEW run STARTED, so Blaze.st.active stayed
+   true for the rest of the save (and the Konpeki-roof heli stayed orphaned). The finale now resets it.
+
+SMALLER, BUT LOAD-BEARING:
+
+4. A SILENT NO-OP IS THE WORST FAILURE MODE. An invalid appearance name, a wrong-typed arg, a
+   re-locked quest fact -- none of them error, none of them log, nothing changes on screen. That is how
+   a bug affecting EVERY outfit in the mod survived twenty versions. Where we hand a name/value to the
+   engine, prefer a path that can fail loudly, or read the value back.
+
+5. WATSON was a one-shot fact write in the finale's at-black callback. Nothing re-closes it (checked
+   every SetFactStr("watson...") site) -- but jlMourningApply exists precisely because "the quest system
+   flips facts back up", so a one-shot write was luck. Now marked with our own save-persistent fact
+   `jl_watson_open` and re-asserted on a 5 s heartbeat, in BOTH story modes. No marker -> instant no-op,
+   so it can never open Watson on a vanilla run.
+
+6. JL.day.count can MISS A DAY: it only advances when ensureDayTemplate catches the hour WRAPPING past
+   midnight, so a flat 24 h sleep (10:00 -> 10:00) never decreases the hour. New jlGameDay() derives an
+   absolute day from the monotonic total-seconds clock. Use it for any once-per-day gate.
+
+7. GATE ON THE SCENE, NOT ON THE MODE. JL.mode stays "blaze" for the rest of the save. Suppressing
+   Quiet-Life rules on `JL.mode == "blaze"` disables them permanently. jlBlazeSceneLive() checks whether
+   the set-piece is actually LIVE (Blaze.st.active / armed finale) so normal behaviour resumes after.
+
+8. Two-session hazard is BIDIRECTIONAL. On 07-08 a batch commit clobbered the Blaze session's init.lua;
+   on 07-09 the Blaze session's broad `git add` swept THIS session's uncommitted work into its own
+   commit. Whoever commits first absorbs the other's uncommitted tree. Commit early, in small slices;
+   check `git log` again right before committing. Tells that a concurrent session is live: an Edit fails
+   with "File has been modified since read", or blaze.lua shows modified when you never touched it.
+
+9. Config.stealth (v1.46 sneak work) was read by init.lua but the TABLE ITSELF was never committed --
+   `Config.stealth or {}` fell back to {} and stealth was inert on a fresh clone. Committed here.
+   staging/ had also drifted from mod/ (v1.46 synced neither file). Re-synced all four.

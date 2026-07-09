@@ -4354,6 +4354,51 @@ function jlVertical()
   return st.vertical
 end
 
+-- v1.46 SNEAK DETECTION — "is V crouched right now?"
+-- Read from the SAME PlayerStateMachine blackboard blazeClearCombat uses. The Locomotion int is an OUTPUT
+-- (writing it does nothing — see blazeForceStand), but READING it is exactly what we want here.
+-- The state values are resolved BY NAME through jlAnimEnum (`gamePSMLocomotionStates`), never hardcoded, so
+-- a patch that renumbers the enum can't silently invert this. Resolved once and cached; if NOTHING resolves
+-- we log once and report "not sneaking" — i.e. we degrade to the pre-v1.46 behaviour instead of erroring.
+-- Global -> 200-local cap safe.
+function jlSneakStates()
+  if JL.sneakVals then return JL.sneakVals end
+  local S, t, names = Config.stealth or {}, {}, {}
+  for _, n in ipairs(S.locomotionStates or { "Crouch", "CrouchSprint" }) do
+    local v = jlAnimEnum("gamePSMLocomotionStates", n)
+    local i; if v ~= nil then pcall(function() i = EnumInt(v) end) end
+    if type(i) == "number" then t[i] = true; names[#names + 1] = n .. "=" .. i end
+  end
+  JL.sneakVals = t
+  if #names == 0 then
+    log("Stealth: could NOT resolve any gamePSMLocomotionStates crouch value -> sneak behaviour disabled "
+        .. "(Jackie will keep walking abreast while V crouches). Enum names may have changed this patch.")
+  else
+    log("Stealth: crouch locomotion states resolved -> " .. table.concat(names, ", "))
+  end
+  return t
+end
+
+function jlVSneaking()
+  local S = Config.stealth or {}
+  if S.enabled == false then return false end
+  local st = JL.abreast
+  local now = JL.clock or 0
+  if st.snFrame == now then return st.sneaking end     -- compute once per frame (two ticks ask)
+  st.snFrame = now
+  local val = false
+  pcall(function()
+    local pl = Game.GetPlayer(); if not pl then return end
+    local defs = GetAllBlackboardDefs().PlayerStateMachine
+    local bb   = Game.GetBlackboardSystem():GetLocalInstanced(pl:GetEntityID(), defs)
+    if not bb then return end
+    local loco = bb:GetInt(defs.Locomotion)
+    val = (jlSneakStates())[loco] == true
+  end)
+  st.sneaking = val
+  return val
+end
+
 -- v1.46 THE SINGLE HANDOFF PREDICATE. followKeepCloseTick (the trail) runs BEFORE abreastTick each frame
 -- and yields to abreast; abreastTick then decides whether it actually wants him. Before v1.46 the two asked
 -- DIFFERENT questions (the trail yielded on bare `jlVWalking()`), so any gate added to abreastTick alone
@@ -4368,6 +4413,7 @@ function jlAbreastOn()
   if jlCruise and jlCruise.active then return false end            -- not while cruising on his bike
   if jlInCombat() then return false end                            -- fighting -> free him to fight
   if jlVertical() then return false end                            -- v1.46: stairs/slope -> single file
+  if jlVSneaking() then return false end                           -- v1.46: crouched -> shadow her, never lead
   return jlVWalking()
 end
 
@@ -4398,6 +4444,13 @@ local function followKeepCloseTick()
   local pp = playerPos(); if not pp then return end
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
   if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end
+  -- v1.46: while V SNEAKS, shadow her — trail at the stealth gap and never Run (a running Jackie overshoots
+  -- her and ends up in front, which is how he kept walking into the enemy she was creeping up on).
+  local S = Config.stealth or {}
+  if S.enabled ~= false and jlVSneaking() then
+    sendWalkToPlayer(h, S.movement or "Walk", S.followDistance or 3.0)
+    return
+  end
   sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)
 end
 

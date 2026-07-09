@@ -11,6 +11,52 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🧪 AWAITING WINDOWS IN-GAME TEST — everything shipped 2026-07-09 (v1.41 → v1.46)
+
+Nothing below has been run in-game; it all parse-checks on the Mac and the pure-logic parts are unit-tested.
+Test roughly in this order — the cheap, high-information checks first.
+
+1. **Outfits (v1.43) — do this FIRST, it validates the biggest fix.** Visit **Misty's / Afterlife / Redwood**
+   (should be collar-down) and **Ginger Panda / Lizzie's** (should be no-jacket). These never worked before.
+   If they still look like the noodle-bar Jackie, the fix didn't take.
+2. **Bike (v1.41).** In the CET console first: `print(TweakDB:GetFlat("AIGeneralSettings.aiBikeKnockOffModifier"))`
+   → expect `1.0`. If it prints `nil` the record was renamed on your patch; the code logs
+   `knock-off modifier unreadable -> SKIPPED` and changes nothing. Then cruise through traffic: does he stay on
+   the bike? Is `1000.0` right, or does he feel glued? If `Cruise: bike recovered` spams the log, something else
+   is wrong.
+3. **Look-at (v1.41).** Walk up to Jackie at a venue. Does his head follow you, seated and standing? Grep the log
+   for `LookAt: now tracking V (ctor=…)` — **report which ctor won** so the dead branches can be dropped. If you
+   see `head tracking OFF`, he just behaves as before (it cannot break him); try `Config.lookAt.bodyPart = "Head"`.
+4. **Daily hello (v1.41).** Approach him at a venue → full spoken line. Leave + return the same day → grunt only.
+   Sleep to the next day → spoken line again.
+5. **Picker (v1.42).** Centred, lower fifth, at your resolution. Watch a **4-option** conversation: the window is
+   `NoScrollbar`, so an overflowing list clips silently. `Config.picker.baseH` is the dial.
+6. **Blaze finale (v1.44).** Does Jackie appear and stay for the whole conversation? Afterwards, does he still
+   *eventually* head home when his companion clock runs out? (That second half proves the suppression gate
+   releases rather than sticking on.)
+7. **Watson (v1.45).** Cross a bridge after the finale; switch to Quiet Life, save, reload, cross again. If the log
+   ever prints `Watson barrier had drifted shut -> re-asserted`, **tell Claude** — it means vanilla actively
+   re-locks it and the 5 s cadence may be too slow to stop you walking into a closed bridge.
+
+### 📌 Known-open / deliberately not done (2026-07-09)
+
+- **`Config.stealth` was orphaned at HEAD.** `init.lua` (v1.46 sneak work) reads `Config.stealth` at two sites,
+  but the table itself sat uncommitted, so `Config.stealth or {}` silently fell back to `{}` and stealth was
+  inert on a fresh clone. Committed alongside this wrap-up. ⚠️ The sneak session is still mid-work on this.
+- **`staging/` had drifted** from `mod/` (v1.46 synced neither `init.lua` nor `config.lua`). Re-synced + parse-checked
+  all four files. Worth a glance before any release zip: `diff` the two trees.
+- **The companion clock counts ABSOLUTE game time**, so *sleeping 8 h also expires it* and sends Jackie home. For
+  sleep that's arguably correct ("his shift ended"), which is why v1.44's re-arm was scoped to the scripted midday
+  jump only. If he should survive a night at V's place, it's a small change to measure elapsed time instead.
+  **Open design call — Antonia's to make.**
+- **Bike arrival still doesn't set `useKinematic` / `clearTrafficOnPath`.** Both are real, inherited fields, but AMM
+  ships the same config for its own bike followers and arrival is confirmed-good in-game — so it was left alone
+  rather than regress a working path. Revisit only if arrivals still topple *after* the knock-off fix.
+- **`aiBikeKnockOffModifier` is a GLOBAL flat** — while Jackie rides, no NPC biker in the city can be knocked off.
+  Ref-counting keeps the window as small as possible, but it isn't zero. Watch traffic during a long cruise.
+- **The look-at CET marshalling is unverified.** Once you report the winning ctor, delete the two dead branches in
+  `jlNewLookAtEvent`.
+
 ### 🆕 Added 2026-07-09 (v1.46) — walk-abreast on STAIRS + SLOPES (the jagged teleport in front of V)
 
 Antonia: *"We can't walk up stairs or slopes well because V's elevation changes and so he teleports in a
