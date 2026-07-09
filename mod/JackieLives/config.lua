@@ -353,6 +353,40 @@ Config.stealth = {
   stealthGait    = true,
 }
 
+-- ---- follower takedown (v1.47, MVP) ---------------------------------------
+-- The Heist's "Jackie takes down the second guard while V takes the first" is NOT a cutscene. It is one
+-- parameterised AI command issued to Jackie, confirmed in the decompiled scripts:
+--
+--   class AIFollowerTakedownCommand extends AIFollowerCommand   -- core/ai/aiCommand.script:761
+--     targetRef                      : EntityReference
+--     approachBeforeTakedown         : Bool
+--     doNotTeleportIfTargetIsVisible : Bool
+--     target                         : weak<GameObject>
+--
+-- AIFollowerTakedownCommandHandler.Update (ai/Tasks/FollowerTasks.script:146) checks `target` FIRST and only
+-- falls back to resolving the quest-authored `targetRef` NodeRef. So from Lua we set `.target` to any live
+-- NPC handle and never touch targetRef. The handler then sets the `CombatTarget` behaviour arg and calls
+-- NPCPuppet.ChangeHighLevelState(jackie, Stealth) — the follower behaviour tree's takedown subtree plays the
+-- real grapple. We never script the animation. (That is why q005 waits on `BaseStatusEffect.Grappled`.)
+--
+-- ⚠️ PREREQUISITE: the takedown task only EXISTS inside the Follower role's behaviour tree. Jackie must be a
+-- genuine player companion (AI role Follower + FriendlyTarget = player) — exactly what AMM's companion
+-- promotion sets, and what jlCompanionCheck() verifies. Same prerequisite as the enemy-perception immunity.
+--
+-- ⚠️ NOVEL: no CET mod anywhere is known to construct this command. The class is RTTI-registered and the
+-- send route is the same native SendCommand we already use, so it *should* work — but it is UNPROVEN in Lua.
+-- Hence `auto = false`: v1.47 ships the manual look-at test button ONLY. Once Antonia confirms in-game that
+-- Jackie really grapples the target, the opportunistic trigger gets built on top of this exact call.
+--
+-- The only target gates in the handler are ScriptedPuppet.IsActive(target) and not IsBeingGrappled(target).
+-- There is NO "must be unaware" check in script — but the grapple that plays is a stealth takedown, so an
+-- alerted target may fall through to normal combat instead. Test on an unaware guard first.
+Config.takedown = {
+  auto = false,             -- v1.47: opportunistic auto-takedown NOT built yet — prove the command first
+  approachBeforeTakedown         = true,  -- he walks up to the victim; false = snap straight behind them
+  doNotTeleportIfTargetIsVisible = true,  -- never teleport him while the victim is on V's screen (ugly)
+}
+
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
 -- Once Jackie is a SETTLED companion (arrived, role applied, not dismissed/expired), if V gets far
 -- away — FAST-TRAVEL, a long sprint, or he just got left behind — he teleports back to V's SIDE.

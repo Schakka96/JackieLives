@@ -4431,6 +4431,65 @@ function jlCompanionCheck()
   end
 end
 
+-- v1.47 FOLLOWER TAKEDOWN. The Heist's parallel takedown reduced to its mechanism: one AI command, with the
+-- victim passed as a plain runtime handle. See the long note on Config.takedown for the decompiled sources.
+-- The handler's ONLY gates on the victim are these two, so we check them up front and explain the refusal
+-- rather than firing a command the behaviour tree will silently drop.
+-- Globals -> 200-local cap safe.
+-- Both checks FAIL OPEN: if the static isn't reachable, or returns something that isn't a boolean, we leave
+-- the default and let the behaviour tree do its own (identical) validation rather than refuse a good target.
+function jlValidVictim(o)
+  if not o then return false, "no target" end
+  local active, grappled = true, false
+  pcall(function() local v = ScriptedPuppet.IsActive(o);        if type(v) == "boolean" then active   = v end end)
+  pcall(function() local v = ScriptedPuppet.IsBeingGrappled(o); if type(v) == "boolean" then grappled = v end end)
+  if not active then return false, "that target is not active (already dead or unconscious)" end
+  if grappled   then return false, "that target is already being grappled" end
+  return true
+end
+
+-- Issue the takedown. Returns (ok, message) — the message is shown in the CET panel and logged.
+function jlTakedown(victim)
+  local T = Config.takedown or {}
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  if not h then return false, "Jackie isn't spawned." end
+  -- The takedown task lives ONLY in the Follower role's behaviour tree. Without the role the command is
+  -- accepted and then quietly ignored, so refuse early and say why.
+  if not (JL.summon.active and JL.summon.companionSet) then
+    return false, "Jackie isn't a companion yet — the takedown only exists in the Follower behaviour tree."
+  end
+  local okV, why = jlValidVictim(victim)
+  if not okV then return false, "Can't take that one down: " .. why .. "." end
+  local sent = pcall(function()
+    local cmd = NewObject('handle:AIFollowerTakedownCommand')
+    cmd.target                         = victim          -- the runtime handle; targetRef stays empty
+    cmd.approachBeforeTakedown         = (T.approachBeforeTakedown ~= false)
+    cmd.doNotTeleportIfTargetIsVisible = (T.doNotTeleportIfTargetIsVisible ~= false)
+    h:GetAIControllerComponent():SendCommand(cmd)
+  end)
+  if not sent then
+    log("Takedown: FAILED to construct/send AIFollowerTakedownCommand — the class may not be reachable "
+        .. "from CET on this build. Falling back is a config decision (Config.takedown).")
+    return false, "AIFollowerTakedownCommand could not be sent on this build (see jackie_debug.log)."
+  end
+  log("Takedown: issued AIFollowerTakedownCommand to Jackie (approach="
+      .. tostring(T.approachBeforeTakedown ~= false) .. ").")
+  return true, "Takedown issued — watch Jackie."
+end
+
+-- MVP test hook: take down whatever NPC V is currently looking at. Mirrors the existing
+-- "Defeat target (look at)" debug button, so the aiming behaviour is already familiar.
+function jlTakedownLookAt()
+  local pl = Game.GetPlayer(); if not pl then return false, "no player" end
+  local o
+  pcall(function()
+    local ts = Game.GetTargetingSystem()
+    if ts then o = ts:GetLookAtObject(pl, false, false) end
+  end)
+  if not o then return false, "Aim at an NPC first." end
+  return jlTakedown(o)
+end
+
 -- v1.46 THE SINGLE HANDOFF PREDICATE. followKeepCloseTick (the trail) runs BEFORE abreastTick each frame
 -- and yields to abreast; abreastTick then decides whether it actually wants him. Before v1.46 the two asked
 -- DIFFERENT questions (the trail yielded on bare `jlVWalking()`), so any gate added to abreastTick alone
@@ -7282,6 +7341,24 @@ registerForEvent("onDraw", function()
     local gait = JL.disableCustomWalk and "OFF (default follower)"
                  or ((JL.abreast.catching == true) and "SPRINT (fell behind)" or "walk (free)")
     ImGui.Text(("Live: V %.2f m/s | %s"):format(vsp, gait))
+    -- v1.46: live read-out of the two gates that hand him from abreast back to the single-file trail.
+    ImGui.Text(("Live: %s | %s"):format(
+      jlVertical() and "STAIRS/SLOPE -> trailing" or "flat ground",
+      jlVSneaking() and "V SNEAKING -> shadowing" or "V upright"))
+  end
+  ImGui.Separator()
+
+  -- v1.47 MVP: prove AIFollowerTakedownCommand actually works from Lua before anything is built on it.
+  -- No CET mod is known to construct this command, so it is unproven — this button is the experiment.
+  -- Aim at an UNAWARE enemy (the grapple that plays is a stealth takedown) and press it.
+  ImGui.Text("Follower takedown (experimental):")
+  ImGui.TextWrapped("Aim at an unaware enemy and press. Jackie must already be your companion. This is the " ..
+    "same AI command The Heist uses for his parallel takedown. If he grapples the target, the automatic " ..
+    "'V takes one, Jackie takes the other' behaviour can be built on top of it.")
+  if ImGui.Button("TEST: Jackie takedown (look at)") then
+    local ok, msg = jlTakedownLookAt()
+    JL.ui.status = (ok and "" or "Takedown refused: ") .. tostring(msg)
+    log("Takedown (look-at test): " .. tostring(msg))
   end
   ImGui.Separator()
 

@@ -178,9 +178,39 @@ first**, so this needs a real in-game test before it can be trusted.
 - **Fallback if the command no-ops:** a silent, non-alerting kill with **no animation**. Explicitly *not* a
   faked grapple.
 
-**Still to design:** how to detect "V is taking someone down" (best candidate: poll for a nearby enemy gaining
-`BaseStatusEffect.Grappled` — the same signal q005 itself waits on), and how to enumerate nearby unaware
-hostiles to pick Jackie's victim.
+**⚠️ Shipped as an MVP, deliberately manual.** No CET mod anywhere is known to construct
+`AIFollowerTakedownCommand`, so it is *unproven from Lua*. Rather than build a 200-line opportunistic
+trigger on top of a command that might no-op, v1.47 ships **only the command wrapper and a test button**:
+
+- [x] `jlTakedown(victim)` — builds the command, sets `.target` to the victim handle (never `targetRef`),
+  applies `Config.takedown.approachBeforeTakedown` / `.doNotTeleportIfTargetIsVisible`, and sends it via
+  `GetAIControllerComponent():SendCommand()`. Refuses early, with a readable reason, when Jackie isn't a
+  companion — no Follower role ⇒ no takedown task in his behaviour tree ⇒ the command is silently dropped.
+- [x] `jlValidVictim()` — pre-checks the handler's only two target gates, `ScriptedPuppet.IsActive` and
+  `not IsBeingGrappled`. Both **fail open**: if a static isn't reachable we let the behaviour tree run its own
+  identical validation rather than refuse a good target.
+- [x] `jlTakedownLookAt()` + CET button **“TEST: Jackie takedown (look at)”** in the pace-tuner panel.
+- [x] `Config.takedown.auto = false` — the opportunistic trigger is NOT built yet, on purpose.
+
+→ **TEST (the decisive experiment):** summon Jackie, confirm he's a companion, crouch, aim at an **unaware**
+enemy, press *TEST: Jackie takedown (look at)*.
+  * **He walks over and grapples the guard** → the mechanism works. Tell Claude, and the automatic
+    “V takes one, Jackie takes the other” behaviour gets built on top of this exact call.
+  * **Nothing happens, or the panel says the command couldn't be sent** → the class isn't reachable from CET,
+    and we fall back to Antonia's chosen option: a silent, non-alerting kill with no animation.
+  * Either way, check the `Takedown:` lines in `jackie_debug.log`.
+
+**Then, once proven, the auto-trigger design:** detect “V is taking someone down” by polling nearby enemies
+for `BaseStatusEffect.Grappled` — the same signal q005 itself waits on — then pick Jackie's victim from the
+unaware hostiles within range of *him* (not of V), excluding V's own victim. The Heist's “synchronisation”
+was only ever a trigger volume, so the timing is entirely ours to choose.
+
+### 🧪 Tests
+
+`tools/test_walk_gates.lua` — run `lua tools/test_walk_gates.lua mod/JackieLives/init.lua` from the repo root.
+It **extracts the real `jlVWalking` / `jlVertical` / `jlAbreastOn` out of `init.lua`** and runs them against
+stubbed game calls, so the tests cannot drift away from the shipped code. 18 assertions, including the handoff
+invariant (never zero, never two ticks driving Jackie). Needs no game and no CET — just a stock Lua 5.x.
 
 ### 🆕 Added 2026-07-09 (v1.45) — Watson barrier is now HELD open (was a one-shot write)
 
