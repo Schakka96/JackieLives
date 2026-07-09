@@ -2,10 +2,10 @@
 JACKIE LIVES - PROJECT LOGBOOK
 ================================================================================
 A chronological record of steps taken, fixes made, and lessons learned.
-Log last written: 2026-06-16 (day session)
+Log last written: 2026-07-09 (walk / stealth / takedown + the v1.53 release)
 (Per-step times are approximate; the project ran late 2026-06-15 into 2026-06-16.)
 
-Mod versions are CET-script revisions of mod/JackieLives. Current: v0.14.
+Mod versions are CET-script revisions of mod/JackieLives. Current: v1.53 (tagged, release-ready).
 
 --------------------------------------------------------------------------------
 2026-07-09  -  BLAZE OF GLORY finale COMPLETE & shippable (v1.05 -> v1.13)
@@ -1247,3 +1247,66 @@ It wasn't hard. The finale was the ONE placement in the mod that didn't use the 
     finale used a raw +/-right-vector offset instead, and when snapToNavmesh returned nil it
     shrugged (`or jp`) and used the bad point anyway. A nil from a validity check is an answer,
     not an inconvenience to fall back past.
+
+--------------------------------------------------------------------------------
+2026-07-09  -  WALK / STEALTH / TAKEDOWN + the v1.53 release (v1.46 -> v1.53)
+--------------------------------------------------------------------------------
+Session scope: Jackie's following behaviour on stairs and while V sneaks; the Heist's parallel
+takedown; then the finale's uncrouch and the publish-ready staging folder.
+
+Shipped: v1.46 (stairs/slopes + sneak shadow), v1.47 (takedown command wrapper + test button),
+v1.48 (combatCommand + leash hold), v1.49 (heli [F] diagnosis), v1.51 (uncrouch silent no-op),
+v1.53 (native uncrouch, no TweakXL; release). Tagged v1.53. staging/ is the Nexus zip.
+
+Lessons:
+
+13. EVERY DISTANCE CHECK IN THIS MOD FORGOT IT HAS A VERTICAL AXIS. Three separate bugs, one
+    shape. (a) abreastTick built its anchor as Vector4(x, y, pp.z) -- V's z copied verbatim --
+    so on stairs the point ~5.5 m ahead sat buried in the steps (climbing) or floated above them
+    (descending); AIMoveToCommand then projected it onto whichever floor's navmesh was nearest,
+    flipping between levels on successive re-issues. That flip WAS the "jagged teleport".
+    (b) jlVWalking() measured only horizontal speed, so on a staircase V stayed in the walk band
+    and abreast never disengaged from the one geometry it cannot handle. (c) roofHeli's [F]
+    prompt used a 2 m sphere against a 3-D distToPlayer, centred on the AV's origin which sits
+    ABOVE the deck V stands on -- the height offset alone ate the whole budget, so the prompt
+    could never appear. Fix pattern: ground the point on the navmesh, gate on vertical speed +
+    height gap, and prefer a horizontal check with a vertical tolerance over a bigger sphere.
+
+14. WHEN TWO TICKS HAND OFF, THEY MUST ASK THE SAME QUESTION. followKeepCloseTick (the trail) ran
+    before abreastTick and yielded on bare jlVWalking(), while abreast had its own, different gate.
+    Adding a stairs gate to abreast alone would have made BOTH stand down -- nobody driving Jackie,
+    silently falling back to AMM's long native leash. One shared predicate (jlAbreastOn) fixed it,
+    and tools/test_walk_gates.lua now pins the invariant: across a stair climb, never zero and never
+    two ticks driving him. The one deliberate exception is a running takedown, which owns him.
+
+15. A pcall THAT ONLY CATCHES THROWS CANNOT DETECT A NO-OP. blazeForceStand ran
+    `pcall(function() ApplyStatusEffect(pl, rec); ok = true end)` and treated "nothing threw" as
+    success. ApplyStatusEffect is a NATIVE import: handed a TweakDBID that doesn't exist it does
+    nothing and does NOT raise. So the first record always "succeeded", the fallback was never
+    tried, and the log said `applied ...` while V stayed crouched. Antonia asked "has this
+    deteriorated?" -- git log -L proved the code was untouched since v1.13. It had ALWAYS been able
+    to fail silently; only the environment changed (the TweakXL yaml was missing, and deploy.ps1
+    never copied r6\tweaks). Verify an effect by its OBSERVABLE OUTCOME, not by the absence of an
+    exception. blazeCalmHoldTick now re-asserts until V is seen standing via the PSM blackboard.
+
+16. READ WHAT THE ASSET ACTUALLY DOES BEFORE ACCEPTING ITS DEPENDENCY. The TweakXL yaml existed
+    only to clone GameplayRestriction.ForceCrouch and swap its gameplay tag to `ForceStand` (the
+    engine keys the uncrouch off the TAG, not the record name -- locomotionTransitions checks it in
+    ToStand() and both crouch-input handlers). CET's TweakDB API does both edits at runtime, so the
+    whole dependency evaporated. Antonia's rule stands: don't make players install a framework to
+    fix cosmetics; if it can't be done natively, degrade (V stays crouched, finale runs normally).
+
+17. THE DECOMPILED SCRIPTS ANSWER "DOES IT EXIST" *AND* "WHAT GATES IT". AIFollowerTakedownCommand
+    looked correct and did nothing, because PlayerPuppet.OnTakedownOrder also sets
+    `combatCommand = true` -- read NATIVELY by the follower behaviour tree to route the command into
+    its takedown subtree (IsCombatCommand() has zero script callers; the sibling class
+    AIFollowerCombatCommand exists only to default it true). And our own leash was re-issuing a
+    follow command every 1.5 s, cancelling the takedown mid-approach. Grep the dump BEFORE
+    proposing; cite file:line in the comment. Still UNPROVEN in-game -- no CET mod anywhere
+    constructs this command, so the test button is the experiment, not the feature.
+
+18. Two smaller traps worth remembering. `luac -l` (without -p) writes a luac.out dump into the repo
+    root -- the other session filed it as a mystery artifact; it's now gitignored. And `git add`
+    fails the WHOLE invocation on one stale pathspec: the v1.53 release commit initially captured
+    only two deletions because `tweaks` no longer existed. Caught by `git show --stat` before the
+    push; amended and the tag re-pointed. Always inspect the commit you just made.
