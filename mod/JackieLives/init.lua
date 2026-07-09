@@ -2335,11 +2335,11 @@ local function drawDialogueBox()
     local W, H = (P.baseW or 620.0) * s, (P.baseH or 240.0) * s
 
     local px = (sw - W) * 0.5 + (P.xOffset or 0.0) * s     -- genuinely centred (the old -150 nudge is gone)
-    -- Centre the box inside the lower band, then bottom-clamp. H is ~22% of sh, a shade taller than the
-    -- 20% band, so in practice the clamp is what lands it — which is exactly what we want: it can never
-    -- hang off the bottom edge, at any aspect ratio.
-    local band = (P.bandTop or 0.80) * sh
-    local py   = band + (sh - band - H) * 0.5
+    -- v1.47: TOP EDGE at `topFrac` of screen height (36%). The old lower-fifth placement overlapped the
+    -- native subtitle line at the bottom of the screen. `bottomMargin` is now only a safety clamp for
+    -- extreme aspect ratios / scale clamps; at 36% it never binds. Both are fractions of the screen, so
+    -- this holds identically at any resolution.
+    local py = (P.topFrac or 0.36) * sh
     py = math.min(py, sh - H - (P.bottomMargin or 0.02) * sh)
     py = math.max(py, 0.0)
 
@@ -4209,6 +4209,9 @@ end
 local function catchUpTick()
   local C = Config.catchUp or {}
   if C.enabled == false then return end
+  -- v1.48: don't yank him back to V's side while he's crossing the room to take someone down. The
+  -- approach legitimately opens a gap, and an aiTeleport mid-takedown would cancel the command.
+  if jlTakedownBusy() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   -- settled companion only: active + role applied, and NOT mid-arrival / dinner / walking-off.
   if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   -- v1.35: in COMBAT, let him roam/fight — don't yank him back to V's side. (Reset the far-timer so a
@@ -4436,16 +4439,86 @@ end
 -- The handler's ONLY gates on the victim are these two, so we check them up front and explain the refusal
 -- rather than firing a command the behaviour tree will silently drop.
 -- Globals -> 200-local cap safe.
--- Both checks FAIL OPEN: if the static isn't reachable, or returns something that isn't a boolean, we leave
--- the default and let the behaviour tree do its own (identical) validation rather than refuse a good target.
+-- The handler's two gates FAIL OPEN: if a static isn't reachable, or returns a non-boolean, we leave the
+-- default and let the behaviour tree run its own (identical) validation rather than refuse a good target.
+-- The SAFETY gates below FAIL CLOSED — an unreadable attitude means we refuse, never guess.
 function jlValidVictim(o)
   if not o then return false, "no target" end
+  local T = Config.takedown or {}
+
+  -- v1.48 SAFETY. Nothing in this path deals damage — the engine owns the grapple — but ordering a takedown
+  -- on V or on a friendly is still wrong, so refuse before the command is ever built.
+  local isPlayer = false
+  pcall(function() local v = o:IsPlayer(); if type(v) == "boolean" then isPlayer = v end end)
+  if isPlayer then return false, "that's V" end
+  if T.requireHostile ~= false then
+    -- EAIAttitude = { AIA_Friendly=0, AIA_Neutral=1, AIA_Hostile=2 }. Resolve AIA_Hostile by NAME (like every
+    -- other enum here) and compare as ints, so this works whether CET hands us an enum object or a number.
+    -- Fail CLOSED: an unreadable attitude refuses. But resolve the constant defensively — if the enum name
+    -- itself can't be resolved we fall back to its ordinal rather than refusing every takedown outright.
+    local want = 2
+    do
+      local e = jlAnimEnum("EAIAttitude", "AIA_Hostile")
+      if e ~= nil then pcall(function() local i = EnumInt(e); if type(i) == "number" then want = i end end) end
+    end
+    local got
+    pcall(function()
+      local att = o:GetAttitudeTowards(Game.GetPlayer())
+      if type(att) == "number" then got = att
+      elseif att ~= nil then pcall(function() got = EnumInt(att) end) end
+    end)
+    if type(got) ~= "number" then
+      return false, "couldn't read that target's attitude towards V (refusing, to be safe)"
+    end
+    if got ~= want then return false, "that one isn't hostile to V" end
+  end
+
   local active, grappled = true, false
   pcall(function() local v = ScriptedPuppet.IsActive(o);        if type(v) == "boolean" then active   = v end end)
   pcall(function() local v = ScriptedPuppet.IsBeingGrappled(o); if type(v) == "boolean" then grappled = v end end)
   if not active then return false, "that target is not active (already dead or unconscious)" end
   if grappled   then return false, "that target is already being grappled" end
   return true
+end
+
+-- v1.48 Is a takedown running? While it is, our leash ticks must NOT re-issue movement commands to Jackie:
+-- a fresh AIFollowTargetCommand / AIMoveToCommand replaces the takedown mid-approach and he just walks back
+-- to V. (That is bug #2 behind "the NPC survived".) Global -> 200-local cap safe.
+function jlTakedownBusy()
+  local t = JL.takedown
+  if not t or not t.deadline then return false end
+  if (Config.takedown or {}).holdCommands == false then return false end
+  return (JL.clock or 0) < t.deadline
+end
+
+-- Watch the ordered takedown to a conclusion and say what happened. Stepped from onUpdate.
+-- Success = the victim is being grappled, or has stopped being active (down). Otherwise we time out and
+-- hand Jackie back to the leash rather than freezing him forever.
+function jlTakedownTick()
+  local t = JL.takedown
+  if not t or not t.deadline then return end
+  local now, v = (JL.clock or 0), t.victim
+  local grappled, active = false, true
+  if v then
+    pcall(function() local b = ScriptedPuppet.IsBeingGrappled(v); if type(b) == "boolean" then grappled = b end end)
+    pcall(function() local b = ScriptedPuppet.IsActive(v);        if type(b) == "boolean" then active   = b end end)
+  end
+  if grappled and not t.sawGrapple then
+    t.sawGrapple = true
+    log("Takedown: the grapple STARTED — the follower behaviour tree accepted the command.")
+  end
+  if not active then
+    log("Takedown: SUCCESS — the target is down" .. (t.sawGrapple and " (grapple played)." or " (no grapple seen)."))
+    JL.takedown = nil
+    return
+  end
+  if now >= t.deadline then
+    log("Takedown: TIMED OUT after " .. tostring((Config.takedown or {}).timeoutSeconds or 15.0) .. " s — "
+        .. (t.sawGrapple and "the grapple began but never finished."
+                          or "Jackie never grappled. The follower BT ignored the command (is he a Follower-role "
+                          .. "companion? check the Stealth: line) or the target moved out of reach."))
+    JL.takedown = nil
+  end
 end
 
 -- Issue the takedown. Returns (ok, message) — the message is shown in the CET panel and logged.
@@ -4465,6 +4538,11 @@ function jlTakedown(victim)
     cmd.target                         = victim          -- the runtime handle; targetRef stays empty
     cmd.approachBeforeTakedown         = (T.approachBeforeTakedown ~= false)
     cmd.doNotTeleportIfTargetIsVisible = (T.doNotTeleportIfTargetIsVisible ~= false)
+    -- v1.48 THE FLAG THAT MAKES IT ACTUALLY FIRE. PlayerPuppet.OnTakedownOrder sets exactly this before
+    -- broadcasting the same class. IsCombatCommand() has no script callers — the follower behaviour tree
+    -- reads it natively to route the command into its takedown subtree. Left false, the command is
+    -- accepted and silently ignored, which is why the first build left the guard standing.
+    cmd.combatCommand                  = (T.combatCommand ~= false)
     h:GetAIControllerComponent():SendCommand(cmd)
   end)
   if not sent then
@@ -4472,8 +4550,13 @@ function jlTakedown(victim)
         .. "from CET on this build. Falling back is a config decision (Config.takedown).")
     return false, "AIFollowerTakedownCommand could not be sent on this build (see jackie_debug.log)."
   end
+  -- Arm the hold: for the next `timeoutSeconds` the follow / abreast / catch-up ticks leave Jackie alone,
+  -- so they cannot cancel the takedown mid-approach. jlTakedownTick watches it to a conclusion.
+  JL.takedown = { victim = victim, deadline = (JL.clock or 0) + ((T.timeoutSeconds or 15.0)), sawGrapple = false }
   log("Takedown: issued AIFollowerTakedownCommand to Jackie (approach="
-      .. tostring(T.approachBeforeTakedown ~= false) .. ").")
+      .. tostring(T.approachBeforeTakedown ~= false) .. ", combatCommand="
+      .. tostring(T.combatCommand ~= false) .. "). Leash held for "
+      .. tostring(T.timeoutSeconds or 15.0) .. " s.")
   return true, "Takedown issued — watch Jackie."
 end
 
@@ -4502,6 +4585,7 @@ function jlAbreastOn()
   if not (JL.summon.active and JL.summon.companionSet) then return false end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return false end
   if jlCruise and jlCruise.active then return false end            -- not while cruising on his bike
+  if jlTakedownBusy() then return false end                        -- v1.48: a takedown owns him; don't re-issue
   if jlInCombat() then return false end                            -- fighting -> free him to fight
   if jlVertical() then return false end                            -- v1.46: stairs/slope -> single file
   if jlVSneaking() then return false end                           -- v1.46: crouched -> shadow her, never lead
@@ -4517,6 +4601,9 @@ end
 local function followKeepCloseTick()
   local F = Config.follow or {}
   if F.enabled == false then return end
+  -- v1.48: a takedown is running — re-asserting the follow here would REPLACE it and walk him back to V.
+  -- (jlAbreastOn() is false during a takedown, so without this the trail would happily grab him.)
+  if jlTakedownBusy() then return end
   if jlInCombat() then return end   -- v1.35: fighting -> don't re-leash; native combat AI runs him
   -- v0.85b: abreast owns positioning ONLY while V walks; at jog/sprint the trail takes back over.
   -- v1.39: ...unless the player disabled the custom walk, in which case this trail is the default follower.
@@ -7008,6 +7095,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(jlCruiseTick)     -- v0.85: V on a BIKE -> Jackie trails on his Arch (gated before the foot ticks)
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(abreastTick)      -- v0.84: OR (when enabled) hold him beside/ahead of V instead of trailing
+  pcall(jlTakedownTick)   -- v1.48: watch an ordered takedown to a conclusion (grapple / down / timeout)
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
   pcall(companionPersistTick)  -- v0.72: saved "is companion" but his body is gone (reload / culling FT) -> respawn at V
   pcall(settleTick)       -- v0.82: hide + no-collision for a beat after a respawn-at-V so he doesn't pop/clip in

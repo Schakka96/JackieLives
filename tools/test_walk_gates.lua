@@ -24,11 +24,12 @@ Config = { abreast = { enabled = true, slopeRate = 0.45, maxZDelta = 1.0, slopeR
            stealth = { enabled = true } }
 jlCruise = nil
 
-VPOS, JPOS, SNEAK, COMBAT = { x = 0, y = 0, z = 0 }, { x = 1, y = 0, z = 0 }, false, false
+VPOS, JPOS, SNEAK, COMBAT, TAKEDOWN = { x = 0, y = 0, z = 0 }, { x = 1, y = 0, z = 0 }, false, false, false
 
 function playerPos() return VPOS end
 function jlInCombat() return COMBAT end
 function jlVSneaking() return SNEAK end
+function jlTakedownBusy() return TAKEDOWN end   -- v1.48: a running takedown owns Jackie
 function log(_) end
 JL.summon.spawn.handle.GetWorldPosition = function(_) return JPOS end
 
@@ -98,6 +99,14 @@ SNEAK = false; run(25, 0.1, 0, 1.2)
 COMBAT = true;  step(0.1, 0, 1.2)
 check("in combat -> abreast OFF", jlAbreastOn(), false)
 COMBAT = false; run(25, 0.1, 0, 1.2)
+
+-- 6b. v1.48: a running takedown owns Jackie — abreast must stand down so it can't cancel the command.
+--     (followKeepCloseTick and catchUpTick have their own `if jlTakedownBusy() then return end` guards,
+--     so during a takedown NO tick drives him. That is the one intended exception to the handoff invariant.)
+TAKEDOWN = true;  step(0.1, 0, 1.2)
+check("takedown running -> abreast OFF", jlAbreastOn(), false)
+TAKEDOWN = false; run(25, 0.1, 0, 1.2)
+check("takedown over -> abreast ON again", jlAbreastOn(), true)
 
 -- 7. a jump (brief big dz) trips the gate, then releases — documented, acceptable
 step(0.1, 0.5, 1.2)

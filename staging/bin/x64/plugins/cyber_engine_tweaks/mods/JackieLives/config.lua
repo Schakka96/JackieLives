@@ -381,10 +381,35 @@ Config.stealth = {
 -- The only target gates in the handler are ScriptedPuppet.IsActive(target) and not IsBeingGrappled(target).
 -- There is NO "must be unaware" check in script — but the grapple that plays is a stealth takedown, so an
 -- alerted target may fall through to normal combat instead. Test on an unaware guard first.
+--
+-- v1.48 — WHY THE FIRST ATTEMPT DID NOTHING (Antonia: "the NPC survived"). Two independent bugs:
+--
+--  1. `combatCommand` was left FALSE. The game's own takedown order — PlayerPuppet.OnTakedownOrder
+--     (player.script:3744) — builds the very same class and sets `takedownCommand.combatCommand = true`
+--     before broadcasting it. `AIFollowerCommand.IsCombatCommand()` has NO script callers, so the flag is
+--     read natively by the follower behaviour tree to route the command into its combat/takedown subtree.
+--     Without it the command is accepted and then quietly ignored — exactly the observed symptom.
+--     (Note the sibling class `AIFollowerCombatCommand` exists ONLY to `default combatCommand = true`.)
+--
+--  2. WE were cancelling it. followKeepCloseTick re-asserts an AIFollowTargetCommand every
+--     `Config.follow.interval` (1.5 s) and abreastTick an AIMoveToCommand every 0.3 s. A takedown needs
+--     several seconds to walk over and play the grapple, so our own leash clobbered it mid-approach.
+--     `holdCommands` now freezes the follow/abreast/catch-up ticks for the duration.
+--
+-- The game delivers this through PlayerSquadInterface.BroadcastCommand, but that only fans the command out
+-- to each squad member via GiveCommandToSquadMember -> the same SendCommand we already call. Sending it
+-- straight to Jackie is equivalent and does not require him to be in V's combat squad.
 Config.takedown = {
   auto = false,             -- v1.47: opportunistic auto-takedown NOT built yet — prove the command first
   approachBeforeTakedown         = true,  -- he walks up to the victim; false = snap straight behind them
   doNotTeleportIfTargetIsVisible = true,  -- never teleport him while the victim is on V's screen (ugly)
+  combatCommand                  = true,  -- v1.48: REQUIRED. Routes it into the follower BT's takedown subtree.
+  -- v1.48 SAFETY (Antonia asked). Nothing here ever deals damage — the engine owns the grapple — but a
+  -- takedown ordered on V or on a friendly would still be wrong. Refuse anything that isn't a hostile puppet.
+  requireHostile   = true,  -- only order takedowns on NPCs hostile to V. Set false at your own risk.
+  -- v1.48 while a takedown runs, our leash ticks must not re-issue commands to Jackie or they cancel it.
+  holdCommands     = true,
+  timeoutSeconds   = 15.0,  -- give up (and hand him back to the leash) if no grapple/kill lands by then
 }
 
 -- ---- companion catch-up teleport (v0.66) ----------------------------------
@@ -1594,9 +1619,10 @@ Config.poses = {
 -- screen, it occupies the same fraction of it at 1080p, 1440p, 4K and on ultrawides (where centring uses
 -- the real width, so it stays under the crosshair rather than drifting left).
 --
--- Note the box height works out to ~22% of screen height (baseH/refH), i.e. very slightly taller than the
--- 20% band. It is therefore BOTTOM-anchored `bottomMargin` above the screen edge, which lands it in the
--- lower fifth and — unlike a naive `y = 0.80 * sh` — can never run off the bottom of the screen.
+-- v1.47 (Antonia): the lower-fifth placement OVERLAPPED THE NATIVE SUBTITLE LINE, which lives at the bottom
+-- of the screen. The box top now sits at `topFrac` (36%) of screen height — high enough to clear the
+-- subtitle band, still comfortably in the lower half. `bottomMargin` stays purely as a safety clamp so the
+-- box can never run off the bottom at an extreme aspect ratio / scale clamp; it should never bind at 36%.
 Config.picker = {
   refH        = 1080.0,  -- the resolution the base sizes below were designed at
   baseW       = 620.0,   -- box width  @ refH
@@ -1604,8 +1630,8 @@ Config.picker = {
   baseFont    = 1.45,    -- ImGui font scale @ refH
   nameW       = 128.0,   -- "JACKIE" name plate @ refH
   nameH       = 34.0,
-  bandTop     = 0.80,    -- top of the "lower 20%" band, as a fraction of screen height
-  bottomMargin= 0.02,    -- keep at least this fraction of the screen below the box
+  topFrac     = 0.36,    -- TOP EDGE of the box, as a fraction of screen height (clears the subtitle line)
+  bottomMargin= 0.02,    -- safety clamp only: keep at least this fraction of the screen below the box
   minScale    = 0.8,     -- clamp so a tiny window can't make it unreadable...
   maxScale    = 3.0,     -- ...or a huge one make it cartoonish
   xOffset     = 0.0,     -- px @ refH: nudge horizontally if you want it off-centre (+right / -left)

@@ -192,7 +192,39 @@ trigger on top of a command that might no-op, v1.47 ships **only the command wra
 - [x] `jlTakedownLookAt()` + CET button **“TEST: Jackie takedown (look at)”** in the pace-tuner panel.
 - [x] `Config.takedown.auto = false` — the opportunistic trigger is NOT built yet, on purpose.
 
-→ **TEST (the decisive experiment):** summon Jackie, confirm he's a companion, crouch, aim at an **unaware**
+### ✅ v1.48 — why the first takedown attempt did nothing (Antonia: *"the NPC survived"*)
+
+First in-game test: sneaking works; the takedown left the guard standing. **Two independent bugs, both found
+in the decompiled scripts.** (For the record — and Antonia asked directly — *nothing in this path ever dealt
+damage.* `jlTakedown` only ever built an AI command and handed it to Jackie's controller. There is no kill
+code, no "infinite damage", and the silent-kill fallback was designed but never written.)
+
+1. **`combatCommand` was left false.** The game's own takedown order, `PlayerPuppet.OnTakedownOrder`
+   (`player.script:3744`), builds *the very same class* and sets `takedownCommand.combatCommand = true` before
+   broadcasting it. `AIFollowerCommand.IsCombatCommand()` has **no script callers** — the flag is read
+   natively by the follower behaviour tree to route the command into its combat/takedown subtree. Left false,
+   the command is accepted and then silently ignored. (Tell: the sibling class `AIFollowerCombatCommand`
+   exists for no purpose other than `default combatCommand = true`.)
+2. **We were cancelling it ourselves.** `followKeepCloseTick` re-asserts an `AIFollowTargetCommand` every
+   1.5 s and `abreastTick` an `AIMoveToCommand` every 0.3 s. A takedown needs several seconds to walk over and
+   play the grapple, so our own leash clobbered it mid-approach and walked him back to V.
+
+- [x] `cmd.combatCommand = true` (`Config.takedown.combatCommand`).
+- [x] `jlTakedownBusy()` — while a takedown runs, `followKeepCloseTick`, `abreastTick` **and** `catchUpTick`
+  all stand down, so nothing re-issues a command over it. This is the one deliberate exception to the v1.46
+  handoff invariant: during a takedown *no* tick drives Jackie, because the takedown does.
+- [x] `jlTakedownTick()` — watches it to a conclusion and logs which: grapple started / target down / timed
+  out after `timeoutSeconds` (15 s), then hands him back to the leash rather than freezing him.
+- [x] 🛡️ **Safety guard (Antonia's concern).** `jlValidVictim` now refuses V (`IsPlayer`) and anything not
+  `AIA_Hostile` toward V, resolving `EAIAttitude` by name and comparing as ints. These gates **fail closed**
+  (an unreadable attitude refuses), unlike the engine's own two gates which fail open. So the look-at button
+  cannot order a takedown on V, on Jackie, or on a friendly.
+
+**Delivery note:** the game routes this through `PlayerSquadInterface.BroadcastCommand`, but that only fans
+the command out to each squad member via `GiveCommandToSquadMember` → the same `SendCommand` we already call.
+Sending straight to Jackie is equivalent and doesn't require him to be in V's combat squad.
+
+→ **RE-TEST (the decisive experiment):** summon Jackie, confirm he's a companion, crouch, aim at an **unaware**
 enemy, press *TEST: Jackie takedown (look at)*.
   * **He walks over and grapples the guard** → the mechanism works. Tell Claude, and the automatic
     “V takes one, Jackie takes the other” behaviour gets built on top of this exact call.
