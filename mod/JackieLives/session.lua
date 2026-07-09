@@ -42,21 +42,26 @@
   HOW A SESSION BOUNDARY IS DETECTED (and why two signals, not one)
   ---------------------------------------------------------------------------
   UNVERIFIED against the redscript dump (not available on the Mac; see the `cp2077-redscript-dump-source`
-  note). So we deliberately do NOT bet on a single signal:
+  note). Two signals, with different jobs:
 
-    A. playerHash — `Game.GetPlayer():GetEntityID().hash` changes when the player entity is rebuilt.
-       Strong IF the player's EntityID is dynamic per-session. It may instead be a fixed well-known
-       ID, in which case this signal never fires. That is exactly why signal B exists.
+    A. playerHash — `Game.GetPlayer():GetEntityID().hash`. A load-from-save REBUILDS the player puppet;
+       a fast-travel only teleports the existing one. So a hash change means "new session". AUTHORITATIVE:
+       this and only this triggers the reset.
 
-    B. presence gap — the player goes absent (GetPlayer() nil, or no world position) and then comes
-       back. Every load screen has such a gap. This fires even if (A) is a constant.
+    B. presence gap — the player goes absent and comes back. EVERY load screen has one... but so does
+       every fast-travel. So a gap is corroborating evidence, NOT a trigger. If a gap alone reset us, we
+       would drop Jackie's handle on every fast-travel and orphan his body — and with Config.persist
+       disabled, nothing would spawn him back. Gaps are logged, never acted on.
 
-  Either one triggers a reset. Both are logged with the reason, so the first in-game run TELLS US
-  which actually works rather than us guessing. Once we know, the dead one can be removed.
+  THE OPEN RISK, STATED PLAINLY: if the player's EntityID is a fixed well-known constant rather than a
+  per-session runtime id, signal A never fires and this guard never triggers. The design is deliberately
+  self-diagnosing — after one load-from-save the log reads either
 
-  A false positive is CHEAP (we drop handles and re-spawn Jackie a moment later, which is exactly what
-  companionPersistTick already does for a culled entity). A false negative is a CRASH. So when the two
-  signals disagree, we always take the reset.
+      [SESSION] #2 begins — player entity changed (...)        <- guard works
+      [SESSION] presence gap, SAME player entity (...)          <- guard never fires; needs a real hook
+
+  so ONE in-game load tells us the answer instead of us guessing. If it's the second line, the fix is an
+  observed load event (PlayerPuppet.OnGameAttached), which needs the dump to verify.
 
   ---------------------------------------------------------------------------
   CRASH LOG
@@ -172,23 +177,45 @@ end
 
 -- Call FIRST in onUpdate, before any tick that might touch a handle.
 -- Returns true on the frame a new session begins.
+--
+-- ⚠️ WHY THE PRESENCE GAP DOES NOT, BY ITSELF, START A NEW SESSION
+-- A fast-travel also blanks the player for a few frames. If a gap alone triggered a reset we would drop
+-- Jackie's handle on every fast-travel and orphan his body — and with Config.persist disabled nothing
+-- would bring him back. So the gap is NOT the trigger.
+--
+-- The discriminator is the player ENTITY: a load-from-save rebuilds the player puppet, a fast-travel only
+-- teleports the existing one. Hence signal A (hash change) is authoritative and signal B (gap) is only
+-- corroborating evidence, logged so we can tell the two transitions apart.
+--
+-- ⚠️ THE OPEN RISK, STATED PLAINLY: if the player's EntityID turns out to be a fixed well-known constant
+-- rather than a per-session runtime id, signal A never fires and this guard never triggers. That is
+-- UNVERIFIED (no redscript dump on the Mac). It is also *self-diagnosing*: on the first load-from-save the
+-- log will show either "[SESSION] #2 begins" (works) or "presence gap, SAME player entity" (doesn't). Read
+-- jackie_debug.log after one load and we will know, instead of guessing.
 function M.tick()
-  local hash            = M.playerId()
-  local inWorld         = M.playerInWorld()
+  local hash    = M.playerId()
+  local inWorld = M.playerInWorld()
 
-  -- Player absent: we're mid-load / mid-fast-travel. Remember the gap; decide nothing yet.
+  -- Player absent: mid-load or mid-fast-travel. Remember the gap; decide nothing yet.
   if not inWorld then
     M.sawPlayer = false
     return false
   end
 
+  local gap = not M.sawPlayer                                    -- signal B: came back from an absence
   local why = nil
   if M.id == 0 then
-    why = "first session"                                        -- launch, or first world entry
-  elseif hash and M.playerHash and hash ~= M.playerHash then
-    why = ("player entity changed (%s -> %s)"):format(tostring(M.playerHash), tostring(hash))  -- signal A
-  elseif not M.sawPlayer then
-    why = "player re-entered world after absence"                -- signal B (load screen / FT)
+    why = "first session"                                        -- launch / first world entry
+  elseif hash and M.playerHash and hash ~= M.playerHash then     -- signal A: the player entity was rebuilt
+    why = ("player entity changed (%s -> %s)%s"):format(
+            tostring(M.playerHash), tostring(hash), gap and " after a load screen" or "")
+  end
+
+  -- A gap with the SAME player entity = fast-travel / district stream. Do NOT reset: dropping handles
+  -- here is what would orphan Jackie on every fast-travel. Log it so the two cases stay distinguishable.
+  if gap and not why then
+    M.log(("[SESSION] presence gap, SAME player entity (%s) — treating as fast-travel, no reset.")
+            :format(tostring(hash)))
   end
 
   M.playerHash = hash or M.playerHash

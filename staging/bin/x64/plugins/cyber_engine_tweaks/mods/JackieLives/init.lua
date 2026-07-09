@@ -7257,6 +7257,9 @@ registerForEvent("onUpdate", function(dt)
   -- new session starts every handle below this line is a pointer into the world that just died. Nothing
   -- that can touch a handle may run before this. (`pcall` cannot save us from a native use-after-free.)
   pcall(function() Session.tick() end)
+  -- nsTick touches no entity handles and must keep running at the main menu, or the Esc-menu settings
+  -- panel never registers there. It's the one tick allowed above the session gate.
+  pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
   if Session.id == 0 then return end   -- main menu / load screen: no world, no session — touch nothing
   -- Retrieval questline (Vik reveal tip, Badlands shard, Misty/Mama post-reunion shards) is a QUIET-LIFE
   -- thing — in Blaze mode Jackie is handed to you by the set-piece, so none of those custom shards should
@@ -7272,7 +7275,7 @@ registerForEvent("onUpdate", function(dt)
     pcall(function() Blaze.autoStartTick() end)      -- v1.0: auto-start when the start-fact flips (T-Bug opens the glass doors)
   end
   pcall(jlDetectGenderOnce)   -- v1.2: one-shot — lock the Husbando/Hermano default from V's body gender
-  pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
+  -- (nsTick moved above the session gate — it must also run at the main menu; see there.)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
   pcall(branchTick)
@@ -7285,8 +7288,18 @@ registerForEvent("onUpdate", function(dt)
   pcall(bikeTestTick)        -- v0.63: read back what the bike-model test actually spawned
   pcall(arrivalGreetTick)    -- v0.46/v0.48: one-shot fresh greeting when an arrived Jackie closes to 4 m
   pcall(leavingTick)    -- v0.33: dismissed Jackie walking off -> despawn at distance
+  -- v1.49: THE CRASH SITE. This block ran every frame against JL.summon.spawn.handle — including the
+  -- frames right after a load-from-save, when that handle points into the world that was just torn down.
+  -- SetNPCAsCompanion on freed memory is a native use-after-free, and the pcall below never caught it
+  -- (pcall catches Lua errors, not native faults). Session.tick() should already have reset us; this
+  -- stamp check is the belt to that braces, because this is where the dead handle was actually touched.
+  if JL.summon.spawn and Session.stale(JL.summon.spawn) then
+    log("[SESSION] promote: dropping stale spawn record from a previous session (not dereferenced).")
+    JL.summon.spawn, JL.summon.active, JL.summon.companionSet = nil, false, false
+  end
   if JL.summon.spawn and JL.summon.spawn.handle and not JL.summon.companionSet and not JL.summon.walkIn then
     local amm = getAMM()
+    Session.mark("AMM SetNPCAsCompanion (promote)")
     pcall(function()
       if amm and amm.Spawn and amm.Spawn.SetNPCAsCompanion then
         amm.Spawn:SetNPCAsCompanion(JL.summon.spawn.handle)
@@ -7296,6 +7309,7 @@ registerForEvent("onUpdate", function(dt)
         h:GetAttitudeAgent():SetAttitudeTowards(pl:GetAttitudeAgent(), EAIAttitude.AIA_Friendly)
       end
     end)
+    Session.clear()
     JL.summon.companionSet = true
     setCompanionFlag(true)   -- v0.72: persist "is companion" (this is the summon/respawn promote path)
     JL.ui.status = "Jackie is following."

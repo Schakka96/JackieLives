@@ -7257,6 +7257,9 @@ registerForEvent("onUpdate", function(dt)
   -- new session starts every handle below this line is a pointer into the world that just died. Nothing
   -- that can touch a handle may run before this. (`pcall` cannot save us from a native use-after-free.)
   pcall(function() Session.tick() end)
+  -- nsTick touches no entity handles and must keep running at the main menu, or the Esc-menu settings
+  -- panel never registers there. It's the one tick allowed above the session gate.
+  pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
   if Session.id == 0 then return end   -- main menu / load screen: no world, no session — touch nothing
   -- Retrieval questline (Vik reveal tip, Badlands shard, Misty/Mama post-reunion shards) is a QUIET-LIFE
   -- thing — in Blaze mode Jackie is handed to you by the set-piece, so none of those custom shards should
@@ -7272,7 +7275,7 @@ registerForEvent("onUpdate", function(dt)
     pcall(function() Blaze.autoStartTick() end)      -- v1.0: auto-start when the start-fact flips (T-Bug opens the glass doors)
   end
   pcall(jlDetectGenderOnce)   -- v1.2: one-shot — lock the Husbando/Hermano default from V's body gender
-  pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
+  -- (nsTick moved above the session gate — it must also run at the main menu; see there.)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
   pcall(branchTick)
