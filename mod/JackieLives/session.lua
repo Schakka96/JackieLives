@@ -1,5 +1,5 @@
 --[[
-  session.lua — SESSION GUARD + CRASH LOG  (v1.49)
+  session.lua — SESSION GUARD + CRASH LOG  (v1.52)
 
   Self-contained module (global `Session`, no top-level `local` in init.lua's main chunk ->
   respects the 200-local cap). Depends on nothing but the game API and a few injected hooks.

@@ -11,6 +11,50 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-09 (v1.52) — 🔴 loading a save with Jackie: the crash AND the cross-save leak, one root cause
+
+- [x] 🧠 **New `mod/JackieLives/session.lua`** (global `Session`, no top-level `local` → 200-cap safe).
+  CET runs `onInit` **once per game launch, not per save-load**, yet `onUpdate` keeps ticking through the
+  load screen. Every cached entity handle therefore survived into the next session pointing at a world that
+  had just been torn down. Both reported symptoms fall out of that single fact:
+  - **The crash.** The per-frame companion re-promote block called
+    `amm.Spawn:SetNPCAsCompanion(JL.summon.spawn.handle)` on freed native memory. It was wrapped in `pcall`
+    — which catches Lua errors and does *nothing* for a native fault. Hence random (did the allocator reuse
+    the page?) and traceback-free.
+  - **"Jackie comes with into other saves."** `companionPersistTick`'s self-heal decided "a live companion is
+    present" by dereferencing that same stale handle. Post-load it often still resolved, so the mod wrote
+    `jackielives_companion` into the save just loaded — one that never had a Jackie. One-way ratchet.
+    The fact was never at fault; it is correctly per-save. **Lua state outlived its save.**
+- [x] 🛡️ `Session.tick()` runs FIRST in `onUpdate`; bumps a session id when the player entity is **rebuilt**.
+- [x] 🛡️ `Session.stamp`/`stale`: spawns carry the id that made them. A mismatched record is **dropped without
+  being dereferenced** — that distinction *is* the fix, since despawning a dead handle is itself a deref.
+- [x] 🛡️ `companionAtStart` gates the self-heal: the fact can be **repaired but never created**.
+- [x] 🪵 **Crash log.** `onInit` used to *truncate* `jackie_debug.log`, destroying the crashing run's log on the
+  very next launch — precisely when you went looking for it. It now **rotates to `jackie_debug.log.prev`**.
+  `Session.mark`/`clear` bracket each risky native call, so the log's tail names what the process died inside.
+- [ ] 🧪 **Windows test, in this order:** (1) load a save with Jackie as companion → no crash; (2) load a
+  *different* save that never had him → he must NOT appear, and the log must show
+  `persist: live companion but this save never claimed him — NOT writing the fact`; (3) fast-travel a few
+  times → he still follows (see the near-miss below). `Config.persist.enabled` stays **false**.
+- [ ] 🔍 **Read `jackie_debug.log` after ONE load-from-save.** The guard is deliberately self-diagnosing:
+  `[SESSION] #2 begins — player entity changed (…)` = it works, done.
+  `[SESSION] presence gap, SAME player entity (…)` = it never fires; the player EntityID is a constant and
+  we need a real `PlayerPuppet.OnGameAttached` hook (needs the redscript dump to verify).
+
+**Problems & Resolutions (2026-07-09, session guard):**
+1. **`pcall` was actively hiding the bug.** It converts "obvious Lua error" into "mysterious native crash."
+   There was exactly **one** `IsDefined`/`IsValid` check in 7,800 lines. A dangling handle is not a Lua
+   problem and no amount of `pcall` will make it one.
+2. **A near-miss caught in review, not in-game.** The first draft also reset on "player went absent then came
+   back" — but **fast-travel has a load screen too**. That would have orphaned Jackie's body on *every*
+   fast-travel, with `persist` off and nothing to respawn him. A load **rebuilds** the player entity; a
+   fast-travel only **teleports** it. So only the entity change triggers a reset; gaps are logged, never acted on.
+3. **`Config.persist.enabled = false` was never protection.** The crashing deref lived in `onUpdate`, outside
+   `companionPersistTick` entirely. Disabling a feature does not disable the code paths above it.
+4. **Version markers collide across sessions.** `v1.49` was already claimed in TODO by the concurrent Blaze
+   session; this work was renumbered to **v1.52** *after* proving (via `git show d64e6f3:…`) that every
+   `v1.49` marker in `init.lua`/`session.lua` was ours. Check `TODO.md` + `git log` before picking a number.
+
 ### 🆕 Added 2026-07-09 (v1.51) — V's uncrouch/holster: NOT a regression, a silent no-op that was always possible
 
 Antonia: *"V doesn't exit crouch correctly and didn't unholster gun during teleport → before this worked, has

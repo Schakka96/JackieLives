@@ -55,7 +55,7 @@ local Config = require("config")
 Retrieval = require("retrieval")   -- "Where's Jackie?" questline + master mod gate (see retrieval.lua)
 pcall(function() package.loaded["blaze"] = nil end)   -- v0.98: force a FRESH read on CET soft-reload; else the cached old module sticks (stale startYorinobu/diagnose)
 Blaze     = require("blaze")       -- v0.96 GLOBAL (200-cap): "Blaze of Glory" Heist set-piece (see blaze.lua)
-Session   = require("session")     -- v1.49 GLOBAL (200-cap): session guard + crash log (see session.lua)
+Session   = require("session")     -- v1.52 GLOBAL (200-cap): session guard + crash log (see session.lua)
 -- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
 -- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
 -- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
@@ -851,7 +851,7 @@ local function ammSpawn(companionFlag, appearance)
   local ok2 = pcall(function() amm.Spawn:SpawnNPC(spawn) end)
   Session.clear()
   if not ok2 then return nil, "SpawnNPC failed" end
-  -- v1.49: stamp the record with the session that created it. Session.stale() reads this to know the
+  -- v1.52: stamp the record with the session that created it. Session.stale() reads this to know the
   -- handle is a dead pointer after a load, so callers drop it instead of dereferencing it.
   Session.stamp(spawn)
   -- v1.43: REMEMBER what the companion is wearing. Every companion respawn (culled body, stranded
@@ -3934,7 +3934,7 @@ local function vehicleArrivalFootFallback(reason)
     JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, (spawn ~= nil), false
     va.phase = nil; return
   end
-  JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.49: stamp so a post-load stale ref is dropped, not dereferenced
+  JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.52: stamp so a post-load stale ref is dropped, not dereferenced
   JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
   va.bikeId, va.bikeHandle = nil, nil
   va.phase          = "sprinting"                        -- reuse the on-foot sprint -> walk -> handoff
@@ -3965,7 +3965,7 @@ local function beginFootApproach(dist, reason)
   if not pt then JL.ui.status = "Arrival: no valid spawn point."; log(("FootApproach: NO navmesh/height-valid point at %.0f m."):format(dist)); return false end
   local jid = spawnDynEntity(Config.jackieRecord or "Character.Jackie", pt, yawToward(pt, pp), "JackieLives_jackie")
   if not jid then JL.ui.status = "Arrival spawn failed (see console)."; log("FootApproach: spawn failed."); return false end
-  JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.49: stamp so a post-load stale ref is dropped, not dereferenced
+  JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.52: stamp so a post-load stale ref is dropped, not dereferenced
   JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
   va.pt             = pt
   va.bikeId, va.bikeHandle = nil, nil
@@ -4020,7 +4020,7 @@ local function vehicleArrivalTick()
       log("VehArrival: spawn failed (bike=" .. tostring(va.bikeId ~= nil) .. ", jackie=" .. tostring(jid ~= nil) .. ")")
       despawnArrivalBike(); if jid then deleteEntityById(jid) end; return
     end
-    JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.49: stamp so a post-load stale ref is dropped, not dereferenced
+    JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.52: stamp so a post-load stale ref is dropped, not dereferenced
     JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
     va.bikeHandle = nil
     va.placeAt    = (JL.clock or 0) + 1.0
@@ -6454,7 +6454,7 @@ function settleTick()
   end
 end
 
--- v1.49 SESSION RESET — called by Session.tick() the frame a new session begins (game load, load-from-
+-- v1.52 SESSION RESET — called by Session.tick() the frame a new session begins (game load, load-from-
 -- save, new game). Every entity handle we hold belongs to the world that just went away.
 --
 -- ⚠️ DROP the references. Do NOT despawn, do NOT read a position, do NOT null-check by dereferencing.
@@ -6514,7 +6514,7 @@ function companionPersistTick()
   if (now - JL.persist.worldReadyAt) < (P.startupGrace or 8.0) then return end  -- let the world finish streaming
 
   -- Is a LIVE, settled companion actually present right now?
-  -- v1.49: Session.stale() FIRST. A spawn record from a previous session holds a dead native pointer;
+  -- v1.52: Session.stale() FIRST. A spawn record from a previous session holds a dead native pointer;
   -- the GetWorldPosition() below would be a use-after-free. Drop it without touching it.
   local live = false
   if JL.summon.spawn and Session.stale(JL.summon.spawn) then
@@ -6527,7 +6527,7 @@ function companionPersistTick()
   end
 
   if live then
-    -- v1.49 CROSS-SAVE LEAK FIX: only self-heal the fact if THIS save already claimed him when the
+    -- v1.52 CROSS-SAVE LEAK FIX: only self-heal the fact if THIS save already claimed him when the
     -- session began. Previously a stale handle that still happened to resolve made `live` true, and
     -- this line wrote the companion fact into a freshly-loaded save that never had a Jackie — a
     -- one-way ratchet that made him "come with" into other saves. Never create the fact, only repair it.
@@ -6568,7 +6568,7 @@ function companionPersistTick()
 end
 
 registerForEvent("onInit", function()
-  -- v1.49: ROTATE, don't truncate. The old `io.open("...","w")` here destroyed the log of the run that
+  -- v1.52: ROTATE, don't truncate. The old `io.open("...","w")` here destroyed the log of the run that
   -- crashed, on the very next launch — i.e. exactly when you went looking for it. The crashing run now
   -- survives as jackie_debug.log.prev; read its tail for the last [MARK] before the process died.
   Session.bind{ log = log, onNewSession = jlResetSessionState }
@@ -7253,7 +7253,7 @@ end
 
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
-  -- v1.49 SESSION GUARD — MUST BE FIRST. onUpdate keeps ticking through a load screen, so on the frame a
+  -- v1.52 SESSION GUARD — MUST BE FIRST. onUpdate keeps ticking through a load screen, so on the frame a
   -- new session starts every handle below this line is a pointer into the world that just died. Nothing
   -- that can touch a handle may run before this. (`pcall` cannot save us from a native use-after-free.)
   pcall(function() Session.tick() end)
@@ -7288,7 +7288,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(bikeTestTick)        -- v0.63: read back what the bike-model test actually spawned
   pcall(arrivalGreetTick)    -- v0.46/v0.48: one-shot fresh greeting when an arrived Jackie closes to 4 m
   pcall(leavingTick)    -- v0.33: dismissed Jackie walking off -> despawn at distance
-  -- v1.49: THE CRASH SITE. This block ran every frame against JL.summon.spawn.handle — including the
+  -- v1.52: THE CRASH SITE. This block ran every frame against JL.summon.spawn.handle — including the
   -- frames right after a load-from-save, when that handle points into the world that was just torn down.
   -- SetNPCAsCompanion on freed memory is a native use-after-free, and the pcall below never caught it
   -- (pcall catches Lua errors, not native faults). Session.tick() should already have reset us; this
