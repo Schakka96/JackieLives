@@ -11,6 +11,82 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-09 (v1.47) — picker clears the subtitle line; finale Jackie actually gets placed
+
+⚠️ **UNCOMMITTED on purpose** — the sneak session was live in `init.lua`/`config.lua`, so these edits sit in
+the working tree for that session's clean commit. `staging/` deliberately NOT synced for the same reason
+(`deploy.ps1` copies from `mod/`, so in-game testing works regardless — but **staging must be re-synced
+before any release zip**).
+
+- [x] ✅ **Outfits CONFIRMED WORKING in-game** (Antonia, Misty's). The v1.43 AMM string fix is real.
+
+- [x] 🖥️ **Picker overlapped the native subtitle line.** The v1.42 lower-fifth placement sat right on top of
+  it. Box TOP is now pinned at `Config.picker.topFrac` = **36%** of screen height (box occupies 36% → 58%),
+  well clear of the subtitle band. `bottomMargin` demoted to a pure safety clamp that never binds at 36%.
+  Verified across 720p/1080p/1440p/4K/8K/21:9/32:9 — identical band everywhere, still centred, never off-screen.
+
+- [x] 🐛 **Finale Jackie: "fresh Jackie spawned" in the log, no Jackie in the world, no walk-off, no error.**
+  The walk-off was NOT to blame — v1.44 already suppressed it, which is exactly why there was no walk-off
+  message. Four real defects, all of them silent:
+  * `resolveJackieHandle()` serves two spawn shapes. For a **DES** spawn `sp.id` is an `EntityID`; for an
+    **AMM** spawn `sp.id` is the **record string** `"Character.Jackie"`. So its fallback ran
+    `Game.FindEntityByID("Character.Jackie")` — meaningless — and the AMM path depended **entirely** on AMM's
+    own Cron eventually setting `sp.handle`. AMM sets `spawn.entityID` *synchronously* inside `SpawnNPC`;
+    we never looked at it. Now we do, and resolve the body without waiting on AMM.
+  * When the handle didn't resolve, the `place` phase **silently fell through to `talk` after 8 s with no log
+    at all** — precisely "spawned, but no Jackie, no error". It now logs loudly, **despawns + respawns** (up
+    to `finaleSpawnRetries`), and says so if it truly gives up.
+  * The finale spawned the same frame V was teleported, at **full black**. AMM drops the body 1 m in front of
+    V *at CreateEntity time*, so he could be left at V's **pre-teleport** spot (back at Konpeki) — the same
+    not-yet-streamed-world failure class `companionPersistTick` already guards with `startupGrace`. Now it
+    waits `finaleSpawnDelay` (0.6 s) for a valid `playerPos()`, then **verifies he landed within
+    `finalePlaceTolerance` (6 m) of V** and re-issues the teleport until he has.
+  * `catchUpTick` and `companionPersistTick` could **despawn the finale's fresh Jackie** mid-placement and
+    respawn their own (which also arms the settle HIDE window over the scene). Both now yield while
+    `JL.blazeFinale` is armed.
+  * 🐛 **`settleTick` could hide Jackie permanently.** It cleared `hideUntil` even when the handle was nil on
+    the reveal frame, skipping `setVisible(h, true)` forever → present, companion, **invisible**. A dead-on
+    match for "CET says companion: true but no Jackie around". It now only closes the window once it actually
+    reveals him (5 s give-up), and the finale force-clears any settle window and forces `setVisible` +
+    `setNpcCollision` on before placing him.
+  FSM simulated across: happy path · slow handle · spawned 300 m away · handle never resolves · teleport never
+  takes. **Every path now logs**; none falls through silently.
+  → **TEST:** run the finale. Expect `finale: fresh Jackie spawned … attempt 1` then
+  `finale: Jackie placed N m from V`. If you instead see `handle NEVER RESOLVED -> despawn + respawn` or
+  `GAVE UP placing Jackie`, **send Claude those lines** — they distinguish "AMM never gave us a body" from
+  "the body existed but was in the wrong place".
+  New knobs in `blaze.lua`: `finaleSpawnDelay` / `finaleResolveTimeout` / `finaleSpawnRetries` /
+  `finalePlaceTolerance`.
+
+- [x] 🧹 Stray untracked `luac.out` — **mine, and it was junk.** `luac -l -l` (used to disassemble `init.lua`
+  and verify `snapToNavmesh` / `blog` / `now` resolve as upvalues rather than nil globals) writes a bytecode
+  dump unless you pass `-p`. Deleted, and now gitignored so neither session trips over it again.
+
+### 🆕 Added 2026-07-09 (v1.49) — the finale's `[F] Get in the AV` prompt could never appear
+
+Antonia: *"The [F] button to get into the helicopter does not appear at that coordinate."*
+
+**Root cause — the same shape as the v1.46 stairs bug: a distance check that forgot it has a vertical axis.**
+`Blaze.bound.distToPlayer` returns a full **3-D** distance, but `M.yori.roofHeli.radius` was **2.0 m**. That
+coordinate (`z = 320.0`) is the roof AV's own origin, which sits *above* the roof deck V walks on — while the
+Smasher fight floor (`goro.pos`) is at `z = 308.3`, ~12 m below. So the height difference between V's feet and
+the AV's origin could consume the entire 2 m budget on its own, and the prompt could never fire **no matter
+where she stood**. Nothing was wrong with `showPrompt` (it's the same helper used elsewhere) or the coordinate.
+
+- [x] 🚁 `roofHeli.radius` 2.0 → **8.0**. Comfortably swallows the vertical offset, and since the roof sits
+  ~12 m above the fight floor an 8 m sphere still cannot leak downward and fire during the Smasher fight.
+- [x] 📏 **Self-diagnosing.** While in the `escape` stage but out of reach, it now logs the live distances to
+  both exits once a second (`[F] prompt NOT shown — … roof AV 3.4 m away (need <= 8.0)`), so if 8.0 is still
+  short the radius gets tuned from a real number instead of a second guess.
+
+→ **TEST:** kill Smasher, walk to the roof AV. `[F] Get in the AV` should appear. If it doesn't, read the
+`[F] prompt NOT shown` line in `jackie_debug.log` — the smaller distance is what `roofHeli.radius` must exceed.
+
+**Latent, deliberately NOT fixed (needs a decision):** `d1` is measured against `M.yori.heli.pos`
+unconditionally, even when no VTOL was ever spawned (`M.cfg.heliRecord` unset). So standing within 5 m of that
+empty coordinate would show the prompt for a helicopter that isn't there. It's off the balcony edge so it's
+unlikely to bite, but it is real — gate `d1` on the VTOL actually having spawned.
+
 ## 🧪 AWAITING WINDOWS IN-GAME TEST — everything shipped 2026-07-09 (v1.41 → v1.46)
 
 Nothing below has been run in-game; it all parse-checks on the Mac and the pure-logic parts are unit-tested.

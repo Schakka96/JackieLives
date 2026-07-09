@@ -3805,10 +3805,24 @@ local function despawnArrivalBike()
 end
 
 -- Resolve the DES-spawned Jackie's handle from his entity id (stored on JL.summon.spawn).
+-- JL.summon.spawn comes in TWO shapes and this has to resolve both:
+--   * DES spawn (spawnDynEntity)  -> { id = <EntityID>, handle = nil }        -- `id` IS an EntityID
+--   * AMM spawn (ammSpawn)        -> AMM's object: .handle / .entityID / .id  -- `id` is the RECORD STRING
+--
+-- v1.47: the AMM shape used to resolve ONLY via `sp.handle`, which AMM populates from its own Cron a few
+-- frames after SpawnNPC. The `sp.id` fallback below then ran `FindEntityByID("Character.Jackie")` — a record
+-- string, not an EntityID — so it could never help. If AMM's Cron was late (spawning at full black into a
+-- not-yet-streamed world), the handle stayed nil, the Blaze finale's `place` phase silently timed out, and
+-- Jackie was left standing wherever AMM dropped him. AMM sets `entityID` synchronously inside SpawnNPC, so
+-- prefer it: we can resolve the body ourselves without waiting on AMM at all.
 local function resolveJackieHandle()
   local sp = JL.summon.spawn
   if not sp then return nil end
   if sp.handle then return sp.handle end
+  if sp.entityID then                                     -- AMM shape: set synchronously by SpawnNPC
+    local h; pcall(function() h = Game.FindEntityByID(sp.entityID) end)
+    if h then sp.handle = h; return h end
+  end
   if sp.id then local h; pcall(function() h = Game.FindEntityByID(sp.id) end); if h then sp.handle = h end; return h end
   return nil
 end
@@ -4209,6 +4223,8 @@ end
 local function catchUpTick()
   local C = Config.catchUp or {}
   if C.enabled == false then return end
+  if JL.blazeFinale then return end   -- v1.47: the finale places Jackie itself; a respawn-when-stranded here
+                                      -- would despawn the body it just spawned (and hide the new one).
   -- v1.48: don't yank him back to V's side while he's crossing the room to take someone down. The
   -- approach legitimately opens a gap, and an aiTeleport mid-takedown would cancel the command.
   if jlTakedownBusy() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
@@ -6328,8 +6344,21 @@ function settleTick()
   if s.hideUntil and now < s.hideUntil then
     if h then setVisible(h, false) end
   elseif s.hideUntil then
-    if h then setVisible(h, true) end     -- window's up -> reveal him where he settled
-    s.hideUntil = nil
+    -- v1.47: only close the window once we ACTUALLY revealed him. This used to clear `hideUntil`
+    -- unconditionally, so if the handle happened to be nil on the exact reveal frame (a respawn swapped
+    -- JL.summon.spawn under us) the reveal was skipped forever and Jackie stayed INVISIBLE — present,
+    -- companion, unseeable. Keep retrying until a handle shows up, with a hard cap so we can't hide him
+    -- for the rest of the session if his body never comes back.
+    if h then
+      setVisible(h, true)                 -- window's up -> reveal him where he settled
+      s.hideUntil, s.hideGiveUpAt = nil, nil
+    else
+      s.hideGiveUpAt = s.hideGiveUpAt or (now + 5.0)
+      if now >= s.hideGiveUpAt then
+        log("Settle: reveal window expired with no handle — dropping the hide (no body to reveal).")
+        s.hideUntil, s.hideGiveUpAt = nil, nil
+      end
+    end
   end
   if s.collideUntil and now < s.collideUntil then
     if h then setNpcCollision(h, false) end
@@ -6345,6 +6374,10 @@ end
 function companionPersistTick()
   local P = Config.persist or {}
   if P.enabled == false then return end
+  if JL.blazeFinale then return end   -- v1.47: the finale OWNS Jackie's body while it spawns/places him.
+                                      -- Otherwise this sees "companion set, handle not resolved yet",
+                                      -- despawns the finale's fresh Jackie and respawns its own — which
+                                      -- also arms the settle HIDE window over the finale scene.
   if not Retrieval.isUnlocked() then return end                 -- mod still gated -> no companion to keep
 
   -- v0.84 CRASH FIX: the startup grace MUST be measured from when the player entered the world, NOT
@@ -6928,15 +6961,25 @@ function blazeFinaleSceneTick()
     -- inheriting an already-expired one (belt-and-braces: the blaze gate in onUpdate should stop the
     -- auto-leave anyway, but the finale must not depend on JL.mode still being "blaze").
     JL.summon.companionExpiresGame, JL.summon.companionSinceGame = nil, nil
+    -- v1.47: WAIT FOR THE WORLD before spawning. `finale()` teleports V at full black and arms us the same
+    -- frame; AMM's SpawnNPC drops the body 1 m in front of V *at CreateEntity time*, so spawning too early
+    -- can drop him at V's PRE-teleport spot (back at Konpeki) — and spawning into a not-yet-streamed world
+    -- is the exact failure class companionPersistTick already guards with its `startupGrace`.
+    if not playerPos() then return end                     -- V not in-world yet (load / fade)
+    f.spawnReadyAt = f.spawnReadyAt or ((JL.clock or 0) + ((Blaze.yori and Blaze.yori.finaleSpawnDelay) or 0.6))
+    if (JL.clock or 0) < f.spawnReadyAt then return end
     -- The fight companion (dirty suit) is likely culled by the teleport. Throw him out and spawn a FRESH
     -- companion in the normal outfit right here, so Jackie reliably appears at the finale.
     pcall(function() if JL.summon.spawn then ammDespawn(JL.summon.spawn) end end)
     JL.summon.spawn, JL.summon.active, JL.summon.companionSet = nil, false, false
     local sp = ammSpawn(1, app)
     if sp then
+      f.tries = (f.tries or 0) + 1
       JL.summon.spawn, JL.summon.active, JL.summon.companionSet = sp, true, false
-      f.phase, f.spawnAt = "place", (JL.clock or 0)
-      log("[Blaze] finale: fresh Jackie spawned (normal outfit).")
+      f.phase, f.spawnAt, f.placeTries = "place", (JL.clock or 0), 0
+      local vp = playerPos()
+      log(("[Blaze] finale: fresh Jackie spawned (normal outfit) — attempt %d, V at (%.1f,%.1f,%.1f).")
+          :format(f.tries, vp and vp.x or 0, vp and vp.y or 0, vp and vp.z or 0))
     elseif (JL.clock or 0) - (f.startedAt or 0) > 8.0 then
       f.phase, f.talkAt = "talk", (JL.clock or 0)         -- give up spawning; still run the convo
       log("[Blaze] finale: ammSpawn kept failing — running convo without a placed Jackie.")
@@ -6945,13 +6988,33 @@ function blazeFinaleSceneTick()
   end
 
   if f.phase == "place" then
+    local now = JL.clock or 0
     local h = resolveJackieHandle()
-    if not h then                            -- fresh spawn not resolved yet; retry, but don't hang forever
-      if (JL.clock or 0) - (f.spawnAt or f.startedAt or 0) > 8.0 then f.phase, f.talkAt = "talk", (JL.clock or 0) end
+    if not h then
+      -- v1.47: this used to fall through to "talk" SILENTLY after 8 s, which is exactly what an unplaced
+      -- Jackie looked like in-game: "fresh Jackie spawned" in the log, no Jackie, no error, no walk-off.
+      -- Now: say so, and RESPAWN rather than shrug — the body is either unresolvable or somewhere else.
+      if now - (f.spawnAt or f.startedAt or 0) > ((Blaze.yori and Blaze.yori.finaleResolveTimeout) or 4.0) then
+        if (f.tries or 0) < ((Blaze.yori and Blaze.yori.finaleSpawnRetries) or 3) then
+          log(("[Blaze] finale: Jackie's handle NEVER RESOLVED (attempt %d) -> despawn + respawn."):format(f.tries or 0))
+          f.phase, f.spawnReadyAt = "spawn", now + 0.3
+        else
+          log(("[Blaze] finale: GAVE UP placing Jackie after %d attempts — convo runs without him. " ..
+               "Report this: the AMM spawn never produced a resolvable body."):format(f.tries or 0))
+          f.phase, f.talkAt = "talk", now
+        end
+      end
       return
     end
     pcall(function() h:PrefetchAppearanceChange(CName.new(app)) end)   -- belt-and-suspenders normal outfit
     pcall(function() h:ScheduleAppearanceChange(CName.new(app)) end)
+    -- v1.47: a concurrent respawn-at-V (catchUp / persist) may have armed the SETTLE window, which keeps the
+    -- puppet INVISIBLE and non-colliding for ~2 s and re-asserts that every frame. If its reveal is missed,
+    -- Jackie is present, a companion, and permanently unseeable — "companion: true, no Jackie around".
+    -- Tear the window down and force him visible + solid before we place him.
+    JL.settle.hideUntil, JL.settle.collideUntil, JL.settle.reposePending = nil, nil, nil
+    setVisible(h, true)
+    setNpcCollision(h, true)
     -- Stand him BESIDE V (V's right vector), snapped to navmesh, facing her. Blaze.yori.finaleSide tunes
     -- the side/distance (+right / -left) if he clips at this spot.
     pcall(function()
@@ -6966,6 +7029,20 @@ function blazeFinaleSceneTick()
         Game.GetTeleportationFacility():Teleport(h, jp, EulerAngles.new(0, 0, yaw or 0))
       end
     end)
+    -- v1.47: VERIFY he actually arrived. The teleport is async, so the first pass always still reads his old
+    -- position — we simply re-issue on the next tick until he's near V (or we run out of patience). This is
+    -- what turns "spawned but 300 m away at Konpeki" from an invisible failure into a self-correcting one.
+    local jp; pcall(function() jp = h:GetWorldPosition() end)
+    local pp = playerPos()
+    local d  = (jp and pp) and dist3(pp, jp) or nil
+    local tol = (Blaze.yori and Blaze.yori.finalePlaceTolerance) or 6.0
+    if d and d > tol then
+      f.placeTries = (f.placeTries or 0) + 1
+      if f.placeTries <= 8 then return end   -- stay in `place`, re-teleport next tick
+      log(("[Blaze] finale: Jackie STILL %.1f m from V after %d teleports — continuing anyway."):format(d, f.placeTries))
+    else
+      log(("[Blaze] finale: Jackie placed %.1f m from V."):format(d or -1))
+    end
     pcall(promoteToCompanion)                -- keep him a proper follower (living Jackie going forward)
     -- SETTLE: don't start the convo until the fade fully lifts AND a beat passes (Antonia: subtitle+picker
     -- showed during the blackscreen). Configurable via Blaze.yori.finaleSettle.

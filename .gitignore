@@ -81,3 +81,6 @@ docs/research/q101_raw/
 docs/mounring_scenes/
 # Raw q005 heist scene tree (~141MB of CDPR .scene/.anims/.particle JSON; source for the mix-signpost find)
 docs/Heist_scene_tree_base/
+
+# luac bytecode dumps (luac -l without -p writes these)
+luac.out

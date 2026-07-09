@@ -86,13 +86,26 @@ M.yori = {
   goro    = { rec = "Character.Takemura", pos = { x = -2226.165, y = 1765.743, z = 308.329, yaw = -157.5 }, hpMul = 0.20 },  -- ELEVATOR spot (= Smasher's old default coord, Antonia 2026-07-08)
   smasher = { rec = "Character.Smasher",  hpMul = 0.50 },   -- spawns AT goro.pos (same elevator spot)
   heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 }, radius = 5.0 },  -- OUR optional VTOL (only if M.cfg.heliRecord set)
-  -- The AV ALREADY on the roof in the base scene — primary escape, no spawn needed. +2 m reach.
-  roofHeli = { pos = { x = -2212.9, y = 1764.67, z = 320.0 }, radius = 2.0 },   -- Antonia's roof coords 2026-07-08
+  -- The AV ALREADY on the roof in the base scene — primary escape, no spawn needed.
+  -- v1.49: radius was 2.0 and NEVER FIRED. `distToPlayer` is 3-D, and this z (320.0) is the AV's own origin,
+  -- which sits above the roof deck V walks on — so the height difference alone could exceed a 2 m sphere even
+  -- with V standing right at it. 8 m comfortably swallows that dz and is still ~12 m clear of the Smasher
+  -- floor below (goro.pos z=308.3), so it cannot fire during the fight. Tune from the live distance the
+  -- escape-stage log now prints each second.
+  roofHeli = { pos = { x = -2212.9, y = 1764.67, z = 320.0 }, radius = 8.0 },   -- Antonia's roof coords 2026-07-08
   -- v1.07 (Antonia): the finale destination — V wakes here, Jackie (normal outfit) appears next to her
   -- facing her, and the finale conversation plays. Coords/yaw captured in-game 2026-07-09.
   finalePos = { x = -1787.921, y = -450.040, z = 7.747, yaw = -1.4 },
   finaleSide = 1.4,     -- v1.10: metres to place Jackie BESIDE V at the finale (+ = V's right, - = left). Tune if he clips.
   finaleSettle = 1.8,   -- v1.11: seconds after the fade fully lifts before the convo starts (so it isn't during the blackscreen).
+  -- v1.47: the finale used to spawn Jackie the same frame V was teleported, at full black. AMM drops the body
+  -- 1 m in front of V *at CreateEntity time*, so that could leave him at V's PRE-teleport spot (Konpeki), and
+  -- the placement then silently gave up when his handle didn't resolve. These make the spawn wait, retry, and
+  -- verify he actually arrived. Raise finaleSpawnDelay if he still lands somewhere else.
+  finaleSpawnDelay     = 0.6,   -- s to let V's teleport land + the world stream in before spawning him
+  finaleResolveTimeout = 4.0,   -- s to wait for the spawned body's handle before despawning + respawning
+  finaleSpawnRetries   = 3,     -- how many spawn attempts before giving up and running the convo without him
+  finalePlaceTolerance = 6.0,   -- m: if he's farther than this from V after the teleport, re-issue it
   -- Gate: fires when the T-Bug PHONE CALL ENDS. From JLFactDump (docs/factdump.log): the fact
   -- `phonecall_player_with_tbug` runs 1 -> 2 (call active) then drops back to 0 when the call ends.
   -- So we fire on the FALLING edge (saw it active, now 0), NOT a raw >0 (that'd fire when it STARTS).
@@ -456,10 +469,24 @@ function M.tick(now, dt)
       -- TWO valid exits: our spawned VTOL and the AV already on the roof (roofHeli.pos, once Antonia
       -- fills it). When V is within reach of EITHER, show the "[F]: Get in the AV" prompt; the actual
       -- fade is gated on the F press (M.tryEscapePress, driven from init.lua's OnAction hook).
+      -- v1.49 (Antonia: "the [F] doesn't appear at that coordinate"). `distToPlayer` is a full 3-D distance,
+      -- and roofHeli's reach was a 2 m SPHERE centred on the AV's own origin — which sits above the roof deck
+      -- V actually stands on. So the vertical offset alone could eat the whole budget and the prompt could
+      -- never fire, no matter where she stood. Radii are now generous enough to swallow that dz (the roof is
+      -- ~12 m above the Smasher floor at goro.pos z=308.3, so even 8 m can't leak down to the fight below).
+      -- When we're in the escape stage but out of reach we now PRINT the live distances once a second, so the
+      -- radius can be tuned from a real number instead of guessed at.
+      local r1 = M.yori.heli.radius or M.yori.reachRadius or 5.0
+      local r2 = (M.yori.roofHeli and M.yori.roofHeli.radius) or M.yori.reachRadius or 5.0
       local d1 = M.bound.distToPlayer and M.bound.distToPlayer(M.yori.heli.pos) or 1e9
       local d2 = (M.bound.distToPlayer and M.yori.roofHeli and M.yori.roofHeli.pos) and M.bound.distToPlayer(M.yori.roofHeli.pos) or 1e9
-      local inRange = (d1 <= (M.yori.heli.radius or M.yori.reachRadius or 5.0))
-                   or (d2 <= (M.yori.roofHeli and M.yori.roofHeli.radius or M.yori.reachRadius or 5.0))
+      local inRange = (d1 <= r1) or (d2 <= r2)
+      if not inRange and now >= (st.escapeDbgAt or 0) then
+        st.escapeDbgAt = now + 1.0
+        blog(("[F] prompt NOT shown — spawned VTOL %.1f m away (need <= %.1f), roof AV %.1f m away (need <= %.1f). "
+              .. "Walk to the AV and read the smaller number: that's what roofHeli.radius must exceed.")
+             :format(d1, r1, d2, r2))
+      end
       if inRange then
         st.escapeReady = true
         -- v1.11 (Antonia): weather/day change moved OUT of here — at the heli it was too early. It now
