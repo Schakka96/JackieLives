@@ -34,7 +34,7 @@ local M = { bound = {}, cfg = nil, st = nil }
 -- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
 -- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
 -- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
-M.VERSION = "1.05 (2026-07-08 bosses drop to floor + AV-on-roof hint bark + dead autoRadius removed)"
+M.VERSION = "1.09 (2026-07-09 finale convo + WORKING fast-travel/checkpoint escape tools for the stuck-scene music)"
 
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
@@ -55,6 +55,10 @@ M.cfg = {
 
   reachRadius       = 6.0,   -- metres from the VTOL that triggers the escape cut
   gateOnSmasherOnly = true,  -- escape unlocks when SMASHER dies (Takemura optional), per design
+  -- v1.06: at the finale, fast-forward the lingering heist scene to kill its leftover "gone wrong" music
+  -- (Antonia item 10, max-risk). Default ON. ⚠️ If the quest visibly jumps forward / Johnny starts after
+  -- the finale on a test save, flip this false (init.lua blazeEndScene explains the risk).
+  endSceneOnFinale  = true,
 }
 
 -- ---------------------------------------------------------------------------
@@ -79,6 +83,9 @@ M.yori = {
   heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 }, radius = 5.0 },  -- OUR optional VTOL (only if M.cfg.heliRecord set)
   -- The AV ALREADY on the roof in the base scene — primary escape, no spawn needed. +2 m reach.
   roofHeli = { pos = { x = -2212.9, y = 1764.67, z = 320.0 }, radius = 2.0 },   -- Antonia's roof coords 2026-07-08
+  -- v1.07 (Antonia): the finale destination — V wakes here, Jackie (normal outfit) appears next to her
+  -- facing her, and the finale conversation plays. Coords/yaw captured in-game 2026-07-09.
+  finalePos = { x = -1787.921, y = -450.040, z = 7.747, yaw = -1.4 },
   -- Gate: fires when the T-Bug PHONE CALL ENDS. From JLFactDump (docs/factdump.log): the fact
   -- `phonecall_player_with_tbug` runs 1 -> 2 (call active) then drops back to 0 when the call ends.
   -- So we fire on the FALLING edge (saw it active, now 0), NOT a raw >0 (that'd fire when it STARTS).
@@ -97,6 +104,17 @@ M.yori = {
   reachRadius = 5.0,
   fightLineDelay = 4.0,   -- seconds after each boss spawns before Jackie's one mid-fight bark
   avHintRadius = 3.0,     -- after Smasher's down, V within this of the elevator OR heli spot -> Jackie's "AV's on the roof" bark
+  -- v1.07 (Antonia): the FIGHTING Jackie wears the dirty Militech heist suit; at the finale a FRESH Jackie
+  -- appears next to V in his normal outfit. ⚠️ These are AMM APPEARANCE names (the docs list
+  -- jackie_welles__q005_suit — double underscore — as the heist-suit one; "q005_suit_dirty" is the ITEM,
+  -- not the appearance). Verify in AMM's appearance list in-game and adjust if the suit's wrong.
+  fightAppearance  = "jackie_welles__q005_suit",   -- dirty heist suit for the fight
+  finaleAppearance = "jackie_welles_default",       -- normal outfit at the finale
+  -- The SCENE's own passive "luggage" Jackie (the one carrying the case) — a persistent scene puppet, NOT
+  -- our companion. Identity from the in-game Identify button: record Character.Jackie, name LocKey#47007,
+  -- persistent entityID 9001273. We auto-remove him at fight start by this id (retried a few times as he
+  -- may stream in late). ⚠️ VERIFY the id is stable across saves; the manual "remove look-at" is the fallback.
+  sceneJackieId    = 9001273,
   vo = {
     -- Takemura appears: alarm, then "we're really fucked"
     goroSpawn    = { { sfx = "jl_1683596019292229632", text = "Oh, shit..." },
@@ -111,8 +129,8 @@ M.yori = {
     -- Smasher down, heading for the exit: Jackie points V to the escape ride (fires once when V nears
     -- the elevator/heli spot in the escape stage). REAL voiced q005 line.
     avOnRoof     = { { sfx = "jl_1783599541039017984", text = "Bien pensado. Old man Arasaka's AV should still be parked on the roof." } },
-    -- At the heli
-    heliReach    = { { sfx = "jl_1694028164799078400", text = "Jump!" } },
+    -- At the heli, the last beat before the fade (Antonia v1.07): replaces "Jump!".
+    heliReach    = { { sfx = "jl_1694284269402939392", text = "C'mon, V — let's get outta here." } },
     -- Spare voiced alternates (swap in above if you like):
     --   jl_2232998526621773824 "Mierda, close call."
     --   jl_1786751638324432896 "¡Pinche Dios Santo bendito!" (Jesus fucking Christ)
@@ -220,17 +238,27 @@ end
 -- overlay's experimental button (which also flips mode -> blaze). Uses M.cfg.heliRecord for the heli.
 function M.startYorinobu()
   M.reset()
-  M.st = { active = true, mode = "yorinobu", stage = "goro", ent = {},
-           goroDead = false, smasherDead = false, lastObjective = "", firedFade = false,
+  -- v1.07 (Antonia): Takemura removed for now — start straight on Smasher (goroDead pre-set true so the
+  -- old goro-gate paths are inert). stage jumps to "smasher"; the "goro" stage code below is now dead.
+  M.st = { active = true, mode = "yorinobu", stage = "smasher", ent = {},
+           goroDead = true, smasherDead = false, lastObjective = "", firedFade = false,
            voQueue = {}, voNextAt = 0, goroFightAt = nil, smasherFightAt = nil,
-           saidGoroFight = false, saidSmasherFight = false }
-  -- The moment Takemura appears: Jackie -> COMPANION (fights + auto barks) and the Jackie Lives mod
-  -- goes fully active, which gates his schedule so no SECOND Jackie can spawn while he's placed.
-  if M.bound.becomeCompanion then M.bound.becomeCompanion() end
-  spawnOne("goro", M.yori.goro.rec, M.yori.goro.pos, true, M.yori.goro.hpMul)
-  say("goroSpawn")
-  pushObjective("[ ] Find a weapon\n>> Defeat Takemura")
-  blog("EXPERIMENTAL Yorinobu fight STARTED (Takemura first; Jackie -> companion).")
+           saidGoroFight = true, saidSmasherFight = false,
+           sceneJackieTries = 0, saidHeliLine = false }
+  -- Jackie -> COMPANION (fights + auto barks) in the DIRTY HEIST SUIT, and the mod goes fully active,
+  -- which gates his schedule so no SECOND Jackie can spawn while he's placed.
+  if M.bound.becomeCompanion then M.bound.becomeCompanion(M.yori.fightAppearance) end
+  -- Remove the scene's own passive luggage-Jackie (persistent puppet, NOT our companion) so only the
+  -- fighting Jackie remains. Retried in the tick as he may not be streamed in this exact frame.
+  if M.bound.despawnSceneJackie then M.bound.despawnSceneJackie(M.yori.sceneJackieId) end
+  -- Takemura spawn intentionally commented out (felt weird). To restore: set stage="goro", goroDead=false,
+  -- saidGoroFight=false, and uncomment the two lines below.
+  -- spawnOne("goro", M.yori.goro.rec, M.yori.goro.pos, true, M.yori.goro.hpMul)
+  -- say("goroSpawn")
+  spawnOne("smasher", M.yori.smasher.rec, M.yori.goro.pos, true, M.yori.smasher.hpMul)  -- Smasher at the elevator spot
+  say("smasherSpawn")
+  pushObjective("[ ] Find a weapon\n>> Defeat Adam Smasher")
+  blog("EXPERIMENTAL Yorinobu fight STARTED (Smasher only; Jackie -> companion in heist suit).")
   return true
 end
 
@@ -369,9 +397,18 @@ function M.tick(now, dt)
   if not st.smasherDead and isDead(st.ent.smasher) then st.smasherDead = true; blog("Adam Smasher is DOWN.") end
   if not st.goroDead    and isDead(st.ent.goro)    then st.goroDead    = true; blog("Goro Takemura is DOWN.") end
 
-  -- ⚠️ EXPERIMENTAL Yorinobu sequence: Takemura -> Smasher -> heli -> fade -> wake at Vik's.
+  -- ⚠️ EXPERIMENTAL Yorinobu sequence (v1.07: Takemura removed): Smasher -> heli -> line -> fade -> finale.
   if st.mode == "yorinobu" then
     voPump(now)                                              -- drain queued barks (clip-length spaced)
+    -- Retry the scene luggage-Jackie removal for the first ~5 s (he may stream in a few frames late).
+    if (st.sceneJackieTries or 0) < 10 and M.bound.despawnSceneJackie then
+      st.sceneJackieAt = st.sceneJackieAt or 0
+      if now >= st.sceneJackieAt then
+        st.sceneJackieAt = now + 0.5
+        st.sceneJackieTries = (st.sceneJackieTries or 0) + 1
+        M.bound.despawnSceneJackie(M.yori.sceneJackieId)
+      end
+    end
     if st.stage == "goro" then
       st.goroFightAt = st.goroFightAt or (now + (M.yori.fightLineDelay or 4.0))
       if not st.saidGoroFight and now >= st.goroFightAt then st.saidGoroFight = true; say("goroFight") end
@@ -385,7 +422,8 @@ function M.tick(now, dt)
       end
 
     elseif st.stage == "smasher" then
-      if not st.saidSmasherFight and st.smasherFightAt and now >= st.smasherFightAt then
+      st.smasherFightAt = st.smasherFightAt or (now + (M.yori.fightLineDelay or 4.0))  -- v1.07: lazy init (Smasher-first)
+      if not st.saidSmasherFight and now >= st.smasherFightAt then
         st.saidSmasherFight = true; say("smasherFight")      -- "We ain't dyin' — not today!"
       end
       if st.smasherDead then
@@ -413,6 +451,9 @@ function M.tick(now, dt)
                    or (d2 <= (M.yori.roofHeli and M.yori.roofHeli.radius or M.yori.reachRadius or 5.0))
       if inRange then
         st.escapeReady = true
+        -- v1.07 (Antonia): Smasher's down AND V reached the heli -> force sunshine (once). The storm clears
+        -- as they make their getaway.
+        if not st.setWeatherDone and M.bound.setWeather then st.setWeatherDone = true; M.bound.setWeather() end
         if now >= (st.escapePromptAt or 0) then       -- re-assert the NATIVE [F] interaction prompt on a heartbeat
           st.escapePromptAt = now + 1.0
           if M.bound.showPrompt then M.bound.showPrompt("Get in the AV") end
@@ -425,14 +466,21 @@ function M.tick(now, dt)
       end
 
     elseif st.stage == "cut" then
-      if not st.firedFade then
-        st.firedFade = true
-        say("heliReach")                                                     -- Jackie's "we made it" line
-        if M.bound.fade   then M.bound.fade("BLAZE OF GLORY — you and Jackie make the jump.") end
-        if M.bound.finale then M.bound.finale() end                          -- world-unlock + wake at Vik's w/ Jackie
-        blog("EXPERIMENTAL Yorinobu finale fired.")
+      -- v1.07 (Antonia): Jackie says "C'mon, V — let's get outta here" FIRST, THEN we fade. So queue the
+      -- line, wait for the VO queue to drain (voPump sets voNextAt to the clip end), and only then fade+finale.
+      if not st.saidHeliLine then
+        st.saidHeliLine = true
+        say("heliReach")
+        blog("EXPERIMENTAL Yorinobu: heli line queued; fade waits for it to finish.")
       end
-      st.stage = "done"
+      local voDone = (not st.voQueue or #st.voQueue == 0) and now >= (st.voNextAt or 0)
+      if voDone and not st.firedFade then
+        st.firedFade = true
+        if M.bound.fade   then M.bound.fade("BLAZE OF GLORY — you and Jackie make it out.") end
+        if M.bound.finale then M.bound.finale() end                          -- world-unlock + wake w/ Jackie
+        blog("EXPERIMENTAL Yorinobu finale fired (after heli line).")
+        st.stage = "done"
+      end
     end
     return
   end

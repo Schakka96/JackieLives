@@ -299,10 +299,11 @@ BLAZE_CONFIG_FILE = "blaze_config.txt"
 
 -- v1.x BLAZE: the Story-mode description, shown both in the arm/confirm prompt and once Blaze is on.
 -- Global (not a top-level local) => 200-cap safe; one source of truth for the two draw sites.
-BLAZE_DESC = "You and Jackie fight out of the Heist -- taking down Smasher & Takemura, escape by " ..
-  "helicopter, sell the Relic, and become living legends. DISABLES the main plot (no Relic, no Johnny, " ..
-  "no dyin'). Extremely experimental. Choose this BEFORE jumping off the building in the Heist -- " ..
-  "WARNING: this can't be undone!"
+-- v1.07 (Antonia): spoiler-light — hint that it's INTENSE, don't reveal who you fight, what happens
+-- after, or the payoff. Keep the functional warnings (replaces the ending, disables the main plot, can't undo).
+BLAZE_DESC = "A wilder, more intense way out of the Heist -- you and Jackie face it together, guns up. " ..
+  "This REPLACES the Heist's ending and DISABLES the main storyline. Extremely experimental, and it " ..
+  "CAN'T be undone. Choose it BEFORE jumping off the building in the Heist."
 
 -- v1.03: records/positions capture was removed from the overlay — the bosses use hardcoded records +
 -- the fixed elevator spawn, and the escape is the roof AV (coords in blaze.lua M.yori). The only thing
@@ -336,43 +337,185 @@ function blazeLoadConfig()
   return ok
 end
 
--- v1.05 BLAZE (Antonia item 10): the Heist "everything goes wrong" music keeps playing into the
--- finale (it's the scene's scripted music and we teleport V out without ending the scene). This is a
--- BEST-EFFORT kill: reset the game's music switch to a neutral state and Stop the candidate scene
--- music events. ⚠️ The exact WWise switch/event names aren't verified on Mac — call blazeStopMusic()
--- from the CET console in-game (with the tension music playing) to find what actually silences it,
--- then lock the winner into BLAZE_MUSIC_STOP below. All calls are pcall-guarded so a wrong name no-ops.
--- Global => 200-cap safe.
+-- ===========================================================================
+-- v1.06 BLAZE (Antonia item 10) — "ESCAPE THE SCENE" finale teardown.
+-- The Heist "everything goes wrong" music kept playing into the finale because our soft teleport moves
+-- V within the already-streamed world and never ends the q005 heist scene/combat mix. These helpers are
+-- the verified game calls (decompiled 2.x scripts) that tear that state down. All pcall-guarded; every
+-- unknown name simply no-ops. Globals => 200-cap safe. See docs/research/q005_graph_findings.md +
+-- the CET-API research note for sources.
+-- ===========================================================================
+
+-- (1) MUSIC / MIX RESET. The real routine the game runs when combat ends (playerCombatController.
+-- ActivateOutOfCombat): the "LeaveCombat" game tone + re-evaluate the out-of-combat music mix. This
+-- reliably kills COMBAT-tension music. A scene-quest music bed that was Play()'d explicitly only dies
+-- from Stop() with its own event CName — so we also fire best-effort Stop() on candidate names; pass
+-- blazeStopMusic("<event>") from the console to hunt the exact one and add it to BLAZE_MUSIC_STOP.
 BLAZE_MUSIC_STOP = {
-  switches = {
-    -- {group, state} pairs — WWise music state resets. Guesses until confirmed in-game.
-    { "mus_gp_state", "mus_gp_state_none" },
-    { "combat_music", "combat_music_stop" },
-  },
-  events = {
-    -- one-shot "stop music" events to try. Add the real one once captured.
-    "stop_music", "mus_stop", "q005_music_stop",
-  },
+  -- one-shot "stop" events to try (best-effort; add the real captured one here).
+  events = { "stop_music", "mus_stop", "q005_music_stop" },
 }
 function blazeStopMusic(oneEvent)
   local a; pcall(function() a = Game.GetAudioSystem() end)
   if not a then log("[Blaze] stopMusic: no AudioSystem."); return false end
-  local pid; pcall(function() pid = Game.GetPlayer():GetEntityID() end)
+  local pl; pcall(function() pl = Game.GetPlayer() end)
+  local pid; pcall(function() pid = pl:GetEntityID() end)
   local empty = CName.new("")
   if oneEvent then   -- console tester: blazeStopMusic("some_event") tries just that one, loudly
     pcall(function() a:Stop(CName.new(oneEvent), pid, empty) end)
     log("[Blaze] stopMusic TEST: Stop('" .. tostring(oneEvent) .. "') fired — did the music stop?")
     return true
   end
-  for _, s in ipairs(BLAZE_MUSIC_STOP.switches) do
-    pcall(function() a:Switch(CName.new(s[1]), CName.new(s[2]), pid, empty) end)
-  end
+  -- Verified out-of-combat mix reset (kills combat-tension music):
+  pcall(function() a:NotifyGameTone(CName.new("LeaveCombat")) end)
+  pcall(function() a:HandleOutOfCombatMix(pl) end)
+  -- Best-effort explicit Stop() on candidate scene-music events:
   for _, ev in ipairs(BLAZE_MUSIC_STOP.events) do
     pcall(function() a:Stop(CName.new(ev), pid, empty) end)
   end
-  log("[Blaze] stopMusic: best-effort music kill fired (switches + stop events). If music persists, " ..
-      "capture the real event with blazeStopMusic('<name>') and add it to BLAZE_MUSIC_STOP.")
+  log("[Blaze] stopMusic: LeaveCombat tone + out-of-combat mix + best-effort Stop() fired. If a SCENE " ..
+      "music bed persists, capture its event with blazeStopMusic('<name>') and add it to BLAZE_MUSIC_STOP.")
   return true
+end
+
+-- (2) CLEAR V's COMBAT STATE — force the player state-machine's Combat slot to OutOfCombat (mirrors the
+-- game's own ActivateOutOfCombat) + drop the fast-travel InCombat lock. Lets the combat mix resolve and
+-- unblocks fast travel. NOTE: if hostiles are still alive & tracking V the SM can re-assert InCombat, so
+-- the Blaze finale runs this AFTER teleporting V far away (bosses left behind).
+function blazeClearCombat()
+  local pl; pcall(function() pl = Game.GetPlayer() end)
+  if not pl then return false end
+  pcall(function()
+    local defs = GetAllBlackboardDefs().PlayerStateMachine
+    local bb   = Game.GetBlackboardSystem():GetLocalInstanced(pl:GetEntityID(), defs)
+    if bb then bb:SetInt(defs.Combat, EnumInt(gamePSMCombat.OutOfCombat), true) end
+  end)
+  pcall(function() FastTravelSystem.RemoveFastTravelLock("InCombat", pl:GetGame()) end)
+  pcall(function()
+    local a = Game.GetAudioSystem()
+    if a then a:NotifyGameTone(CName.new("LeaveCombat")); a:HandleOutOfCombatMix(pl) end
+  end)
+  log("[Blaze] clearCombat: V forced OutOfCombat + FT lock cleared.")
+  return true
+end
+
+-- (3) END THE ACTIVE SCENE — there is NO scripted per-scene abort in 2.x; the only script handle on a
+-- running .scene is FAST-FORWARD (what the game's skip-cutscene uses). We activate it to blow the active
+-- heist scene through to its end (killing its music bed), then auto-deactivate a few seconds later
+-- (blazeSceneFFTick) so the NEXT scene doesn't play accelerated.
+-- ⚠️ RISK (max-risk mode, Antonia's call): fast-forwarding the LIVE q005 heist scene could let the quest
+--    graph advance toward the No-Tell/death tail — the very thing Blaze skips. Blaze has already teleported
+--    V out (scene likely orphaned → FF is a no-op then), but WATCH on a throwaway save: does the quest jump
+--    forward / does Johnny start after the finale? If so, set Blaze.cfg.endSceneOnFinale = false.
+function blazeEndScene(durSeconds)
+  local si; pcall(function() si = Game.GetSceneSystem():GetScriptInterface() end)
+  if not si then log("[Blaze] endScene: no scene ScriptInterface."); return false end
+  local mode = 0; pcall(function() mode = scnFastForwardMode.Default end)
+  local ok = false
+  pcall(function() si:FastForwardingActivate(mode); ok = true end)
+  JL.blazeFF = { active = ok, offAt = (JL.clock or 0) + (durSeconds or 6.0) }
+  log("[Blaze] endScene: scene fast-forward " .. (ok and "ACTIVATED" or "FAILED") ..
+      " (auto-off in " .. tostring(durSeconds or 6.0) .. "s).")
+  return ok
+end
+-- Deactivate the scene fast-forward once its timer elapses (stepped from onUpdate's blaze branch).
+function blazeSceneFFTick()
+  local ff = JL.blazeFF
+  if not ff or not ff.active then return end
+  if (JL.clock or 0) < (ff.offAt or 0) then return end
+  ff.active = false
+  pcall(function() local si = Game.GetSceneSystem():GetScriptInterface(); if si then si:FastForwardingDeactivate() end end)
+  log("[Blaze] scene fast-forward: deactivated.")
+end
+
+-- (4) NUCLEAR OPTION — real fast-travel LOAD (full world teardown → guaranteed music/scene kill). Only
+-- reaches registered fast-travel POINTS (not arbitrary XYZ), so it CANNOT land exactly at El Coyote —
+-- it drops V at the nearest metro/FT point. Kept as a console tester (not in the auto-finale) for when
+-- the softer layers don't fully silence a stubborn bed. blazeFastTravelEscape() picks the closest node.
+-- VERIFIED against decompiled 2.x scripts (docs/research/cet_scene_music_teardown.md): PerformFastTravel
+-- checks only HasFastTravelPoint, NOT IsFastTravelEnabled — so queuing the request fires a real loading
+-- screen EVEN during the locked heist, and that world reload is what actually unloads the stuck q005 scene
+-- + its music bed. Must pass a pointData READ BACK from GetFastTravelPoints() (a hand-built one fails the
+-- HasFastTravelPoint match). `idx` optional -> which registered point (default: last, usually another district).
+function blazeFastTravelEscape(idx)
+  local ft; pcall(function() ft = Game.GetScriptableSystemsContainer():Get("FastTravelSystem") end)
+  if not ft then log("[Blaze] fastTravelEscape: FastTravelSystem unreachable."); return false end
+  pcall(function() FastTravelSystem.RemoveAllFastTravelLocks(Game.GetPlayer():GetGame()) end)  -- free insurance (gates only the map UI)
+  local points; pcall(function() points = ft:GetFastTravelPoints() end)
+  local n = 0; pcall(function() n = #points end)
+  log("[Blaze] fastTravelEscape: registered fast-travel points = " .. tostring(n))
+  if not points or n == 0 then
+    log("[Blaze] fastTravelEscape: NO registered points on this save yet -> use blazeLoadCheckpoint() instead.")
+    return false
+  end
+  local dest = points[math.min(idx or n, n)]   -- default: LAST point (PerformFastTravel no-ops if dest == your start point)
+  pcall(function() log("[Blaze] fastTravelEscape: dest record = " .. tostring(dest:GetPointRecord())) end)
+  local ok = false
+  pcall(function()
+    local req = PerformFastTravelRequest.new()
+    req.pointData = dest
+    req.player = Game.GetPlayer()
+    ft:QueueRequest(req)
+    ok = true
+  end)
+  log("[Blaze] fastTravelEscape: queued fast-travel LOAD -> " .. tostring(ok) ..
+      " (if nothing happens, the dest was your current point — try blazeFastTravelEscape(1) or another index).")
+  return ok
+end
+
+-- NUCLEAR fallback (verified): full checkpoint reload -> rebuilds world state, guaranteed to drop the
+-- stuck scene + music. ⚠️ Rewinds to BEFORE the finale teleport (the checkpoint predates our hack), so it's
+-- an escape-the-softlock lever, not a finale path. Use if fast-travel reports 0 points.
+function blazeLoadCheckpoint()
+  local srh; pcall(function() srh = Game.GetSystemRequestsHandler() end)
+  if not srh then pcall(function() srh = Game.GetInkSystem():GetSystemRequestsHandler() end) end
+  if not srh then log("[Blaze] loadCheckpoint: system requests handler unreachable."); return false end
+  local ok = false
+  pcall(function() srh:LoadLastCheckpoint(true); ok = true end)
+  log("[Blaze] loadCheckpoint: LoadLastCheckpoint(true) -> " .. tostring(ok) .. " (rewinds to before the teleport).")
+  return ok
+end
+
+-- The combined at-black teardown the finale runs (music reset + combat clear, and scene fast-forward
+-- when Blaze.cfg.endSceneOnFinale). Order: clear combat first (so the mix re-evaluates clean), then music,
+-- then end the scene. Each layer is independently guarded.
+function blazeFinaleTeardown()
+  pcall(blazeClearCombat)
+  pcall(blazeStopMusic)
+  if Blaze and Blaze.cfg and Blaze.cfg.endSceneOnFinale ~= false then pcall(blazeEndScene) end
+end
+
+-- v1.07 BLAZE (Antonia): force SUNNY weather once Smasher's down + V reaches the heli. Weather is
+-- version-finicky, so this is the helper the overlay's A/B buttons + the auto-trigger both call. Priority
+-- must beat the heist's stormy state (3 is high). ⚠️ The heist is at NIGHT — "sunny" clears the sky but
+-- you still need DAYTIME for actual sun; use blazeSetMidday() (overlay button) alongside it. Globals => 200-cap safe.
+BLAZE_WEATHER_SUN = "24h_weather_sunny"
+function blazeSetWeather(state, transition, priority)
+  state = state or BLAZE_WEATHER_SUN
+  local ws; pcall(function() ws = Game.GetWeatherSystem() end)
+  if not ws then log("[Blaze] weather: no WeatherSystem."); return false end
+  local ok = false
+  pcall(function() ws:SetWeather(state, transition or 8.0, priority or 3); ok = true end)   -- string auto-converts to CName
+  if not ok then pcall(function() ws:SetWeather(CName.new(state), transition or 8.0, priority or 3); ok = true end) end
+  log(("[Blaze] weather: SetWeather('%s', %s, prio %s) -> %s"):format(tostring(state), tostring(transition or 8.0), tostring(priority or 3), tostring(ok)))
+  return ok
+end
+function blazeResetWeather()
+  local ws; pcall(function() ws = Game.GetWeatherSystem() end)
+  if not ws then return false end
+  local ok = false
+  pcall(function() ws:ResetWeather(true); ok = true end)
+  log("[Blaze] weather: ResetWeather(true) -> " .. tostring(ok) .. " (back to the natural cycle).")
+  return ok
+end
+-- Jump the clock to midday so "sunny" actually reads as sunshine (the heist is a night scene).
+function blazeSetMidday(hour)
+  local ts; pcall(function() ts = Game.GetTimeSystem() end)
+  if not ts then log("[Blaze] time: no TimeSystem."); return false end
+  local ok = false
+  pcall(function() ts:SetGameTimeByHMS(hour or 12, 0, 0); ok = true end)
+  log("[Blaze] time: SetGameTimeByHMS(" .. tostring(hour or 12) .. ",0,0) -> " .. tostring(ok))
+  return ok
 end
 
 local function resolveJackieRecord()
@@ -1673,9 +1816,11 @@ local function readingSecs(text)
   local s = (cfg.base or 1.6) + n / (cfg.charsPerSec or 22.0)
   return math.max(cfg.minSecs or 2.0, math.min(cfg.maxSecs or 16.0, s))
 end
--- The two emotional beats that get length-scaled subtitles: the reunion phone call + first meeting.
+-- The emotional beats that get length-scaled subtitles (so long mute lines don't flash by): the reunion
+-- phone call + first meeting, and (v1.07) the Blaze finale conversation.
 local function isReunionBeat()
   return bstate.tree == Config.reunionCallTree or bstate.tree == Config.reunionMeetTree
+      or bstate.tree == Config.blazeFinaleTree
 end
 
 -- Play a Jackie line: real voice (sfx, else the guaranteed jl_fallback WAV) + subtitle.
@@ -2374,6 +2519,11 @@ local function runCallAction(name)
     end)
     JL.ui.status = "Jackie's back. Mod unlocked."
     log("Reunion: complete -> REUNITED.")
+    return
+  end
+  if name == "blaze_finale_complete" then   -- v1.07: Blaze finale conversation ended; Jackie stays your companion.
+    JL.ui.status = "Blaze finale complete. Jackie's with you."
+    log("[Blaze] finale conversation complete.")
     return
   end
   if name == "date_accept" then   -- legacy (pre-v0.41 date tree); harmless
@@ -5600,6 +5750,32 @@ registerForEvent("onInit", function()
         log("[Blaze] remove-look-at: removed targeted NPC [" .. cls .. "].")
         return true
       end,
+      -- v1.07 (Antonia): AUTO-remove the scene's passive luggage-Jackie by his PERSISTENT entity id
+      -- (from Identify: 9001273, record Character.Jackie, name LocKey#47007). Same removal path as the
+      -- look-at button, but targeted by id so it needs no aiming. Skips our companion. Returns true only
+      -- when it actually found + removed him (so blaze.lua stops retrying). Quiet on "not found yet".
+      despawnSceneJackie = function(id)
+        if not id then return false end
+        local pl = Game.GetPlayer(); if not pl then return false end
+        local eid
+        pcall(function() eid = EntityID.new({ hash = id }) end)
+        if not eid then pcall(function() eid = EntityID.new(); eid.hash = id end) end
+        local h; pcall(function() h = Game.FindEntityByID(eid) end)
+        if not h then return false end                     -- not streamed in yet; blaze.lua retries
+        -- never touch OUR companion (DES handle or spawn id)
+        local mine = false
+        pcall(function() mine = JL.summon.spawn and JL.summon.spawn.handle and h:GetEntityID().hash == JL.summon.spawn.handle:GetEntityID().hash end)
+        if mine then return false end
+        local cls = "?"; pcall(function() local c = h:GetClassName(); cls = tostring(c and (c.value or c)) end)
+        pcall(function() Game.GetDynamicEntitySystem():DeleteEntity(h:GetEntityID()) end)
+        pcall(function() if h.Dispose then h:Dispose() end end)
+        pcall(function()                                   -- last resort: hide + sink below the map
+          local pp = pl:GetWorldPosition()
+          Game.GetTeleportationFacility():Teleport(h, Vector4.new(pp.x, pp.y, pp.z - 500.0, 1.0), EulerAngles.new(0,0,0))
+        end)
+        log("[Blaze] scene-Jackie removed by id " .. tostring(id) .. " [" .. cls .. "].")
+        return true
+      end,
       -- MVP-A objective/cutscene = native message band + caption. MVP-B swaps THESE TWO lines
       -- for real WolvenKit .journal calls / a real scene (docs/BLAZE_WOLVENKIT_OBJECTIVES.md).
       -- v1.x: blaze's green objective banners hold 1.6x LONGER (Antonia) — applied here so it covers every
@@ -5629,6 +5805,10 @@ registerForEvent("onInit", function()
       -- v1.05: kill the leftover Heist "gone wrong" scene music at the finale (Antonia item 10).
       -- Best-effort; the console tester blazeStopMusic('<event>') finds the exact name in-game.
       stopMusic = function() pcall(blazeStopMusic) end,
+      -- v1.06: the full "escape the scene" teardown (combat clear + music reset + scene fast-forward).
+      finaleTeardown = function() pcall(blazeFinaleTeardown) end,
+      -- v1.07: force sunny weather at the escape (Antonia). Default approach; overlay has A/B buttons.
+      setWeather = function() pcall(blazeSetWeather) end,
       -- ⚠️ EXPERIMENTAL Yorinobu scenario helpers ----------------------------------
       -- Jackie speaks: play the voiced clip + show the text. Returns the clip length (s) so blaze.lua's
       -- VO queue can space a multi-line beat by its real duration.
@@ -5642,10 +5822,10 @@ registerForEvent("onInit", function()
       -- Takemura appears -> Jackie becomes a COMPANION (fights + auto combat barks) and the mod goes
       -- fully active. Bypasses the retrieval/main-quest gates (this is the Blaze route). Setting
       -- JL.summon.active gates scheduleTick, so no second idle Jackie can spawn while he's placed.
-      becomeCompanion = function()
+      becomeCompanion = function(appearance)           -- v1.07: appearance = AMM name (dirty heist suit for the fight)
         pcall(function() Retrieval.forceReunion() end)   -- mod fully active (unlocks summon/companion systems)
         if JL.summon.active then return end              -- already a companion -> schedule already gated
-        local spawn = ammSpawn(1)                        -- companion Jackie
+        local spawn = ammSpawn(1, appearance)            -- companion Jackie (in `appearance` if given)
         if spawn then
           JL.summon.spawn, JL.summon.active, JL.summon.companionSet = spawn, true, false
           log("[Blaze] Jackie -> companion (schedule gated).")
@@ -5684,18 +5864,21 @@ registerForEvent("onInit", function()
               log("[Blaze] finale: succeeded + untracked the tracked main quest (best-effort q005).")
             end
           end)
-          -- 4) kill the Heist "gone wrong" scene music that was still playing at the destination
-          --    (Antonia item 10). Best-effort; see the stopMusic bind. Runs at full black.
-          if Blaze.bound and Blaze.bound.stopMusic then pcall(Blaze.bound.stopMusic) end
-          -- 5) teleport V to El Coyote Cojo — Jackie's family bar (Mama Welles') — NOT Vik's, per Antonia
-          --    2026-07-08. Companion Jackie catches up. Coords lifted from Config.locations.coyote.
-          local coy = (Config.locations and Config.locations.coyote and Config.locations.coyote.pos) or { -1262.463, -1002.345, 12.037 }
-          local coyYaw = (Config.locations and Config.locations.coyote and Config.locations.coyote.yaw) or -50.9
+          -- 4) teleport V to the finale destination (Antonia's captured coords, v1.07). Jackie is placed
+          --    next to her + the finale conversation runs from blazeFinaleSceneTick (below).
+          local fp = (Blaze.yori and Blaze.yori.finalePos) or { x = -1787.921, y = -450.040, z = 7.747, yaw = -1.4 }
           pcall(function()
             local tf = Game.GetTeleportationFacility()
-            if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(coy[1], coy[2], coy[3], 1.0), EulerAngles.new(0.0, 0.0, coyYaw)) end
+            if tf then tf:Teleport(Game.GetPlayer(), Vector4.new(fp.x, fp.y, fp.z, 1.0), EulerAngles.new(0.0, 0.0, fp.yaw or 0.0)) end
           end)
-          log("[Blaze] FINALE (at black): Watson open, shard skipped, quest untracked, V at El Coyote Cojo.")
+          -- 5) NOW (V is away from the fight) "escape the scene": clear V's combat state, reset the music
+          --    mix, and fast-forward the lingering heist scene to kill its music bed (Antonia item 10,
+          --    max-risk). Runs last so the combat-clear isn't re-asserted by the bosses. See blazeFinaleTeardown.
+          if Blaze.bound and Blaze.bound.finaleTeardown then pcall(Blaze.bound.finaleTeardown) end
+          -- 6) arm the finale scene: place the (existing) companion Jackie next to V in his NORMAL outfit,
+          --    facing her, then run the finale conversation once the fade lifts (blazeFinaleSceneTick).
+          JL.blazeFinale = { phase = "place", startedAt = JL.clock or 0 }
+          log("[Blaze] FINALE (at black): Watson open, shard skipped, quest untracked, V at finale spot, scene torn down; convo armed.")
         end)
       end,
       -- DIAGNOSE test-spawn: drop Takemura ~5 m and Smasher ~7 m in front of V, loudly, so we can see if
@@ -5865,6 +6048,47 @@ local function proximityBarkTick(dt)
   end
 end
 
+-- v1.07 BLAZE finale scene: after the fade drops V at the finale spot (JL.blazeFinale armed by the finale
+-- bind), place the EXISTING companion Jackie next to her in his NORMAL outfit facing her (180°), then run
+-- the finale conversation (Config.blazeFinaleTree) once the fade lifts. Reuses the companion + branch engine
+-- (no fragile respawn). Global => 200-cap safe; defined here so it can see the late local helpers.
+function blazeFinaleSceneTick()
+  local f = JL.blazeFinale
+  if not f or not f.phase then return end
+  if f.phase == "place" then
+    local h = resolveJackieHandle()
+    if not h then                            -- companion not resolved yet; retry, but don't hang forever
+      if (JL.clock or 0) - (f.startedAt or 0) > 8.0 then f.phase, f.talkAt = "talk", (JL.clock or 0) end
+      return
+    end
+    -- swap to his NORMAL outfit (best-effort live appearance change; if it no-ops he stays in the suit)
+    local app = (Blaze.yori and Blaze.yori.finaleAppearance) or "jackie_welles_default"
+    pcall(function() h:PrefetchAppearanceChange(CName.new(app)) end)
+    pcall(function() h:ScheduleAppearanceChange(CName.new(app)) end)
+    -- stand him ~2.2 m in front of V, facing her (the "180°" framing)
+    pcall(function()
+      local jp, vp = pointAheadOfV(2.2), playerPos()
+      if jp and vp then
+        local yaw = yawToward(jp, vp)
+        Game.GetTeleportationFacility():Teleport(h, Vector4.new(jp.x, jp.y, jp.z, 1.0), EulerAngles.new(0, 0, yaw or 0))
+      end
+    end)
+    pcall(promoteToCompanion)                -- keep him a proper follower (living Jackie going forward)
+    f.phase, f.talkAt = "talk", (JL.clock or 0) + 0.3
+    return
+  end
+  if f.phase == "talk" then
+    local fadeDone = not (JL.blazeFade and JL.blazeFade.phase)   -- wait until the screen is clear
+    if fadeDone and (JL.clock or 0) >= (f.talkAt or 0) then
+      f.phase = "talking"
+      pcall(function() Branch.start(nil, Config.blazeFinaleTree) end)
+      log("[Blaze] finale conversation started.")
+    end
+    return
+  end
+  if f.phase == "talking" and not Branch.busy then JL.blazeFinale = nil end   -- convo done -> disarm
+end
+
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
   -- Retrieval questline (Vik reveal tip, Badlands shard, Misty/Mama post-reunion shards) is a QUIET-LIFE
@@ -5876,6 +6100,8 @@ registerForEvent("onUpdate", function(dt)
   if JL.mode == "blaze" then
     pcall(function() Blaze.tick(JL.clock, dt) end)   -- v0.96: Heist set-piece state machine (self-guards when idle)
     pcall(function() blazeFadeTick(dt) end)          -- v1.02: advance the fade-to-black animation (self-guards when idle)
+    pcall(blazeSceneFFTick)                          -- v1.06: auto-deactivate scene fast-forward after the finale (self-guards)
+    pcall(blazeFinaleSceneTick)                      -- v1.07: place Jackie + run the finale conversation (self-guards)
     pcall(function() Blaze.autoStartTick() end)      -- v1.0: auto-start when the start-fact flips (T-Bug opens the glass doors)
   end
   pcall(jlDetectGenderOnce)   -- v1.2: one-shot — lock the Husbando/Hermano default from V's body gender
@@ -6172,14 +6398,42 @@ registerForEvent("onDraw", function()
     ImGui.Separator()
     ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "EXPERIMENTAL — Yorinobu apartment fight")
     ImGui.TextWrapped("WIP. During the Heist it AUTO-STARTS when the start-fact flips (the T-Bug phone call " ..
-      "ends): Takemura appears at the elevator -> defeat him -> Smasher appears in the same spot -> defeat him " ..
-      "-> escape (roof AV, +2 m [F] prompt) -> fade -> world opens & you wake at Vik's with a LIVING Jackie " ..
-      "(retrieval shard skipped). Jackie fights as your companion and barks along the way. Use a THROWAWAY save.")
-    ImGui.TextWrapped("Scene has a SECOND, passive Jackie (the luggage carrier)? Aim at HIM, use 'Identify " ..
-      "target' above to log his id/record, then:")
+      "ends): Smasher appears at the elevator -> defeat him -> the sky clears -> escape (roof AV, +2 m [F] " ..
+      "prompt) -> Jackie's line -> fade -> world opens & you wake at El Coyote Cojo with a LIVING Jackie. " ..
+      "Jackie fights as your companion (dirty heist suit) and barks along the way. Use a THROWAWAY save. " ..
+      "(Takemura is commented out for now; the scene luggage-Jackie is auto-removed by id at fight start.)")
+    ImGui.TextWrapped("Scene luggage-Jackie auto-remove missed him? Aim at HIM and:")
     if ImGui.Button("Remove the Jackie I'm looking at") then
       local ok = false; pcall(function() ok = Blaze.bound.despawnLookAt and Blaze.bound.despawnLookAt() end)
       JL.ui.status = ok and "Removed the targeted Jackie." or "Aim at the passive Jackie first (see console)."
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Remove scene Jackie by id") then
+      local ok = false; pcall(function() ok = Blaze.bound.despawnSceneJackie and Blaze.bound.despawnSceneJackie(Blaze.yori.sceneJackieId) end)
+      JL.ui.status = ok and "Removed the scene Jackie by id." or "Scene Jackie not found by id (see console)."
+    end
+    -- v1.07 WEATHER A/B (Antonia): the escape auto-forces sunny; these buttons let you find the approach
+    -- that actually reads as sunshine (the heist is at night — pair 'sunny' with 'midday').
+    ImGui.TextWrapped("Weather test (escape auto-forces sunny; A/B here):")
+    if ImGui.Button("Sunny (prio3, 8s)") then blazeSetWeather("24h_weather_sunny", 8.0, 3); JL.ui.status = "Weather -> sunny (prio3)." end
+    ImGui.SameLine()
+    if ImGui.Button("Sunny (instant)") then blazeSetWeather("24h_weather_sunny", 0.0, 3); JL.ui.status = "Weather -> sunny (instant)." end
+    ImGui.SameLine()
+    if ImGui.Button("Clear") then blazeSetWeather("24h_weather_clear", 8.0, 3); JL.ui.status = "Weather -> clear." end
+    if ImGui.Button("Set time -> midday") then blazeSetMidday(12); JL.ui.status = "Time -> 12:00." end
+    ImGui.SameLine()
+    if ImGui.Button("Reset weather (natural)") then blazeResetWeather(); JL.ui.status = "Weather -> natural cycle." end
+    -- v1.09 MUSIC/SCENE ESCAPE (Antonia): the stuck q005 scene keeps its music. A real fast-travel LOAD
+    -- unloads the sector = kills the scene + music (verified). Test it here; if it works we wire it into
+    -- the finale. Checkpoint reload is the nuclear fallback (rewinds before the teleport).
+    ImGui.TextWrapped("STUCK-SCENE / MUSIC escape (test — a real load screen kills the scene bed):")
+    if ImGui.Button("Fast-travel escape (kill scene+music)") then
+      local ok = blazeFastTravelEscape()
+      JL.ui.status = ok and "Fast-travel load queued (watch for the loading screen)." or "No FT points / failed (see console)."
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Load last checkpoint (nuclear)") then
+      blazeLoadCheckpoint(); JL.ui.status = "Loading last checkpoint (rewinds before the teleport)."
     end
     ImGui.TextWrapped("Manual override / testing:")
     if ImGui.Button("Start fight now (override)") then

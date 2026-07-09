@@ -1308,6 +1308,76 @@ Config.reunionMeetTree = {
   },
 }
 
+-- ---- BLAZE finale conversation (v1.07) ------------------------------------
+-- Plays at the Blaze finale, once V wakes at the destination and Jackie (normal outfit) is standing
+-- facing her. Subtitle-only (no fitting real audio for these beats) EXCEPT Jackie's closing "So what
+-- now?", which has a real voiced clip. Same tree engine as the reunion (Branch.start). V lines are
+-- silent text choices. Terminal node action = "blaze_finale_complete" (a no-op hook for now).
+-- Antonia authored/approved the beats 2026-07-09; the destroyed-chip reveal + V's forgive/mad fork.
+Config.blazeFinaleTree = {
+  start = "madeit",
+  nodes = {
+    madeit = {
+      jackiePool = { { text = "Híjole... we made it. We actually made it. Can't believe it, V." } },
+      choices = {
+        { text = "(catch your breath) ...Yeah. We did.", to = "alive" },
+      },
+    },
+    alive = {
+      jackiePool = { { text = "We're alive, chica. Both of us. Ain't that somethin'." } },
+      choices = {
+        { text = "Jackie... the case. Where's the case?", to = "well" },
+      },
+    },
+    well = {
+      jackiePool = { { text = "Well..." } },
+      choices = {
+        { text = "Jackie! The biochip -- the fucking case with the biochip, WHERE IS IT?!", to = "reveal" },
+      },
+    },
+    reveal = {
+      jackiePool = { { text = "I tried to hold onto it, I swear. But Smasher -- that hijo de puta got his hands on it. Case took a round, cracked wide open. Chip's slag. ...I'm sorry, V. I really am." } },
+      -- V's fork: mad (a/b) vs let-it-go (c/d). Each routes to Jackie's matching reply.
+      choices = {
+        { text = "That was our ticket out, Jackie. Everything we bled for tonight.",  to = "mad" },
+        { text = "Do you have any idea what we just lost?",                            to = "mad" },
+        { text = "Honestly? That thing woulda been more trouble than it was worth.",   to = "easy" },
+        { text = "We're both breathing, cabron. That's the only score that matters.", to = "easy" },
+      },
+    },
+    mad = {
+      jackiePool = { { text = "Yeah... I know. Chinga'o. But hey -- we're still here to be pissed about it, right? That's more'n most folks walk away with." } },
+      choices = {
+        { text = "(let out a breath) ...Guess it is.", to = "legend" },
+      },
+    },
+    easy = {
+      jackiePool = { { text = "...Yeah. Maybe you're right. Corpo tech like that only ever buys you a shorter life. We dodged more'n we lost tonight." } },
+      choices = {
+        { text = "Damn right we did.", to = "legend" },
+      },
+    },
+    legend = {
+      jackiePool = { { text = "You and me. Walked outta Konpeki Plaza with Adam Smasher on our tail. Nobody's ever gonna believe it." } },
+      choices = {
+        { text = "Let 'em not believe it.", to = "whatnow" },
+      },
+    },
+    whatnow = {
+      -- VOICED closer: real clip "So what now?" (jl_1812693583769038848).
+      jackiePool = { { text = "So... what now?", sfx = "jl_1812693583769038848" } },
+      choices = {
+        { text = "Whatever we want, hermano. For once, nobody's writing our story but us.", to = "done" },
+      },
+    },
+    done = {
+      -- terminal: Jackie's last beat, then the convo ends (he stays your companion). Action is a hook.
+      jackiePool = { { text = "...Heh. I like the sound o' that. C'mon, then. Night City ain't gonna know what hit it." } },
+      action = "blaze_finale_complete",
+    },
+  },
+}
+
 -- ---- free-roam wander (v0.35) ---------------------------------------------
 -- While idle-spawned at a scheduled location, Jackie walks between that location's
 -- `waypoints`: stands/sits/leans at one for a random dwell, then strolls to a RANDOM

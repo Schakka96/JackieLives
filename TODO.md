@@ -308,6 +308,57 @@ Scripted editing required (once the spike confirms facts):
   7. `- [ ]` **Verify heli record / roof-AV escape** and that DES-spawned Takemura/Smasher actually fight.
   8. `- [ ]` Keep the **`Blaze.bind` contract** complete as blaze.lua/init.lua evolve (every `M.bound.X`
      used in blaze.lua has a matching bind in init.lua).
+- 🔨 **BUILT 2026-07-09 (blaze v1.07–v1.08; awaiting Windows in-game test) — immersion batch + finale conversation.**
+  `mod/JackieLives/{blaze.lua,init.lua,config.lua}`, mirrored to `staging/`, all three parse-checked.
+  - **Jackie fights in the dirty heist suit** — `becomeCompanion(fightAppearance)`; `M.yori.fightAppearance =
+    "jackie_welles__q005_suit"`. ⚠️ `q005_suit_dirty` is the *item*; the AMM *appearance* per our docs is
+    `jackie_welles__q005_suit` — verify in AMM's list in-game, adjust the field if the suit's wrong.
+  - **Takemura removed** (felt weird) — commented out; the fight starts straight on Smasher at the elevator.
+    `startYorinobu` sets stage="smasher"; restore instructions are in the code.
+  - **Scene luggage-Jackie auto-removed by id** — new `despawnSceneJackie(9001273)` (record Character.Jackie,
+    LocKey#47007) fires at fight start, retried ~5 s. Skips our companion (the wrong-handle bug: Dismiss/Go-Home
+    target the companion). Overlay also has a "Remove scene Jackie by id" button. `- [ ] VERIFY id is save-stable`.
+  - **Heli line → fade** — "Jump!" replaced with `jl_1694284269402939392` ("C'mon, V — let's get outta here");
+    the fade now WAITS for that line to finish before firing.
+  - **Sunny escape** — when Smasher's down + V reaches the heli, `blazeSetWeather("24h_weather_sunny")` fires
+    once. Overlay A/B buttons (Sunny prio3 / Sunny instant / Clear / Reset) + "Set time → midday" (heist is at
+    NIGHT, so pair sunny with midday for real sunshine). `- [ ] TEST which combo reads best`.
+  - **Spoiler-light CET description** — hints it's intense + the irreversible/disables-main-plot warnings only;
+    no fight roster / helicopter / chip-sale / outcome.
+  - **FINALE CONVERSATION (item 7) + new destination (item 6):** finale now teleports V to the captured spot
+    `{ -1787.921, -450.040, 7.747 }` yaw -1.4 (`M.yori.finalePos`), places the EXISTING companion Jackie next to
+    her (~2.2 m ahead, facing her) in his **normal outfit** (best-effort live `ScheduleAppearanceChange`), then
+    runs `Config.blazeFinaleTree` — a branching, subtitle-based convo via the existing Branch engine
+    (`blazeFinaleSceneTick`). Beats: "we made it" → V asks about the case → Jackie "well…" → V demands the biochip
+    → Smasher destroyed it, he's sorry → **V forks: mad (a/b) vs let-it-go (c/d)** → "nobody's ever gonna believe
+    it" → Jackie's VOICED "So what now?" (`jl_1812693583769038848`) → V: "Whatever we want, hermano. For once,
+    nobody's writing our story but us." Terminal action `blaze_finale_complete` (Jackie stays companion).
+  - `- [ ] TEST (throwaway save):` outfit swap actually changes (else respawn approach); Jackie stays put/faces
+    V through the convo (follow-tick drift?); choices selectable in blaze mode; long subtitles readable (length-scaled).
+- 🔨 **BUILT 2026-07-08 (blaze v1.06; awaiting Windows in-game test) — "ESCAPE THE SCENE" finale teardown (item 10, max-risk).**
+  Replaces the guess-y music-stop with the *verified* game calls (from a decompiled-2.x-scripts research
+  pass; see the CET-API note). `mod/JackieLives/{blaze.lua,init.lua}`, mirrored to `staging/`, both parse-checked.
+  - **Root cause confirmed by datamine:** the heist-gone-wrong music is a **scene/quest music bed**, NOT a
+    quest-graph node — there's no fact to flip and **no clean scene-abort API**. And "advance the quest to
+    end the scene" is a trap: the only node after the Konpeki escape is `q005_09_no_tell_motel` = the
+    death→biochip→q101/Johnny tail Blaze exists to skip. So the fix stays mod-side: tear the scene state
+    down without touching the graph.
+  - **Finale now runs `blazeFinaleTeardown()` at full black, AFTER the Coyote teleport:**
+    1. **`blazeClearCombat()`** — forces V's player-SM Combat slot → OutOfCombat + drops the FT InCombat
+       lock + fires the real `LeaveCombat` game tone & `HandleOutOfCombatMix` (kills combat-tension music).
+    2. **`blazeStopMusic()`** — `LeaveCombat` tone + out-of-combat mix + best-effort `Stop()` on candidate
+       scene-music events (`blazeStopMusic("<event>")` console tester hunts the exact CName → add to
+       `BLAZE_MUSIC_STOP`).
+    3. **`blazeEndScene()`** — the only script handle on a live `.scene` in 2.x: **fast-forward** it to its
+       end (what skip-cutscene uses), auto-deactivated ~6 s later by `blazeSceneFFTick`. Gated on
+       `Blaze.cfg.endSceneOnFinale` (default **true**, max-risk).
+  - `- [ ] TEST (Antonia, throwaway save):` does the leftover heist music stop at Coyote now? **AND the
+    max-risk watch:** does the quest visibly jump forward / does **Johnny start** after the finale? If yes,
+    the scene fast-forward cascaded the graph → set `Blaze.cfg.endSceneOnFinale = false` (layers 1–2 still run).
+  - **Nuclear reserve (NOT in the auto-finale):** `blazeFastTravelEscape()` console fn triggers a REAL
+    fast-travel load (full world teardown = guaranteed music kill) — but only lands at the nearest FT point,
+    not Coyote, and needs a valid `pointData` (may need a captured one). Use only if layers 1–3 don't silence
+    a stubborn bed; tell me and I'll wire a captured point.
 - 🔨 **BUILT 2026-07-08 (blaze v1.05; awaiting Windows in-game test) — Antonia's batch from the checked TODOs.**
   Edits in `mod/JackieLives/{blaze.lua,init.lua}`, mirrored to `staging/`. Both files luajit-parse-checked.
   - **Bosses no longer float:** `M.yori.goro.pos.z` lowered 1 m (309.329 → **308.329**) so the DES-placed
