@@ -399,10 +399,45 @@ function blazeClearCombat()
   return true
 end
 
--- v1.11 (Antonia): holster V's weapon + force-stand. ⚠️ PENDING VERIFIED CALLS — stubbed no-ops for now
--- so the rest of transportCalm ships; filled in the next slice once the exact 2.x calls are confirmed.
-function blazeHolsterWeapon(_) end
-function blazeForceStand(_) end
+-- v1.12 (Antonia): HOLSTER V's weapon — the exact request the game's own code queues to holster (verified
+-- in the decompiled EquipmentSystem: UnequipWeapon manipulation). Empties V's hands + plays the holster anim.
+function blazeHolsterWeapon(pl)
+  pl = pl or Game.GetPlayer(); if not pl then return false end
+  local ok = false
+  pcall(function()
+    local es  = Game.GetScriptableSystemsContainer():Get("EquipmentSystem")
+    local req = EquipmentSystemWeaponManipulationRequest.new()
+    req.owner, req.requestType = pl, EquipmentManipulationAction.UnequipWeapon
+    es:QueueRequest(req)
+    ok = true
+  end)
+  log("[Blaze] holster -> " .. tostring(ok))
+  return ok
+end
+
+-- v1.12 (Antonia): FORCE-STAND (uncrouch). The PSM Locomotion blackboard int is an OUTPUT (gets overwritten
+-- every tick), so poking it does nothing — the engine's real switch is a status effect tagged `ForceStand`
+-- (verified in locomotionTransitions CrouchDecisions). We ship a tiny TweakXL clone of the stock ForceCrouch
+-- with the tag swapped (r6/tweaks/JackieLives/jl_force_stand.yaml -> GameplayRestriction.JLForceStand); we
+-- try that first, then the stock name as a fallback. Removed again when the finale convo ends (blazeReleaseStand).
+function blazeForceStand(pl)
+  pl = pl or Game.GetPlayer(); if not pl then return false end
+  for _, rec in ipairs({ "GameplayRestriction.JLForceStand", "GameplayRestriction.ForceStand" }) do
+    local ok = false
+    pcall(function() StatusEffectHelper.ApplyStatusEffect(pl, rec); ok = true end)
+    if ok then JL.forceStandRec = rec; log("[Blaze] forceStand: applied " .. rec); return true end
+  end
+  log("[Blaze] forceStand: no ForceStand record applied (uncrouch may not take).")
+  return false
+end
+
+-- Release the ForceStand effect (so V can crouch again after the finale). Safe to call anytime.
+function blazeReleaseStand(pl)
+  pl = pl or Game.GetPlayer(); if not pl or not JL.forceStandRec then return end
+  pcall(function() StatusEffectHelper.RemoveStatusEffect(pl, JL.forceStandRec) end)
+  log("[Blaze] forceStand: released " .. tostring(JL.forceStandRec))
+  JL.forceStandRec = nil
+end
 
 -- v1.11 (Antonia): put V in a CALM state for the finale fade-in — out of combat, weapon HOLSTERED, and
 -- STANDING (not crouched). Exact holster/uncrouch calls verified separately; each is pcall-guarded so a
@@ -6511,13 +6546,20 @@ function blazeFinaleSceneTick()
   if f.phase == "talk" then
     local fadeDone = not (JL.blazeFade and JL.blazeFade.phase)   -- wait until the screen is fully clear
     if fadeDone and (JL.clock or 0) >= (f.talkAt or 0) then
-      f.phase = "talking"
+      f.phase, f.talkStartedAt = "talking", (JL.clock or 0)
       pcall(function() Branch.start(nil, Config.blazeFinaleTree) end)
       log("[Blaze] finale conversation started.")
     end
     return
   end
-  if f.phase == "talking" and not Branch.busy then JL.blazeFinale = nil end   -- convo done -> disarm
+  if f.phase == "talking" then
+    -- disarm when the convo ends OR after a hard safety cap (so a hung convo can't leave ForceStand on,
+    -- which would block crouch for the rest of the session).
+    if (not Branch.busy) or ((JL.clock or 0) - (f.talkStartedAt or 0) > 300.0) then
+      pcall(blazeReleaseStand)   -- let V crouch again now the finale's over
+      JL.blazeFinale = nil       -- convo done -> disarm
+    end
+  end
 end
 
 registerForEvent("onUpdate", function(dt)

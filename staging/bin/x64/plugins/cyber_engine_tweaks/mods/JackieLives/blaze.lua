@@ -34,7 +34,7 @@ local M = { bound = {}, cfg = nil, st = nil }
 -- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
 -- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
 -- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
-M.VERSION = "1.12 (2026-07-09 Antonia finale batch: respawn Jackie, longer settle, weather@black, dialogue reconcile)"
+M.VERSION = "1.13 (2026-07-09 finale transport-calm: holster + force-stand (uncrouch) + out-of-combat)"
 
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
