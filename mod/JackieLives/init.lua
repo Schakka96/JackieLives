@@ -1015,6 +1015,52 @@ local function getGameSeconds()
   return nil
 end
 
+-- ===========================================================================
+-- v1.45 WATSON BARRIER HOLD. Blaze opens Watson by setting the prologue-lockdown facts directly
+-- (`watson_prolog_unlock=1`, `watson_prolog_lock=0`) — the placed barrier reads them, and vanilla only
+-- sets them deep inside q101, which this what-if never runs. Without them V can't cross the bridges.
+--
+-- That used to be a ONE-SHOT write inside the finale's at-black callback: no read-back, no re-assert. Two
+-- ways that loses the bridges: the callback never runs (fade path failed), or the quest system flips
+-- `watson_prolog_lock` back later. The latter is not hypothetical — jlMourningApply exists precisely
+-- because "the quest system flips facts back up", and it re-asserts every 5 s for that reason.
+--
+-- So: we stamp our OWN save-persistent marker fact (`jl_watson_open`) when we open Watson, and from then
+-- on a cheap tick re-asserts the two barrier facts whenever they drift. It runs in BOTH story modes, so
+-- switching back to Quiet Life after Blaze cannot strand V behind the bridges.
+-- GLOBAL -> costs no top-level local (200-cap).
+
+-- `open` = true stamps the marker (call this when Blaze actually opens Watson). Otherwise this only
+-- re-asserts for a save that has already been marked, so it can never open Watson on a vanilla run.
+function jlWatsonApply(open)
+  local qs; pcall(function() qs = Game.GetQuestsSystem() end)
+  if not qs then return false end
+  local marked, fixed = false, false
+  pcall(function()
+    if open then qs:SetFactStr("jl_watson_open", 1) end
+    marked = ((qs:GetFactStr("jl_watson_open") or 0) == 1)
+  end)
+  if not marked then return false end
+  pcall(function()
+    if (qs:GetFactStr("watson_prolog_unlock") or 0) ~= 1 then qs:SetFactStr("watson_prolog_unlock", 1); fixed = true end
+    if (qs:GetFactStr("watson_prolog_lock")   or 0) ~= 0 then qs:SetFactStr("watson_prolog_lock",   0); fixed = true end
+  end)
+  if open then
+    log("[Blaze] world unlock -> watson_prolog_unlock=1, watson_prolog_lock=0 (+ jl_watson_open marker).")
+  elseif fixed then
+    log("[Blaze] Watson barrier had drifted shut -> re-asserted (bridges open).")
+  end
+  return true
+end
+
+-- Cheap 5 s heartbeat, mirroring the mourning re-assert. Self-guards: no marker -> instant no-op.
+function jlWatsonHoldTick(dt)
+  JL.watsonTimer = (JL.watsonTimer or 0) + (dt or 0)
+  if JL.watsonTimer < 5.0 then return end
+  JL.watsonTimer = 0
+  pcall(function() jlWatsonApply(false) end)
+end
+
 -- v1.44: is the Blaze set-piece (or its finale) actually PLAYING right now? Used to suspend Quiet-Life
 -- rules that would otherwise pull Jackie out of the scene — chiefly the companion-duration auto-leave.
 -- Deliberately NOT `JL.mode == "blaze"`: that stays true for the rest of the save, so it would disable his
@@ -6264,16 +6310,10 @@ registerForEvent("onInit", function()
       -- the NEXT slice, added here once Watson is confirmed in-game:
       --   apartment_on, victor_vector_default_on, misty_default_on, mq033_misty_dialogue_on,
       --   wat_lch_gunsmith_01_default_on, radio_on, tv_on, cyberspace_on  (all =1).
-      worldUnlock = function()
-        pcall(function()
-          local qs = Game.GetQuestsSystem()
-          if qs then
-            qs:SetFactStr("watson_prolog_unlock", 1)
-            qs:SetFactStr("watson_prolog_lock", 0)
-          end
-        end)
-        log("[Blaze] world unlock -> watson_prolog_unlock=1, watson_prolog_lock=0 (Watson barrier lifted)")
-      end,
+      -- v1.45: routed through jlWatsonApply(true) so it also stamps the `jl_watson_open` marker — the
+      -- barrier facts are then re-asserted every 5 s for the rest of the save (jlWatsonHoldTick), in BOTH
+      -- story modes. A one-shot write here could be undone by a later quest tick and shut the bridges.
+      worldUnlock = function() pcall(function() jlWatsonApply(true) end) end,
       -- v1.05: kill the leftover Heist "gone wrong" scene music at the finale (Antonia item 10).
       -- Best-effort; the console tester blazeStopMusic('<event>') finds the exact name in-game.
       stopMusic = function() pcall(blazeStopMusic) end,
@@ -6317,11 +6357,10 @@ registerForEvent("onInit", function()
         -- Run everything AT FULL BLACK (via the fade's atBlack callback) so V never sees the teleport.
         -- If the fade isn't running yet, startBlazeFade starts it; if it is, this just re-arms the callback.
         startBlazeFade(function()
-          -- 1) open Watson without q101 (world-unlock lever)
-          pcall(function()
-            local qs = Game.GetQuestsSystem()
-            if qs then qs:SetFactStr("watson_prolog_unlock", 1); qs:SetFactStr("watson_prolog_lock", 0) end
-          end)
+          -- 1) open Watson without q101 (world-unlock lever). v1.45: stamps the `jl_watson_open` marker so
+          --    jlWatsonHoldTick keeps the barrier facts asserted for the rest of the save — a single write
+          --    here can be silently undone by a later quest tick, and V is stuck behind the bridges.
+          pcall(function() jlWatsonApply(true) end)
           -- 2) skip the Where's-Jackie shard, mark him returned
           pcall(function() Retrieval.forceReunion() end)
           -- 3) BEST-EFFORT mark the main quest complete + stop it nagging. We succeed + untrack the
@@ -6771,6 +6810,11 @@ registerForEvent("onUpdate", function(dt)
     JL.timer = 0
     pcall(scheduleTick)
   end
+
+  -- v1.45: hold the Watson barrier open. Runs in BOTH story modes and regardless of whether the set-piece
+  -- is still live — once a save has been marked `jl_watson_open`, switching back to Quiet Life (or a quest
+  -- tick re-locking the fact) must never strand V behind the bridges. No marker -> instant no-op.
+  pcall(function() jlWatsonHoldTick(dt) end)
 
   -- v0.97: mourning suppression. Re-assert the grief holds every ~5 s (cheap, and re-catches any fact
   -- the quest system flips back up). Quiet Life runs it only when the player opted in; Blaze ALWAYS runs

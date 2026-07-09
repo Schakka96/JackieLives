@@ -11,6 +11,35 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-09 (v1.45) — Watson barrier is now HELD open (was a one-shot write)
+
+Antonia asked whether switching Blaze → Quiet Life re-closes Watson ("or else they can't use the bridges").
+
+**Answer: no, and it never did.** The only writes anywhere are `watson_prolog_unlock=1` /
+`watson_prolog_lock=0`; nothing sets them back. `jlSetMode` only writes `jl_mode_blaze`, and the v1.44
+`Blaze.reset()` touches no facts at all. Verified by grepping every `SetFactStr("watson…")` call site.
+
+**But the unlock was fragile**, so it got hardened anyway:
+
+- [x] 🌉 **The barrier is now self-healing (`jlWatsonApply` / `jlWatsonHoldTick`).** It used to be a single
+  write buried in the finale's at-black callback — no read-back, no re-assert. Two ways that loses the
+  bridges: the callback never runs (fade path failed), or a later quest tick flips `watson_prolog_lock`
+  back. The second is **not hypothetical** — `jlMourningApply` exists precisely because "the quest system
+  flips facts back up", and re-asserts every 5 s for exactly that reason.
+  Now: opening Watson stamps our own save-persistent marker fact **`jl_watson_open`**, and a 5 s heartbeat
+  re-asserts the two barrier facts whenever they drift. All three open-paths (finale, `Blaze.bound.worldUnlock`,
+  the CET "TEST: World unlock now" button) route through `jlWatsonApply(true)` so they all stamp the marker.
+- [x] **The heartbeat runs in BOTH story modes** and regardless of whether the set-piece is still live —
+  deliberately outside the `JL.mode == "blaze"` branch — so switching back to Quiet Life after Blaze cannot
+  strand V behind the bridges. With no marker it is an instant no-op, so it **can never open Watson on a
+  vanilla playthrough**.
+  Logic tested against a fake QuestsSystem: vanilla save untouched · opens once · self-heals after a forced
+  re-lock · survives the mode switch · silent when nothing drifted.
+  → **TEST:** after the Blaze finale, cross a Watson bridge. Then switch to Quiet Life in settings, save,
+  reload, and cross again. `jackie_debug.log` prints `Watson barrier had drifted shut -> re-asserted` if the
+  game ever tries to re-lock it — **if you see that line, tell Claude**: it means vanilla is fighting us and
+  the 5 s cadence may need tightening.
+
 ### 🆕 Added 2026-07-09 (v1.44) — Blaze finale: Jackie no longer walks home before his own scene
 
 Antonia: "Jackie doesn't spawn in the finale scene because he is heading home (max companion time reached
