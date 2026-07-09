@@ -418,19 +418,62 @@ end
 
 -- v1.12 (Antonia): FORCE-STAND (uncrouch). The PSM Locomotion blackboard int is an OUTPUT (gets overwritten
 -- every tick), so poking it does nothing — the engine's real switch is a status effect tagged `ForceStand`
--- (verified in locomotionTransitions CrouchDecisions). We ship a tiny TweakXL clone of the stock ForceCrouch
--- with the tag swapped (r6/tweaks/JackieLives/jl_force_stand.yaml -> GameplayRestriction.JLForceStand); we
--- try that first, then the stock name as a fallback. Removed again when the finale convo ends (blazeReleaseStand).
+-- (verified in locomotionTransitions CrouchDecisions). v1.53: we mint that record ourselves at runtime
+-- (blazeEnsureForceStandRecord) instead of shipping a TweakXL yaml, so the mod gains no new dependency.
+-- Removed again when the finale convo ends (blazeReleaseStand).
+-- v1.53: WE BUILD THE ForceStand RECORD OURSELVES — no TweakXL, no extra dependency.
+--
+-- The engine's real uncrouch switch is a status effect carrying the GAMEPLAY TAG `ForceStand` — not any
+-- particular record name. locomotionTransitions.script tests it by tag in three places, e.g.
+--     ToStand():  if StatusEffectSystem.ObjectHasStatusEffectWithTag( owner, 'ForceStand' ) … return true
+-- and the crouch-input handlers refuse to re-crouch while it's present. The game ships the exact counterpart
+-- `GameplayRestriction.ForceCrouch` (the sniper nest uses it) but no stock ForceStand-tagged record.
+--
+-- We used to supply one via a TweakXL yaml. Antonia's call (2026-07-09): don't make players install a whole
+-- framework just to stand V up. CET's TweakDB API can clone that record and swap the tag AT RUNTIME — exactly
+-- the two edits the yaml made — so we do it in Lua. TweakDB edits are runtime-only (never written into the
+-- save), so this is redone each launch, lazily, the first time the finale needs it.
+--
+-- If it fails we DEGRADE, we don't fight: no uncrouch, V simply stays crouched through the transport. That is
+-- Antonia's explicit fallback ("if that's unstable/proven not workable, no un-sneak at all"). It never
+-- crashes and never blocks the finale. A TweakXL yaml still works if you happen to have one — GetRecord finds
+-- it and we skip the clone — but nothing requires it.
+function blazeEnsureForceStandRecord()
+  if JL.forceStandReady ~= nil then return JL.forceStandReady end   -- resolved once per game launch
+  local have
+  pcall(function() have = TweakDB:GetRecord("GameplayRestriction.JLForceStand") end)
+  if have ~= nil then
+    JL.forceStandReady = true
+    log("[Blaze] forceStand: JLForceStand already present (a TweakXL yaml supplied it) — no clone needed.")
+    return true
+  end
+  local ok = pcall(function()
+    TweakDB:CloneRecord("GameplayRestriction.JLForceStand", "GameplayRestriction.ForceCrouch")
+    TweakDB:SetFlat("GameplayRestriction.JLForceStand.gameplayTags", { CName.new("ForceStand") })
+    TweakDB:Update("GameplayRestriction.JLForceStand")
+  end)
+  if ok then pcall(function() have = TweakDB:GetRecord("GameplayRestriction.JLForceStand") end) end
+  JL.forceStandReady = (have ~= nil)
+  if JL.forceStandReady then
+    log("[Blaze] forceStand: cloned ForceCrouch -> JLForceStand and swapped the tag to ForceStand "
+        .. "(runtime TweakDB; no TweakXL required).")
+  else
+    log("[Blaze] forceStand: could NOT build a ForceStand record at runtime -> V stays crouched through the "
+        .. "finale transport. Harmless: the scene runs normally.")
+  end
+  return JL.forceStandReady
+end
+
 -- ⚠️ v1.51 — THE OLD LOOP COULD NOT FAIL, AND SO COULD NOT FALL BACK.
 -- It did `pcall(function() ApplyStatusEffect(pl, rec); ok = true end)` and treated "nothing threw" as
 -- success. But ApplyStatusEffect is a native import: handed a TweakDBID that doesn't exist it simply does
 -- nothing — it does NOT raise. So `ok` was ALWAYS true for the first record, we logged
--- "applied GameplayRestriction.JLForceStand", returned, and never tried the stock fallback. If the TweakXL
--- record wasn't installed, V stayed crouched while the log insisted the effect had been applied.
+-- "applied GameplayRestriction.JLForceStand", returned, and never tried the stock fallback. When the record
+-- wasn't present, V stayed crouched while the log insisted the effect had been applied.
 --
--- `GameplayRestriction.JLForceStand` only exists if `tweaks/JackieLives/jl_force_stand.yaml` is deployed to
--- `<game>\r6\tweaks\JackieLives\`. Until v1.51 `deploy.ps1` NEVER copied it (it only ever deployed the CET
--- folder and the Audioware bank), so a dev-loop deploy into a fresh game dir silently lost the record.
+-- (Back then the record came from a TweakXL yaml that `deploy.ps1` never copied — which is why it "used to
+-- work" and then didn't. v1.53 removed that dependency entirely: blazeEnsureForceStandRecord mints the record
+-- at runtime. The silent-success bug below is fixed regardless, because it would hide any future absence too.)
 --
 -- Fix: choose the record by whether TweakDB actually HAS it — a synchronous, reliable discriminator — instead
 -- of by whether ApplyStatusEffect declined to throw. (We deliberately do NOT verify with
@@ -439,6 +482,7 @@ end
 -- watching whether V actually stands up.)
 function blazeForceStand(pl)
   pl = pl or Game.GetPlayer(); if not pl then return false end
+  blazeEnsureForceStandRecord()   -- v1.53: mint JLForceStand at runtime if it isn't there yet
   for _, rec in ipairs({ "GameplayRestriction.JLForceStand", "GameplayRestriction.ForceStand" }) do
     local present
     pcall(function() present = TweakDB:GetRecord(rec) end)
@@ -450,8 +494,8 @@ function blazeForceStand(pl)
       log("[Blaze] forceStand: " .. rec .. " exists but ApplyStatusEffect errored.")
     end
   end
-  log("[Blaze] forceStand: NO ForceStand record exists -> V will STAY CROUCHED. Install the TweakXL file at "
-      .. "<game>\\r6\\tweaks\\JackieLives\\jl_force_stand.yaml (deploy.ps1 copies it since v1.51).")
+  log("[Blaze] forceStand: no ForceStand record available -> V stays crouched through the transport. "
+      .. "Harmless; the finale runs normally.")
   return false
 end
 
@@ -506,8 +550,8 @@ function blazeCalmHoldTick()
   end
   if now >= (h.deadline or 0) then
     log("[Blaze] transportCalm: V is STILL CROUCHED after " .. tostring(C.holdSeconds or 3.0)
-        .. " s — the ForceStand effect never took. See the `forceStand:` line above; the usual cause is that "
-        .. "<game>\\r6\\tweaks\\JackieLives\\jl_force_stand.yaml isn't installed in the game directory.")
+        .. " s — the ForceStand effect never took. See the `forceStand:` line above. This is cosmetic: V just "
+        .. "stays crouched through the transport and the finale runs normally.")
     JL.blazeCalm = nil
     return
   end

@@ -64,6 +64,16 @@ restart to clear state.
 5. **Bind keys** in CET's **Bindings** tab: Summon / Dismiss / Capture / Show-Hide window / VO test, and
    **"Talk to Jackie"**.
 
+### How he follows you
+- **He walks beside you**, slightly ahead, whenever you're at a walking pace on flat ground — rather than
+  trailing on a leash. Don't like it? **Esc → Settings → Jackie Lives → Gameplay → "Walk beside me"** turns
+  it off and he reverts to a plain trailing follower.
+- **On stairs and slopes he drops in behind you** and goes single file, then slides back to your side once
+  you're on level ground again. (A staircase is rarely two abreast.)
+- **When you crouch, he crouches and shadows you** a few metres back, never in front — so he stays out of
+  the vision cone you're sneaking through. As a proper companion he's ignored by enemy perception anyway.
+- If you get far enough ahead (a long sprint, a fast-travel), he catches up on his own.
+
 ### Talk to Jackie
 Bind **"Talk to Jackie"** (CET → Bindings), then **look at Jackie and press it** → he plays a random line
 (greeting after a 60s+ gap, else conversational; with a cooldown so he doesn't repeat). Tune
@@ -143,3 +153,6 @@ him) — the window's **"Collision … live on Jackie"** line confirms it's off.
 - `config.lua` — **the file you edit**: locations, schedule, ban list, decline line, dialogue trees +
   the Hermano line overrides (`Config.hermanoLines` / inline `m`).
 - `retrieval.lua` — the "Where's Jackie?" retrieval questline + the Husbando/Hermano recovery-note text.
+- `blaze.lua` — the optional "Blaze of Glory" story mode (the Konpeki set-piece and its finale).
+- `session.lua` — session guard: detects a new game / load-from-save so stale entity handles from the
+  previous session are never touched again.

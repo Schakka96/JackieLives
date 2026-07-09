@@ -11,6 +11,65 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🚀 v1.53 — RELEASE-READY (staging is the Nexus zip)
+
+`Config.version` and `staging/fomod/info.xml` are both **1.53** (v1.40 → 1.53; the intervening code markers
+v1.41–v1.52 never bumped the shipped version). Tagged `v1.53`.
+
+**End users need no deploy script.** Vortex / MO2 read `staging/fomod/ModuleConfig.xml`, which installs
+`bin\` and `r6\` 1:1 into the game root with no user choices. **Zip the *contents* of `staging/`** so
+`fomod\`, `bin\` and `r6\` sit at the archive top level — a wrapper folder breaks FOMOD detection and drops
+the manager back to the fallback installer. `deploy.ps1` remains the *developer* loop only.
+
+### 🆕 Added 2026-07-09 (v1.53) — the uncrouch no longer needs TweakXL (no new requirement)
+
+Antonia: *"TweakXL was for V un-crouching right? I don't want to add another requirement. If we can't make V
+un-sneak upon teleport then V shall sneak. No biggie… either native un-crouch, or if that's unstable/proven
+not workable, no un-sneak at all."*
+
+**It's native, and it needs nothing extra.** The engine's uncrouch switch is a status effect carrying the
+**gameplay tag `ForceStand`** — not any particular record *name*. `locomotionTransitions.script` tests it by
+tag in three places (`ToStand()`, and both crouch-input handlers, which refuse to re-crouch while it's
+present). The game ships the exact counterpart `GameplayRestriction.ForceCrouch` (the sniper nest uses it) but
+no stock ForceStand-tagged record.
+
+The old TweakXL yaml did exactly two things: clone `ForceCrouch`, and swap its tag. **CET's TweakDB API can do
+both at runtime**, so we now do it in Lua and the dependency disappears.
+
+- [x] 🪄 **`blazeEnsureForceStandRecord()`** — lazily clones `GameplayRestriction.ForceCrouch` →
+  `GameplayRestriction.JLForceStand` and sets `gameplayTags = { ForceStand }` via
+  `TweakDB:CloneRecord` / `SetFlat` / `Update`. TweakDB edits are runtime-only (never written into a save), so
+  this is redone each launch, once, the first time the finale needs it. If a TweakXL yaml already supplied the
+  record, `GetRecord` finds it and we skip the clone — power users lose nothing.
+- [x] 🛟 **Graceful degradation, exactly as Antonia specified.** If the clone can't be made, the uncrouch is
+  **skipped**: V simply stays crouched through the transport, the finale runs normally, and the log says so
+  and calls it harmless. No crash, no blocked scene, and **no framework dependency to fix cosmetics**.
+- [x] 🧹 **Removed `tweaks/JackieLives/jl_force_stand.yaml`** (and its `staging/r6/tweaks/` copy, and the
+  `deploy.ps1` step added in v1.51). Shipping an `r6\tweaks\` folder implied a TweakXL requirement that no
+  longer exists. `staging/` is back to `fomod\` + `bin\` + `r6\audioware\`.
+- [x] 📖 **README:** TweakXL is *not* listed as a requirement. Added a short **"How he follows you"** section —
+  the only player-visible behaviour change this round (walks beside you; single-files on stairs/slopes;
+  crouches and shadows you when you sneak; the "Walk beside me" toggle turns it off).
+
+**Tests:** `tools/test_blaze_calm.lua` grew to **34 assertions** covering all four paths — mint the record ·
+a yaml already supplied it · fall back to a stock record · degrade with none. It also still pins the v1.51
+silent-success bug (`ApplyStatusEffect` does not raise on an unknown TweakDBID).
+
+⚠️ **Do not reintroduce TweakXL to "fix" the uncrouch.** If it fails, V stays crouched. That is the decision.
+
+### 📌 Open / carried forward
+
+- [ ] 🎯 **The follower takedown is still unproven in-game.** `AIFollowerTakedownCommand` + `combatCommand=true`
+  (v1.48) has never been confirmed to fire. CET overlay (`~`) → **"Jackie Lives"** window → bottom →
+  **`TEST: Jackie takedown (look at)`**. Aim at an *unaware* enemy. `jlTakedownTick` logs which of three
+  outcomes you got. Until that passes, `Config.takedown.auto = false` and no automatic behaviour is built.
+- [ ] 🚁 **Heli `[F]` prompt is deliberately unreachable** (`roofHeli.radius = 2.0`). Antonia's call — see the
+  v1.51 note. When revisited, the fix is a horizontal X/Y check with a vertical tolerance, not a bigger sphere.
+- [ ] 🐛 **Latent:** `d1` is measured against `heli.pos` unconditionally, even when no VTOL spawned
+  (`M.cfg.heliRecord` unset), so standing within 5 m of that empty coordinate would offer a prompt for a
+  helicopter that isn't there. Off the balcony edge, so unlikely to bite.
+- [ ] 🔊 Copyrighted audio stays out of the repo; users add Jackie's voice themselves (`HOW_TO_ADD_JACKIE_VOICES.txt`).
+
 ### 🆕 Added 2026-07-09 (v1.52) — 🔴 loading a save with Jackie: the crash AND the cross-save leak, one root cause
 
 - [x] 🧠 **New `mod/JackieLives/session.lua`** (global `Session`, no top-level `local` → 200-cap safe).

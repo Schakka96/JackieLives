@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.40"
+Config.version = "1.53"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -358,8 +358,9 @@ Config.stealth = {
 -- ONCE, in the same frame as V's async teleport — a race, and the log claimed success either way.
 -- Now it re-asserts on a heartbeat until V is OBSERVED standing (read from the PlayerStateMachine
 -- Locomotion blackboard via jlVCrouched), then reports how long it took, or says plainly that it failed.
--- The usual real cause of failure: `GameplayRestriction.JLForceStand` doesn't exist because
--- `tweaks/JackieLives/jl_force_stand.yaml` was never copied to `<game>\r6\tweaks\JackieLives\`.
+-- v1.53: the ForceStand record is minted at runtime (blazeEnsureForceStandRecord) — no TweakXL. If that ever
+-- fails, the uncrouch is simply SKIPPED: V stays crouched through the transport and the finale runs normally.
+-- That is the agreed fallback; do NOT reintroduce a framework dependency to fix cosmetics.
 Config.blazeCalm = {
   holdSeconds         = 3.0,   -- keep re-asserting for this long, or until V is seen standing
   interval            = 0.25,  -- s between re-asserts (and between crouch checks)
