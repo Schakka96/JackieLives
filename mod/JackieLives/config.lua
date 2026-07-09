@@ -888,6 +888,39 @@ Config.call = {
   },
 }
 
+-- ---- VENUE HELLO — first approach of each in-game day (v1.41) ---------------
+-- Walking up to an IDLE Jackie at one of his venues, the FIRST time on a given in-game day, makes him
+-- call out a real spoken hello (jl_ clip + subtitle) at `range` metres — the way a choom clocks you
+-- across the bar. Every later approach that day falls through to the ordinary WWise greet grunt
+-- (JL.bark.greetEvents), so he doesn't recite a full line every time you walk past his stool.
+--
+-- "Day" is the absolute in-game day (jlGameDay() = floor(total game seconds / 86400)), so it survives
+-- sleeping/fast-travel and doesn't rely on catching a midnight wrap while the mod is loaded.
+--
+-- ⚠️ Every `sfx` here MUST exist in audioware/JackieLives/JackieLives.yml or Audioware rejects the WHOLE
+-- bank and Jackie goes silent. All six below are verified present.
+Config.venueGreet = {
+  enabled = true,
+  range   = 5.0,   -- m: he calls out once V is this close (bark grunt range stays 6 m)
+
+  -- Female-V / default track. `jl_1661700260668284928` is the f-side of the same source line as the
+  -- m-side clip below, so the pair reads identically across genders.
+  greetings = {
+    { text = "Don't come here often, do ya? Heheh. It's good to see you, chica.", sfx = "jl_1661700260668284928" },
+    { text = "Hey, V – you alive? How's things in the viper pit?",                sfx = "jl_1691260805748551680" },
+    { text = "Chica! Finally!",                                                   sfx = "jl_2008322358689853440" },
+    { text = "¿Qué onda?",                                                        sfx = "jl_2015561179233951744" },
+  },
+
+  -- v1.2 HERMANO (male-V) track — real male clips where they exist, unisex clips reused otherwise.
+  greetingsM = {
+    { text = "Don't come here often, do ya? Heheh. It's good to see you, cabrón.", sfx = "jl_jackie_q000_m_170f8b95404ea000" },
+    { text = "Hermano, finally!",                                                  sfx = "jl_jackie_q113_m_1bdefe8b702ef000" },
+    { text = "Hey, V – you alive? How's things in the viper pit?",                 sfx = "jl_1691260805748551680" },  -- unisex clip, reused
+    { text = "¿Qué onda?",                                                         sfx = "jl_2015561179233951744" },  -- unisex clip, reused
+  },
+}
+
 -- ---- ARRIVAL TUNING — foot + bike (v0.34, unified v0.50) --------------------
 -- The two arrival modes (Config.call.arrivalMethod) share this block and ONE state machine
 -- (vehicleArrivalTick). Both finish with the SAME sprint -> walk -> companion tail:
@@ -1101,6 +1134,44 @@ Config.cruise = {
   reissue        = 5.0,     -- re-issue the follow command every N seconds (keeps him locked on)
 }
 
+-- ---- BIKE PHYSICS / ANTI-CRASH (v1.41) -------------------------------------
+-- "Jackie crashes a lot." Users assume the fix is turning the bike's collisions off. It isn't, and it
+-- can't be: the real collider is `entColliderComponent` (branch entIPlacedComponent), which exposes NO
+-- scriptable disable. The only runtime `ToggleCollision(Bool)` lives on `entPhysicalMeshComponent`, a
+-- VISUAL mesh sub-component that a vehicle chassis does not inherit from. Verified against the CDPR
+-- script decompile; see docs/research/bike_cruise_research.md §3.
+--
+-- The ACTUAL cause is a dedicated engine mechanic, not damage. `vehicleComponent.script`'s
+-- `HandleBikeCollisionReaction()` does:
+--     knockOffForce = vehicleDataPackage.KnockOffForce() * aiBikeKnockOffModifier   -- NPC drivers only
+--     if impactVelocityChange > knockOffForce or IsBeingDragged() then
+--         ForceRagdollEvent -> UnmountFromVehicle('Bumped') -> KnockOverBikeEvent -> AIEvent 'NoDriver'
+-- i.e. any bump over a force threshold RAGDOLLS the NPC off his bike. Two consequences:
+--   * That code path contains NO god-mode check, so invulnerability alone does NOT stop the toppling.
+--   * The threshold is a plain TweakDB float we can raise -> he stops being thrown off.
+--
+-- `aiBikeKnockOffModifier` is GLOBAL (it governs every NPC bike rider in the city), so we only raise it
+-- while Jackie is actually on a bike and restore the original the moment he's off. Ref-counted, because
+-- the arrival ride-in and the cruise-follow can both want it.
+Config.bikePhysics = {
+  enabled = true,
+
+  -- Multiplies the NPC knock-off force threshold. 1.0 = vanilla (he gets bumped off by a taxi).
+  -- Big number = he stays on the bike. Raise/lower if he still topples or if it feels too glued.
+  knockOffModifier = 1000.0,
+
+  -- Make the spawned Arch Invulnerable so a hard hit can't DESTROY it mid-ride (a destroyed bike ends
+  -- the follow and strands him). Does not prevent knock-off — that's what knockOffModifier is for.
+  godMode = true,
+
+  -- Cruise safety net: if the Arch ends up flipped / on its side, or Jackie gets knocked off it anyway,
+  -- right the bike behind V, wake its physics, re-mount him and re-issue the follow.
+  rightIfFlipped = true,
+  rightCheck     = 1.0,    -- s between upright checks
+  rightCooldown  = 4.0,    -- s minimum between two recoveries (never thrash)
+  uprightDot     = 0.4,    -- worldUp.z below this = considered toppled
+}
+
 -- v0.94b: Config.firstCallTree (the short bike-back fallback call) RETIRED — deleted; git history is
 -- the archive. It was never reached in the live flow: reunionCallTree folds in the bike ask, and the
 -- Arch is returned on the `reunion_arrival` action. Config.bikeReturn (above) is still used by that
@@ -1308,12 +1379,13 @@ Config.reunionMeetTree = {
   },
 }
 
--- ---- BLAZE finale conversation (v1.07) ------------------------------------
+-- ---- BLAZE finale conversation (v1.10) ------------------------------------
 -- Plays at the Blaze finale, once V wakes at the destination and Jackie (normal outfit) is standing
--- facing her. Subtitle-only (no fitting real audio for these beats) EXCEPT Jackie's closing "So what
--- now?", which has a real voiced clip. Same tree engine as the reunion (Branch.start). V lines are
--- silent text choices. Terminal node action = "blaze_finale_complete" (a no-op hook for now).
--- Antonia authored/approved the beats 2026-07-09; the destroyed-chip reveal + V's forgive/mad fork.
+-- facing her. Subtitle-only EXCEPT Jackie's closing "So what now?" (real voiced clip). Same tree engine
+-- as the reunion (Branch.start); V lines are silent text choices. Terminal action "blaze_finale_complete".
+-- Antonia's script (docs/jackie_V_final_convo.txt) + her notes 2026-07-09: LONGER preamble (catch a
+-- breath / pause / "shame nobody'll know it was us") BEFORE the case comes up; the dawning realization;
+-- then the destroyed-chip reveal; V gets 3 options (ONE angry), forking to Jackie's mad/easy reply.
 Config.blazeFinaleTree = {
   start = "madeit",
   nodes = {
@@ -1324,48 +1396,55 @@ Config.blazeFinaleTree = {
       },
     },
     alive = {
-      jackiePool = { { text = "We're alive, chica. Both of us. Ain't that somethin'." } },
+      jackiePool = { { text = "We're alive, chica. Both of us." } },
       choices = {
-        { text = "Jackie... the case. Where's the case?", to = "well" },
+        { text = "Barely caught a breath since Konpeki. ...Feels good to just stop a second.", to = "pause" },
       },
     },
-    well = {
+    -- the pause beat + "shame nobody'll know it was us" (moved up here, per Antonia).
+    pause = {
+      jackiePool = { { text = "Heh... yeah. It does. ...Shame nobody's ever gonna know it was us up there." } },
+      choices = {
+        { text = "By the way -- where'd you store the case?", to = "case_q" },
+      },
+    },
+    case_q = {
       jackiePool = { { text = "Well..." } },
+      choices = {
+        { text = "...Jackie?", to = "deflect" },
+      },
+    },
+    -- the dawning realization: he deflects once more, then V snaps to it.
+    deflect = {
+      jackiePool = { { text = "I had it. Right in my hands, V, I swear I did..." } },
       choices = {
         { text = "Jackie! The biochip -- the fucking case with the biochip, WHERE IS IT?!", to = "reveal" },
       },
     },
     reveal = {
-      jackiePool = { { text = "I tried to hold onto it, I swear. But Smasher -- that hijo de puta got his hands on it. Case took a round, cracked wide open. Chip's slag. ...I'm sorry, V. I really am." } },
-      -- V's fork: mad (a/b) vs let-it-go (c/d). Each routes to Jackie's matching reply.
+      jackiePool = { { text = "I tried to hold onto it, I swear. Smasher -- that hijo de puta... Case took a round, cracked wide open. Chip's slag. So I dropped it. ...I'm sorry, V. I really am." } },
+      -- 3 options, ONE angry (-> mad); the other two let-it-go (-> easy). Per Antonia.
       choices = {
-        { text = "That was our ticket out, Jackie. Everything we bled for tonight.",  to = "mad" },
-        { text = "Do you have any idea what we just lost?",                            to = "mad" },
-        { text = "Honestly? That thing woulda been more trouble than it was worth.",   to = "easy" },
-        { text = "We're both breathing, cabron. That's the only score that matters.", to = "easy" },
+        { text = "Fuck! That was our ticket, Jackie! Everything we worked for!",           to = "mad"  },
+        { text = "Honestly? That thing woulda been more trouble than it was worth.",         to = "easy" },
+        { text = "We're both breathing, cabron. That's the only score that matters.",        to = "easy" },
       },
     },
     mad = {
-      jackiePool = { { text = "Yeah... I know. Chinga'o. But hey -- we're still here to be pissed about it, right? That's more'n most folks walk away with." } },
+      jackiePool = { { text = "Yeah... I know. Chinga'o. But hey -- you're still here to be pissed about it, right?" } },
       choices = {
-        { text = "(let out a breath) ...Guess it is.", to = "legend" },
+        { text = "(let out a breath) ...Guess I am.", to = "whatnow" },
       },
     },
     easy = {
-      jackiePool = { { text = "...Yeah. Maybe you're right. Corpo tech like that only ever buys you a shorter life. We dodged more'n we lost tonight." } },
+      jackiePool = { { text = "...Yeah. Maybe you're right. Corpo tech like that only ever buys you a shorter life." } },
       choices = {
-        { text = "Damn right we did.", to = "legend" },
-      },
-    },
-    legend = {
-      jackiePool = { { text = "You and me. Walked outta Konpeki Plaza with Adam Smasher on our tail. Nobody's ever gonna believe it." } },
-      choices = {
-        { text = "Let 'em not believe it.", to = "whatnow" },
+        { text = "Damn right.", to = "whatnow" },
       },
     },
     whatnow = {
       -- VOICED closer: real clip "So what now?" (jl_1812693583769038848).
-      jackiePool = { { text = "So... what now?", sfx = "jl_1812693583769038848" } },
+      jackiePool = { { text = "Okay... so. What now?", sfx = "jl_1812693583769038848" } },
       choices = {
         { text = "Whatever we want, hermano. For once, nobody's writing our story but us.", to = "done" },
       },
@@ -1419,6 +1498,36 @@ Config.poses = {
   sit     = "sit_barstool__2h_on_lap__01",          -- DEFAULT = barstool (most of his chairs)
   sitChair= "sit_chair__2h_on_lap__01",             -- low/deep chair (Misty's) — used via poseAnim
   lean    = "stand_wall_lean180__2h_on_wall__01",
+}
+
+-- ---- LOOK-AT / head tracking (v1.41) ---------------------------------------
+-- As a COMPANION Jackie already head-tracks V, because sendWalkToPlayer's AIFollowTargetCommand carries
+-- `lookAtTarget = Game.GetPlayer()`. A venue Jackie has no follow command, so he was frozen at whatever
+-- yaw the seat/waypoint baked in — staring through you.
+--
+-- The engine's own head/eye tracking is `entLookAtAddEvent` (REDscript `LookAtAddEvent`), an ANIMATION
+-- GRAPH OVERLAY. Two properties make it exactly what we want:
+--   * `SetEntityTarget(player, ...)` makes the engine follow the live entity itself — we queue it ONCE
+--     and it tracks V as she walks around. No per-frame teleport, no yaw math, no jitter.
+--   * It layers on top of the base animation, so it composes with the AMM sit workspot. It turns his
+--     HEAD, not his body, so it can't eject him from the barstool.
+-- Vanilla uses precisely this in reactionComponent.script (bodyPart 'Eyes', slot 'pla_default_tgt',
+-- soft/hard/back limits 360/270/210). See docs/research/lookat_research.md.
+--
+-- ⚠️ The CET-Lua marshalling of this event is UNVERIFIED (no shipped Lua mod constructs it). jlLookAtStart
+-- tries every construction form and logs which one took; if all fail it degrades to "no look-at" and
+-- Jackie behaves exactly as he did before. It can't break him.
+Config.lookAt = {
+  enabled    = true,
+  range      = 12.0,   -- m: start tracking V once she's this close
+  dropRange  = 15.0,   -- m: stop tracking beyond this (hysteresis, so it can't flicker at the boundary)
+  check      = 0.5,    -- s between distance checks (the tracking itself is engine-side, this is just arm/disarm)
+  bodyPart   = "Eyes", -- CONFIRMED literal used by vanilla reactionComponent ('LeftHand' is the only other confirmed one)
+  targetSlot = "pla_default_tgt",  -- the look-at slot on the PLAYER that vanilla aims at
+
+  -- Wide limits: a seated pose already twists his head, so a narrow cone would hit the hard limit and
+  -- he'd stop short of actually facing V. These mirror vanilla's 360/270/210 soft/hard/back degrees.
+  softLimit = "Wide", hardLimit = "Wide", backLimit = "Normal", distLimit = "None",
 }
 
 -- ---- collision ownership (v0.44) ------------------------------------------

@@ -68,6 +68,12 @@ first (`Scan:AssignSeats` → `seat_front_left`), which our `mountJackie()` alre
 
 ## 3. Disable collision / hitbox — NOT possible from Lua on 2.x
 
+> ✅ **Re-verified v1.41** against the RTTI hierarchy: `vehicleChassisComponent` and `entColliderComponent`
+> both descend straight from `entIPlacedComponent`, while `ToggleCollision` lives on the *visual* branch
+> (`entIPlacedComponent → entIVisualComponent → entMeshComponent → entPhysicalMeshComponent`). Confirmed
+> unreachable. **But collision-off was the wrong goal**: NPC riders are thrown off by a dedicated
+> knock-off mechanic (`aiBikeKnockOffModifier`), not by crash damage. See `bike_crash_research.md`.
+
 - The only runtime collision toggle, `entPhysicalMeshComponent.ToggleCollision(Bool)`, lives on a
   visual mesh sub-component. A vehicle's real collider is `entColliderComponent`, which has **no**
   scriptable disable. `useKinematic` bodies still collide. No verified Lua makes a vehicle phase

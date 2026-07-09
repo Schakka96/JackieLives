@@ -858,6 +858,17 @@ local function getGameSeconds()
   return nil
 end
 
+-- v1.41: ABSOLUTE in-game day index (0,1,2...) from the monotonic game clock. Used for once-per-day
+-- gates. Deliberately NOT JL.day.count: that only advances when ensureDayTemplate catches the hour
+-- WRAPPING past midnight, so a flat 24 h sleep (10:00 -> 10:00) never decreases the hour and would be
+-- missed. Total-seconds / 86400 can't miss a day. Returns nil if the TimeSystem isn't up yet (callers
+-- must treat nil as "don't fire the daily thing"). GLOBAL -> costs no top-level local (200-cap).
+function jlGameDay()
+  local s = getGameSeconds()
+  if not s then return nil end
+  return math.floor(s / 86400.0)
+end
+
 -- v0.39: start (or restart) Jackie's companion-duration clock. Called when he becomes a companion
 -- and again when a dinner resets it. Stores when he joined + when he'll head home (game seconds).
 local function armCompanionTimer(extendHours)
@@ -3491,10 +3502,66 @@ local function stopBikeVeh(veh, cmd)
   pcall(function() veh:TurnEngineOn(false) end)
 end
 
+-- v1.41 ANTI-CRASH #1 — the NPC bike KNOCK-OFF threshold. See the long note on Config.bikePhysics:
+-- a bump harder than `KnockOffForce * aiBikeKnockOffModifier` force-ragdolls an NPC off his bike, and
+-- that engine path ignores god-mode. Raising the modifier is what actually stops Jackie eating asphalt.
+--
+-- The flat is GLOBAL (every NPC bike rider in Night City), so this is REF-COUNTED: raised on the first
+-- rider-on-bike, restored to the captured original when the last one dismounts. Restoring the captured
+-- value (not a hard-coded 1.0) means we never clobber another mod that tuned it. Reads the flat first
+-- and no-ops if it can't (wrong patch / renamed record) rather than writing blind.
+-- GLOBAL -> costs no top-level local (200-cap).
+function jlBikeKnockOff(on)
+  local B = Config.bikePhysics or {}
+  if not B.enabled then return end
+  JL.knockRefs = JL.knockRefs or 0
+  if on then
+    JL.knockRefs = JL.knockRefs + 1
+    if JL.knockRefs > 1 then return end                       -- already raised by the other bike system
+    local cur; pcall(function() cur = TweakDB:GetFlat("AIGeneralSettings.aiBikeKnockOffModifier") end)
+    if type(cur) ~= "number" then
+      log("Bike: aiBikeKnockOffModifier unreadable -> anti-knock-off SKIPPED (he may still topple).")
+      JL.knockRefs = 0; return
+    end
+    JL.knockOrig = cur
+    local ok = pcall(function()
+      TweakDB:SetFlat("AIGeneralSettings.aiBikeKnockOffModifier", B.knockOffModifier or 1000.0)
+    end)
+    log(ok and ("Bike: knock-off modifier %.1f -> %.1f (Jackie won't be bumped off)."):format(cur, B.knockOffModifier or 1000.0)
+           or  "Bike: FAILED to raise aiBikeKnockOffModifier.")
+  else
+    if JL.knockRefs <= 0 then return end
+    JL.knockRefs = JL.knockRefs - 1
+    if JL.knockRefs > 0 then return end                        -- another bike system still needs it
+    if type(JL.knockOrig) == "number" then
+      pcall(function() TweakDB:SetFlat("AIGeneralSettings.aiBikeKnockOffModifier", JL.knockOrig) end)
+      log(("Bike: knock-off modifier restored to %.1f."):format(JL.knockOrig))
+    end
+  end
+end
+
+-- v1.41 ANTI-CRASH #2 — make the spawned Arch Invulnerable so a hard hit can't DESTROY it out from
+-- under him (a destroyed bike ends the follow). AMM god-modes its spawned entities the same way.
+-- Does NOT stop knock-off — that's jlBikeKnockOff's job. GLOBAL -> 200-cap safe.
+function jlBikeGodMode(veh)
+  local B = Config.bikePhysics or {}
+  if not (B.enabled and B.godMode and veh) then return end
+  local ok = pcall(function()
+    Game.GetGodModeSystem():AddGodMode(veh:GetEntityID(), gameGodModeType.Invulnerable, CName.new("JackieLives"))
+  end)
+  log(ok and "Bike: Arch set Invulnerable." or "Bike: god-mode call failed (bike stays destructible).")
+end
+
 -- Clean up a leftover arrival bike (called from dismiss paths + on handoff).
 local function despawnArrivalBike()
   if JL.varrival.bikeId then deleteEntityById(JL.varrival.bikeId) end
   JL.varrival.bikeId, JL.varrival.bikeHandle = nil, nil
+  -- v1.41: bike's gone -> drop OUR ref on the global knock-off flat, but only if this arrival actually
+  -- took one (a foot arrival never armed it, and must not decrement the cruise system's ref).
+  if JL.varrival.bikePhysArmed then
+    JL.varrival.bikePhysArmed = false
+    jlBikeKnockOff(false)
+  end
 end
 
 -- Resolve the DES-spawned Jackie's handle from his entity id (stored on JL.summon.spawn).
@@ -3646,7 +3713,17 @@ local function vehicleArrivalTick()
   local pp  = playerPos()
 
   -- resolve handles each tick until both exist
-  if va.bikeId and not va.bikeHandle then pcall(function() va.bikeHandle = Game.FindEntityByID(va.bikeId) end) end
+  if va.bikeId and not va.bikeHandle then
+    pcall(function() va.bikeHandle = Game.FindEntityByID(va.bikeId) end)
+    -- v1.41: the moment the Arch exists, protect the ride-in — raise the NPC knock-off threshold so a
+    -- clipped taxi can't ragdoll him off mid-arrival (which used to end as "Jackie NOT on the bike ->
+    -- ditch bike, he comes on foot"), and make the bike invulnerable so it can't be destroyed under him.
+    if va.bikeHandle and not va.bikePhysArmed then
+      va.bikePhysArmed = true
+      jlBikeKnockOff(true)
+      jlBikeGodMode(va.bikeHandle)
+    end
+  end
   local jh = resolveJackieHandle()
 
   -- safety timeout (LAST RESORT). If Jackie's entity exists, force the companion handoff (AMM's
@@ -5373,9 +5450,60 @@ function jlCruiseStop()
   local jh = JL.summon and JL.summon.spawn and JL.summon.spawn.handle
   if jh and unmountDriver then pcall(function() unmountDriver(jh, jlCruise.bikeHandle) end) end
   if jlCruise.bikeId then pcall(function() deleteEntityById(jlCruise.bikeId) end) end
+  if jlCruise.bikePhysArmed then                      -- v1.41: release our ref on the global knock-off flat
+    jlCruise.bikePhysArmed = false
+    jlBikeKnockOff(false)
+  end
   jlCruise.active, jlCruise.bikeId, jlCruise.bikeHandle, jlCruise.mountAt = false, nil, nil, nil
+  jlCruise.rightAt, jlCruise.rightCheckAt = nil, nil
   pcall(promoteToCompanion)                          -- resume normal on-foot follow
   log("Cruise: ended -> Jackie back on foot.")
+end
+
+-- v1.41 ANTI-CRASH #3 — the cruise safety net. Even with the knock-off threshold raised, a bad enough
+-- impact (or `IsBeingDragged()`, which ignores the threshold entirely) can still put the Arch on its
+-- side and throw Jackie off. Detect that, stand the bike back up behind V, wake its physics, re-mount
+-- him and re-issue the follow. Rate-limited so a bike wedged against a wall can't teleport-thrash.
+-- GLOBAL -> 200-cap safe.
+function jlCruiseRightingTick()
+  local B = Config.bikePhysics or {}
+  if not (B.enabled and B.rightIfFlipped) then return end
+  if not (jlCruise.active and jlCruise.bikeHandle) or jlCruise.mountAt then return end
+  local now = JL.clock or 0
+  if now < (jlCruise.rightCheckAt or 0) then return end
+  jlCruise.rightCheckAt = now + (B.rightCheck or 1.0)
+
+  local bh = jlCruise.bikeHandle
+  local jh = JL.summon and JL.summon.spawn and JL.summon.spawn.handle
+  if not jh then return end
+
+  -- toppled? prefer the engine's own answer, fall back to the up-vector dot the engine uses internally
+  -- (ComputeIsVehicleUpsideDown: Dot(GetWorldUp(), Vector4.UP()) < 0).
+  local flipped
+  pcall(function() flipped = bh:IsFlippedOver() end)
+  if flipped == nil then
+    pcall(function() flipped = (bh:GetWorldUp().z < (B.uprightDot or 0.4)) end)
+  end
+  -- knocked off? he's cruising but no longer in the saddle ('NoDriver' after a ForceRagdollEvent)
+  local thrown = (isMounted and not isMounted(jh)) or false
+  if not (flipped or thrown) then return end
+  if now < (jlCruise.rightAt or 0) then return end        -- cooling down from the last recovery
+  jlCruise.rightAt = now + (B.rightCooldown or 4.0)
+
+  local pp = playerPos(); if not pp then return end
+  local fwd; pcall(function() fwd = Game.GetPlayer():GetWorldForward() end)
+  local behind = (Config.cruise or {}).spawnBehind or 8.0
+  local pt = fwd and Vector4.new(pp.x - fwd.x * behind, pp.y - fwd.y * behind, pp.z, 1.0) or pp
+  pt = snapToNavmesh(pt) or pt
+  pcall(function()
+    Game.GetTeleportationFacility():Teleport(bh, pt, EulerAngles.new(0, 0, yawToward(pt, pp) or 0))
+  end)
+  pcall(function() bh:PhysicsWakeUp() end)
+  pcall(function() bh:TurnVehicleOn(true) end)
+  if thrown and mountAsDriver then pcall(function() mountAsDriver(jh, bh) end) end
+  jlCruise.lastReissue = -999                             -- force jlCruiseFollow to re-command next tick
+  log(("Cruise: bike recovered (flipped=%s thrown=%s) -> righted behind V + re-issued follow.")
+      :format(tostring(flipped), tostring(thrown)))
 end
 
 function jlCruiseTick()
@@ -5392,6 +5520,12 @@ function jlCruiseTick()
   if not jlCruise.active then return end
   if jlCruise.bikeId and not jlCruise.bikeHandle then
     pcall(function() jlCruise.bikeHandle = Game.FindEntityByID(jlCruise.bikeId) end)
+    -- v1.41: Arch exists -> raise the NPC knock-off threshold + make it invulnerable for the ride.
+    if jlCruise.bikeHandle and not jlCruise.bikePhysArmed then
+      jlCruise.bikePhysArmed = true
+      jlBikeKnockOff(true)
+      jlBikeGodMode(jlCruise.bikeHandle)
+    end
   end
   if jlCruise.mountAt and (JL.clock or 0) >= jlCruise.mountAt and jlCruise.bikeHandle then
     local jh = JL.summon.spawn.handle
@@ -5403,6 +5537,7 @@ function jlCruiseTick()
      and ((JL.clock or 0) - (jlCruise.lastReissue or -999)) >= (C.reissue or 5.0) then
     jlCruiseFollow()
   end
+  pcall(jlCruiseRightingTick)   -- v1.41: stand the bike back up if it topples / he gets thrown
 end
 
 -- v0.76 DEBUG: dump Jackie's full runtime state to the console (bound to a CET button + called at the
@@ -5809,6 +5944,8 @@ registerForEvent("onInit", function()
       finaleTeardown = function() pcall(blazeFinaleTeardown) end,
       -- v1.07: force sunny weather at the escape (Antonia). Default approach; overlay has A/B buttons.
       setWeather = function() pcall(blazeSetWeather) end,
+      -- v1.10: also jump to daytime at the escape (heist is at night, so sunny alone stays dark).
+      setDay = function() pcall(function() blazeSetMidday(12) end) end,
       -- ⚠️ EXPERIMENTAL Yorinobu scenario helpers ----------------------------------
       -- Jackie speaks: play the voiced clip + show the text. Returns the clip length (s) so blaze.lua's
       -- VO queue can space a multi-line beat by its real duration.
@@ -5924,6 +6061,7 @@ local function barkCfg()
       greetRepeatCooldown = 300.0,  -- v0.48: s before a greet event may repeat (5 min); also never the last one used
       greetUsed = {}, lastGreetEvent = nil,  -- v0.48: per-event last-used clock for the no-repeat picker
       lastGreet = -999, lastBump = -999, checkT = 0, lastDist = nil,
+      helloDay = nil,   -- v1.41: in-game day (jlGameDay) the spoken venue hello last fired on
     }
   end
   return JL.bark
@@ -5973,6 +6111,24 @@ local function pickArrivalGreetLine(now)
   local e = fresh[1]; pcall(function() e = fresh[math.random(1, #fresh)] end)
   local k = e.sfx or e.text
   st.used[k] = now; st.last = k
+  return e
+end
+
+-- v1.41: pick the spoken VENUE HELLO line (real jl_ clip + subtitle) for the first approach of the
+-- in-game day. Gender-aware pool, same no-immediate-repeat rule as the arrival greeting so two
+-- consecutive days don't open with the same line. GLOBAL -> costs no top-level local (200-cap).
+function pickVenueHelloLine()
+  local G = Config.venueGreet or {}
+  local pool = (jlHermano() and G.greetingsM) or G.greetings or {}
+  if #pool == 0 then return nil end
+  JL.venueHello = JL.venueHello or { last = nil }
+  local fresh = {}
+  for _, e in ipairs(pool) do
+    if (e.sfx or e.text) ~= JL.venueHello.last then fresh[#fresh + 1] = e end
+  end
+  if #fresh == 0 then fresh = pool end       -- single-entry pool: nothing else to pick
+  local e = fresh[1]; pcall(function() e = fresh[math.random(1, #fresh)] end)
+  JL.venueHello.last = e.sfx or e.text
   return e
 end
 
@@ -6032,6 +6188,23 @@ local function proximityBarkTick(dt)
   if not jp then return end
   local d = dist3(pp, jp); b.lastDist = d
   local now = JL.clock or 0
+  -- v1.41: FIRST APPROACH OF THE IN-GAME DAY -> a real spoken hello, checked BEFORE the grunt chain so
+  -- it still lands if V walks straight into bump range on the first sample. `day == nil` (TimeSystem not
+  -- up yet) falls through to the ordinary grunt rather than firing a hello on an unknown day.
+  local G = Config.venueGreet or {}
+  if G.enabled and d <= (G.range or 5.0) then
+    local day = jlGameDay()
+    if day and b.helloDay ~= day then
+      b.helloDay = day
+      local e = pickVenueHelloLine()
+      if e then
+        b.lastGreet = now       -- the spoken hello counts as the greeting; don't grunt on top of it
+        pcall(function() speakJackieLine(e.text, e.sfx) end)
+        log(string.format("Bark: venue HELLO (day %d, d=%.2f m) '%s'", day, d, tostring(e.text)))
+        return
+      end
+    end
+  end
   if d <= (b.bumpRange or 1.2) then
     if (now - (b.lastBump or -999)) >= (b.bumpCooldown or 8.0) then
       b.lastBump = now
@@ -6065,12 +6238,19 @@ function blazeFinaleSceneTick()
     local app = (Blaze.yori and Blaze.yori.finaleAppearance) or "jackie_welles_default"
     pcall(function() h:PrefetchAppearanceChange(CName.new(app)) end)
     pcall(function() h:ScheduleAppearanceChange(CName.new(app)) end)
-    -- stand him ~2.2 m in front of V, facing her (the "180°" framing)
+    -- v1.10 (Antonia): "in front" bugged him into a wall at this spot. Stand him BESIDE V instead (to her
+    -- side, using V's own right vector), snapped to navmesh, still facing her. Side/dist configurable via
+    -- Blaze.yori.finaleSide (metres; +right / -left) so it's tunable if the spot needs the other side.
     pcall(function()
-      local jp, vp = pointAheadOfV(2.2), playerPos()
-      if jp and vp then
-        local yaw = yawToward(jp, vp)
-        Game.GetTeleportationFacility():Teleport(h, Vector4.new(jp.x, jp.y, jp.z, 1.0), EulerAngles.new(0, 0, yaw or 0))
+      local pl = Game.GetPlayer(); local pp = pl and pl:GetWorldPosition()
+      local rt; pcall(function() rt = pl:GetWorldRight() end)
+      if pp then
+        local side = (Blaze.yori and Blaze.yori.finaleSide) or 1.4
+        local jp = rt and Vector4.new(pp.x + rt.x * side, pp.y + rt.y * side, pp.z, 1.0)
+                       or Vector4.new(pp.x + side, pp.y, pp.z, 1.0)
+        jp = snapToNavmesh(jp) or jp
+        local yaw = yawToward(jp, pp)   -- face V
+        Game.GetTeleportationFacility():Teleport(h, jp, EulerAngles.new(0, 0, yaw or 0))
       end
     end)
     pcall(promoteToCompanion)                -- keep him a proper follower (living Jackie going forward)
@@ -6723,6 +6903,16 @@ registerForEvent("onShutdown", function()
   pcall(bikeTestDespawn)         -- v0.63: never orphan the bike-model test spawn
   pcall(clearDinnerWaypoint)     -- v0.41: never leave a dinner map pin stuck
   pcall(function() if jlCruise and jlCruise.active then jlCruiseStop() end end)  -- v0.92: never orphan the cruise Arch
+  -- v1.41: aiBikeKnockOffModifier is a GLOBAL TweakDB flat. Force it back to the captured original on
+  -- unload regardless of what the ref-count believes — a mod reload mid-ride must not leave every NPC
+  -- biker in Night City unknockable for the rest of the session.
+  pcall(function()
+    if type(JL.knockOrig) == "number" then
+      TweakDB:SetFlat("AIGeneralSettings.aiBikeKnockOffModifier", JL.knockOrig)
+      log(("Shutdown: knock-off modifier restored to %.1f."):format(JL.knockOrig))
+    end
+    JL.knockRefs = 0
+  end)
   pcall(dismissJackie)
 end)
 

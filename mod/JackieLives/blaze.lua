@@ -34,7 +34,7 @@ local M = { bound = {}, cfg = nil, st = nil }
 -- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
 -- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
 -- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
-M.VERSION = "1.09 (2026-07-09 finale convo + WORKING fast-travel/checkpoint escape tools for the stuck-scene music)"
+M.VERSION = "1.10 (2026-07-09 Jackie beside V (no wall-clip) + midday escape + longer finale convo (Antonia script))"
 
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
@@ -86,6 +86,7 @@ M.yori = {
   -- v1.07 (Antonia): the finale destination — V wakes here, Jackie (normal outfit) appears next to her
   -- facing her, and the finale conversation plays. Coords/yaw captured in-game 2026-07-09.
   finalePos = { x = -1787.921, y = -450.040, z = 7.747, yaw = -1.4 },
+  finaleSide = 1.4,   -- v1.10: metres to place Jackie BESIDE V at the finale (+ = V's right, - = left). Tune if he clips.
   -- Gate: fires when the T-Bug PHONE CALL ENDS. From JLFactDump (docs/factdump.log): the fact
   -- `phonecall_player_with_tbug` runs 1 -> 2 (call active) then drops back to 0 when the call ends.
   -- So we fire on the FALLING edge (saw it active, now 0), NOT a raw >0 (that'd fire when it STARTS).
@@ -451,9 +452,14 @@ function M.tick(now, dt)
                    or (d2 <= (M.yori.roofHeli and M.yori.roofHeli.radius or M.yori.reachRadius or 5.0))
       if inRange then
         st.escapeReady = true
-        -- v1.07 (Antonia): Smasher's down AND V reached the heli -> force sunshine (once). The storm clears
-        -- as they make their getaway.
-        if not st.setWeatherDone and M.bound.setWeather then st.setWeatherDone = true; M.bound.setWeather() end
+        -- v1.07 (Antonia): Smasher's down AND V reached the heli -> force sunshine + DAYTIME (once). The
+        -- storm clears and it's a bright new morning as they make their getaway (v1.10: midday added — the
+        -- heist is at night, so sunny alone stayed dark).
+        if not st.setWeatherDone and M.bound.setWeather then
+          st.setWeatherDone = true
+          M.bound.setWeather()
+          if M.bound.setDay then M.bound.setDay() end
+        end
         if now >= (st.escapePromptAt or 0) then       -- re-assert the NATIVE [F] interaction prompt on a heartbeat
           st.escapePromptAt = now + 1.0
           if M.bound.showPrompt then M.bound.showPrompt("Get in the AV") end

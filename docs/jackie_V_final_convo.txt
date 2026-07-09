@@ -1,0 +1,17 @@
+
+	Jackie: "Híjole… we made it. We actually made it. Can't believe it, V."
+	Jackie: "We're alive, chica. Both of us."
+	V: "Jackie… the case. Where's the case?"
+	Jackie: "Well…"
+	V: "Jackie! The biochip — the fucking case with the biochip, where is it?!"
+	Jackie: "I tried to hold onto it, I swear. Smasher — that hijo de puta ... Case took a round, cracked wide open. Chip's slag. So I dropped it."
+	Jackie: "…I'm sorry, V. I really am."
+	V 
+1. "Fuck! That was our ticket Jackie! Everything we worked for!"
+1. "Do you have any idea what we just lost?"
+2. "Honestly? Thing probably woulda been more trouble than it was worth."
+3. "We're both breathing, cabrón. That's the only score that matters."
+	Jackie (a / b): "Yeah… I know. Chinga'o. But hey — you're still here to be pissed about it, right?"
+	Jackie (c / d): "…Yeah. Maybe you're right. Corpo tech like that only ever buys you a shorter life."
+	Jackie: "You and me. Walked outta Konpeki Plaza. Nobody's ever gonna believe it."
+	Jackie: "Okay… sooo. What's next?"
