@@ -11,6 +11,41 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-09 (v1.44) — Blaze finale: Jackie no longer walks home before his own scene
+
+Antonia: "Jackie doesn't spawn in the finale scene because he is heading home (max companion time reached
+because of CET time to noon!)". Exactly right — **the escape sequence broke its own finale.**
+
+The heist runs at night. The escape calls `blazeSetMidday(12)` so "sunny" reads as actual sunshine. But
+Jackie's companion-duration clock (`JL.summon.companionExpiresGame`) is stored in **absolute game seconds**,
+so shoving the clock from ~02:00 to 12:00 instantly blows past `maxGameHours` (6 h). The auto-leave fires, he
+speaks his parting line and walks off — seconds before the finale needs him. Three fixes:
+
+- [x] **The clock jump no longer counts against his time with V.** `blazeSetMidday` raises
+  `JL.rearmCompanionClock`; `onUpdate` re-arms the duration timer on the next tick, once the new time is
+  live (it can't call `armCompanionTimer` directly — that's a main-chunk local declared further down the
+  file). Checked *before* the expiry test, so the stale deadline can't fire in the same frame. This also
+  fixes the overlay's "Set time → midday" button, not just the scripted escape.
+- [x] **Auto-leave is suspended for the whole set-piece + finale** (`jlBlazeSceneLive()`), the same way the
+  main-quest exit already was. ⚠️ Gated on the scene being **live** (`Blaze.st.active` / armed finale), NOT on
+  `JL.mode == "blaze"` — that stays true for the rest of the save, so a mode check would have disabled his
+  going-home behaviour *permanently* on a Blaze playthrough.
+- [x] **The finale cancels a walk-off already in progress.** If he'd started leaving (e.g. an older save,
+  or the clock expired during the fight), `leavingTick` would have kept running and **despawned the fresh
+  Jackie the finale spawns** — the conversation would play to an empty spot. The finale's `spawn` phase now
+  clears `JL.leaving`, wipes the parting-line subtitle, and drops the stale deadline so the new companion
+  re-arms from now instead of inheriting an expired one.
+- [x] **The set-piece now actually ends.** `Blaze.reset()` was only ever called when a *new* run started, so
+  `Blaze.st.active` stayed true for the rest of the save. The finale calls it on completion: it releases
+  `jlBlazeSceneLive()` (handing Jackie back to normal companion rules) and despawns leftover
+  Smasher/Takemura/heli entities — including the heli abandoned on the Konpeki roof. `M.autoFired` stays
+  set, so the fight cannot re-trigger.
+
+Verified by simulating the 02:00 → 12:00 jump: before, he leaves; after, he stays through the scene, and
+normal going-home resumes ~6 h after the finale ends.
+→ **TEST:** run the heist to the escape. Does Jackie appear in the finale and stay for the whole
+conversation? Afterwards, does he still eventually head home when his companion clock runs out?
+
 ### 🆕 Added 2026-07-09 (v1.43) — 🔴 OUTFITS NEVER WORKED. Jackie's appearances now actually apply.
 
 Antonia: "the spawned Jackie in Konpeki Plaza is normal Jackie, not Jackie in suit — check if the names

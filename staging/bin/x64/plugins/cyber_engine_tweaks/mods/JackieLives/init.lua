@@ -627,11 +627,23 @@ function blazeResetWeather()
   return ok
 end
 -- Jump the clock to midday so "sunny" actually reads as sunshine (the heist is a night scene).
+--
+-- ⚠️ v1.44: this SHOVES THE GAME CLOCK FORWARD, typically ~10 h (the heist runs at night). Jackie's
+-- companion-duration clock (`JL.summon.companionExpiresGame`) is measured in ABSOLUTE game seconds, so a
+-- jump like this instantly blows past `maxGameHours` (6 h) and the auto-leave fires: he says his parting
+-- line and walks off — right before the finale, where he then failed to appear. The escape sequence calls
+-- this, so it broke its own finale.
+--
+-- We can't call armCompanionTimer() from here (it's a main-chunk local declared further down, so it isn't
+-- in scope at this point in the file). Instead raise a flag; onUpdate re-arms the clock on the next tick,
+-- once the new time is live. That keeps the fix working for the overlay's "Set time -> midday" button too,
+-- not just the scripted escape.
 function blazeSetMidday(hour)
   local ts; pcall(function() ts = Game.GetTimeSystem() end)
   if not ts then log("[Blaze] time: no TimeSystem."); return false end
   local ok = false
   pcall(function() ts:SetGameTimeByHMS(hour or 12, 0, 0); ok = true end)
+  if ok then JL.rearmCompanionClock = true end   -- the jump must not count against his time with V
   log("[Blaze] time: SetGameTimeByHMS(" .. tostring(hour or 12) .. ",0,0) -> " .. tostring(ok))
   return ok
 end
@@ -1001,6 +1013,19 @@ local function getGameSeconds()
     if type(r) == "number" then return r end
   end
   return nil
+end
+
+-- v1.44: is the Blaze set-piece (or its finale) actually PLAYING right now? Used to suspend Quiet-Life
+-- rules that would otherwise pull Jackie out of the scene — chiefly the companion-duration auto-leave.
+-- Deliberately NOT `JL.mode == "blaze"`: that stays true for the rest of the save, so it would disable his
+-- going-home behaviour permanently on a Blaze playthrough. `Blaze.reset()` nils `st`, and the finale tick
+-- nils `JL.blazeFinale` when the conversation ends, so this goes false again the moment the scene is done.
+-- GLOBAL -> costs no top-level local (200-cap). pcall-guarded: Blaze may not be loaded.
+function jlBlazeSceneLive()
+  if JL.blazeFinale then return true end
+  local live = false
+  pcall(function() live = (Blaze and Blaze.st and Blaze.st.active) and true or false end)
+  return live
 end
 
 -- v1.41: ABSOLUTE in-game day index (0,1,2...) from the monotonic game clock. Used for once-per-day
@@ -6548,6 +6573,21 @@ function blazeFinaleSceneTick()
   local app = (Blaze.yori and Blaze.yori.finaleAppearance) or "jackie_welles_default"
 
   if f.phase == "spawn" then
+    -- v1.44: CANCEL ANY WALK-OFF IN PROGRESS. If the companion clock expired (e.g. the escape's midday
+    -- jump on an older save) Jackie is mid "heading home" walk. Left alone, leavingTick would keep running
+    -- and despawn the FRESH Jackie we're about to spawn — the finale would play to an empty spot. Clearing
+    -- the leaving state also wipes the parting-line subtitle timer so "Catch you later" can't hang on
+    -- screen over the finale conversation.
+    if JL.leaving.phase then
+      log("[Blaze] finale: Jackie was walking off (companion clock) -> cancelling the walk-off.")
+      JL.leaving.phase, JL.leaving.deadline, JL.leaving.lastReissue = nil, nil, nil
+      JL.leaving.subClearAt = nil
+      pcall(hideSubtitle)
+    end
+    -- Drop the stale duration deadline too, so the fresh companion below re-arms from NOW instead of
+    -- inheriting an already-expired one (belt-and-braces: the blaze gate in onUpdate should stop the
+    -- auto-leave anyway, but the finale must not depend on JL.mode still being "blaze").
+    JL.summon.companionExpiresGame, JL.summon.companionSinceGame = nil, nil
     -- The fight companion (dirty suit) is likely culled by the teleport. Throw him out and spawn a FRESH
     -- companion in the normal outfit right here, so Jackie reliably appears at the finale.
     pcall(function() if JL.summon.spawn then ammDespawn(JL.summon.spawn) end end)
@@ -6608,6 +6648,13 @@ function blazeFinaleSceneTick()
     if (not Branch.busy) or ((JL.clock or 0) - (f.talkStartedAt or 0) > 300.0) then
       pcall(blazeReleaseStand)   -- let V crouch again now the finale's over
       JL.blazeFinale = nil       -- convo done -> disarm
+      -- v1.44: THE SET-PIECE IS OVER. Blaze.reset() nils `Blaze.st` (previously only ever cleared when a
+      -- NEW run started, so `st.active` stayed true for the rest of the save) and despawns any leftover
+      -- Smasher/Takemura/heli entities — including the heli we abandoned on the Konpeki roof.
+      -- Clearing it is also what releases jlBlazeSceneLive(), handing Jackie back to the normal
+      -- Quiet-Life rules: from here he can go home when his companion clock runs out, like any other day.
+      pcall(function() Blaze.reset() end)
+      log("[Blaze] finale complete -> set-piece reset; Jackie returns to normal companion rules.")
     end
   end
 end
@@ -6658,6 +6705,17 @@ registerForEvent("onUpdate", function(dt)
     log("Companion role applied.")
   end
 
+  -- v1.44: a SCRIPTED CLOCK JUMP (blazeSetMidday) must not eat Jackie's companion time. Re-arm the
+  -- duration clock from the NEW `now` on the tick after the jump. Done before the expiry check below so
+  -- the stale deadline can never fire in the same frame.
+  if JL.rearmCompanionClock then
+    JL.rearmCompanionClock = nil
+    if JL.summon.active and JL.summon.companionSet then
+      JL.summon.companionSinceGame = nil          -- treat the jump as "he just joined"
+      armCompanionTimer()
+      log("Companion: game clock was jumped -> duration timer re-armed (the jump doesn't count).")
+    end
+  end
   -- v0.39: companion-duration clock. Arm it once he's a confirmed companion (any path), and when
   -- it runs out (and autoLeaveOnExpiry) send him home via the same walk-off as a dismissal.
   if JL.summon.active and JL.summon.companionSet and not JL.summon.companionExpiresGame then
@@ -6665,7 +6723,15 @@ registerForEvent("onUpdate", function(dt)
   end
   -- v0.41: the auto-leave is PAUSED for the whole dinner outing (JL.dinner.phase) so he never
   -- bails mid-walk; dinnerTick does a full clock reset when the meal finishes.
-  if JL.summon.active and Config.companion and Config.companion.autoLeaveOnExpiry
+  -- v1.44: and it is PAUSED FOR THE WHOLE BLAZE SET-PIECE + its finale. Blaze puts Jackie at V's side on
+  -- purpose; "his shift ended" is a Quiet-Life rule with no business firing mid-set-piece. The escape jumps
+  -- the clock to midday, which used to trip this and walk him off seconds before the finale needed him.
+  -- NOTE: gated on the set-piece being LIVE (`Blaze.st.active` / the armed finale), NOT on `JL.mode`.
+  -- JL.mode stays "blaze" for the rest of the save, so a mode check would disable his going-home behaviour
+  -- forever on a Blaze playthrough. Blaze.reset() nils `st`, and blazeFinaleSceneTick nils `JL.blazeFinale`
+  -- when the conversation ends — so normal Quiet-Life auto-leave resumes the moment the scene is over.
+  if not jlBlazeSceneLive()
+     and JL.summon.active and Config.companion and Config.companion.autoLeaveOnExpiry
      and not JL.dinner.phase
      and JL.summon.companionExpiresGame and JL.leaving.phase ~= "walking" then
     local g = getGameSeconds()
