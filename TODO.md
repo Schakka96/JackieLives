@@ -11,6 +11,62 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+### 🆕 Added 2026-07-09 (v1.43) — 🔴 OUTFITS NEVER WORKED. Jackie's appearances now actually apply.
+
+Antonia: "the spawned Jackie in Konpeki Plaza is normal Jackie, not Jackie in suit — check if the names
+differ; if not, we're switching his outfits wrong." **The names were right. We were switching them wrong.**
+Two independent bugs, both fixed. Full write-up: `docs/research/amm_appearance_research.md`.
+
+- [x] 🔴 **BUG 1 — every appearance we ever asked for was silently ignored.** `ammSpawn` passed AMM's
+  `Spawn:NewSpawn(name, id, parameters, ...)` a **table** (`{ app = name }`) where `parameters` must be the
+  appearance-name **string**. AMM stores it on `spawn.parameters` and later hands it straight to
+  `handle:PrefetchAppearanceChange(x)` / `ScheduleAppearanceChange(x)` — a table where a CName is required
+  **silently no-ops**, so Jackie always kept his record default. The trap: AMM's
+  `obj.appearanceName = (parameters or {}).app` line reads exactly our `.app` key, so the shape looked
+  right — but that field is written once and **never read anywhere in AMM**. Fix: pass the plain string.
+  ⚠️ **This was never heist-specific.** The *venue* outfits never applied either — it hid for ~20 versions
+  because 3 of the 7 venues ask for `jackie_welles_default`, which is what the silent fallback produced.
+  → **TEST:** misty / afterlife / redwood should now be **collar-down**, and ginger / Lizzie's should be
+  **no-jacket**. If they still look identical to the noodle bar, the fix didn't take — tell Claude.
+
+- [x] 🔴 **BUG 2 — the companion's outfit wasn't remembered across a respawn.** `catchUpTick` (stranded) and
+  `companionPersistTick` (body culled) both call `respawnCompanionAtV()`, which called `ammSpawn(1)` with no
+  appearance → back to `Config.defaultAppearance`. So even with Bug 1 fixed, heist Jackie would lose the suit
+  the first time Konpeki's streaming culled him — which is constantly. `ammSpawn` now records the RESOLVED
+  appearance on `JL.summon.appearance`; `jlCompanionAppearance()` reads it back; `respawnCompanionAtV()`
+  captures it before the despawn and brings him back wearing it. (The Blaze finale already respawns him
+  explicitly in his normal outfit, so it stays correct.)
+
+- [x] ✅ **Names VERIFIED** against AMM's shipped appearance DB. `Character.Jackie` carries all **17** of his
+  appearances — no separate q005 record needed. Quest-tagged names take a **double** underscore
+  (`jackie_welles__q005_suit`, `__q000_lizzies_club_no_jacket`); the rest take a single
+  (`_default`, `_valentino`, `_wounded`). `jackie_welles_q005_suit` (single) does not exist. All four names
+  the mod uses are valid. Also available if the clean suit reads too pristine for a firefight:
+  `__q005_suit_dirty` / `_bleeding` / `_wounded`.
+
+**Problems & Resolutions (2026-07-09, outfits):**
+1. **A silent no-op is the worst failure mode.** An invalid/wrong-typed appearance produces no error, no log,
+   and no visual change — the NPC just keeps what he's wearing. That is why a bug affecting *every* outfit
+   in the mod survived ~20 versions. Anywhere we hand a name to the engine, prefer a path that can fail loudly.
+2. **`obj.appearanceName = (parameters or {}).app` is a decoy.** It's the only place in AMM that reads an
+   `.app` key, it's written and never read, and it made a wrong call shape look researched. Verify against
+   the *consumer* of a field, not its assignment.
+
+### 🆕 Added 2026-07-09 (v1.42) — dialogue picker centred + in the lower fifth at any resolution
+
+- [x] 🖥️ **Picker placement (`Config.picker`).** Was a fixed 620x240 px box, centred then nudged **150 px
+  left**, at 46% screen height — and the pixel sizes never scaled, so on 4K it read as a small box adrift in
+  the upper-left quadrant, and on ultrawides the nudge pulled it off the crosshair. Now everything is
+  relative to the display: uniform scale `sh / refH` clamped [0.8, 3.0] (scaled off HEIGHT — width swings
+  wildly on 21:9 / 32:9), genuinely centred (`xOffset` knob if it should ever be off-centre), dropped into
+  the lower band and bottom-anchored `bottomMargin` above the edge. The name plate + font ride the same
+  factor. The box is ~22% of screen height — a shade taller than the 20% band — so the bottom clamp is what
+  lands it, which is the point: it can never hang off the bottom at any aspect ratio.
+  Placement math verified across 720p/1080p/1440p/4K/8K/21:9/32:9 — every unclamped mode lands at exactly
+  75.8%..98.0% of screen height, centred to float error, never off-screen.
+  → **TEST:** long 4-option conversations — the window is `NoScrollbar`, so if a tall choice list overflows
+  the scaled height it clips silently. `Config.picker.baseH` is the dial.
+
 ### 🆕 Added 2026-07-09 (v1.41) — venue polish batch: head-tracking, daily hello, bike anti-crash
 
 Three small immersion items (Antonia). **All three are code-complete + parse-clean on the Mac; ALL await a

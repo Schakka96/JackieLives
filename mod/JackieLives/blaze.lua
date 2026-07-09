@@ -111,11 +111,15 @@ M.yori = {
   reachRadius = 5.0,
   fightLineDelay = 4.0,   -- seconds after each boss spawns before Jackie's one mid-fight bark
   avHintRadius = 3.0,     -- after Smasher's down, V within this of the elevator OR heli spot -> Jackie's "AV's on the roof" bark
-  -- v1.07 (Antonia): the FIGHTING Jackie wears the dirty Militech heist suit; at the finale a FRESH Jackie
-  -- appears next to V in his normal outfit. ⚠️ These are AMM APPEARANCE names (the docs list
-  -- jackie_welles__q005_suit — double underscore — as the heist-suit one; "q005_suit_dirty" is the ITEM,
-  -- not the appearance). Verify in AMM's appearance list in-game and adjust if the suit's wrong.
-  fightAppearance  = "jackie_welles__q005_suit",   -- dirty heist suit for the fight
+  -- v1.07 (Antonia): the FIGHTING Jackie wears the Militech heist suit; at the finale a FRESH Jackie
+  -- appears next to V in his normal outfit.
+  -- ✅ v1.43: both names VERIFIED against AMM's shipped appearance DB for `Character.Jackie` (which carries
+  -- all 17 of his appearances). The double underscore before the quest tag is correct and required —
+  -- `jackie_welles_q005_suit` (single) does NOT exist. The reason the suit never showed up was NOT the name:
+  -- we were handing AMM the appearance as a table instead of a string (see the ammSpawn note in init.lua).
+  -- Other suit variants on the same record, if you want them: __q005_suit_dirty, __q005_suit_bleeding,
+  -- __q005_suit_wounded.
+  fightAppearance  = "jackie_welles__q005_suit",   -- Militech heist suit for the fight
   finaleAppearance = "jackie_welles_default",       -- normal outfit at the finale
   -- The SCENE's own passive "luggage" Jackie (the one carrying the case) — a persistent scene puppet, NOT
   -- our companion. Identity from the in-game Identify button: record Character.Jackie, name LocKey#47007,

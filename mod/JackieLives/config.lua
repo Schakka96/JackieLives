@@ -1587,12 +1587,21 @@ Config.idleNoCollision = true
 -- sit/lean WORKSPOT animation is a TODO, so the pose tags are forward-looking data.
 -- See docs/captured_positions.md for the human-readable tables.
 --
--- OUTFITS (v0.39): each location carries an `appearance` — Jackie's REAL AMM appearance name
--- (confirmed in-game by Antonia). Wardrobe mapping:
+-- OUTFITS (v0.39): each location carries an `appearance` — Jackie's REAL AMM appearance name.
+-- ⚠️ v1.43: these NEVER ACTUALLY APPLIED until now. ammSpawn passed AMM the appearance as a table
+-- (`{ app = name }`) where a plain string was required, so every spawn silently fell back to his record
+-- default. It went unnoticed because 3 of the 7 venues want `jackie_welles_default` anyway. Fixed in
+-- init.lua's ammSpawn; expect misty/afterlife/redwood/ginger/lizzies to CHANGE LOOK now.
+-- All names below verified against AMM's shipped appearance DB for Character.Jackie. Wardrobe mapping:
 --   jackie_welles_default               -> noodle, coyote, test, and the summon/arrival fallback
 --   jackie_welles_default_collar_down   -> misty, afterlife, redwood
 --   jackie_welles__q000_lizzies_club_no_jacket -> ginger (Ginger Panda) + lizzies (Lizzie's Bar)
 --   jackie_welles__q005_suit            -> reserved for a future "date" day (not used at a location yet)
+-- The full 17 on Character.Jackie (note: quest-tagged ones take a DOUBLE underscore, the rest single):
+--   default · default_collar_down · default_no_machete · __q000_lizzies_club_no_jacket ·
+--   __q000_lizzies_club_no_machete · __q005_suit · __q005_suit_bleeding · __q005_suit_dirty ·
+--   __q005_suit_wounded · valentino · valentino_beaten_up · valentino_beaten_up_alt ·
+--   valentino_collar_down · wounded · wounded_bleeding · naked · naked_erect
 Config.defaultAppearance = "jackie_welles_default"   -- summon/arrival + any location with no `appearance`
 Config.locations = {
   -- captured 2026-06-16 (Antonia). sitNearest kept for the future chair-sit feature.

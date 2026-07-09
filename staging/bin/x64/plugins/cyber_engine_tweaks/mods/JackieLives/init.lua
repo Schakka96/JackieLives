@@ -733,12 +733,25 @@ end
 -- ---------------------------------------------------------------------------
 -- companionFlag: 1 = follow + fight as ally, 0 = passive idle NPC
 -- appearance: AMM appearance name to spawn him in (e.g. "suit"); nil/"" -> Config.defaultAppearance.
+--
+-- ⚠️ v1.43 — THE OUTFIT BUG. AMM's `Spawn:NewSpawn(name, id, parameters, companion, path, template, rig)`
+-- wants `parameters` to be the appearance-name **STRING**, not a table. We were passing `{ app = app }`.
+-- AMM stores it verbatim on `spawn.parameters`, and `SpawnNPC` later does
+--     if #custom > 0 or spawn.parameters ~= nil then AMM:ChangeAppearanceTo(spawn, spawn.parameters)
+-- which bottoms out in `handle:PrefetchAppearanceChange(x)` / `handle:ScheduleAppearanceChange(x)`. Handed
+-- a TABLE where a CName is required, both calls silently no-op and Jackie keeps his record default. (AMM's
+-- own `obj.appearanceName = (parameters or {}).app` line reads our `.app` key — but that field is written
+-- and never read anywhere in AMM. It's a dead end, which is why this looked plausible and never worked.)
+-- Net effect: NO appearance we ever asked for was applied — not the heist suit, not the venue outfits.
+-- Three of his seven venues use `jackie_welles_default` anyway, which is why it went unnoticed for so long.
 local function ammSpawn(companionFlag, appearance)
   local amm = getAMM()
   if not amm or not amm.Spawn or not amm.Spawn.NewSpawn then return nil, "AMM Spawn module not available" end
   if not resolveJackieRecord() then return nil, "Jackie record not found" end
   local recStr = tostring(JL.jackie.record)
-  local app = (appearance and appearance ~= "") and appearance or (Config.defaultAppearance or "random")
+  -- Fall back to a REAL appearance name, never "random": an unknown name is a silent no-op (leaving him in
+  -- whatever he had), and AMM's random-cycle path would put him in a different outfit every spawn.
+  local app = (appearance and appearance ~= "") and appearance or (Config.defaultAppearance or "jackie_welles_default")
   -- Force AMM's companion toggle to MATCH the flag. It was only ever set TRUE (for companion
   -- spawns) and never reset, so a "passive" arrival spawn following any companion summon still
   -- came out as a companion -> follower role -> catch-up TELEPORT to V's face. Resetting it to
@@ -746,12 +759,26 @@ local function ammSpawn(companionFlag, appearance)
   pcall(function() if amm.userSettings then amm.userSettings.spawnAsCompanion = (companionFlag == 1) end end)
   local spawn
   local ok = pcall(function()
-    spawn = amm.Spawn:NewSpawn(JL.jackie.name or "Jackie", recStr, { app = app }, companionFlag, recStr)
+    -- arg 3 = the appearance NAME AS A STRING (see the note above). arg 5 (`path`) is the record that
+    -- actually spawns; arg 2 (`id`) is only AMM's bookkeeping key, so the record string is harmless there.
+    spawn = amm.Spawn:NewSpawn(JL.jackie.name or "Jackie", recStr, app, companionFlag, recStr)
   end)
   if not ok or not spawn then return nil, "NewSpawn failed" end
   local ok2 = pcall(function() amm.Spawn:SpawnNPC(spawn) end)
   if not ok2 then return nil, "SpawnNPC failed" end
+  -- v1.43: REMEMBER what the companion is wearing. Every companion respawn (culled body, stranded
+  -- fast-travel) used to call ammSpawn(1) with no appearance and silently put him back in
+  -- Config.defaultAppearance — which is why the Blaze heist Jackie lost his suit at Konpeki, where
+  -- streaming/cutscenes cull him constantly. Recording the RESOLVED name (not the arg) means a nil
+  -- arg records "default", so a plain summon still reads back correctly.
+  if companionFlag == 1 then JL.summon.appearance = app end
   return spawn
+end
+
+-- v1.43: the outfit a respawned COMPANION should come back in — whatever he was last spawned wearing,
+-- falling back to his normal clothes. GLOBAL -> costs no top-level local (200-cap).
+function jlCompanionAppearance()
+  return JL.summon.appearance or Config.defaultAppearance or "jackie_welles_default"
 end
 
 local function ammDespawn(spawn)
@@ -5859,9 +5886,13 @@ end
 -- any stale/culled spawn first so we never leak or double up. The onUpdate promote block applies the
 -- follower role next frame; armCompanionTimer re-arms the duration clock fresh.
 function respawnCompanionAtV()
+  -- v1.43: capture his outfit BEFORE the despawn clears the spawn, and bring him back wearing it. A bare
+  -- ammSpawn(1) here reverted him to Config.defaultAppearance — the Blaze heist Jackie kept losing his
+  -- dirty suit at Konpeki Plaza, because that's where his body gets culled and this path fires.
+  local app = jlCompanionAppearance()
   if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
-  local spawn, err = ammSpawn(1)
+  local spawn, err = ammSpawn(1, app)
   if not spawn then log("Persist: respawn at V FAILED (" .. tostring(err) .. ") — will retry."); return false end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet = spawn, true, false
   -- v0.82: arm the settle window. He's freshly popped in at V (AMM drops him ~1 m from her); hide him +
