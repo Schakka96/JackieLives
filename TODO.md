@@ -45,17 +45,21 @@ Test roughly in this order — the cheap, high-information checks first.
   inert on a fresh clone. Committed alongside this wrap-up. ⚠️ The sneak session is still mid-work on this.
 - **`staging/` had drifted** from `mod/` (v1.46 synced neither `init.lua` nor `config.lua`). Re-synced + parse-checked
   all four files. Worth a glance before any release zip: `diff` the two trees.
-- **The companion clock counts ABSOLUTE game time**, so *sleeping 8 h also expires it* and sends Jackie home. For
-  sleep that's arguably correct ("his shift ended"), which is why v1.44's re-arm was scoped to the scripted midday
-  jump only. If he should survive a night at V's place, it's a small change to measure elapsed time instead.
-  **Open design call — Antonia's to make.**
+- ✅ **SETTLED (Antonia, 2026-07-09) — NOT A BUG, DO NOT "FIX".** The companion clock counts **absolute** game
+  time, so **sleeping or waiting expires it and sends Jackie home. That is the intended behaviour** ("his shift
+  ended"). This is precisely why v1.44's re-arm is scoped to the scripted `blazeSetMidday` jump alone, and why the
+  auto-leave suppression is gated on the Blaze scene being live rather than on `JL.mode`. A future session will be
+  tempted to switch this to elapsed time — don't.
 - **Bike arrival still doesn't set `useKinematic` / `clearTrafficOnPath`.** Both are real, inherited fields, but AMM
   ships the same config for its own bike followers and arrival is confirmed-good in-game — so it was left alone
   rather than regress a working path. Revisit only if arrivals still topple *after* the knock-off fix.
 - **`aiBikeKnockOffModifier` is a GLOBAL flat** — while Jackie rides, no NPC biker in the city can be knocked off.
   Ref-counting keeps the window as small as possible, but it isn't zero. Watch traffic during a long cruise.
-- **The look-at CET marshalling is unverified.** Once you report the winning ctor, delete the two dead branches in
-  `jlNewLookAtEvent`.
+- 📋 **ANTONIA'S TODO — report the look-at ctor.** The CET marshalling of `entLookAtAddEvent` is unverified (no
+  shipped Lua mod constructs one). Walk up to venue Jackie and grep `jackie_debug.log` for
+  `LookAt: now tracking V (ctor=…)`. Hand that ctor name to Claude and the two dead branches in
+  `jlNewLookAtEvent` get deleted. If it instead logs `head tracking OFF`, he just behaves as he did before
+  (it cannot break him) — try `Config.lookAt.bodyPart = "Head"` and report that too.
 
 ### 🆕 Added 2026-07-09 (v1.46) — walk-abreast on STAIRS + SLOPES (the jagged teleport in front of V)
 
