@@ -84,3 +84,6 @@ docs/Heist_scene_tree_base/
 
 # luac bytecode dumps (luac -l without -p writes these)
 luac.out
+
+# dialogue editor: local .lua backups (never committed)
+tools/dialogue-editor/backups/
