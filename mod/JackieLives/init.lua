@@ -2343,9 +2343,11 @@ end
 local function drawChoiceRows(style)
   ImGui.BeginGroup()
   if style == 2 then
-    -- selected = recolored text (no bar); for comparison
+    -- selected = recolored text (no bar); for comparison.
+    -- v1.54: no plate exists in this style, so a `final` row is marked by tinting its TEXT gold instead —
+    -- otherwise the irreversible option would look identical to a safe one here.
     for i, c in ipairs(menu.choices) do
-      local col = (i == menu.sel) and COL.bar or COL.unsel
+      local col = (i == menu.sel) and COL.bar or (c.final and COL.barDim) or COL.unsel
       ImGui.PushStyleColor(ImGuiCol.Text, col[1], col[2], col[3], 1.0)
       ImGui.Text(tostring(c.text or ""))
       ImGui.PopStyleColor(1)

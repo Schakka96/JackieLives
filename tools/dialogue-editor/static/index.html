@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Jackie Lives — dialogue editor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div class="brand">JACKIE<span>LIVES</span> <em>dialogue editor</em></div>
+  <div id="stats" class="stats"></div>
+  <div class="spacer"></div>
+  <div id="dirtycount" class="dirtycount"></div>
+  <button id="reload" class="btn ghost" title="Throw away unsaved edits and re-read the .lua files">Reload</button>
+  <button id="save" class="btn primary" disabled>Save all</button>
+</header>
+
+<div id="banner" class="banner" hidden>
+  <span id="banner-text"></span>
+  <button id="banner-x" class="banner-x" aria-label="dismiss">&times;</button>
+</div>
+
+<main id="main">
+  <nav id="sidebar">
+    <input id="filter" class="filter" type="search" placeholder="Filter…" autocomplete="off">
+    <div id="nav"></div>
+  </nav>
+
+  <section id="stage">
+    <div id="stage-head">
+      <h1 id="stage-title">…</h1>
+      <p id="stage-sub"></p>
+      <div id="stage-tools"></div>
+    </div>
+
+    <!-- graph view (trees) -->
+    <div id="viewport" hidden>
+      <div id="world">
+        <svg id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="nodes"></div>
+      </div>
+      <div id="zoomctl">
+        <button class="btn tiny" data-zoom="out">&minus;</button>
+        <span id="zoomlabel">100%</span>
+        <button class="btn tiny" data-zoom="in">+</button>
+        <button class="btn tiny" data-zoom="fit">Fit</button>
+      </div>
+      <div class="hint">drag to pan · wheel to zoom · click a line to edit it</div>
+    </div>
+
+    <!-- list view (pools / plain fields) -->
+    <div id="listview" hidden></div>
+  </section>
+
+  <aside id="inspector" hidden>
+    <div class="insp-head">
+      <span id="insp-kind" class="chip"></span>
+      <button id="insp-close" class="btn ghost tiny">close</button>
+    </div>
+    <div id="insp-body"></div>
+  </aside>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
+<script>
+setTimeout(function () {
+  var items = document.querySelectorAll('.navitem');
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].textContent.indexOf("Jackie's shard") === 0) { items[i].click(); break; }
+  }
+  document.title = JSON.stringify({
+    columns: Array.from(document.querySelectorAll('#listview .col h2')).map(function(h){return h.textContent;}),
+    cards: document.querySelectorAll('#listview .card').length
+  });
+}, 1500);
+</script>

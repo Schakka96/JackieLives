@@ -11,6 +11,105 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🆕 v1.54 (2026-07-14) — Hermano by default · the reunion call becomes a real conversation · no Misty breakup · quest objectives
+
+Antonia's fix list. `Config.version` + `staging/fomod/info.xml` are both **1.54**; tagged `v1.54`.
+
+### 1. Hermano is the default for EVERY V
+> *"The switch should default to hermano mode always! Most people play male V!"*
+
+- [x] **Deleted `jlDetectGenderOnce()`** — the v1.2/v1.3 auto-detect that read V's body gender on first load
+  and locked Female V → Husbando. It's gone, along with its per-frame probe in `onUpdate`.
+- [x] **`jlDefaultHermano()`** (called once from `onInit`, after `jlLoadSettings`) forces Hermano unless the
+  player *explicitly* flipped the Esc-menu switch. That explicit choice is the new persisted **`modeChosen`**
+  flag, which **replaces `genderLock`** in `JL_SETTINGS_KEYS`. An old save that the auto-detect had silently
+  locked to Husbando therefore re-defaults to Hermano — which is the point.
+- [x] Reset-to-default on the settings switch is now **Hermano** (was Husbando).
+
+### 2 + 3. The reunion call: a HUB, not a chain of fake choices
+> *"not just 2 'fake' choices that just drive the convo onward, but also real branches… an exit option in
+> that main dialogue picker… at the top and have a yellow background, like irreversible choices."*
+
+The call used to be one forced line: `pickup→alive→outrage→iffy→whatyou→deflect→hiding→daemon→quest→gigs→
+askbike→bike→bikesafe→coming→onmyway`. Now, right after V's anger burns off, it **opens into a hub**:
+
+- [x] **`hub`** — three `once` topics, taken in any order, each walking V back to the hub when it's done:
+  **the Arch** · **her last months** (*"It's been tough since you were gone, man…"*) · **the desert**.
+- [x] The **desert branch is the old spine** (`desert→daemon→quest→gigs`) — it still carries the plot (the
+  'Saka daemon pinging his location = why he can't just come home) and it holds **both mid-call exits**
+  Antonia asked for: one at `quest` (V's agreed to help with the malware) and one at `gigs` (he's admitted
+  he's done with serious gigs).
+- [x] **Yellow exit at the top of the hub** — `final = true`, ends the call and sends him over.
+- [x] **Cut the `iffy` beat** (*"for a sec there things looked iffy" → "You weren't SURE"*). ⚠️ This retires a
+  **voiced** clip (`jl_1918251744810168320`); it's free again if we ever want to re-home it.
+- [x] **The bike is optional AND a real choice** — V can **keep it**. `jackielives_bike` fact: 0 = never came
+  up · 1 = promised back · 2 = V's keeping it. `reunion_arrival` only hands the Arch over on 1, and
+  `reunionMeetTree` branches on the same fact (new `keptride` node) so he never thanks V for a bike he
+  didn't get. Keeping it costs nothing — he gives it to her, warmly, and the quest runs on identically.
+
+**Engine (init.lua), four new per-choice fields — all reusable well beyond this call:**
+
+| field | does |
+|---|---|
+| `once = "<key>"` | one-time branch; struck off for the rest of the conversation (`bstate.taken`) |
+| `final = true` | paints the row with the game's yellow *point-of-no-return* plate (`COL.barDim` when unhighlighted) |
+| `cond = function() … end` | show the row only if the predicate holds (a predicate that errors ⇒ hidden, never a crash) |
+| `fact = { name=, value= }` | record a **mid-conversation** decision into the save. Needed because an `action` **only fires on a terminal choice** — a choice with a `to` can't carry one. |
+
+⚠️ **Gotcha, learned the hard way:** a `once` key is **conversation-scoped**, not node-scoped. Putting the
+hub's `once="bike"` on the bike node's *own* answers filtered them both out the moment the topic was spent,
+so the node had nothing to offer and the decision was never recorded. A simulation caught it. Don't reuse a
+hub topic's key inside its own branch.
+
+### 4. Misty — Jackie and Misty are TOGETHER
+> *"Jackies note, viks note and also the call and Jackie himself should NOT mention Misty… The whole slow
+> burn romance stuff you added is embaressing."* → *"Cut only the parts mentioning their relationship has
+> ended… the dialogues at mistys should stay misty related"* + *"Keep a toned-down romance."*
+
+- [x] **The breakup arc is deleted.** Gone from: Jackie's shard, Vik's tip (*"whatever's between you two"*),
+  the dinner `misty` node (*"we ended it" / "thinkin' 'bout someone else entirely"*), and its topic choice.
+- [x] **Both post-reunion shards are now single-track** (no `linesM`; `mvar()` falls through to `lines`). The
+  old Husbando versions *were* the romance arc in letter form — Misty releasing Jackie and blessing V, Mama
+  warning V not to toy with her son's heart. Neither woman is writing about V's love life any more.
+- [x] **Misty's Esoterica keeps its Misty lines** (incl. the real VO clips) — but **V's questions were
+  rewritten so each one sets up the clip that answers it**: *"What's the plan for the rest of your day?"* →
+  *"Now I go back, find Misty…"*; *"Did Misty see it comin'?"* → *"Misty knew… Misty always knows…"*
+- [x] **Husbando is now warmth, not a courtship.** Nothing declared, nothing pined over. The switch survives.
+
+### 6. The retrieval quest had NO objective banners at all
+> *"The blue banner (diy quest objectives) don't show up for any of the steps… Also for the step where you're
+> supposed to call him and the one where you should just wait a bit and he'll show up."*
+
+- [x] `retrieval.lua` never fired one. Added `M.Config.objectives` + a small queue (`queueObjective` /
+  `objectiveTick`) on the native message band — the same "DIY objective" path the dinner outing uses, bound
+  to init.lua's `showOnscreenMsg` so it gets the **UI sound cue** and isn't silent. **No WolvenKit needed.**
+- [x] Steps: **"Find Jackie — Rocky Ridge, the Badlands"** → **"Call Jackie"** → **"Wait for Jackie"** →
+  **"Jackie's back."** The two Antonia specifically flagged are the middle two.
+- [x] They're **flashes, not a persistent tracker** (a real tracker means a `.quest` graph). Each is
+  **re-asserted a few seconds after a save loads** (first-observation guard in `tick()`), so a player who
+  quits mid-quest is reminded what they were doing rather than left stranded.
+- [x] Each is **delayed** so it doesn't collide with the tip/shard popup that triggered it.
+
+### 7. `tools/dialogue-editor/` — read/edit the lines without touching Lua
+A local Python-stdlib server + single-page UI: every tree grouped by NPC/situation, rendered left→right with
+branches going down, click any line to edit it (base + its `m` variant side by side), and **save writes back
+into the `.lua` by exact byte-span replacement** — so the heavy comments survive. Backs up first, verifies the
+result still parses with `luac -p`, and **restores the backup if it doesn't**. See its README.
+
+### ✅ How v1.54 was verified (no game needed for any of it)
+- `luac -p` on all three files (and on the staging copies).
+- A **reachability check** over every tree: no missing `to` targets, no orphan nodes.
+- A **simulated playthrough** of the real `config.lua` applying the engine's actual choice rules — proving the
+  hub offers each topic exactly once, that the yellow exit is always available, and that **keep-the-bike** and
+  **never-asked-about-the-bike** both reach the reunion with the meeting saying the right thing.
+- A **fake-game harness** driving the real `Retrieval.tick()` — all four banners fire at the right step, once
+  each, and a mid-quest reload correctly re-asserts *"Call Jackie"*.
+
+**Still needs a human in-game:** that the yellow plate actually *reads* as yellow at the picker's font scale,
+and that the objective banners land where the eye expects. Both are cosmetic, neither can break the quest.
+
+---
+
 ## 🚀 v1.53 — RELEASE-READY (staging is the Nexus zip)
 
 `Config.version` and `staging/fomod/info.xml` are both **1.53** (v1.40 → 1.53; the intervening code markers
