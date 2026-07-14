@@ -1421,16 +1421,15 @@ Config.reunionCallTree = {
     -- for weeks waiting for it to ring. Short, warm, and it earns the silence that follows.
     answer = {
       jackiePool = {
-        { text = "Chica! Finally!", sfx = "jl_2008322358689853440",
-          m = { text = "Hermano, finally!", sfx = "jl_jackie_q113_m_1bdefe8b702ef000" } },
+        { text = "Finally!",           m = { text = "Finally!" } },
       },
       choices = {
-        { text = "...Jackie? Is that really your voice?", to = "pickup" },
+        { text = "...Jackie? Is that really you?", to = "pickup" },
       },
     },
     pickup = {
       jackiePool = {
-        { text = "It's me. It's me, V. Been starin' at this phone for weeks wonderin' if you'd ever ring it." },
+        { text = "It's me, V. Been starin' at this phone for ages wonderin' if you'd ever ring it." },
       },
       choices = {
         { text = "You son of a bitch. You're ALIVE?",        to = "alive" },
@@ -1449,8 +1448,8 @@ Config.reunionCallTree = {
     },
     outrage = {
       jackiePool = {
-        { text = "I know. I KNOW. Scream at me all you want, chica, I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh.",
-          m = { text = "I know. I KNOW. Scream at me all you want, mano, I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh." } },
+        { text = "I know. I KNOW. I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh.",
+          m = { text = "I know. I KNOW. I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh." } },
       },
       choices = {
         { text = "...You really scared me, choom.", to = "hub" },
@@ -1468,8 +1467,8 @@ Config.reunionCallTree = {
       jackiePool = {
         { text = "So... talk to me, V. Where do we even start, huh?" },
         { text = "Yeah. I'm here. Ain't goin' nowhere this time. What else is on your mind?" },
-        { text = "(quiet) Somethin' else, chica? I got all the time in the world for ya.",
-          m = { text = "(quiet) Somethin' else, mano? I got nothin' but time out here." } },
+        { text = "(quiet) Somethin' else, chica?",
+          m = { text = "(quiet) Somethin' else, mano?" } },
       },
       choices = {
         { text = "Enough talkin'. Get over here — I gotta see you with my own eyes.", to = "wrapup", final = true },
@@ -1522,10 +1521,10 @@ Config.reunionCallTree = {
     -- She still can't say the word "Relic" out loud — that stays for the face-to-face (and the lie).
     vlife = {
       jackiePool = {
-        { text = "Tough how, V? (beat) Talk to me. Ain't like I got anywhere to be." },
+        { text = "Tough how? Talk to me V. What's goin on?" },
       },
       choices = {
-        { text = "Everything went sideways after Konpeki. I'm not... I'm not the same.", to = "vdeflect" },
+        { text = "Everything went sideways after Konpeki. It's .. complicated. Long story.", to = "vdeflect" },
         { text = "I lost more than you know that night. Damn near lost myself too.",     to = "vdeflect" },
       },
     },
@@ -1563,8 +1562,8 @@ Config.reunionCallTree = {
     -- EXIT #1 (Antonia): the malware's on the table and V has agreed to help -> she can end the call here.
     quest = {
       jackiePool = {
-        { text = "You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can pull this thing outta my skull... maybe I get my life back.",
-          m = { text = "You'd really do that? ... 'Course you would. A'ight, mano. We find someone who can pull this thing outta my skull... maybe I get my life back." } },
+        { text = "You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can wipe this thing. Maybe I get my life back.",
+          m = { text = "You'd really do that? ... 'Course you would. A'ight, mano. We find someone who can wipe this thing. Maybe I get my life back." } },
       },
       choices = {
         { text = "We'll get it done. But that's for tomorrow — get over here. Now.", to = "wrapup", final = true },
@@ -1574,10 +1573,10 @@ Config.reunionCallTree = {
     -- EXIT #2 (Antonia): right after he admits he's out of the serious-gig life for good.
     gigs = {
       jackiePool = {
-        { text = "(quieter) Gotta be straight with ya, choom. After what happened... I can't be runnin' serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried." },
+        { text = "Gotta be straight with ya, choom. After what happened... I can't run serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried." },
       },
       choices = {
-        { text = "Nobody's askin' you to. Now quit talkin' and get over here, hermano.", to = "wrapup", final = true },
+        { text = "Nobody's askin' you to. Now quit stallin' and get over here, Jackie.", to = "wrapup", final = true },
         { text = "Good. You've bled enough for this city.",                              to = "hub" },
       },
     },
@@ -1601,7 +1600,7 @@ Config.reunionCallTree = {
       -- line (he hadn't set off yet; the clip was chosen for its audio, and the words were bent to fit it).
       -- Unvoiced now, so it can finally say what this beat actually is: he's hanging up to come to her.
       jackiePool = {
-        { text = "I'm already movin', V. Don't you go nowhere. ...I'll see you in a minute, yeah? Been a long time comin'." },
+        { text = "I'm already movin', V. Don't you go nowhere. ...I'll see you by the gas station." },
       },
       action = "reunion_arrival",
     },
@@ -1750,32 +1749,26 @@ Config.blazeFinaleTree = {
     mad = {
       jackiePool = { { text = "Yeah... I know. Chinga'o. But hey -- you're still here to be pissed about it, right?" } },
       choices = {
-        { text = "(let out a breath) ...Guess I am.", to = "legend" },
+        { text = "You and me. Took down Smasher and walked outta Konpeki Plaza. Nobody's ever gonna believe it.", to = "whatnow" },
       },
     },
     easy = {
       jackiePool = { { text = "...Yeah. Maybe you're right. Corpo tech like that only ever buys you a shorter life." } },
       choices = {
-        { text = "Damn right.", to = "legend" },
+        { text = "You and me. Took down Smasher and walked outta Konpeki Plaza. Nobody's ever gonna believe it.", to = "whatnow" },
       },
     },
     -- Antonia's file line: pride in the feat (distinct from the earlier "shame nobody'll KNOW it was us").
-    legend = {
-      jackiePool = { { text = "You and me. Walked outta Konpeki Plaza. Nobody's ever gonna believe it." } },
-      choices = {
-        { text = "Let 'em not believe it.", to = "whatnow" },
-      },
-    },
     whatnow = {
       -- SUBTITLE-ONLY (Antonia: the voiced 'So what now?' clip was bad — use her literal line, no audio).
-      jackiePool = { { text = "Okay soo... What's next?" } },
+      jackiePool = { { text = "Hehe yeah. A tale for the ages V!  \n(A pause) So... What's next?" } },
       choices = {
         { text = "Whatever we want, hermano. For once, nobody's writing our story but us.", to = "done" },
       },
     },
     done = {
       -- terminal: Jackie's last beat, then the convo ends (he stays your companion). Action is a hook.
-      jackiePool = { { text = "...Heh. I like the sound o' that. C'mon, then. Night City ain't gonna know what hit it." } },
+      jackiePool = { { text = "...Heh. I like the sound o' that. C'mon, then. Night City's aint gonna solo itself!" } },
       action = "blaze_finale_complete",
     },
   },

@@ -84,11 +84,10 @@ M.Config = {
   welcome = {
     fact  = "jackielives_welcome",
     title = "Jackie Lives — installed",
-    text  = "Vik Vektor's been callin'. Says he's got somethin' to tell you about Jackie — somethin' he "
-         .. "should've told you a long time ago, and he won't say it over the phone.\n\n"
-         .. "Go see him at his clinic in Watson.\n\n"
-         .. "(If nothing happens when you get there, open Esc -> Settings -> Jackie Lives and hit "
-         .. "\"Start the search for Jackie\".)",
+    text  = "Vik called. Left a message. Says he's got somethin' to tell you about Jackie — somethin' he "
+         .. "wouldn't say over the phone.\n\n"
+         .. "Go see him at his clinic.\n\n"
+         .. "(For mod settings go to Esc -> Mods -> JackieLives) ",
     duration = 16.0,
   },
 
@@ -96,18 +95,21 @@ M.Config = {
   -- v1.54: no Misty, and no "whatever's between you two" (Antonia — the pining is gone). Vik reports the
   -- one thing he'd actually report: the boy shouldn't have lived, he asked for V, go bring him home.
   -- tipText = Husbando (base, a shade warmer); tipTextM = Hermano (canon). init.lua picks via mvar().
-  tipTitle    = "Viktor Vektor",
+  tipTitle    = "Vik:",
   tipText     = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
-              .. "my table that night. Got a pulse back, called in a favor, moved him out before "
-              .. "Arasaka came lookin' for the body. He's alive, V — layin' low out in the Badlands, "
+              .. "my table that night. I got a pulse back, called in a favor, moved him out before "
+              .. "Arasaka came lookin' for the body. "
+              .. "He's alive, V — layin' low out in the Badlands, "
               .. "and it's gotta stay that way. Kid had no business survivin' what he survived. And when "
-              .. "he could talk again, the first thing he asked was whether you got out. I'm markin' the "
-              .. "spot on your map. Go get him.",
+              .. "he could talk again, the first thing he asked was whether you got out. "
+              .. "It just wasn't safe before to tell you V. I'm sorry. "
+              .. "I'm markin' the spot on your map. Go bring him back.",
   tipTextM    = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
-              .. "my table that night. I got a pulse back, called in a favor, and moved him out "
-              .. "before Arasaka came lookin' for the body. It just wasn't safe before to tell you, V. "
-              .. "He's alive, V. Layin' low out in the Badlands — and it's gotta stay that way. "
-              .. "He's been waitin' on you. I'm markin' the spot on your map. Go bring him home.",
+              .. "my table that night. I got a pulse back, called in a favor, moved him out before "
+              .. "Arasaka came lookin' for the body. "
+              .. "It just wasn't safe before to tell you, V. "
+              .. "He's alive. Layin' low out in the Badlands — and it's gotta stay that way. "
+              .. "He's been waitin' on you. I'm markin' the spot on your map. Go bring him back.",
   tipDuration = 10.0,
 
   -- Jackie's note — read on reaching the Badlands hideout (Rocky Ridge garage).
@@ -115,22 +117,21 @@ M.Config = {
   -- brooding over her "story" and pining after V from the desert; both are gone. What's left is the thing
   -- the note is actually for: he's alive, he's out of the life, and he wants V to call him.
   shardTitle  = "Shard — Jackie Welles",
-  -- shardLines = Husbando (base — a shade warmer). shardLinesM = Hermano (canon, brotherly).
+  -- shardLines are the same for both genders now
   -- Picked by the mode selector in reachHideout().
   shardLines  = {
-    "If you're readin' this, V, then the doc kept his word and you made it all the way out here. It's me. I'm alive.",
-    "Vik patched me up and smuggled me out 'fore 'Saka could stamp my name on a slab. Been layin' low ever "
-      .. "since — nothin' but a whole lotta desert an' too much time to think.",
-    "Mostly I been thinkin' 'bout the heist. 'Bout Mama. 'Bout how the last thing I ever did was leave you "
-      .. "holdin' the bag in that motel.",
-    "I'm done with the merc life for real this time. But I couldn't let you go on believin' you buried me. "
-      .. "Call me when you read this, V. Please. — Jackie",
+    "If you're readin' this, V, then the doc kept his word and sent you out here. It's me. I'm alive.",
+    "Vik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.",
+    "Mama Welles was so mad when she heard. Think she'd kill me if I went back doin' gigs "
+      .. "— maybe she's right. I'm done with the merc life, V. For real. But I couldn't "
+      .. "let you go on thinkin' you buried me.",
+    "Give me a call when you read this. — Jackie",
   },
   shardLinesM = {
-    "If you're readin' this, V, then the doc kept his word and you made it out here. It's me. I'm alive.",
+    "If you're readin' this, V, then the doc kept his word and sent you out here. It's me. I'm alive.",
     "Vik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.",
-    "Mama Welles was so mad when she heard. Think she'd kill me if I went back runnin' the streets again "
-      .. "— and this time, maybe she's right. I'm done with the merc life, V. For real. But I couldn't "
+    "Mama Welles was so mad when she heard. Think she'd kill me if I went back doin' gigs "
+      .. "— maybe she's right. I'm done with the merc life, V. For real. But I couldn't "
       .. "let you go on thinkin' you buried me.",
     "Give me a call when you read this. — Jackie",
   },
