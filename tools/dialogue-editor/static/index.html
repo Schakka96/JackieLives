@@ -65,15 +65,3 @@
 <script src="app.js"></script>
 </body>
 </html>
-<script>
-setTimeout(function () {
-  var items = document.querySelectorAll('.navitem');
-  for (var i = 0; i < items.length; i++) {
-    if (items[i].textContent.indexOf("Jackie's shard") === 0) { items[i].click(); break; }
-  }
-  document.title = JSON.stringify({
-    columns: Array.from(document.querySelectorAll('#listview .col h2')).map(function(h){return h.textContent;}),
-    cards: document.querySelectorAll('#listview .card').length
-  });
-}, 1500);
-</script>
