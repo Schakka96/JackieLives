@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.55"
+Config.version = "1.56"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -497,48 +497,51 @@ Config.follow = {
 }
 
 -- ============================================================================
--- EASTER EGG (v1.55) — K-RAFF's refund, at Rocky Ridge
+-- EASTER EGG (v1.55) — REVEREND FLASH's refund, in the bar at Rocky Ridge
 -- ============================================================================
--- K-Raff is a YouTuber who play-tested the mod and, having no fast-travel out there, paid **3,847 eddies**
--- to get himself to Rocky Ridge. If he (or anyone) ever plays it again, the bar beside the garage pays him
--- back TENFOLD — and gives Jackie's Arch back on top.
+-- Reverend Flash is a YouTuber who play-tested the mod and, with no fast-travel out there, paid **3,847
+-- eddies** of his own to get himself to Rocky Ridge. If he (or anyone) plays it again, the bar beside the
+-- garage pays him back TENFOLD — and hands Jackie's Arch back on top.
 --
--- It fires on PROXIMITY, once per save, and needs nothing from the questline (it works whatever stage
--- you're at). Two separate, independently-latched triggers on the same spot:
---   * the PAYOUT   — within `radius` (a room-sized zone: walk into the bar and it happens).
---   * the THANK-YOU — within `noticeRadius` (0.5 m — a deliberate "stand exactly here" spot, so the
---     tribute card is a genuinely hidden thing you have to be looking for).
+-- Fires on PROXIMITY, once per save, and is INDEPENDENT of the questline (it works at any stage). Two
+-- separately-latched triggers on the same spot, so finding the money doesn't spend the hidden thank-you:
+--   * the PAYOUT    — within `radius`: BIG, so you just have to walk into the bar (Antonia's call).
+--   * the THANK-YOU — within `noticeRadius`: 0.5 m, a deliberate "stand exactly here" spot, so the tribute
+--     card stays a genuinely hidden thing you have to be looking for.
 --
--- ⚠️ COORDS ARE A PLACEHOLDER. `pos` currently points at the Rocky Ridge GARAGE (the hideout), not the bar
--- next door. Antonia is capturing the real ones. Until `pos` is replaced, `enabled = false` keeps the whole
--- thing inert — it will NOT fire at the garage and spoil the reunion. To arm it:
---   1. Stand in the bar, open the CET window -> "Capture current position", copy the x/y/z it prints.
---   2. Paste them into `pos` below and set `enabled = true`.
-Config.kraff = {
-  enabled      = false,   -- ⚠️ flip to true ONLY once `pos` below is the real bar (see above)
-  pos          = { 2575.852, 0.291, 80.871 },   -- ⚠️ PLACEHOLDER = the garage. Replace with the BAR's coords.
-  radius       = 6.0,     -- m — walk into the bar and the payout fires
-  noticeRadius = 0.5,     -- m — the tight, hidden spot where the thank-you card appears
+-- COORDS (Antonia, captured in-game): the bar sits ~42 m SOUTH-WEST of Jackie's note / the garage
+-- (note = 2575.9, 0.3, 80.9), and 1.7 m higher — consistent with an interior right next door. `radius` is
+-- kept well under that 42 m gap so the payout zone can never overlap the hideout's own trigger.
+--
+-- ⚠️ WHAT IT ACTUALLY GIVES: **eddies straight into your inventory** (`Items.money`) — NOT a lootable
+-- world item and NOT a shard you pick up. A physical money shard means spawning a world entity and wiring
+-- its loot table, which is fragile from CET; Antonia okayed cash if the shard wasn't easy. So it's cash:
+-- instant, safe, and impossible to miss or lose.
+Config.revflash = {
+  enabled      = true,
+  pos          = { 2548.57, -31.076, 82.609 },   -- the bar next to the Rocky Ridge garage (captured in-game)
+  radius       = 20.0,    -- m — BIG: walk anywhere into the bar and the payout fires (garage is 42 m away, no overlap)
+  noticeRadius = 0.5,     -- m — the tight, hidden spot where the tribute card appears
 
-  -- The payout. 3,847 eddies spent -> 38,470 back.
-  -- A physical lootable "money shard" would mean spawning a world item and wiring its loot table, which is
-  -- fragile from CET; Antonia said cash is fine if the shard isn't easy. So we credit the eddies directly
-  -- (Items.money), which is instant, safe, and can't be missed or lost.
+  -- The payout: 3,847 eddies spent -> 38,470 back (10x).
+  spent        = 3847,
   eddies       = 38470,
   moneyItem    = "Items.money",
-  factMoney    = "jackielives_kraff_paid",     -- one-time latch: the payout
-  factNotice   = "jackielives_kraff_thanked",  -- one-time latch: the tribute card
+  factMoney    = "jackielives_revflash_paid",     -- one-time latch: the payout
+  factNotice   = "jackielives_revflash_thanked",  -- one-time latch: the tribute card
 
-  -- Give Jackie's Arch back too. This UNDOES whatever removed it (jlReturnJackiesBike disables the vehicle
-  -- record); we simply re-enable it. If V already has it, we skip — see jlKraffRestoreBike.
+  -- Give Jackie's Arch back too. UNDOES whatever removed it (jlReturnJackiesBike disables the vehicle
+  -- record); we simply re-enable it. Skipped if V already has it — see revflashRestoreBike in retrieval.lua.
   restoreBike  = true,
 
   bannerText   = "Something's been left here for you...",   -- native banner when the payout lands
-  noticeTitle  = "Jackie Lives — thank you, K-Raff",
-  noticeText   = "You paid 3,847 eddies of your own to ride all the way out to Rocky Ridge, just to see if "
-              .. "Jackie was really out here — and then you told the world about it. That's ten times back, "
-              .. "choom, and Jackie's Arch with it. Nobody puts in road miles like that for a mod they don't "
-              .. "love. Gracias. — Jackie & the Jackie Lives team",
+  noticeTitle  = "Jackie Lives — thank you, Reverend Flash",
+  -- The note states the amount, as Antonia asked ("your ... eddies returned 10 fold").
+  noticeText   = "You paid 3,847 eddies out of your own pocket to ride all the way out to Rocky Ridge — just "
+              .. "to find out whether Jackie was really still breathin' out here. Then you went and told the "
+              .. "world about it.\n\nSo here's your 3,847 eddies back, returned TEN FOLD: 38,470. And Jackie's "
+              .. "Arch with it.\n\nNobody puts in road miles like that for a mod they don't love. Gracias, "
+              .. "Reverend. — Jackie & the Jackie Lives team",
 }
 
 -- ---- Misty, retired (v1.55 — Husbando only) -------------------------------
@@ -1215,6 +1218,15 @@ Config.nativeCall = {
   -- Both are written to FAIL OPEN: anything we can't positively identify as a Jackie call runs vanilla.
   preemptCall        = true,
   suppressStatusText = true,
+
+  -- v1.56 THE "SEMI-SMART IDENTIFIER" (Antonia's idea, and it's the right one). We do NOT depend on knowing
+  -- the engine's exact parameter names/order/arity — which we cannot verify without a Windows machine, and
+  -- which changes between game patches anyway. Instead the Override stringifies EVERY argument it is handed
+  -- and keyword-matches. If any of them names Jackie (or a dead/disconnected number), it's our call.
+  -- Matching is case-insensitive and literal (no Lua patterns), so these are safe to edit freely.
+  -- ⚠️ Keep them SPECIFIC. A keyword that also appears in someone else's contact would swallow THEIR call.
+  -- Every phone call the mod sees is logged once, so the CET log shows exactly what these are matching.
+  jackieKeywords = { "jackie", "jackie_dead", "disconnected", "unavailable" },
   useNativeWindow   = true,          -- ON (Antonia's design): RING (IncomingCall ~2s) -> STOP (EndCall,
                                    --   aborts the canned native call) -> CONNECT (StartCall, the empty
                                    --   transparent window) -> our branching voice convo runs over it ->
@@ -1392,11 +1404,29 @@ Config.bikePhysics = {
 -- The bike-back beat is folded in here (the old firstCallTree fallback was retired v0.94b).
 -- ============================================================================
 Config.reunionCallTree = {
-  start = "pickup",
+  start = "answer",
+  -- v1.56 (Antonia): "no voice lines should fire during the call at all. It sounds weird when it's mostly
+  -- subtitle and suddenly a line." Correct — and it was worse than it looked: an unvoiced line still played
+  -- the jl_fallback GRUNT, so the call was a stretch of grunting with one real VO clip landing on top of it.
+  -- `muteFallback` makes every text-only line GENUINELY SILENT. The ONLY voiced line left in the whole call
+  -- is the greeting on `answer` — one short clip, right where a voice is least jarring: the hello.
+  muteFallback = true,
   nodes = {
+    -- THE ONE VOICED LINE IN THE CALL. Real VO in BOTH tracks — "Chica! Finally!" (female) and a genuine
+    -- male clip for "Hermano, finally!" — and it's exactly the right sentiment: he's been sat on this phone
+    -- for weeks waiting for it to ring. Short, warm, and it earns the silence that follows.
+    answer = {
+      jackiePool = {
+        { text = "Chica! Finally!", sfx = "jl_2008322358689853440",
+          m = { text = "Hermano, finally!", sfx = "jl_jackie_q113_m_1bdefe8b702ef000" } },
+      },
+      choices = {
+        { text = "...Jackie? Is that really your voice?", to = "pickup" },
+      },
+    },
     pickup = {
       jackiePool = {
-        { text = "...V? Dios mío, it's really you. Been starin' at this phone for weeks wonderin' if you'd ever ring it." },
+        { text = "It's me. It's me, V. Been starin' at this phone for weeks wonderin' if you'd ever ring it." },
       },
       choices = {
         { text = "You son of a bitch. You're ALIVE?",        to = "alive" },
@@ -1563,9 +1593,11 @@ Config.reunionCallTree = {
     onmyway = {
       -- terminal -> reunion_arrival: Jackie walks in on foot -> first meeting. v1.54: the Arch only goes
       -- back if V promised it (jackielives_bike == 1); the action reads the fact, so this node is neutral.
-      -- v0.93: VOICED sign-off — real clip "Made it. Almost at your place." (he's already on the way).
+      -- v1.56: was the VOICED clip "Made it. Almost at your place." — which never made sense as a HANG-UP
+      -- line (he hadn't set off yet; the clip was chosen for its audio, and the words were bent to fit it).
+      -- Unvoiced now, so it can finally say what this beat actually is: he's hanging up to come to her.
       jackiePool = {
-        { text = "Made it. Almost at your place.", sfx = "jl_1866275454447677440" },
+        { text = "I'm already movin', V. Don't you go nowhere. ...I'll see you in a minute, yeah? Been a long time comin'." },
       },
       action = "reunion_arrival",
     },
@@ -1573,10 +1605,15 @@ Config.reunionCallTree = {
 }
 
 -- The SHORT face-to-face first meeting, played when the walked-in Jackie reaches V.
+-- v1.56: same rule as the call — `muteFallback` silences the grunt on every text-only line, and the ONE
+-- voiced line is the GREETING. Everything that used to be voiced mid-scene is now text, and rewritten:
+-- those subtitles had been bent to match whatever the clip happened to say, which is why they read oddly.
 Config.reunionMeetTree = {
   start = "seeya",
+  muteFallback = true,
   nodes = {
-    -- v0.93: greeting is VOICED (Antonia's locked pick) — subtitle = the real clip words.
+    -- THE ONE VOICED LINE HERE. A real clip, and it's a greeting — exactly where a voice belongs.
+    -- (It also has a real male mirror clip via Config.hermanoLines, so both tracks are voiced.)
     seeya = {
       jackiePool = {
         { text = "Don't come here often, do ya? Heheh. It's good to see you, chica.", sfx = "jl_1661700260668284928" },
@@ -1608,13 +1645,15 @@ Config.reunionMeetTree = {
           cond = function() local f = jlBikeOutcome; return (f == nil) or f() == 0 end },    -- 0 = never came up
       },
     },
-    -- v0.93: VOICED — real clip ("...How about I drive you home, eh?"). V kept his bike safe = "savin' my ass".
+    -- v1.56: was the VOICED clip "Aah, savin' my ass, V, thank you. How about I drive you home, eh?" — the
+    -- words were picked for the audio, and "savin' my ass" is a strange thing to say about a KEPT BIKE.
+    -- Unvoiced now, so it can be the beat it actually is: he's just realised she never sold the Arch.
     drivehome = {
       jackiePool = {
-        { text = "Aah, savin' my ass, V, thank you. How about I drive you home, eh?", sfx = "jl_1866254590956171264" },
+        { text = "...Hold up. My bike. You still got her? All this time, you kept her?" },
       },
       choices = {
-        { text = "Drive me home? She's your ride, Jackie — here, have your keys back.", to = "bikejoy" },
+        { text = "She's in my garage, Jackie. Waiting for you. Here — your keys.", to = "bikejoy" },
       },
     },
     -- v1.54: V told him on the call she's keeping the Arch. He's already made his peace with it — so he
@@ -1640,9 +1679,12 @@ Config.reunionMeetTree = {
     },
     leave = {
       -- terminal -> reunion_complete: unlock the whole mod (schedule + calls + summon).
-      -- v0.93: VOICED sign-off ("...dyin' for some fresh air") — they head off for his Arch.
+      -- v1.56: was the VOICED clip "...I'm dyin' for some fresh air" — a line about wanting to get OUTSIDE,
+      -- which is a strange note to close the reunion on (he's spent months in an empty desert). Unvoiced now,
+      -- so it can land the moment properly: he's home, and he's not going anywhere again.
       jackiePool = {
-        { text = "Now let's get outta here. I'm dyin' for some fresh air.", sfx = "jl_1676583523110838280" },
+        { text = "C'mon, V. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?",
+          m = { text = "C'mon, hermano. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?" } },
       },
       action = "reunion_complete",
     },

@@ -2231,10 +2231,15 @@ local function isReunionBeat()
 end
 
 -- Play a Jackie line: real voice (sfx, else the guaranteed jl_fallback WAV) + subtitle.
-local function speakJackieLine(text, sfx)
+-- v1.56 `mute`: suppress the jl_fallback GRUNT on a text-only line. Normally an unvoiced line still plays
+-- a neutral vocal effort so Jackie isn't silent — but on the reunion beats that's exactly the problem
+-- Antonia hit: a long stretch of grunt-backed subtitles with the occasional real VO line landing on top of
+-- it reads as broken rather than intentional. A tree can now set `muteFallback = true` (Branch.start passes
+-- it through) to be GENUINELY silent except for the lines that carry a real `sfx`.
+local function speakJackieLine(text, sfx, mute)
   local spoke = false
   if sfx then spoke = playVoice(sfx) end
-  if not spoke then spoke = playVoice("jl_fallback") end
+  if not spoke and not mute then spoke = playVoice("jl_fallback") end
   -- pace by the real clip length when readable; on the mute build, scale to text length for the
   -- reunion beats (v0.94), else the old flat 3 s.
   local secs = voiceDuration(sfx) or (isReunionBeat() and readingSecs(text)) or 3.0
@@ -2732,7 +2737,8 @@ Branch.start = function(nodeKey, tree)
     jline = pickPoolLine(node.jackiePool)
   end
   jline = jlVar(jline)   -- v1.2: swap in the Hermano (male-V) line if this entry carries an `m = {...}`
-  local secs = speakJackieLine(jline and jline.text, jline and jline.sfx)
+  -- v1.56: a tree may declare `muteFallback = true` -> no grunt on its text-only lines (see speakJackieLine).
+  local secs = speakJackieLine(jline and jline.text, jline and jline.sfx, tree.muteFallback)
   bstate.openAt = (JL.clock or 0) + secs + 0.4
 end
 
@@ -3315,19 +3321,41 @@ end
 -- dead-card flash comes back; it can never eat someone's quest call. Set Config.nativeCall.preemptCall =
 -- false to disable the whole thing and fall back to the legacy Observe.
 --
--- ⚠️ UNVERIFIED (needs one in-game check): the exact FIELD NAMES on questTriggerCallRequest. We try several
--- and log what we actually saw (jlLogCallRequest) so the names can be pinned down from the CET console if
--- the first attempt reads nothing.
-function jlReadCallRequest(request)
-  local nm, phase = nil, nil
-  pcall(function()
-    -- try the likely names in order; whichever resolves first wins
-    local a = request.addressee or request.contactName or request.callId or request.caller
-    if a ~= nil then nm = tostring(a) end
-    local p = request.callPhase or request.phase or request.callMode
-    if p ~= nil then phase = tostring(p) end
-  end)
-  return nm, phase
+-- v1.56 — HOW WE IDENTIFY THE CALL WITHOUT KNOWING THE ENGINE'S FIELD NAMES.
+--
+-- The v1.55 attempt hooked `OnTriggerCall(request)` and tried to read named fields off the request struct
+-- (`request.addressee` etc.). Those names were never verified, and Antonia has no Windows machine to check
+-- them on — so that was a guess we couldn't test.
+--
+-- We don't need them. `TriggerCall` itself takes the contact and the phase as ORDINARY POSITIONAL ARGS, and
+-- the mod's existing Observe on it has been reading them correctly this whole time (that is how the current
+-- hijack recognises a Jackie call at all). So we Override THE SAME function whose arguments are already
+-- proven to marshal. Override replaces the body: don't call wrapped() and TriggerCall never runs — so it
+-- never writes the call blackboard and never calls SetPhoneFact, and the vanilla scene never wakes.
+--
+-- And rather than depend on the exact ARITY or argument ORDER, we do what Antonia suggested: scan EVERY
+-- argument, stringify it, and keyword-match. If any argument names Jackie, it's a Jackie call. This is
+-- immune to the signature changing between game patches, which is the thing that keeps breaking.
+--
+-- jlScanCallArgs(...) -> matchedKeyword|nil, joinedDescription
+-- Pure string work, no game API — so it is unit-testable off-Windows (and is tested; see tools/).
+function jlScanCallArgs(...)
+  local parts = {}
+  local n = select("#", ...)
+  for i = 1, n do
+    local v = select(i, ...)
+    local s = nil
+    pcall(function() s = tostring(v) end)          -- CName/enum/handle -> a readable string
+    if s and s ~= "" and s ~= "nil" then parts[#parts + 1] = s end
+  end
+  local joined = table.concat(parts, " | ")
+  local hay    = joined:lower()
+  local keys   = (Config.nativeCall and Config.nativeCall.jackieKeywords)
+                 or { "jackie", "jackie_dead", "disconnected", "unavailable" }
+  for _, k in ipairs(keys) do
+    if hay:find(tostring(k):lower(), 1, true) then return k, joined end
+  end
+  return nil, joined
 end
 
 -- Observe PhoneSystem:TriggerCall; when the PLAYER calls Jackie's contact (IncomingCall on a
@@ -3369,41 +3397,53 @@ local function setupCallPreempt()
   if Config.nativeCall.preemptCall == false then return false end
 
   local ok, err = pcall(function()
-    Override("PhoneSystem", "OnTriggerCall", function(self, request, wrapped)
-      -- ---- FAIL OPEN from here down: any doubt whatsoever -> run the vanilla call untouched ----
-      if JL.call and JL.call.selfTriggering then return wrapped(request) end   -- our own TriggerCalls pass through
+    -- VARARGS, deliberately. CET appends `wrapped` as the LAST argument, so by capturing everything with
+    -- `...` we never have to know TriggerCall's real arity or argument order — which is exactly the thing
+    -- we could not verify without a Windows box, and exactly the thing that changes between game patches.
+    Override("PhoneSystem", "TriggerCall", function(self, ...)
+      local n       = select("#", ...)
+      local args    = table.pack(...)
+      local wrapped = args[n]                                  -- CET always appends the original last
+      -- Run the untouched vanilla call. EVERY early-out below funnels through this: FAIL OPEN.
+      local function vanilla() return wrapped(table.unpack(args, 1, n - 1)) end
 
-      local nm, phase = jlReadCallRequest(request)
-      if not nm then                                     -- couldn't read the contact -> NOT ours to judge
-        if not JL.call.reqLogged then
-          JL.call.reqLogged = true
-          log("[Preempt] could not read the call request's contact field — letting vanilla run. " ..
-              "Please report this line; the field names need pinning down.")
-        end
-        return wrapped(request)
+      if type(wrapped) ~= "function" then return end           -- signature isn't what we think -> do nothing
+      if JL.call and JL.call.selfTriggering then return vanilla() end   -- our OWN TriggerCalls pass straight through
+
+      -- Antonia's "semi-smart identifier": stringify every argument and keyword-match, instead of trusting
+      -- a field/param name we can't verify.
+      local hit, desc = jlScanCallArgs(table.unpack(args, 1, n - 1))
+
+      -- Log EVERY phone call we see, once each, so the real argument shapes end up in the CET log. This is
+      -- how the signature gets pinned down from a log file instead of from a live debugger.
+      JL.call.seenCalls = JL.call.seenCalls or {}
+      if not JL.call.seenCalls[desc] then
+        JL.call.seenCalls[desc] = true
+        log("[Preempt] phone call seen: " .. tostring(desc) .. "   (match=" .. tostring(hit) .. ")")
       end
-      if not nm:find("jackie") then return wrapped(request) end   -- somebody else's call — never touch it
 
-      -- Pre-shard, Jackie IS believed dead: Antonia wants the vanilla "number disconnected" call to play
-      -- out exactly as the base game does. Only take over once he's actually reachable.
+      if not hit then return vanilla() end                     -- not Jackie's -> never touch somebody else's call
+
+      -- Pre-shard, Jackie IS believed dead: Antonia wants the vanilla "number disconnected" call to play out
+      -- exactly as the base game does. Only take over once he's actually reachable.
       local reachable = Retrieval.isUnlocked() or Retrieval.isAwaitingCall()
       if not reachable and not jlCallFix().forceHijack then
         log("[Preempt] player dialed Jackie — pre-shard stage, letting the vanilla disconnected call play.")
-        return wrapped(request)
+        return vanilla()
       end
 
       -- REACHABLE. The call the game is about to start is the DEAD-contact one, which is simply wrong now.
-      -- Don't call wrapped(): the vanilla call never begins, so there is no card and no fact to race.
-      log("[Preempt] player dialed Jackie (reachable) -> swallowed the vanilla call; running ours instead. " ..
-          "(contact='" .. tostring(nm) .. "' phase='" .. tostring(phase) .. "')")
+      -- Don't call vanilla(): TriggerCall's body never runs, so it never writes the call blackboard and never
+      -- calls SetPhoneFact — the vanilla scene is never woken. There is nothing left to race.
+      log("[Preempt] Jackie call SWALLOWED before it started (matched '" .. tostring(hit) .. "') -> running ours.")
       pcall(jlSilenceVanillaJackieCall)   -- belt-and-braces: disarm the scene's facts anyway
       pcall(onPlayerCalledJackie)
-      -- deliberately NO wrapped(request)
+      -- deliberately NO vanilla()
     end)
   end)
   if ok then
-    log("Call PRE-EMPT registered (Override PhoneSystem.OnTriggerCall — the vanilla Jackie call is " ..
-        "stopped before it starts, not chased after the fact).")
+    log("Call PRE-EMPT registered (Override PhoneSystem.TriggerCall — the vanilla Jackie call is stopped " ..
+        "BEFORE it starts, not chased after the fact).")
   else
     log("Call PRE-EMPT failed to register (" .. tostring(err) .. ") -> falling back to the legacy Observe.")
   end
@@ -6909,13 +6949,13 @@ registerForEvent("onInit", function()
   pcall(function()
     Retrieval.bind{
       log = log, isHermano = jlHermano, showObjective = showOnscreenMsg,
-      -- v1.55: the SAME record jlReturnJackiesBike disables, so the K-Raff restore re-enables exactly the
+      -- v1.55: the SAME record jlReturnJackiesBike disables, so the Reverend Flash restore re-enables exactly the
       -- bike the reunion took away — they can't drift apart.
       bikeRecord = (Config.bikeReturn and Config.bikeReturn.bikeRecord) or nil,
     }
-    -- v1.55: the K-Raff easter egg is authored in config.lua (with all the other content), but it RUNS in
+    -- v1.55: the Reverend Flash easter egg is authored in config.lua (with all the other content), but it RUNS in
     -- retrieval.lua, which owns the proximity/popup machinery and does not require config.lua. Hand it over.
-    Retrieval.Config.kraff = Config.kraff
+    Retrieval.Config.revflash = Config.revflash
   end)
   -- v0.96 BLAZE: inject every game-touching primitive the set-piece needs, built from the
   -- proven helpers in this file. blaze.lua stays pure Lua; ONLY this table calls Game.*.
@@ -8149,16 +8189,16 @@ registerForEvent("onDraw", function()
     ImGui.TextWrapped(JL.ui.lastCapture)
   end
 
-  -- v1.55: K-Raff easter egg. Testable WITHOUT the real coords — "Fire now" ignores position entirely.
+  -- v1.55: Reverend Flash easter egg. Testable WITHOUT the real coords — "Fire now" ignores position entirely.
   -- To arm it for real: stand in the bar, hit "Capture current position" above, paste the x/y/z into
-  -- Config.kraff.pos, and set Config.kraff.enabled = true.
+  -- Config.revflash.pos, and set Config.revflash.enabled = true.
   ImGui.Separator()
-  local K = Config.kraff or {}
-  ImGui.Text(("K-Raff easter egg: %s  (%d eddies + the Arch)")
+  local K = Config.revflash or {}
+  ImGui.Text(("Reverend Flash easter egg: %s  (%d eddies + the Arch)")
              :format(K.enabled and "ARMED" or "off — needs the bar's coords", K.eddies or 0))
-  if ImGui.Button("Fire K-Raff egg now (ignores coords)") then pcall(function() Retrieval.debugKraff() end) end
+  if ImGui.Button("Fire Reverend Flash egg now (ignores coords)") then pcall(function() Retrieval.debugRevflash() end) end
   ImGui.SameLine()
-  if ImGui.Button("Re-arm K-Raff egg") then pcall(function() Retrieval.resetKraff() end) end
+  if ImGui.Button("Re-arm Reverend Flash egg") then pcall(function() Retrieval.resetRevflash() end) end
 
   -- Consolidated "spots" tuning — idle collision, force-venue and the seat tuner, all in one place.
   ImGui.Separator()
