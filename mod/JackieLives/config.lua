@@ -524,8 +524,8 @@ Config.follow = {
 Config.revflash = {
   enabled      = true,
   pos          = { 2548.57, -31.076, 82.609 },   -- behind the bar, in the BD shack by the gas station
-  radius       = 5.0,     -- m — you have to go BEHIND the bar. Deliberately small; see the note above.
-  noticeRadius = 0.5,     -- m — the tight, hidden spot where the tribute card appears
+  radius       = 1.4,     -- m — v1.56: both radii are 1.4 (Antonia). You must stand behind the bar itself.
+  noticeRadius = 1.4,     -- m — the tribute card now lands with the payout, same tight spot
 
   -- The payout: 3,847 eddies spent -> 38,470 back (10x).
   spent        = 3847,
