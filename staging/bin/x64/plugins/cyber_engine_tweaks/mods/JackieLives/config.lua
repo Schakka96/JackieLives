@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.54"
+Config.version = "1.55"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -282,7 +282,16 @@ Config.abreast = {
   angleRight     = 0.85,    -- near-front on V's RIGHT (Antonia's tuned value)
   angleLeft      = 11.25,   -- near-front on V's LEFT  (Antonia's tuned value)
   sideHysteresis = 0.6,     -- m the other side must be closer by before he switches sides (anti-flip-flop)
-  radius         = 3.5,     -- metres from V he holds (Antonia's tuned value)
+  radius         = 3.5,     -- metres from V he holds — FALLBACK only; the live value is jlFollowDistance()
+  -- v1.55 FLEXIBLE DISTANCE BAND (Antonia: "the abreast follow should be more flexible on the distance:
+  -- anything from 1.2m to 5m is ok"). The old model rebuilt his anchor at EXACTLY `radius` every re-issue,
+  -- so any drift in or out was actively corrected — he was forever being tugged back onto one precise ring.
+  -- Now, if he's ALREADY somewhere inside [minRadius, maxRadius], that distance is accepted and the anchor
+  -- is rebuilt AT HIS CURRENT DISTANCE — we only correct the ANGLE (keep him beside her, not behind). He's
+  -- pulled back toward the nominal radius only when he strays outside the band entirely. Net effect: he
+  -- ambles anywhere from brushing-your-shoulder to a few metres out, and stops fighting for a spot.
+  minRadius      = 1.2,     -- m — closer than this and he's crowding V -> push him back out to nominal
+  maxRadius      = 5.0,     -- m — further than this and he's drifting away -> pull him back in to nominal
   smoothSeconds  = 3.3,     -- EMA time-constant for V's heading (Antonia's tuned value)
   interval       = 0.3,     -- s between re-issues of the move-to-anchor command (short = tracks the drift)
   movement       = "Walk",  -- how he moves while HOLDING position (matches V's walk)
@@ -478,10 +487,76 @@ Config.respawnSettle = {
 -- raise it or set enabled=false if he ever looks jittery). Only runs while he's a settled companion.
 Config.follow = {
   enabled  = true,
-  distance = 1.5,    -- metres he keeps behind V (Antonia's tuned default, 2026-07-01)
+  -- v1.55: this is now only the FALLBACK. The live trail distance comes from jlFollowDistance() — the
+  -- "Jackie's follow distance" slider in Esc -> Settings, which drives BOTH this trail and the walk-abreast
+  -- radius from one number (Antonia: "the default distance for sprint follow and abreast follow can be the
+  -- same right? Like 3-5m?"). Default is Config.followDistanceDefault below (3.5 m), up from the old 1.5.
+  distance = 3.5,    -- metres he keeps behind V — fallback if the slider value is somehow unreadable
   interval = 1.5,    -- seconds between follow re-asserts
   movement = "Run",  -- "Walk" | "Run" | "Sprint" — how he closes the gap when he drifts back
 }
+
+-- ============================================================================
+-- EASTER EGG (v1.55) — K-RAFF's refund, at Rocky Ridge
+-- ============================================================================
+-- K-Raff is a YouTuber who play-tested the mod and, having no fast-travel out there, paid **3,847 eddies**
+-- to get himself to Rocky Ridge. If he (or anyone) ever plays it again, the bar beside the garage pays him
+-- back TENFOLD — and gives Jackie's Arch back on top.
+--
+-- It fires on PROXIMITY, once per save, and needs nothing from the questline (it works whatever stage
+-- you're at). Two separate, independently-latched triggers on the same spot:
+--   * the PAYOUT   — within `radius` (a room-sized zone: walk into the bar and it happens).
+--   * the THANK-YOU — within `noticeRadius` (0.5 m — a deliberate "stand exactly here" spot, so the
+--     tribute card is a genuinely hidden thing you have to be looking for).
+--
+-- ⚠️ COORDS ARE A PLACEHOLDER. `pos` currently points at the Rocky Ridge GARAGE (the hideout), not the bar
+-- next door. Antonia is capturing the real ones. Until `pos` is replaced, `enabled = false` keeps the whole
+-- thing inert — it will NOT fire at the garage and spoil the reunion. To arm it:
+--   1. Stand in the bar, open the CET window -> "Capture current position", copy the x/y/z it prints.
+--   2. Paste them into `pos` below and set `enabled = true`.
+Config.kraff = {
+  enabled      = false,   -- ⚠️ flip to true ONLY once `pos` below is the real bar (see above)
+  pos          = { 2575.852, 0.291, 80.871 },   -- ⚠️ PLACEHOLDER = the garage. Replace with the BAR's coords.
+  radius       = 6.0,     -- m — walk into the bar and the payout fires
+  noticeRadius = 0.5,     -- m — the tight, hidden spot where the thank-you card appears
+
+  -- The payout. 3,847 eddies spent -> 38,470 back.
+  -- A physical lootable "money shard" would mean spawning a world item and wiring its loot table, which is
+  -- fragile from CET; Antonia said cash is fine if the shard isn't easy. So we credit the eddies directly
+  -- (Items.money), which is instant, safe, and can't be missed or lost.
+  eddies       = 38470,
+  moneyItem    = "Items.money",
+  factMoney    = "jackielives_kraff_paid",     -- one-time latch: the payout
+  factNotice   = "jackielives_kraff_thanked",  -- one-time latch: the tribute card
+
+  -- Give Jackie's Arch back too. This UNDOES whatever removed it (jlReturnJackiesBike disables the vehicle
+  -- record); we simply re-enable it. If V already has it, we skip — see jlKraffRestoreBike.
+  restoreBike  = true,
+
+  bannerText   = "Something's been left here for you...",   -- native banner when the payout lands
+  noticeTitle  = "Jackie Lives — thank you, K-Raff",
+  noticeText   = "You paid 3,847 eddies of your own to ride all the way out to Rocky Ridge, just to see if "
+              .. "Jackie was really out here — and then you told the world about it. That's ten times back, "
+              .. "choom, and Jackie's Arch with it. Nobody puts in road miles like that for a mod they don't "
+              .. "love. Gracias. — Jackie & the Jackie Lives team",
+}
+
+-- ---- Misty, retired (v1.55 — Husbando only) -------------------------------
+-- In Husbando, the FIRST time Jackie is at Misty's Esoterica is the last: that's where they break up, and
+-- he never goes back. The break-up is never spoken (v1.54 cut every line about it) — it's shown, by him
+-- simply never being at her shop again. From then on that schedule slot resolves to the noodle bar instead.
+-- Hermano is untouched: they're solid, and his Misty visits carry on forever.
+-- Both keys are `Config.locations` keys; the swap happens in currentScheduleBlock (init.lua).
+Config.mistyKey            = "misty"    -- the venue that retires (Husbando)
+Config.mistyReplacementKey = "noodle"   -- what that slot becomes afterwards
+
+-- ---- follow-distance slider (v1.55) ---------------------------------------
+-- ONE number, set in Esc -> Settings -> Jackie Lives -> Gameplay, that drives how far away Jackie sits in
+-- BOTH follow modes: the trail (followKeepCloseTick, while V jogs/sprints) and walk-abreast (his side
+-- anchor while V strolls). Persisted as a float — see JL_SETTINGS_NUMS in init.lua.
+Config.followDistanceDefault = 3.5   -- m — the slider's default + reset value
+Config.followDistanceMin     = 1.2   -- m — slider floor
+Config.followDistanceMax     = 8.0   -- m — slider ceiling
 
 -- ---- ask Jackie to dinner / a date (v0.41 - restaurant walk) -------------
 -- While Jackie is your COMPANION, the talk menu offers a dinner invite. V then picks a specific
@@ -1128,6 +1203,18 @@ Config.nativeCall = {
   id                = "jackie_dead", -- quest phone-call CName for the call (avatar source)
   hijackPlayerCalls = true,          -- when the PLAYER calls Jackie from the in-game phone, route that
                                      --   call into our flow (immersive). Observes PhoneSystem:TriggerCall.
+
+  -- v1.55 THE REAL FIX for the "temporarily unavailable" flash. The old hijack was an `Observe` on
+  -- PhoneSystem.TriggerCall — a POST-hook, so the vanilla call (and its quest fact, and therefore its
+  -- scene) had ALREADY started by the time we reacted. Everything after that was catch-up; that race is
+  -- why the dead card kept flashing. `preemptCall` instead OVERRIDES PhoneSystem.OnTriggerCall — the
+  -- handler that runs BEFORE the call starts — and simply doesn't let the vanilla Jackie call begin.
+  --   preemptCall        = true  -> pre-empt (recommended; falls back to the old Observe if it can't register)
+  --                        false -> use the old racing Observe (only if the pre-empt ever misbehaves)
+  --   suppressStatusText = true  -> also swallow the "number temporarily unavailable" TEXT while our call runs
+  -- Both are written to FAIL OPEN: anything we can't positively identify as a Jackie call runs vanilla.
+  preemptCall        = true,
+  suppressStatusText = true,
   useNativeWindow   = true,          -- ON (Antonia's design): RING (IncomingCall ~2s) -> STOP (EndCall,
                                    --   aborts the canned native call) -> CONNECT (StartCall, the empty
                                    --   transparent window) -> our branching voice convo runs over it ->

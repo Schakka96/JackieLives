@@ -1279,7 +1279,21 @@ end
 local function currentScheduleBlock()
   local h = getGameHour(); if not h then return nil, nil end
   for _, b in ipairs(activeSchedule()) do
-    if hourInBlock(h, b.startHour, b.endHour) then return b, h end
+    if hourInBlock(h, b.startHour, b.endHour) then
+      -- v1.55 (Husbando only): once Jackie has been to Misty's ONCE, that's where they break up — and he
+      -- never goes back. Every later Misty slot in the schedule becomes the noodle bar instead. Hermano is
+      -- untouched: there they're solid, and he keeps his standing visit.
+      -- Return a COPY — the schedule blocks are shared Config tables and must never be mutated in place,
+      -- or one swap would permanently rewrite the schedule for the whole session (Hermano included).
+      if b.state == "at_location"
+         and b.locationKey == (Config.mistyKey or "misty")
+         and jlMistyRetired() then
+        local c = {}; for k, v in pairs(b) do c[k] = v end
+        c.locationKey = Config.mistyReplacementKey or "noodle"
+        return c, h
+      end
+      return b, h
+    end
   end
   return nil, h
 end
@@ -2137,6 +2151,20 @@ JL_BIKE_UNASKED  = 0   -- the bike never came up on the call
 JL_BIKE_RETURNED = 1   -- V told him she'd kept it safe -> he gets the Arch back on arrival
 JL_BIKE_KEPT     = 2   -- V told him she's keeping it -> it stays in her garage
 
+-- ---------------------------------------------------------------------------
+-- FOLLOW DISTANCE (v1.55). ONE player-set number (Esc -> Settings -> Gameplay) driving how far Jackie sits
+-- from V in BOTH follow modes — the trail (followKeepCloseTick, while V jogs/sprints) and the walk-abreast
+-- side anchor (while V strolls). Antonia: the two can share a default, ~3-5 m. Clamped to the slider's own
+-- range so a corrupt settings file can't park him 200 m away or inside V. Global (200-local cap).
+function jlFollowDistance()
+  local d = JL.followDistance
+  if type(d) ~= "number" then d = Config.followDistanceDefault or 3.5 end
+  local lo = Config.followDistanceMin or 1.2
+  local hi = Config.followDistanceMax or 8.0
+  if d < lo then d = lo elseif d > hi then d = hi end
+  return d
+end
+
 function jlFactNum(name)          -- read a numeric game fact; 0 if unset/unreadable
   local v; pcall(function() v = Game.GetQuestsSystem():GetFactStr(name) end)
   return (type(v) == "number") and v or 0
@@ -2145,6 +2173,32 @@ function jlSetFactNum(name, n)
   pcall(function() Game.GetQuestsSystem():SetFactStr(name, n) end)
 end
 function jlBikeOutcome() return jlFactNum("jackielives_bike") end
+
+-- ---------------------------------------------------------------------------
+-- MISTY, RETIRED (v1.55 — Husbando only). Antonia: "after Jackie has been to Misty's once (that's when
+-- they break up) Jackie should NOT go to Misty again. Swap for noodle bar in schedule, he won't come back
+-- to her." So the break-up is never SPOKEN (v1.54 cut all of that) — it's shown, by his absence.
+--
+-- jackielives_misty_done is set the first time he's actually spawned at her shop, and persists in the save.
+-- The one subtlety: while he is STILL THERE we must not report him retired, or scheduleTick would see the
+-- swapped block, decide he's at the wrong venue, and walk him out mid-visit. So the visit he's currently
+-- having always finishes; only the NEXT Misty slot gets swapped.
+-- HERMANO IS UNAFFECTED — they're together, and he keeps his standing visit forever.
+JL_FACT_MISTY_DONE = "jackielives_misty_done"
+
+function jlMistyRetired()
+  if JL.husbando ~= true then return false end                        -- Hermano -> he always goes to Misty's
+  if JL.idle and JL.idle.locationKey == (Config.mistyKey or "misty") then return false end  -- mid-visit, let it play out
+  return jlFactNum(JL_FACT_MISTY_DONE) >= 1
+end
+
+-- Called when he's spawned at Misty's: latch the (one and only) visit into the save.
+function jlMarkMistyVisited()
+  if JL.husbando ~= true then return end                              -- only Husbando breaks up
+  if jlFactNum(JL_FACT_MISTY_DONE) >= 1 then return end               -- already latched
+  jlSetFactNum(JL_FACT_MISTY_DONE, 1)
+  log("Husbando: Jackie's been to Misty's — that's the last time. Her schedule slot now goes to the noodle bar.")
+end
 
 -- ---------------------------------------------------------------------------
 -- BRANCHING dialogue (v0.23): native-looking choice box driving a small tree.
@@ -3239,9 +3293,47 @@ function jlStartAliveCall()
   log("Test: full alive-call flow armed.")
 end
 
+-- ===========================================================================
+-- v1.55 — PRE-EMPTING THE VANILLA CALL (the fix for the dead-card flash)
+-- ===========================================================================
+-- WHY EVERY PREVIOUS ATTEMPT WAS FLAKY: the old hijack (below) is an `Observe` on PhoneSystem.TriggerCall,
+-- and CET's Observe is a POST-hook. By the time our callback ran, TriggerCall had ALREADY written the call
+-- blackboard AND already called SetPhoneFact("phonecall_player_with_jackie_dead", 1) — which is the one and
+-- only bridge from the phone to the quest graph (phoneSystem.script:318-330). The vanilla dead-number scene
+-- was therefore already awake, and everything we did afterwards (EndCall, zeroing facts, the interrupt
+-- pulse) was catch-up. It was a race we could only ever partly win — hence the flashing card.
+--
+-- THE FIX: PhoneSystem is a plain scripted ScriptableSystem, so its methods are RTTI-registered and
+-- Override-able. `OnTriggerCall(request)` (phoneSystem.script:155) is the REQUEST HANDLER that runs BEFORE
+-- TriggerCall. Every dial — player or quest — funnels through it. Override it and simply DON'T call
+-- wrapped() for Jackie's dead contact, and the vanilla call never starts at all: no blackboard write, no
+-- fact, no scene, no status card, no voicemail VO. Nothing to race.
+--
+-- ⚠️ THIS OVERRIDE SITS ON THE PATH OF EVERY PHONE CALL IN THE GAME. So it is written to FAIL OPEN: if we
+-- cannot positively identify the request as a Jackie call we hand it straight to wrapped() untouched. Any
+-- error, any unreadable field, any doubt -> vanilla behaviour. The worst realistic failure is that the old
+-- dead-card flash comes back; it can never eat someone's quest call. Set Config.nativeCall.preemptCall =
+-- false to disable the whole thing and fall back to the legacy Observe.
+--
+-- ⚠️ UNVERIFIED (needs one in-game check): the exact FIELD NAMES on questTriggerCallRequest. We try several
+-- and log what we actually saw (jlLogCallRequest) so the names can be pinned down from the CET console if
+-- the first attempt reads nothing.
+function jlReadCallRequest(request)
+  local nm, phase = nil, nil
+  pcall(function()
+    -- try the likely names in order; whichever resolves first wins
+    local a = request.addressee or request.contactName or request.callId or request.caller
+    if a ~= nil then nm = tostring(a) end
+    local p = request.callPhase or request.phase or request.callMode
+    if p ~= nil then phase = tostring(p) end
+  end)
+  return nm, phase
+end
+
 -- Observe PhoneSystem:TriggerCall; when the PLAYER calls Jackie's contact (IncomingCall on a
 -- 'jackie' call id, not one of our own TriggerCalls), hand off to onPlayerCalledJackie.
-local function setupCallHijack()
+-- v1.55: this is now the FALLBACK path — used only if the pre-emptive Override can't be registered.
+local function setupCallHijackLegacy()
   if not (Config.nativeCall and Config.nativeCall.hijackPlayerCalls) then return end
   local ok, err = pcall(function()
     Observe("PhoneSystem", "TriggerCall", function(self, mode, b1, callId, b2, phase)
@@ -3266,7 +3358,82 @@ local function setupCallHijack()
       pcall(onPlayerCalledJackie)
     end)
   end)
-  log("Call hijack " .. (ok and "registered (player phone calls to Jackie -> our flow)." or ("FAILED: " .. tostring(err))))
+  log("Call hijack (legacy Observe) " .. (ok and "registered." or ("FAILED: " .. tostring(err))))
+  return ok
+end
+
+-- v1.55: the PRE-EMPTIVE hijack. Swallows the vanilla Jackie call BEFORE it starts (see the essay above).
+-- Returns true if the Override registered; the caller falls back to the legacy Observe if it didn't.
+local function setupCallPreempt()
+  if not (Config.nativeCall and Config.nativeCall.hijackPlayerCalls) then return false end
+  if Config.nativeCall.preemptCall == false then return false end
+
+  local ok, err = pcall(function()
+    Override("PhoneSystem", "OnTriggerCall", function(self, request, wrapped)
+      -- ---- FAIL OPEN from here down: any doubt whatsoever -> run the vanilla call untouched ----
+      if JL.call and JL.call.selfTriggering then return wrapped(request) end   -- our own TriggerCalls pass through
+
+      local nm, phase = jlReadCallRequest(request)
+      if not nm then                                     -- couldn't read the contact -> NOT ours to judge
+        if not JL.call.reqLogged then
+          JL.call.reqLogged = true
+          log("[Preempt] could not read the call request's contact field — letting vanilla run. " ..
+              "Please report this line; the field names need pinning down.")
+        end
+        return wrapped(request)
+      end
+      if not nm:find("jackie") then return wrapped(request) end   -- somebody else's call — never touch it
+
+      -- Pre-shard, Jackie IS believed dead: Antonia wants the vanilla "number disconnected" call to play
+      -- out exactly as the base game does. Only take over once he's actually reachable.
+      local reachable = Retrieval.isUnlocked() or Retrieval.isAwaitingCall()
+      if not reachable and not jlCallFix().forceHijack then
+        log("[Preempt] player dialed Jackie — pre-shard stage, letting the vanilla disconnected call play.")
+        return wrapped(request)
+      end
+
+      -- REACHABLE. The call the game is about to start is the DEAD-contact one, which is simply wrong now.
+      -- Don't call wrapped(): the vanilla call never begins, so there is no card and no fact to race.
+      log("[Preempt] player dialed Jackie (reachable) -> swallowed the vanilla call; running ours instead. " ..
+          "(contact='" .. tostring(nm) .. "' phase='" .. tostring(phase) .. "')")
+      pcall(jlSilenceVanillaJackieCall)   -- belt-and-braces: disarm the scene's facts anyway
+      pcall(onPlayerCalledJackie)
+      -- deliberately NO wrapped(request)
+    end)
+  end)
+  if ok then
+    log("Call PRE-EMPT registered (Override PhoneSystem.OnTriggerCall — the vanilla Jackie call is " ..
+        "stopped before it starts, not chased after the fact).")
+  else
+    log("Call PRE-EMPT failed to register (" .. tostring(err) .. ") -> falling back to the legacy Observe.")
+  end
+  return ok
+end
+
+-- v1.55: kill the "number temporarily unavailable" status string while OUR call owns the phone.
+-- OnSetPhoneStatus (phoneSystem.script:150) is the only thing that writes it. Cheap insurance: even if the
+-- pre-empt above misses an edge case, the dead-number TEXT still can't appear over our call.
+local function setupPhoneStatusSuppress()
+  if not (Config.nativeCall and Config.nativeCall.hijackPlayerCalls) then return end
+  if Config.nativeCall.suppressStatusText == false then return end
+  local ok, err = pcall(function()
+    Override("PhoneSystem", "OnSetPhoneStatus", function(self, request, wrapped)
+      local c = JL.call
+      local ours = c and (c.ringingAt or c.connectAt or c.hangupAt or c.watchdogAt or c.noAnswerAt)
+      if ours then
+        log("[Preempt] suppressed a native phone status message during our call.")
+        return                                   -- swallow: no "number unavailable" over our call
+      end
+      return wrapped(request)                    -- every other time: untouched
+    end)
+  end)
+  log("Phone status suppression " .. (ok and "registered." or ("FAILED: " .. tostring(err))))
+end
+
+-- The single entry point: try the pre-empt first; only if it can't register do we use the old racing Observe.
+local function setupCallHijack()
+  if not setupCallPreempt() then setupCallHijackLegacy() end
+  setupPhoneStatusSuppress()
 end
 
 -- ---------------------------------------------------------------------------
@@ -4836,7 +5003,7 @@ local function followKeepCloseTick()
     sendWalkToPlayer(h, S.movement or "Walk", S.followDistance or 3.0, S.stealthGait ~= false)
     return
   end
-  sendWalkToPlayer(h, F.movement or "Run", F.distance or 2.5)
+  sendWalkToPlayer(h, F.movement or "Run", jlFollowDistance())   -- v1.55: the slider drives the trail too
 end
 
 -- v0.85b WALK-ABREAST. Instead of trailing behind V (keep-close), hold Jackie at a point OFFSET from V —
@@ -4898,7 +5065,16 @@ function abreastTick()
   JL.abreast.smFwdX, JL.abreast.smFwdY = sx, sy
 
   -- --- two candidate anchors off the smoothed heading; pick the side closest to Jackie --------------
-  local rad  = A.radius or 3.5
+  -- v1.55 FLEXIBLE BAND. The nominal radius is the player's slider (jlFollowDistance). But we do NOT drag
+  -- him onto that exact ring every re-issue — that's what made him fight for a spot. If his CURRENT distance
+  -- from V already sits inside [minRadius, maxRadius] (1.2-5 m), we accept it and build the anchor at that
+  -- distance, correcting only his ANGLE (beside her, not behind). He's only pulled back toward the nominal
+  -- radius when he's strayed outside the band. Note this is the FLAT (x/y) distance, matching the anchor maths.
+  local rad  = jlFollowDistance()
+  local curR = math.sqrt((jp.x - pp.x) ^ 2 + (jp.y - pp.y) ^ 2)
+  local minR = A.minRadius or 1.2
+  local maxR = A.maxRadius or 5.0
+  if curR >= minR and curR <= maxR then rad = curR end   -- already comfortable -> keep his distance, fix the angle
   local pos  = A.positions or 12
   local rx, ry = sy, -sx                                    -- right vector (smoothed forward rotated -90°)
   local function anchor(idx)
@@ -5791,6 +5967,8 @@ local function scheduleTick()
         JL.idle.placed, JL.idle.phase      = false, nil   -- v0.35: wanderTick places + roams him
         JL.idle.curIdx, JL.idle.tgtIdx     = nil, nil
         JL.idle.spawnedAt                  = JL.clock or 0
+        -- v1.55: he's at Misty's, and in Husbando that only ever happens ONCE — latch it (see jlMistyRetired).
+        if wantKey == (Config.mistyKey or "misty") then pcall(jlMarkMistyVisited) end
         log("Idle Jackie at " .. loc.name .. " (" .. tostring(loc.appearance or Config.defaultAppearance) .. ")")
       else
         log("Idle spawn failed: " .. tostring(err))
@@ -5842,6 +6020,7 @@ local function nsTick()
   if JL.disableVehicleArrivals == nil then JL.disableVehicleArrivals = false end  -- v0.51 (false = bike allowed)
   if JL.allowMainGigs == nil then JL.allowMainGigs = false end                    -- v1.32 (false = Quiet Life: no main-mission summons)
   if JL.disableCustomWalk == nil then JL.disableCustomWalk = false end            -- v1.39 (false = custom walk-beside ON)
+  if type(JL.followDistance) ~= "number" then JL.followDistance = Config.followDistanceDefault or 3.5 end  -- v1.55 slider
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
 
@@ -5918,6 +6097,31 @@ local function nsTick()
       end
     )
 
+    -- v1.55: THE FOLLOW-DISTANCE SLIDER (Antonia asked for it back). One number for BOTH follow modes —
+    -- the trail (while you jog/sprint) and the walk-abreast side anchor (while you stroll). Walk-abreast
+    -- treats it as a NOMINAL distance, not a hard target: anywhere in Config.abreast.minRadius..maxRadius
+    -- (1.2-5 m) is accepted without correction, so he ambles instead of fighting for an exact spot.
+    ns.addRangeFloat(
+      "/jackielives/gameplay",
+      "Jackie's follow distance (m)",
+      "How far away Jackie keeps while he's with you — used BOTH when he trails you (running) and when " ..
+      "he walks beside you. Lower = he sticks right on your shoulder; higher = he gives you room. " ..
+      "While walking beside you he treats this as a rough target, not an exact one: anywhere from about " ..
+      "1.2 m to 5 m is fine and he won't keep correcting himself.",
+      Config.followDistanceMin or 1.2,          -- min
+      Config.followDistanceMax or 8.0,          -- max
+      0.1,                                      -- step
+      "%.1f",                                   -- display format
+      jlFollowDistance(),                       -- current (persisted)
+      Config.followDistanceDefault or 3.5,      -- 'reset to default'
+      function(value)
+        JL.followDistance = value
+        pcall(jlSaveSettings)
+        JL.ui.status = string.format("Jackie's follow distance: %.1f m", value)
+        log(string.format("Follow distance -> %.1f m (trail + walk-abreast)", value))
+      end
+    )
+
     ns.addSubcategory("/jackielives/recovery", "Recovery")
     ns.addButton(
       "/jackielives/recovery",
@@ -5947,10 +6151,18 @@ end
 JL_SETTINGS_FILE = "jl_settings.txt"
 JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "disableCustomWalk" }  -- persisted JL.* boolean flags (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
 
+-- v1.55: NUMERIC settings. The file used to serialize booleans only (plus the one `mode` string), which is
+-- precisely why a slider could never be added — its value didn't survive a reload. These keys round-trip as
+-- floats. Kept as a separate list so the boolean loop below stays untouched.
+JL_SETTINGS_NUMS = { "followDistance" }
+
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
   if not f then log("settings: could not write " .. JL_SETTINGS_FILE); return end
   for _, k in ipairs(JL_SETTINGS_KEYS) do f:write(k .. "=" .. tostring(JL[k] == true) .. "\n") end
+  for _, k in ipairs(JL_SETTINGS_NUMS) do                        -- v1.55 floats
+    if type(JL[k]) == "number" then f:write(k .. "=" .. string.format("%.3f", JL[k]) .. "\n") end
+  end
   f:write("mode=" .. tostring(JL.mode or "quietlife") .. "\n")  -- v0.95 string setting (not a boolean)
   f:close()
 end
@@ -5959,11 +6171,16 @@ function jlLoadSettings()
   local f = io.open(JL_SETTINGS_FILE, "r")
   if not f then return end
   for line in f:lines() do
-    local k, v = line:match("^(%w+)=(%w+)$")
+    -- v1.55: the value class was `%w+`, which cannot match a float ("3.500" contains a '.') — so a numeric
+    -- setting would have been written correctly and then silently dropped on load. Accept dots/minus too.
+    local k, v = line:match("^(%w+)=([%w%.%-]+)$")
     if k then
       if k == "mode" and (v == "quietlife" or v == "blaze") then JL.mode = v end  -- v0.95
       for _, want in ipairs(JL_SETTINGS_KEYS) do
         if k == want then JL[k] = (v == "true") end
+      end
+      for _, want in ipairs(JL_SETTINGS_NUMS) do                                  -- v1.55 floats
+        if k == want then local n = tonumber(v); if n then JL[k] = n end end
       end
     end
   end
@@ -6689,7 +6906,17 @@ registerForEvent("onInit", function()
   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
   -- + v1.54 showObjective -> the native banner (with its UI sound), so the quest's steps actually
   -- tell the player what to do next ("Find Jackie...", "Call Jackie", "Wait for Jackie").
-  pcall(function() Retrieval.bind{ log = log, isHermano = jlHermano, showObjective = showOnscreenMsg } end)
+  pcall(function()
+    Retrieval.bind{
+      log = log, isHermano = jlHermano, showObjective = showOnscreenMsg,
+      -- v1.55: the SAME record jlReturnJackiesBike disables, so the K-Raff restore re-enables exactly the
+      -- bike the reunion took away — they can't drift apart.
+      bikeRecord = (Config.bikeReturn and Config.bikeReturn.bikeRecord) or nil,
+    }
+    -- v1.55: the K-Raff easter egg is authored in config.lua (with all the other content), but it RUNS in
+    -- retrieval.lua, which owns the proximity/popup machinery and does not require config.lua. Hand it over.
+    Retrieval.Config.kraff = Config.kraff
+  end)
   -- v0.96 BLAZE: inject every game-touching primitive the set-piece needs, built from the
   -- proven helpers in this file. blaze.lua stays pure Lua; ONLY this table calls Game.*.
   pcall(function()
@@ -7921,6 +8148,17 @@ registerForEvent("onDraw", function()
     ImGui.Text("Last capture (also in console — copy into config.lua):")
     ImGui.TextWrapped(JL.ui.lastCapture)
   end
+
+  -- v1.55: K-Raff easter egg. Testable WITHOUT the real coords — "Fire now" ignores position entirely.
+  -- To arm it for real: stand in the bar, hit "Capture current position" above, paste the x/y/z into
+  -- Config.kraff.pos, and set Config.kraff.enabled = true.
+  ImGui.Separator()
+  local K = Config.kraff or {}
+  ImGui.Text(("K-Raff easter egg: %s  (%d eddies + the Arch)")
+             :format(K.enabled and "ARMED" or "off — needs the bar's coords", K.eddies or 0))
+  if ImGui.Button("Fire K-Raff egg now (ignores coords)") then pcall(function() Retrieval.debugKraff() end) end
+  ImGui.SameLine()
+  if ImGui.Button("Re-arm K-Raff egg") then pcall(function() Retrieval.resetKraff() end) end
 
   -- Consolidated "spots" tuning — idle collision, force-venue and the seat tuner, all in one place.
   ImGui.Separator()

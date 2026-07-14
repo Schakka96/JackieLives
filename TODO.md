@@ -11,6 +11,114 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🆕 v1.55 (2026-07-14) — Misty retired (Husbando) · follow-distance slider · the phone race finally won · K-Raff · Mac packaging
+
+`Config.version` + `staging/fomod/info.xml` are both **1.55**.
+
+### 1. Husbando: Jackie goes to Misty's ONCE, then never again
+> *"after Jackie has been to Misties once (that's when they break up) jackie should NOT go to Misty again.
+> Swap for noodle bar in schedule, he won't come back to her"*
+
+- [x] The break-up is **never spoken** (v1.54 cut all of it) — it's **shown, by his absence**.
+- [x] `jackielives_misty_done` latches the first time he's actually spawned at her shop. After that,
+  `currentScheduleBlock()` resolves every later Misty slot to **`Config.mistyReplacementKey` (the noodle bar)**.
+- [x] Returns a **COPY** of the block — the schedule tables are shared Config data, and mutating one in place
+  would rewrite the schedule for the whole session, Hermano included.
+- [x] **No mid-visit yank:** `jlMistyRetired()` reports false while he's *currently* at Misty's, or scheduleTick
+  would see the swapped block, decide he's at the wrong venue and walk him out of the visit he's having.
+- [x] **HERMANO IS UNTOUCHED** — they're together; his Misty visits carry on forever.
+- Verified by simulation: Hermano/never · Hermano/after · Husbando/never · Husbando/mid-visit · Husbando/after
+  all resolve correctly, and the Config schedule is provably not mutated.
+
+### 2. The follow-distance slider is back — and abreast got a FLEXIBLE band
+> *"the default distance for sprint follow and abreast follow can be the same right? Like 3-5m? Importantly,
+> the abreast follow should be more flexible on the distance: anything from 1.2m to 5m is ok."*
+
+- [x] **`Jackie's follow distance (m)`** — Esc → Settings → Jackie Lives → Gameplay. One number, driving **both**
+  follow modes: the trail (`followKeepCloseTick`, while V jogs/sprints) and the walk-abreast side anchor.
+  Default **3.5 m** (up from the old 1.5 m trail), range 1.2–8.0.
+- [x] **⚠️ The settings file was BOOLEAN-ONLY** — which is exactly why a slider could never be added before: its
+  value didn't survive a reload. Added `JL_SETTINGS_NUMS` (floats). **And a latent bug:** the loader's pattern
+  was `^(%w+)=(%w+)$`, which *cannot* match `3.500` — a `.` isn't `%w`. A float would have been written
+  correctly and then silently dropped on load. Pattern widened to `[%w%.%-]+`.
+- [x] **FLEXIBLE BAND** (`Config.abreast.minRadius/maxRadius` = 1.2/5.0). The old model rebuilt his anchor at
+  *exactly* `radius` on every re-issue, so any drift was actively corrected — he was forever being tugged back
+  onto one precise ring. Now, if he's **already inside the band**, the anchor is rebuilt **at his current
+  distance** and only his **ANGLE** is corrected. He's pulled toward the nominal radius only when he strays
+  outside 1.2–5 m entirely. Net: he ambles, and stops fighting for a spot.
+- Verified: the float round-trips through save/load and clamps at both ends.
+
+### 3. The native phone call — the race is over (⚠️ needs one in-game check)
+> *"give the native phone dialogue suppression another go. Can you do research on this one?"*
+
+**Researched against the redscript decomp. Two findings, and the first one reframes the problem:**
+
+- **There is NO native dialogue choice hub on a player-dialled call — there never was.** `newHudPhoneGameController`
+  (1982 lines) contains not one reference to `DialogChoiceHubs`/`ChoiceHub`/`Dialog`. And `jackie_holocall.scene`
+  has **zero** choice nodes (contact holocalls are *router graphs*, not conversations). What actually intrudes is
+  the **"number temporarily unavailable" card + 2 voicemail VO lines**. So "suppress the native dialogue" was a
+  misdiagnosis of the real symptom.
+- **WHY EVERY PREVIOUS ATTEMPT WAS FLAKY:** the old hijack is an **`Observe`** on `PhoneSystem.TriggerCall` — and
+  CET's Observe is a **POST-hook**. By the time it ran, `TriggerCall` had *already* called
+  `SetPhoneFact("phonecall_player_with_jackie_dead", 1)` — the one and only bridge from the phone to the quest
+  graph (`phoneSystem.script:318`). The vanilla scene was already awake; everything after was catch-up.
+  **It was a race we could only ever partly win.** That is the flashing card.
+
+- [x] **THE FIX — `Override("PhoneSystem", "OnTriggerCall", …)`.** That's the *request handler*, which runs
+  **before** the call starts. Don't call `wrapped()` for Jackie's dead contact and the vanilla call **never
+  begins**: no blackboard write, no fact, no scene, no card, no VO. Nothing to race.
+- [x] Plus `Override("PhoneSystem", "OnSetPhoneStatus", …)` to swallow the status *text* while our call owns
+  the phone (cheap insurance).
+- [x] **⚠️ This Override sits on the path of EVERY phone call in the game**, so it is written to **FAIL OPEN**:
+  any unreadable field, any doubt → `wrapped(request)`, vanilla behaviour. Worst realistic failure is the old
+  flash returning; it can never eat a quest call. `Config.nativeCall.preemptCall = false` disables it, and it
+  auto-falls-back to the legacy Observe if the Override can't register.
+- [ ] **⚠️ UNVERIFIED, needs Antonia in-game:** the exact field names on `questTriggerCallRequest`
+  (`addressee`/`callPhase`). We try several and **log what we actually saw** — if the log says *"could not read
+  the call request's contact field"*, send that line and the names get pinned down. Until then it fails open,
+  i.e. it behaves exactly like today.
+
+### 4. K-Raff easter egg — 10× refund + the Arch, at Rocky Ridge
+K-Raff play-tested the mod and paid **3,847 eddies** of his own to get out to Rocky Ridge. The bar next to the
+garage pays him back **tenfold (38,470)** and gives Jackie's Arch back on top.
+
+- [x] Proximity-driven, **once per save**, and **independent of the questline** (works at any stage). Two
+  separately-latched triggers on one spot, so finding the money doesn't spend the hidden thank-you:
+  **the payout** within `radius` (6 m — walk into the bar) and **the tribute card** within
+  **`noticeRadius` = 0.5 m** (a deliberate "stand exactly here" spot).
+- [x] **Cash, not a shard.** A lootable money shard means spawning a world item and wiring its loot table —
+  fragile from CET. Antonia said cash is fine if the shard isn't easy, so the eddies are credited directly
+  (`Items.money`): instant, safe, can't be missed.
+- [x] **The Arch is restored** — `EnablePlayerVehicle(rec, true, true)`, the exact inverse of what
+  `jlReturnJackiesBike` does. **Skips if V already has it** (asks `IsVehiclePlayerUnlocked` first; re-enabling
+  is a harmless no-op anyway, so the skip is an optimisation, not a correctness requirement). The record is
+  *bound from* `Config.bikeReturn.bikeRecord`, so the removal and the restore can never name two different bikes.
+- [ ] **⚠️ BLOCKED ON COORDS — `Config.kraff.enabled = false` until they land.** `pos` is currently a
+  **placeholder pointing at the GARAGE**, not the bar, and the egg is **inert** so it can't fire at the garage
+  and spoil the reunion. **To arm it:** stand in the bar → CET window → **"Capture current position"** → paste
+  x/y/z into `Config.kraff.pos` → set `enabled = true`.
+- [x] Testable *without* the coords: CET buttons **"Fire K-Raff egg now (ignores coords)"** and **"Re-arm"**.
+
+### 5. Packaging the Nexus zip on a Mac → `tools/package_nexus.sh`
+> *"I have to package the zip on mac somehow, but to work as windows mod after uploading to nexus, how to do that?"*
+
+**A zip is a zip — Windows doesn't care it was made on a Mac.** There are exactly two ways it goes wrong, and
+both are silent. The script prevents and then *verifies* against both:
+
+1. **The wrapper folder.** Right-click → *Compress* on `staging` gives an archive whose root is `staging/`.
+   Vortex/MO2 then can't see `fomod/` at the top level, **fail to detect the FOMOD installer**, and fall back to
+   the "couldn't determine mod type" installer — which puts the files in the wrong place. The **contents** of
+   `staging/` must be at the archive root.
+2. **Mac metadata.** Finder and `ditto` bury `__MACOSX/` and `._*` AppleDouble files in the archive, and Finder
+   litters `.DS_Store`. On Windows these land as junk inside the game folder. `zip -X` + excludes keep them out.
+
+- [x] `./tools/package_nexus.sh` → `dist/JackieLives-v<version>.zip`. Reads the version from `Config.version`,
+  **refuses to build if `fomod/info.xml` disagrees**, purges Mac junk, zips the *contents* of `staging/`, then
+  **verifies** all four properties and **fails loudly rather than emit a bad zip**.
+- Verified: both failure modes reproduced on purpose, and the real zip has **0** junk/wrapper entries.
+
+---
+
 ## 🆕 v1.54 (2026-07-14) — Hermano by default · the reunion call becomes a real conversation · no Misty breakup · quest objectives
 
 Antonia's fix list. `Config.version` + `staging/fomod/info.xml` are both **1.54**; tagged `v1.54`.

@@ -451,6 +451,79 @@ local function setFactNum(name, n)
   pcall(function() Game.GetQuestsSystem():SetFactStr(name, n) end)
 end
 
+-- ---------------------------------------------------------------------------
+-- K-RAFF EASTER EGG (v1.55) — see Config.kraff in config.lua for the story + the coord warning.
+-- Proximity-driven, one-time-per-save, and deliberately INDEPENDENT of the questline: it does not care
+-- what retrieval stage you're at. Two separately-latched triggers on the same spot (payout at `radius`,
+-- the tribute card at a 0.5 m `noticeRadius`), so finding the money doesn't spend the hidden thank-you.
+-- Everything is pcall-guarded and the whole block no-ops when Config.kraff.enabled is false — which it is
+-- until the real bar coordinates land.
+-- ---------------------------------------------------------------------------
+
+-- Re-enable Jackie's Arch on V's vehicle list, undoing jlReturnJackiesBike's EnablePlayerVehicle(rec,false).
+-- "If the arch is already there skip that step" (Antonia): we ASK first via IsVehiclePlayerUnlocked. If that
+-- query isn't available on this build we just re-enable anyway — enabling an already-enabled vehicle is a
+-- harmless no-op, so the skip is an optimisation, never a correctness requirement.
+local function kraffRestoreBike()
+  -- the Arch's TweakDB record — bound from init.lua (Config.bikeReturn.bikeRecord) so the removal and the
+  -- restore can never drift apart and start naming two different bikes.
+  local rec = deps.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player"
+  local already = false
+  pcall(function()
+    already = Game.GetVehicleSystem():IsVehiclePlayerUnlocked(TweakDBID.new(rec)) == true
+  end)
+  if already then
+    log("K-Raff: V already has the Arch — skipping the vehicle restore.")
+    return false
+  end
+  local ok = pcall(function()
+    Game.GetVehicleSystem():EnablePlayerVehicle(rec, true, true)   -- (id, enable=TRUE, updateGarage)
+  end)
+  log("K-Raff: restored '" .. rec .. "' to V's vehicle list (ok=" .. tostring(ok) .. ").")
+  return ok
+end
+
+local function kraffTick()
+  local K = M.Config and M.Config.kraff
+  if not (K and K.enabled and K.pos) then return end
+
+  -- (1) THE PAYOUT — room-sized zone. Eddies + the Arch, once.
+  if K.factMoney and factNum(K.factMoney) < 1 and nearPoint(K.pos, K.radius or 6.0) then
+    setFactNum(K.factMoney, 1)                       -- latch FIRST: a failed payout must never retry forever
+    local amount = K.eddies or 38470
+    local paid = pcall(function()
+      Game.AddToInventory(K.moneyItem or "Items.money", amount)
+    end)
+    if K.restoreBike then pcall(kraffRestoreBike) end
+    onscreen(K.bannerText or "Something's been left here for you...", 6.0)
+    log(("K-Raff easter egg: paid %d eddies (ok=%s)."):format(amount, tostring(paid)))
+  end
+
+  -- (2) THE TRIBUTE CARD — the tight 0.5 m spot. Separately latched, so it survives the payout.
+  if K.factNotice and factNum(K.factNotice) < 1 and nearPoint(K.pos, K.noticeRadius or 0.5) then
+    setFactNum(K.factNotice, 1)
+    showTip(K.noticeTitle or "Thank you, K-Raff", K.noticeText or "", 16.0)
+    log("K-Raff easter egg: tribute card shown.")
+  end
+end
+
+-- Debug: re-arm the easter egg so it can be walked into again.
+function M.resetKraff()
+  local K = M.Config and M.Config.kraff; if not K then return end
+  if K.factMoney  then setFactNum(K.factMoney, 0) end
+  if K.factNotice then setFactNum(K.factNotice, 0) end
+  log("K-Raff easter egg re-armed (walk back in to re-trigger).")
+end
+
+-- Debug: fire it right now, wherever you're standing (ignores the coords entirely).
+function M.debugKraff()
+  local K = M.Config and M.Config.kraff; if not K then return end
+  pcall(function() Game.AddToInventory(K.moneyItem or "Items.money", K.eddies or 38470) end)
+  if K.restoreBike then pcall(kraffRestoreBike) end
+  showTip(K.noticeTitle or "Thank you, K-Raff", K.noticeText or "", 16.0)
+  log("K-Raff easter egg: FORCED (debug).")
+end
+
 local function postShardTick()
   if getStage() < REUNITED then return end             -- only after Jackie's back
   for _, sh in ipairs(M.Config.postShards or {}) do
@@ -518,7 +591,8 @@ function M.notifyUnavailable() onscreen(M.unavailableMsg(), 2.5) end   -- native
 function M.bind(opts)
   opts = opts or {}
   for _, k in ipairs({ "log", "showTip", "startCall", "startArrival", "startReunion", "spawnAt", "isHermano",
-                       "showObjective" }) do   -- v1.54: showObjective(text, secs) -> init.lua's showOnscreenMsg (banner + UI sound)
+                       "showObjective",   -- v1.54: showObjective(text, secs) -> init.lua's showOnscreenMsg (banner + UI sound)
+                       "bikeRecord" }) do -- v1.55: the Arch's TweakDB id (string), for the K-Raff bike restore
     if opts[k] ~= nil then deps[k] = opts[k] end
   end
 end
@@ -569,6 +643,7 @@ function M.tick(dt)
 
   objectiveTick()   -- v1.54: land any queued objective banner once its delay is up
   postShardTick()   -- v0.84: Misty / Mama Welles notes, once Jackie's back
+  kraffTick()       -- v1.55: the K-Raff refund at Rocky Ridge (self-gating; off until its coords land)
 end
 
 return M

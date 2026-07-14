@@ -87,3 +87,6 @@ luac.out
 
 # dialogue editor: local .lua backups (never committed)
 tools/dialogue-editor/backups/
+
+# packaged Nexus zips (build output — rebuild with tools/package_nexus.sh)
+dist/
