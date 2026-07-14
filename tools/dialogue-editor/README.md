@@ -82,6 +82,29 @@ The little box at the top filters the list.
 * **Flat line pools** (arrival greetings, farewells, the shards…) are a simple list you
   type straight into. Where there are two versions of a pool they're shown side by side.
 
+### Changing the shape of a conversation
+
+You can restructure a tree, not just retype it:
+
+* **`+ Add node`** (top bar) — a new thing for Jackie to say. You **must** say which
+  existing node leads to it, in the same box: a node nothing points at can never be
+  reached in-game, so the tool won't make one. You can optionally give it a reply that
+  leads back out.
+* **`delete node`** (on the node) — **refused** while any reply still points at it, and it
+  names the exact replies so you can repoint or delete them first. The `start` node can't
+  be deleted at all.
+* **`+ reply`** (on the node) — a new reply option for V. Pick where it leads, or end the
+  conversation there.
+* **`×`** (on a reply) — delete that reply. Always allowed. If that leaves a node with
+  nothing pointing at it, you get a **warning** naming the stranded node — it's not
+  blocked, because sometimes that's exactly what you're mid-way through doing.
+* **Voice clip** (right panel) — type an id, or hit **Pick…** to search Jackie's ~1,200
+  real recorded lines *by what he actually says*. Empty = text-only.
+* **Where this reply leads** (right panel) — repoint a reply at a different node.
+
+Structural changes save **immediately** (along with any text edits you had pending), so
+what's on screen is always what's in `config.lua`.
+
 **Right panel** — the editor for whichever line you clicked. Every line can have two texts:
 
 | | |
@@ -95,11 +118,14 @@ that's already there.)
 
 The panel also shows, **read-only**:
 
-* the **voice clip id** (`jl_…`). **If a line has one, it has real VO** — so the subtitle
-  needs to keep matching what the clip actually says, or the audio and the words will
-  disagree. Lines with *no* clip are silent, so you can reword them freely.
-* badges like `chance`, `once`, `final`, `textPool` — those are behaviour, not words, and
-  aren't editable here.
+* the **voice clip**, and **what the clip actually says**. If the subtitle has drifted away
+  from the recording, the box turns amber and tells you so. (That mismatch is exactly what
+  the v1.56 rewrite was cleaning up — subtitles that had been bent to fit whatever clip was
+  to hand.) A line with **no** clip is text-only; in a `muteFallback` tree that means
+  genuinely **silent**, so you can reword it freely.
+* badges like `chance`, `once`, `final`, `textPool` — behaviour, not words, so not editable.
+* `cond` — a real Lua **function** that decides whether a reply shows at all. It's code, so
+  it's shown read-only and its bytes are never touched.
 
 **Saving** — edited lines get an orange bar. The header shows how many are unsaved.
 Hit **Save all**. A green banner means it's written; a red banner means it was refused
@@ -119,18 +145,34 @@ doesn't do that. It does something much narrower:
   back-to-front so the earlier positions stay valid. Every comment, every blank line,
   every setting it doesn't understand is left byte-for-byte alone.
 
-And before it lets a save stand:
+And before it lets a save stand, it runs **two** gates — and it does both *before* it writes
+anything, so a rejected save leaves your files completely untouched:
 
-1. It **backs the file up** to `tools/dialogue-editor/backups/config.lua.bak-<timestamp>`.
-2. It **checks the result is still valid Lua** — with `luac`/`lua` if you have them
-   installed, otherwise with a built-in structural check (both are run when available).
-3. If that check fails it **puts the backup straight back** and shows you a red banner.
-   *A broken config.lua means the mod won't load in-game, so it will never leave one on disk.*
+1. **Is it still valid Lua?** — via `luac`/`lua` if you have them, otherwise a built-in
+   structural check. You don't need Lua installed; it's a belt on top of the braces.
+
+2. **Is it still a valid _dialogue_?** — this one matters more, and it's why structural
+   editing is safe. `luac` will happily bless a file where a reply points at a node you
+   just deleted: perfectly valid Lua, and a conversation that **dead-ends in-game**. So the
+   tool also walks every tree and checks that
+
+   * the `start` node exists,
+   * every reply's `to` names a node that's really there,
+   * nothing has been left stranded (a node nothing leads to → *warning*, not a block).
+
+   A dangling `to` is a hard **error**: nothing is written, and the message names the exact
+   node and reply.
+
+3. Only once both pass does it **back the file up** to
+   `tools/dialogue-editor/backups/config.lua.bak-<timestamp>` and write. It then re-checks
+   what actually landed on disk, and restores the backup if anything is off.
+
 4. If the file changed on disk since the page loaded it (say you edited it in your code
-   editor too), the save is **refused** and it tells you to reload — so you can't
-   clobber your own work.
+   editor too), the save is **refused** and it tells you to reload — so you can't clobber
+   your own work.
 
-You don't need Lua installed. It's just an extra belt on top of the braces.
+*Lua-valid is not the same as dialogue-valid. A broken `config.lua` stops the mod loading
+at all; a dangling `to` silently breaks the quest. Both are blocked.*
 
 ### Backups
 
@@ -153,16 +195,32 @@ into a scratch folder, point the tool at it, and the real mod is never touched.
 
 ---
 
+## After you edit: get it into the game
+
+`mod/JackieLives/` is the source of truth — that's what this tool edits. The packaged copy
+in `staging/` does **not** update itself. So once you're happy:
+
+* to test in-game on Windows: run **`deploy.ps1`**;
+* to refresh the Nexus zip layout: run **`tools/package_nexus.sh`**.
+
+If you skip that, you'll be testing the old lines and wondering why nothing changed.
+
+---
+
 ## What it does *not* do
 
 Honest limits, so nothing surprises you:
 
-* **It edits existing text. It doesn't add or delete lines, nodes or choices.** Adding a
-  new node, a new choice, or a new `m` variant is still a hand-edit in `config.lua`.
-  (Once you've made it there by hand, it shows up here on the next reload.)
-* It doesn't edit `sfx`/clip ids, `chance`, `to`, `action` or any of the numbers — those
-  are wiring, and getting them wrong breaks the mod or the audio bank.
+* It edits **trees** structurally (nodes, replies, `to`, `sfx`). It does **not** add or
+  remove entries in the flat **pools** (arrival greetings, farewells, shard paragraphs) —
+  those are still text-only here; add a line by hand in the `.lua` and it appears on reload.
+* It doesn't edit `chance`, `once`, `final`, `action`, `fact` or `cond` — those are wiring
+  and logic, not words. They're shown, never touched.
+* Adding a **new** `m` (Hermano) variant to an existing line is still a hand-edit; the tool
+  edits the ones already there. (New nodes/replies you create here *can* have one.)
 * Long strings written as `"a" .. "b" .. "c"` across several lines (Vik's tip, the shard
   paragraphs) get rewritten as **one long line** when saved. Same text, still valid Lua,
   just a wider line in the file.
+* Deleting a node leaves any **comment block above it** behind — deliberately. The tool
+  will never delete a comment you didn't ask it to; tidy it by hand if you want it gone.
 * `blaze.lua` and `init.lua` aren't read — there's no dialogue data in them.

@@ -6162,6 +6162,26 @@ local function nsTick()
       end
     )
 
+    -- v1.56: THE MANUAL START. This is what makes it safe to ship the quest gate ON. The gate now stays
+    -- silent unless it can POSITIVELY confirm you're post-heist (so it can never spoil a new game) — which
+    -- means a player whose journal path we failed to resolve would otherwise be stuck forever. They press
+    -- this instead. It's also mentioned on the welcome card, so they know it exists.
+    ns.addSubcategory("/jackielives/quest", "The search for Jackie")
+    ns.addButton(
+      "/jackielives/quest",
+      "Start the search for Jackie",
+      "Use this if Jackie's questline never started for you. Normally Vik tells you himself when you next " ..
+      "visit his clinic — but only once the heist is behind you. If you're past the heist and nothing has " ..
+      "happened at Vik's, press this to start the search by hand.",
+      "Start",
+      function()
+        local started = false
+        pcall(function() started = Retrieval.startSearch() end)
+        JL.ui.status = started and "The search for Jackie has begun — go see Vik."
+                                or "The search is already under way."
+      end
+    )
+
     ns.addSubcategory("/jackielives/recovery", "Recovery")
     ns.addButton(
       "/jackielives/recovery",

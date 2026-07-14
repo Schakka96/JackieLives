@@ -264,3 +264,101 @@ textarea.edit.m { color: #e2cf9a; }
   background: #2b2213; border: 1px solid #5a4a20; color: #e0c877;
   padding: 8px 10px; border-radius: 4px; font-size: 12px; margin-bottom: 12px;
 }
+
+/* ---------------- structural editing (v2) ---------------- */
+
+.node-tools {
+  display: flex; gap: 5px; padding: 5px 8px;
+  background: #0e1319; border-top: 1px solid #1d2530;
+}
+.node-tools .btn { padding: 2px 8px; font-size: 11px; font-weight: 600; }
+.btn.danger { color: var(--bad); border-color: #4a2030; }
+.btn.danger:hover { border-color: var(--bad); background: #2a1119; }
+
+.choice .del {
+  float: right; margin-left: 6px; cursor: pointer;
+  color: #55606e; font-size: 13px; line-height: 1; padding: 0 3px;
+}
+.choice .del:hover { color: var(--bad); }
+
+.cond {
+  display: block; margin-top: 4px; font-size: 10px; color: #7d8b9c;
+  font-family: ui-monospace, monospace; background: #10161d;
+  border-left: 2px solid #3a4a5e; padding: 3px 6px; white-space: pre-wrap;
+}
+
+#stage-tools .btn { margin-left: 10px; }
+
+/* clip picker + sfx row */
+.sfxrow { display: flex; gap: 6px; }
+.sfxrow input {
+  flex: 1; min-width: 0; background: var(--bg); color: var(--yellow);
+  border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px;
+  font-family: ui-monospace, monospace; font-size: 12px;
+}
+.sfxrow input:focus { outline: none; border-color: var(--cyan); }
+.transcript {
+  margin-top: 6px; padding: 8px 10px; border-radius: 4px;
+  background: #101a12; border: 1px solid #24422c; color: #9fd8ae; font-size: 12px;
+}
+.transcript.bad { background: #2b2213; border-color: #5a4a20; color: #e0c877; }
+.transcript.missing { background: #35121c; border-color: #7a2740; color: #ffa7b8; }
+.transcript b { display: block; font-size: 10px; letter-spacing: 1px;
+  text-transform: uppercase; opacity: .75; margin-bottom: 3px; }
+
+/* modal */
+#modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.72);
+  display: flex; align-items: center; justify-content: center; z-index: 50;
+}
+.sheet {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  width: 620px; max-width: 92vw; max-height: 86vh; display: flex;
+  flex-direction: column; overflow: hidden;
+}
+.sheet h2 {
+  margin: 0; padding: 14px 18px; font-size: 15px; color: var(--yellow);
+  border-bottom: 1px solid var(--line);
+}
+.sheet .body { padding: 16px 18px; overflow-y: auto; }
+.sheet .foot {
+  padding: 12px 18px; border-top: 1px solid var(--line);
+  display: flex; gap: 8px; justify-content: flex-end; background: var(--panel2);
+}
+.sheet label {
+  display: block; font-size: 11px; color: var(--muted); margin: 12px 0 5px;
+  text-transform: uppercase; letter-spacing: 1px;
+}
+.sheet label:first-child { margin-top: 0; }
+.sheet input[type=text], .sheet textarea, .sheet select {
+  width: 100%; background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 4px; padding: 8px;
+  font-size: 13px;
+}
+.sheet textarea { min-height: 60px; resize: vertical; }
+.sheet input:focus, .sheet textarea:focus, .sheet select:focus {
+  outline: none; border-color: var(--cyan);
+}
+.sheet .hintline { font-size: 11px; color: var(--muted); margin-top: 5px; line-height: 1.5; }
+.err { color: var(--bad); font-size: 12px; margin-top: 10px; white-space: pre-wrap; }
+
+.cliplist { max-height: 46vh; overflow-y: auto; margin-top: 8px; }
+.clip {
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px;
+  margin-bottom: 6px; cursor: pointer; background: var(--bg);
+}
+.clip:hover { border-color: var(--cyan); }
+.clip .t { font-size: 13px; color: var(--text); }
+.clip .i {
+  font-family: ui-monospace, monospace; font-size: 10px; color: var(--muted);
+  margin-top: 3px; word-break: break-all;
+}
+.clip .i em { font-style: normal; color: var(--yellow); }
+
+.gwarn {
+  background: #2b2213; border: 1px solid #5a4a20; color: #e0c877;
+  padding: 10px 12px; border-radius: 4px; font-size: 12px; margin: 0 18px 12px;
+  line-height: 1.6;
+}
+.gwarn b { color: #f2d98a; }
+.banner.warn { background: #2b2213; color: #e8cf86; border-bottom: 1px solid #5a4a20; }

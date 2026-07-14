@@ -99,7 +99,7 @@ def line_from(fkey, tbl, kind="line"):
 # trees
 # ---------------------------------------------------------------------------
 
-def tree_from(fkey, tbl, sid, title, subtitle=""):
+def tree_from(fkey, tbl, sid, title, subtitle="", ref=None):
     """Config.<x>Tree = { start = "k", nodes = { k = {...} } }"""
     if not isinstance(tbl, Table):
         return None
@@ -114,28 +114,41 @@ def tree_from(fkey, tbl, sid, title, subtitle=""):
         if not isinstance(n, Table):
             continue
 
+        # `addr` is how a structural op names this exact line/choice. The server
+        # re-parses the file and walks the same path, so the client never has to
+        # compute a byte offset for anything structural.
         lines = []
         single = n.get("jackie")
         if isinstance(single, Table):
             ln = line_from(fkey, single)
             if ln:
+                ln["addr"] = {"node": key, "src": "jackie", "index": 0}
                 lines.append(ln)
         pool = n.get("jackiePool")
         if isinstance(pool, Table):
-            for item in pool.array:
+            for i, item in enumerate(pool.array):
                 ln = line_from(fkey, item)
                 if ln:
+                    ln["addr"] = {"node": key, "src": "jackiePool", "index": i}
                     lines.append(ln)
 
         choices = []
         ch_tbl = n.get("choices")
         if isinstance(ch_tbl, Table):
-            for c in ch_tbl.array:
+            for i, c in enumerate(ch_tbl.array):
                 if not isinstance(c, Table):
                     continue
                 ch = line_from(fkey, c, kind="choice")
                 ch["to"] = str_value(c.get("to"))          # None when `to = nil`
                 ch["action"] = str_value(c.get("action"))
+                ch["addr"] = {"node": key, "src": "choices", "index": i}
+                # `cond` is a real Lua FUNCTION. Show it, never touch it.
+                cnd = c.get("cond")
+                ch["cond"] = cnd.text if isinstance(cnd, Raw) else None
+                fct = c.get("fact")
+                if isinstance(fct, Table):
+                    ch["fact"] = {"name": str_value(fct.get("name")),
+                                  "value": raw_text(fct.get("value"))}
                 choices.append(ch)
 
         action = str_value(n.get("action"))
@@ -155,10 +168,12 @@ def tree_from(fkey, tbl, sid, title, subtitle=""):
         })
 
     cooldown = raw_text(tbl.get("cooldownSeconds")) if tbl.get("cooldownSeconds") else None
+    mute = raw_text(tbl.get("muteFallback")) if tbl.get("muteFallback") else None
 
     return {
         "id": sid, "kind": "tree", "title": title, "subtitle": subtitle,
         "file": fkey, "start": start, "nodes": nodes, "cooldownSeconds": cooldown,
+        "muteFallback": mute, "ref": ref,
     }
 
 
@@ -233,16 +248,24 @@ def build(config_src, retrieval_src):
             jackie.append(sec)
         return sec
 
+    def ref(assign, *sub):
+        return {"file": CONFIG, "assign": assign, "sub": list(sub)}
+
     add(tree_from(CONFIG, c("Config.reunionCallTree"), "reunionCallTree",
-                  "Reunion call", "The long phone call after the shard. THE emotional payoff."))
+                  "Reunion call", "The long phone call after the shard. THE emotional payoff.",
+                  ref("Config.reunionCallTree")))
     add(tree_from(CONFIG, c("Config.reunionMeetTree"), "reunionMeetTree",
-                  "Reunion — first meeting", "Face to face when he walks in."))
+                  "Reunion — first meeting", "Face to face when he walks in.",
+                  ref("Config.reunionMeetTree")))
     add(tree_from(CONFIG, c("Config.blazeFinaleTree"), "blazeFinaleTree",
-                  "Blaze finale", "After the finale: the biochip reveal."))
+                  "Blaze finale", "After the finale: the biochip reveal.",
+                  ref("Config.blazeFinaleTree")))
     add(tree_from(CONFIG, c("Config.callTree"), "callTree",
-                  "Holocall — call him onto a gig", "The everyday phone call."))
+                  "Holocall — call him onto a gig", "The everyday phone call.",
+                  ref("Config.callTree")))
     add(tree_from(CONFIG, c("Config.dialogueTree"), "dialogueTree",
-                  "Generic talk tree", "The original v0.23 tree (fallback)."))
+                  "Generic talk tree", "The original v0.23 tree (fallback).",
+                  ref("Config.dialogueTree")))
 
     LOC_TITLES = {
         "noodle": ("At the noodle bar", "Daytime, casual, food."),
@@ -254,13 +277,16 @@ def build(config_src, retrieval_src):
     if isinstance(locdlg, Table):
         for key in locdlg.order:
             t, sub = LOC_TITLES.get(key, (key, ""))
-            add(tree_from(CONFIG, locdlg.map[key], "loc." + key, t, sub))
+            add(tree_from(CONFIG, locdlg.map[key], "loc." + key, t, sub,
+                          ref("Config.locationDialogue", key)))
 
     if isinstance(date, Table):
         add(tree_from(CONFIG, date.get("tree"), "date.tree",
-                      "Dinner — the invite", "V asks him out; the venue picker."))
+                      "Dinner — the invite", "V asks him out; the venue picker.",
+                      ref("Config.date", "tree")))
         add(tree_from(CONFIG, date.get("seatedTree"), "date.seatedTree",
-                      "Dinner — seated small talk", "Only while he's seated at dinner."))
+                      "Dinner — seated small talk", "Only while he's seated at dinner.",
+                      ref("Config.date", "seatedTree")))
 
     if isinstance(call, Table):
         add(pool_from(CONFIG, "arrivalGreetings", "Arrival greetings",
@@ -381,6 +407,101 @@ def build(config_src, retrieval_src):
     # prune empty groups
     groups = [g for g in groups if g["sections"]]
     return groups, warnings
+
+
+# ---------------------------------------------------------------------------
+# GRAPH VALIDATION
+#
+# This is the gate that `luac -p` cannot be. A structural edit can produce a file
+# that is PERFECTLY VALID LUA but a BROKEN DIALOGUE: delete a node that a choice
+# still points at and luac is happy, while in-game Branch.start finds no node and
+# the conversation dead-ends. Lua-valid != dialogue-valid.
+#
+#   ERRORS  block the save (the file is rewritten only if there are none):
+#     * the tree's `start` node doesn't exist
+#     * a choice's `to` names a node that isn't in the tree
+#
+#   WARNINGS never block -- they're surfaced in the UI before AND after saving:
+#     * a node unreachable from `start` (deleting a choice may strand one; that
+#       has to stay legal, or "delete choice is always allowed" is a lie)
+#     * a terminal node with no `action` (legal -- it just ends the conversation)
+# ---------------------------------------------------------------------------
+
+def validate(groups):
+    errors = []
+    warnings = []
+    info = []
+
+    for g in groups:
+        for s in g["sections"]:
+            if s["kind"] != "tree":
+                continue
+            where = "%s / %s" % (g["npc"], s["title"])
+            keys = [n["key"] for n in s["nodes"]]
+            bykey = {n["key"]: n for n in s["nodes"]}
+
+            if not s["start"]:
+                errors.append({"section": s["id"], "msg":
+                               "%s: the tree has no `start`." % where})
+                continue
+            if s["start"] not in bykey:
+                errors.append({"section": s["id"], "node": s["start"], "msg":
+                               "%s: `start` points at node \"%s\", which does not exist."
+                               % (where, s["start"])})
+                continue
+
+            # every choice's `to` must resolve
+            for n in s["nodes"]:
+                for i, c in enumerate(n["choices"]):
+                    if c.get("to") and c["to"] not in bykey:
+                        errors.append({
+                            "section": s["id"], "node": n["key"], "choice": i,
+                            "msg": '%s: node "%s", choice %d ("%s") points at '
+                                   '"%s" — no such node. In-game this conversation '
+                                   'would DEAD-END here.'
+                                   % (where, n["key"], i + 1,
+                                      (c.get("text") or {}).get("value", "?")[:40],
+                                      c["to"])})
+
+            # reachability from start
+            seen = set()
+            stack = [s["start"]]
+            while stack:
+                k = stack.pop()
+                if k in seen or k not in bykey:
+                    continue
+                seen.add(k)
+                for c in bykey[k]["choices"]:
+                    if c.get("to"):
+                        stack.append(c["to"])
+            for k in keys:
+                if k not in seen:
+                    warnings.append({
+                        "section": s["id"], "node": k, "msg":
+                        '%s: node "%s" is UNREACHABLE — no choice leads to it, so '
+                        'the player can never see it.' % (where, k)})
+
+            # terminals with no action anywhere. NOTE the action may sit on the
+            # NODE (`action = "reunion_arrival"`) or on a CHOICE that ends the
+            # conversation (`{ to = nil, action = "recruit_here" }`) -- both are
+            # real. Only flag a node where neither exists.
+            for n in s["nodes"]:
+                if not n["terminal"]:
+                    continue
+                if n["action"] or any(c.get("action") for c in n["choices"]):
+                    continue
+                info.append({
+                    "section": s["id"], "node": n["key"], "msg":
+                    '%s: node "%s" just ends the conversation (no `action`). '
+                    'That is legal — most sign-off nodes do exactly this.'
+                    % (where, n["key"])})
+
+    return errors, warnings, info
+
+
+def validate_sources(config_src, retrieval_src):
+    groups, _ = build(config_src, retrieval_src)
+    return validate(groups)
 
 
 def count_editable(groups):

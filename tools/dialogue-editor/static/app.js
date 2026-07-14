@@ -38,6 +38,11 @@ function load(keepSection) {
       var sec = keepSection && findSection(keepSection);
       select(sec || firstSection());
       markDirty();
+      // a broken graph on disk (someone hand-edited the .lua) must be loud
+      if ((d.graphErrors || []).length) {
+        banner('bad', 'The dialogue on disk is BROKEN:\n' +
+          d.graphErrors.map(function (e) { return '  • ' + e.msg; }).join('\n'));
+      }
     })
     .catch(function (e) {
       banner('bad', 'Could not read the dialogue: ' + e.message);
@@ -165,8 +170,14 @@ function select(s) {
   var bits = [];
   bits.push('file: ' + (MODEL.files[s.file] || {}).name);
   if (s.kind === 'tree') bits.push('start node: ' + s.start);
+  if (s.muteFallback) bits.push('muteFallback: unvoiced lines are silent');
   if (s.cooldownSeconds) bits.push('cooldown: ' + s.cooldownSeconds + 's');
-  tools.textContent = bits.join('  ·  ');
+  tools.appendChild(document.createTextNode(bits.join('  ·  ')));
+  if (s.kind === 'tree') {
+    var an = el('button', 'btn tiny', '+ Add node');
+    an.onclick = function () { addNodeDialog(s); };
+    tools.appendChild(an);
+  }
 
   if (s.kind === 'tree') {
     $('listview').hidden = true;
@@ -242,14 +253,27 @@ function renderTree(s) {
     }
     n.lines.forEach(function (ln) { card.appendChild(lineRow(ln, 'jline')); });
 
-    n.choices.forEach(function (ch) {
+    n.choices.forEach(function (ch, ci) {
       var row = lineRow(ch, 'choice');
+      var del = el('span', 'del', '\u00d7');
+      del.title = 'Delete this reply option';
+      del.onclick = function (ev) { ev.stopPropagation(); deleteChoice(s, n, ci, ch); };
+      row.insertBefore(del, row.firstChild);
       var to = el('span', 'to', ch.to ? '→ ' + ch.to : '→ end');
       if (!ch.to) to.classList.add('end');
       else to.onclick = function (ev) { ev.stopPropagation(); jumpTo(ch.to); };
       row.insertBefore(to, row.firstChild);
       card.appendChild(row);
     });
+
+    var tools = el('div', 'node-tools');
+    var addc = el('button', 'btn tiny', '+ reply');
+    addc.onclick = function () { addChoiceDialog(s, n); };
+    tools.appendChild(addc);
+    var deln = el('button', 'btn tiny danger', 'delete node');
+    deln.onclick = function () { deleteNode(s, n); };
+    tools.appendChild(deln);
+    card.appendChild(tools);
 
     host.appendChild(card);
     cards[n.key] = card;
@@ -273,6 +297,7 @@ function lineRow(ln, cls) {
   if (isDirty(ln)) row.classList.add('dirty');
   row.appendChild(el('span', 'txt', valueOf(ln.text) || (ln.textPool ? '(random from textPool)' : '(no text)')));
   if (ln.m) row.appendChild(el('span', 'mvar', 'Hermano: ' + valueOf(ln.m)));
+  if (ln.cond) row.appendChild(el('span', 'cond', 'only shown if: ' + ln.cond));
   var b = badges(ln);
   if (b) row.appendChild(b);
   row.onclick = function () { inspect(ln, row); };
@@ -504,23 +529,29 @@ function inspect(ln, row) {
     body.appendChild(ps);
   }
 
-  // sfx / metadata
-  var meta = el('div', 'insp-sec');
-  meta.appendChild(el('label', null, 'Voice clip (read-only)'));
-  if (ln.sfx) {
-    meta.appendChild(el('div', 'ro', ln.sfx));
-    meta.appendChild(el('div', 'note',
-      'This line HAS real VO. Keep the subtitle matching what the clip actually says, ' +
-      'or the audio and the text will disagree.'));
+  // where a reply leads (editable) -- only meaningful inside a tree
+  if (ln.kind === 'choice' && CUR && CUR.kind === 'tree' && ln.addr) {
+    body.appendChild(toSection(ln));
+  }
+
+  // the voice clip: editable, with the real transcript + a mismatch warning
+  if (ln.addr && CUR && CUR.kind === 'tree') {
+    body.appendChild(sfxSection(ln, null));
+    if (ln.m) body.appendChild(sfxSection(ln, 'm'));
   } else {
-    meta.appendChild(el('div', 'ro muted', 'no sfx — text only (mute + fallback grunt)'));
-    meta.appendChild(el('div', 'note', 'Free to reword: nothing is spoken here.'));
+    var meta = el('div', 'insp-sec');
+    meta.appendChild(el('label', null, 'Voice clip (read-only here)'));
+    meta.appendChild(el('div', ln.sfx ? 'ro' : 'ro muted',
+      ln.sfx || 'no sfx — text only'));
+    if (ln.clip && ln.clip.transcript) {
+      var tr = el('div', 'transcript' +
+        (ln.clip.match !== null && ln.clip.match < 0.6 ? ' bad' : ''));
+      tr.appendChild(el('b', null, 'the clip actually says'));
+      tr.appendChild(document.createTextNode('“' + ln.clip.transcript + '”'));
+      meta.appendChild(tr);
+    }
+    body.appendChild(meta);
   }
-  if (ln.sfxM) {
-    meta.appendChild(el('label', null, 'Hermano voice clip'));
-    meta.appendChild(el('div', 'ro', ln.sfxM));
-  }
-  body.appendChild(meta);
 
   var keys = Object.keys(ln.meta || {});
   if (keys.length || ln.to !== undefined || ln.poolKey) {
@@ -738,3 +769,326 @@ window.addEventListener('resize', function () {
 });
 
 load();
+
+/* ==========================================================================
+   STRUCTURAL EDITING
+   ==========================================================================
+   A structural change (add/delete a node or reply, set an sfx, repoint a `to`)
+   is committed IMMEDIATELY as its own save, together with whatever text edits
+   are still pending. That's deliberate:
+
+     * the server applies text edits first (their byte offsets refer to the file
+       as it was loaded) and then the op against a fresh parse, so the two can
+       never race;
+     * every structural change goes through the graph validator, so a broken
+       tree is rejected before anything is written;
+     * the page reloads from the file on disk afterwards, so what you see is
+       always what's actually in config.lua. No stale offsets, no phantom queue.
+   ========================================================================== */
+
+function commit(ops, okMsg) {
+  var hashes = {};
+  Object.keys(MODEL.files).forEach(function (k) { hashes[k] = MODEL.files[k].hash; });
+
+  return fetch('/api/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ edits: Array.from(EDITS.values()), ops: ops, hashes: hashes })
+  })
+    .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+    .then(function (p) {
+      var httpOk = p[0], d = p[1];
+      if (!httpOk || !d.ok) {
+        banner('bad', (d.error || 'Unknown error.'));
+        return false;
+      }
+      var keep = CUR && CUR.id;
+      return load(keep).then(function () {
+        var msg = okMsg || 'Saved.';
+        var warn = (d.graphWarnings || []).filter(function (w) {
+          return w.msg.indexOf('UNREACHABLE') >= 0;
+        });
+        if (warn.length) {
+          banner('warn', msg + '\n\nHeads up — ' + warn.length +
+            ' node' + (warn.length === 1 ? ' is' : 's are') +
+            ' now unreachable (nothing leads to them, so the player can never ' +
+            'see them):\n' + warn.map(function (w) { return '  • ' + w.msg; }).join('\n'));
+        } else {
+          banner('ok', msg + '  Backup in tools/dialogue-editor/backups/.');
+        }
+        return true;
+      });
+    })
+    .catch(function (e) { banner('bad', e.message); return false; });
+}
+
+/* ---------------- delete ---------------- */
+
+function deleteChoice(sec, node, index, ch) {
+  var txt = valueOf(ch.text) || '(no text)';
+  if (!confirm('Delete this reply option?\n\n  "' + txt + '"\n' +
+               (ch.to ? '  → ' + ch.to : '  (ends the conversation)') +
+               '\n\nIf nothing else leads to "' + (ch.to || '') +
+               '", that node becomes unreachable — you\'ll be warned, not blocked.')) return;
+  commit([{ type: 'deleteChoice', ref: sec.ref, node: node.key, index: index }],
+         'Deleted a reply option from "' + node.key + '".');
+}
+
+function deleteNode(sec, node) {
+  if (!confirm('Delete the node "' + node.key + '" and everything in it?\n\n' +
+               'This is refused if any reply still points at it.')) return;
+  commit([{ type: 'deleteNode', ref: sec.ref, key: node.key }],
+         'Deleted node "' + node.key + '".');
+}
+
+/* ---------------- modal plumbing ---------------- */
+
+function modal(title, buildBody, onOk, okLabel) {
+  var back = el('div');
+  back.id = 'modal';
+  var sheet = el('div', 'sheet');
+  sheet.appendChild(el('h2', null, title));
+  var body = el('div', 'body');
+  var err = el('div', 'err');
+  sheet.appendChild(body);
+  var foot = el('div', 'foot');
+  var cancel = el('button', 'btn ghost', 'Cancel');
+  var okb = el('button', 'btn primary', okLabel || 'Add');
+  foot.appendChild(cancel);
+  foot.appendChild(okb);
+  sheet.appendChild(foot);
+  back.appendChild(sheet);
+
+  var fields = buildBody(body);
+  body.appendChild(err);
+
+  function close() { back.remove(); }
+  cancel.onclick = close;
+  back.onclick = function (e) { if (e.target === back) close(); };
+  document.addEventListener('keydown', function esc(e) {
+    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+  });
+  okb.onclick = function () {
+    var problem = onOk(fields, close);
+    if (problem) err.textContent = problem;
+  };
+  document.body.appendChild(back);
+  var first = body.querySelector('input, textarea, select');
+  if (first) first.focus();
+  return { close: close, err: err };
+}
+
+function nodeOptions(sec, includeEnd, selected) {
+  var sel = el('select');
+  if (includeEnd) {
+    var o = el('option', null, '— ends the conversation —');
+    o.value = '';
+    sel.appendChild(o);
+  }
+  sec.nodes.forEach(function (n) {
+    var op = el('option', null, n.key + (n.isStart ? '  (start)' : ''));
+    op.value = n.key;
+    if (n.key === selected) op.selected = true;
+    sel.appendChild(op);
+  });
+  return sel;
+}
+
+function labelled(body, text, ctrl, hint) {
+  body.appendChild(el('label', null, text));
+  body.appendChild(ctrl);
+  if (hint) body.appendChild(el('div', 'hintline', hint));
+  return ctrl;
+}
+
+/* ---------------- add reply ---------------- */
+
+function addChoiceDialog(sec, node) {
+  modal('Add a reply option to "' + node.key + '"', function (body) {
+    var f = {};
+    f.text = labelled(body, "V's line (what the player picks)",
+                      el('textarea'), 'Silent text — V has no voice, so this is free to write.');
+    f.to = labelled(body, 'Where it leads', nodeOptions(sec, true, null),
+                    'Pick the node Jackie replies from, or end the conversation here.');
+    f.m = labelled(body, 'Hermano variant — male V (optional)', el('textarea'),
+                   'Leave blank if the line reads the same either way.');
+    return f;
+  }, function (f, close) {
+    if (!f.text.value.trim()) return 'The reply needs some text.';
+    close();
+    commit([{ type: 'addChoice', ref: sec.ref, node: node.key,
+              text: f.text.value.trim(), to: f.to.value || null,
+              m: f.m.value.trim() || null }],
+           'Added a reply option to "' + node.key + '".');
+  });
+}
+
+/* ---------------- add node (linking is mandatory) ---------------- */
+
+function addNodeDialog(sec) {
+  modal('Add a node to "' + sec.title + '"', function (body) {
+    var f = {};
+    f.key = labelled(body, 'Node name', el('input'),
+                     'Letters, numbers and underscores — e.g. mama_call. This is the ' +
+                     'internal id, not something the player sees.');
+    f.key.type = 'text';
+    f.text = labelled(body, "Jackie's line", el('textarea'));
+    f.sfx = labelled(body, 'Voice clip (optional)', el('input'),
+                     'Leave empty and the line is text-only — and in a muteFallback ' +
+                     'tree that means genuinely silent.');
+    f.sfx.type = 'text';
+
+    body.appendChild(el('label', null, '── How the player REACHES this node ──'));
+    f.parent = labelled(body, 'Add a reply to this node…', nodeOptions(sec, false, null),
+                        'A node nothing points at can never be seen in-game, so this ' +
+                        'is required.');
+    f.linkText = labelled(body, '…that reads', el('textarea'));
+
+    body.appendChild(el('label', null, '── How the player LEAVES it (optional) ──'));
+    f.outText = labelled(body, "V's reply", el('textarea'),
+                         'Leave blank to make this a dead end that closes the conversation.');
+    f.outTo = labelled(body, 'which leads to', nodeOptions(sec, true, sec.start));
+    return f;
+  }, function (f, close) {
+    var key = f.key.value.trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
+      return 'Node name must start with a letter and contain only letters, numbers and _.';
+    if (!f.text.value.trim()) return "Jackie needs a line to say.";
+    if (!f.linkText.value.trim()) return 'The reply that leads to the new node needs text.';
+    close();
+    commit([{ type: 'addNode', ref: sec.ref, key: key,
+              text: f.text.value.trim(), sfx: f.sfx.value.trim() || null,
+              link: { node: f.parent.value, mode: 'newChoice',
+                      text: f.linkText.value.trim() },
+              out: f.outText.value.trim()
+                ? { text: f.outText.value.trim(), to: f.outTo.value || null }
+                : null }],
+           'Added node "' + key + '", reachable from "' + f.parent.value + '".');
+  });
+}
+
+/* ---------------- the voice-clip picker ---------------- */
+
+var CLIPS = null;
+
+function clipPicker(onPick) {
+  modal('Pick a voice clip', function (body) {
+    var f = {};
+    f.q = labelled(body, 'Search Jackie\'s real recorded lines', el('input'),
+                   'These are the actual transcripts of his VO. Pick one and the ' +
+                   'subtitle should match what it says.');
+    f.q.type = 'text';
+    f.list = el('div', 'cliplist');
+    body.appendChild(f.list);
+
+    function render() {
+      var q = f.q.value.trim().toLowerCase();
+      f.list.innerHTML = '';
+      if (!CLIPS) { f.list.appendChild(el('div', 'hintline', 'Loading…')); return; }
+      var hits = CLIPS.filter(function (c) {
+        return !q || c.transcript.toLowerCase().indexOf(q) >= 0 ||
+               c.id.toLowerCase().indexOf(q) >= 0;
+      }).slice(0, 60);
+      if (!hits.length) {
+        f.list.appendChild(el('div', 'hintline', 'Nothing matches.'));
+        return;
+      }
+      hits.forEach(function (c) {
+        var d = el('div', 'clip');
+        d.appendChild(el('div', 't', '“' + c.transcript + '”'));
+        var i = el('div', 'i');
+        i.appendChild(el('em', null, c.id));
+        i.appendChild(document.createTextNode(c.male ? '   · male-V bank' : '   · female/unisex bank'));
+        d.appendChild(i);
+        d.onclick = function () { onPick(c.id); document.getElementById('modal').remove(); };
+        f.list.appendChild(d);
+      });
+    }
+    f.q.oninput = render;
+
+    if (CLIPS) render();
+    else {
+      fetch('/api/clips').then(function (r) { return r.json(); }).then(function (d) {
+        CLIPS = d.clips || [];
+        render();
+      });
+      render();
+    }
+    return f;
+  }, function (f, close) { close(); }, 'Close');
+}
+
+/* ---------------- inspector: sfx + `to` ---------------- */
+
+function sfxSection(ln, variant) {
+  var sec = el('div', 'insp-sec');
+  sec.appendChild(el('label', null,
+    variant === 'm' ? 'Hermano voice clip' : 'Voice clip (sfx)'));
+
+  var row = el('div', 'sfxrow');
+  var inp = el('input');
+  inp.type = 'text';
+  inp.placeholder = 'empty = text-only (silent)';
+  inp.value = (variant === 'm' ? ln.sfxM : ln.sfx) || '';
+  var pick = el('button', 'btn tiny', 'Pick…');
+  var apply = el('button', 'btn tiny', 'Apply');
+  row.appendChild(inp);
+  row.appendChild(pick);
+  row.appendChild(apply);
+  sec.appendChild(row);
+
+  var clip = variant === 'm' ? ln.clipM : ln.clip;
+  if (clip) {
+    var t = el('div', 'transcript');
+    if (clip.missing) {
+      t.className = 'transcript missing';
+      t.appendChild(el('b', null, 'clip not found in transcripts.json'));
+      t.appendChild(document.createTextNode(
+        'This id has no transcript — it may be a typo, and a missing .wav makes ' +
+        'Audioware reject the WHOLE bank (Jackie goes silent).'));
+    } else {
+      var poor = clip.match !== null && clip.match < 0.6;
+      if (poor) t.className = 'transcript bad';
+      t.appendChild(el('b', null, poor
+        ? 'the clip does NOT say this — subtitle vs audio mismatch'
+        : 'the clip actually says'));
+      t.appendChild(document.createTextNode('“' + clip.transcript + '”'));
+      sec.appendChild(t);
+      t = null;
+    }
+    if (t) sec.appendChild(t);
+  } else {
+    sec.appendChild(el('div', 'note',
+      'No clip — this line is text-only. In a muteFallback tree that means it is ' +
+      'genuinely SILENT (no fallback grunt), so you can reword it freely.'));
+  }
+
+  function commitSfx(v) {
+    commit([{ type: 'setField', ref: CUR.ref, addr: ln.addr, key: 'sfx',
+              variant: variant || null, value: v }],
+           v ? 'Voice clip set.' : 'Voice clip removed — the line is now text-only.');
+  }
+  pick.onclick = function () { clipPicker(function (id) { inp.value = id; commitSfx(id); }); };
+  apply.onclick = function () { commitSfx(inp.value.trim()); };
+  return sec;
+}
+
+function toSection(ln) {
+  var sec = el('div', 'insp-sec');
+  sec.appendChild(el('label', null, 'Where this reply leads'));
+  var sel = nodeOptions(CUR, true, ln.to || '');
+  sec.appendChild(sel);
+  sel.onchange = function () {
+    commit([{ type: 'setField', ref: CUR.ref, addr: ln.addr, key: 'to',
+              value: sel.value }],
+           sel.value ? 'Reply now leads to "' + sel.value + '".'
+                     : 'Reply now ends the conversation.');
+  };
+  if (ln.cond) {
+    sec.appendChild(el('div', 'note',
+      'This reply is gated by a `cond` function — it only appears when that ' +
+      'returns true. The function is code, so it is read-only here:'));
+    sec.appendChild(el('div', 'cond', ln.cond));
+  }
+  return sec;
+}

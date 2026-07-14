@@ -258,19 +258,61 @@ class Raw(Node):
         return "Raw(%s)" % (self.text,)
 
 
-class Table(Node):
-    """A table constructor. `array` = positional items, `map` = key -> value."""
-    __slots__ = ("array", "map", "order")
+class Entry(object):
+    """
+    One item inside a table constructor, with the byte spans a structural edit
+    needs:
 
-    def __init__(self, array, map_, order, start, end):
-        self.array = array      # list[Node]
-        self.map = map_         # dict[str, Node]
-        self.order = order      # list[str] -- key order as written
+      start      first byte of the entry (the key, or the value if positional)
+      end        last byte of the VALUE (exclusive) -- before any trailing comma
+      comma_end  byte after the trailing ',' / ';', or None if there isn't one
+      key        the map key, or None for a positional (array) item
+      value      the value Node
+    """
+    __slots__ = ("key", "value", "start", "end", "comma_end", "index")
+
+    def __init__(self, key, value, start, end, index):
+        self.key = key
+        self.value = value
         self.start = start
         self.end = end
+        self.comma_end = None
+        self.index = index      # position among array items, else None
+
+    def __repr__(self):
+        return "Entry(%s)" % (self.key if self.key else "[%s]" % self.index)
+
+
+class Table(Node):
+    """A table constructor. `array` = positional items, `map` = key -> value."""
+    __slots__ = ("array", "map", "order", "entries", "open_end", "close_start")
+
+    def __init__(self, array, map_, order, entries, start, end,
+                 open_end, close_start):
+        self.array = array          # list[Node]
+        self.map = map_             # dict[str, Node]
+        self.order = order          # list[str] -- key order as written
+        self.entries = entries      # list[Entry] -- every item, in source order
+        self.start = start          # the '{'
+        self.end = end              # after the '}'
+        self.open_end = open_end    # byte after '{'
+        self.close_start = close_start   # byte of '}'
 
     def get(self, key, default=None):
         return self.map.get(key, default)
+
+    def entry(self, key):
+        for e in self.entries:
+            if e.key == key:
+                return e
+        return None
+
+    def item(self, index):
+        """The Entry for the index-th positional item."""
+        for e in self.entries:
+            if e.key is None and e.index == index:
+                return e
+        return None
 
     def __repr__(self):
         return "Table(arr=%d, keys=%s)" % (len(self.array), self.order)
@@ -333,25 +375,45 @@ class Parser(object):
     def parse_raw(self):
         """
         Consume ONE table item we don't model (number, bool, nil, a dotted
-        reference, a nested call...). Only ever called INSIDE a table
-        constructor, where the item boundary is unambiguous: a ',' / ';' / '}'
-        at nesting depth 0.
+        reference, or a `function() ... end` literal). Only ever called INSIDE a
+        table constructor, where the item boundary is unambiguous: a ',' / ';' /
+        '}' at nesting depth 0 AND outside any `... end` block.
+
+        The block counter is what makes `cond = function() local f = x; return
+        f() == 1 end` parse as ONE item. Without it the `;` inside the function
+        body reads as an item separator, the function gets split in half, and any
+        structural splice computed from those offsets would corrupt the file.
+
+        Block openers that take a matching `end` are `function`, `if` and `do`.
+        `for`/`while` are NOT counted -- their `do` is, and there is only one
+        `end` between them.
         """
         start = self.peek().start
-        depth = 0
+        depth = 0        # () [] {} nesting
+        block = 0        # function/if/do ... end nesting
         end = start
         while True:
             t = self.peek()
             if t.kind == "eof":
                 break
-            if t.kind == "op":
+            if t.kind == "name":
+                if t.val in ("function", "if", "do"):
+                    block += 1
+                elif t.val == "end":
+                    block -= 1
+                elif t.val == "repeat":
+                    block += 1
+                elif t.val == "until":
+                    block -= 1
+            elif t.kind == "op":
                 if t.val in "({[":
                     depth += 1
                 elif t.val in ")}]":
-                    if depth == 0:
+                    if depth == 0 and block <= 0:
                         break
-                    depth -= 1
-                elif t.val in (",", ";") and depth == 0:
+                    if depth > 0:
+                        depth -= 1
+                elif t.val in (",", ";") and depth == 0 and block <= 0:
                     break
             end = t.end
             self.next()
@@ -362,14 +424,31 @@ class Parser(object):
         array = []
         map_ = {}
         order = []
+        entries = []
+        close_start = None
+
         while True:
-            if self.accept("op", "}"):
+            t = self.peek()
+            if t.kind == "op" and t.val == "}":
+                close_start = t.start
+                self.next()
                 break
-            if self.accept("op", ",") or self.accept("op", ";"):
+            if t.kind == "eof":
+                raise LuaSyntaxError("unterminated table from offset %d" % open_tok.start)
+            # a stray separator (e.g. a trailing comma) -- attach it to the entry
+            # we just finished, so deletion can take the comma with it.
+            if t.kind == "op" and t.val in (",", ";"):
+                self.next()
+                if entries:
+                    entries[-1].comma_end = t.end
                 continue
 
-            # [ "key" ] = value    /   [ expr ] = value
-            if self.peek().kind == "op" and self.peek().val == "[":
+            estart = t.start
+            key = None
+            val = None
+
+            # [ "key" ] = value
+            if t.kind == "op" and t.val == "[":
                 save = self.i
                 self.next()
                 kt = self.peek()
@@ -378,35 +457,35 @@ class Parser(object):
                     if self.accept("op", "]") and self.accept("op", "="):
                         key = kt.val
                         val = self.parse_value()
-                        if key not in map_:
-                            order.append(key)
-                        map_[key] = val
-                        continue
-                self.i = save
-                # not a string key -> treat the whole item as a positional raw
-                array.append(self.parse_raw_item())
-                continue
+                if val is None:
+                    self.i = save
+                    val = self.parse_raw()
 
             # name = value
-            if (self.peek().kind == "name" and self.peek().val not in KEYWORDS
-                    and self.peek(1).kind == "op" and self.peek(1).val == "="):
+            elif (t.kind == "name" and t.val not in KEYWORDS
+                  and self.peek(1).kind == "op" and self.peek(1).val == "="
+                  and not (self.peek(2).kind == "op" and self.peek(2).val == "=")):
                 key = self.next().val
-                self.next()  # '='
+                self.next()                     # '='
                 val = self.parse_value()
+
+            # positional value
+            else:
+                val = self.parse_value()
+
+            if key is None:
+                idx = len(array)
+                array.append(val)
+                entries.append(Entry(None, val, estart, val.end, idx))
+            else:
                 if key not in map_:
                     order.append(key)
                 map_[key] = val
-                continue
-
-            # positional value
-            array.append(self.parse_value())
+                entries.append(Entry(key, val, estart, val.end, None))
 
         end = self.toks[self.i - 1].end
-        return Table(array, map_, order, open_tok.start, end)
-
-    def parse_raw_item(self):
-        """Consume one comma-separated item, whatever it is, as Raw."""
-        return self.parse_raw()
+        return Table(array, map_, order, entries, open_tok.start, end,
+                     open_tok.end, close_start)
 
 
 # ---------------------------------------------------------------------------
@@ -491,6 +570,177 @@ def lua_quote(s):
             out.append(ch)          # UTF-8 passes through untouched
     out.append('"')
     return "".join(out)
+
+
+# ---------------------------------------------------------------------------
+# structural splices
+#
+# A "splice" is (start, end, text): replace src[start:end] with text. Deleting is
+# text="". Inserting is start==end. The caller applies them sorted by start
+# DESCENDING, so earlier offsets stay valid.
+#
+# Everything here works on WHOLE TABLE ENTRIES. We never re-serialize a table, so
+# every comment, blank line and unmodelled field in the file survives untouched.
+# ---------------------------------------------------------------------------
+
+def _line_start(src, i):
+    j = src.rfind("\n", 0, i)
+    return 0 if j < 0 else j + 1
+
+
+def _indent_of(src, i):
+    ls = _line_start(src, i)
+    k = ls
+    while k < len(src) and src[k] in " \t":
+        k += 1
+    return src[ls:k]
+
+
+def delete_entry(src, table, entry):
+    """
+    Splice that removes one table entry.
+
+    Two cases, and getting the second one wrong is what leaves a file that is
+    valid but not byte-clean:
+
+    * the entry has a trailing comma -> delete `entry,`. If it sits on its own
+      line, take the indentation and the newline with it.
+
+    * the entry is the LAST one and has no trailing comma (`{ text = "x", sfx =
+      "y" }`) -> deleting just the entry would strand the separator before it
+      (`{ text = "x",  }`). So we delete from the END OF THE PREVIOUS VALUE
+      instead, taking the `, ` with us. That's what makes add-then-remove an
+      exact byte round-trip.
+
+    It deliberately STOPS BEFORE a trailing comment (`}, -- 1 = JL_BIKE_KEPT`).
+    Comments are this project's documentation: we never delete one the user
+    didn't explicitly ask us to. A stale comment left behind is cosmetic; a
+    deleted one is lost work.
+    """
+    if entry.comma_end is None:
+        prev = None
+        for e in table.entries:
+            if e is entry:
+                break
+            prev = e
+        if prev is not None:
+            # swallow the separator that precedes us
+            return (prev.end, entry.end, "")
+
+    start = entry.start
+    end = entry.comma_end if entry.comma_end is not None else entry.end
+
+    ls = _line_start(src, start)
+    if src[ls:start].strip() == "":          # entry starts its own line
+        start = ls
+
+    j = end
+    while j < len(src) and src[j] in " \t":
+        j += 1
+    if j < len(src) and src[j] == "\n":      # nothing but whitespace after it
+        end = j + 1
+    elif src[j:j + 2] == "\r\n":
+        end = j + 2
+    # else: a trailing comment follows -> keep it, stop at the comma
+
+    return (start, end, "")
+
+
+def entry_indent(src, table):
+    """
+    The indentation insert_entry will put a new entry at -- i.e. the indent of
+    this table's existing entries. Callers that render a MULTI-LINE entry need it
+    so their continuation lines line up with the first one.
+    """
+    if table.entries:
+        return _indent_of(src, table.entries[-1].start)
+    return _indent_of(src, table.start) + "  "
+
+
+def insert_entry(src, table, text):
+    """
+    Splices that append `text` (one rendered entry, no trailing comma) as the
+    LAST entry of `table`.
+
+    Returns a LIST of splices, because an existing final entry with no trailing
+    comma needs one adding -- Lua allows omitting it, and we must not produce
+    `{ a = 1  b = 2 }`.
+
+    The new entry goes on its own line just above the closing `}`, so it never
+    steals a trailing comment that belongs to the entry before it.
+    """
+    out = []
+    close = table.close_start
+    ls = _line_start(src, close)
+    multiline = src[ls:close].strip() == ""     # `}` sits on its own line
+
+    if multiline:
+        # A block table (nodes, choices, jackiePool). Put the new entry on a
+        # clean line just above the `}` -- never straight after the previous
+        # entry, or it would steal that entry's trailing comment.
+        if table.entries:
+            last = table.entries[-1]
+            indent = _indent_of(src, last.start)
+            if last.comma_end is None:
+                out.append((last.end, last.end, ","))
+        else:
+            indent = _indent_of(src, table.start) + "  "
+        out.append((ls, ls, "%s%s,\n" % (indent, text)))
+        return out
+
+    # An inline table -- `{ text = "x" }`, i.e. one line/choice. Anchor the
+    # insert to the LAST ENTRY, not to the brace: inserting at the brace would
+    # swallow the space in `" }"` and leave `"...sfx = "y"}`. Appending after the
+    # last value keeps the original spacing byte-for-byte, and emits no trailing
+    # comma -- which is exactly what lets delete_entry put it back to the letter.
+    if not table.entries:
+        out.append((table.open_end, table.open_end, " %s " % text))
+        return out
+
+    last = table.entries[-1]
+    if last.comma_end is not None:
+        out.append((last.comma_end, last.comma_end, " %s" % text))
+    else:
+        out.append((last.end, last.end, ", %s" % text))
+    return out
+
+
+def set_field(src, table, key, literal):
+    """
+    Splices that set `key = <literal>` on `table`, or REMOVE the key entirely
+    when `literal` is None.
+
+    * key present, literal given -> replace just the value's bytes
+    * key present, literal None  -> delete the whole `key = value,` entry
+    * key absent,  literal given -> insert a new entry
+    * key absent,  literal None  -> nothing to do
+    """
+    e = table.entry(key)
+    if e is not None:
+        if literal is None:
+            return [delete_entry(src, table, e)]
+        return [(e.value.start, e.value.end, literal)]
+    if literal is None:
+        return []
+    return insert_entry(src, table, "%s = %s" % (key, literal))
+
+
+def apply_splices(src, splices):
+    """Apply (start, end, text) triples back-to-front. Raises on any overlap."""
+    ordered = sorted(splices, key=lambda s: (s[0], s[1]), reverse=True)
+    prev_start = None
+    for start, end, _ in ordered:
+        if not (0 <= start <= end <= len(src)):
+            raise LuaSyntaxError("splice %d-%d out of range" % (start, end))
+        if prev_start is not None and end > prev_start:
+            raise LuaSyntaxError(
+                "overlapping splices (%d-%d overlaps a later one at %d)"
+                % (start, end, prev_start))
+        prev_start = start
+    out = src
+    for start, end, text in ordered:
+        out = out[:start] + text + out[end:]
+    return out
 
 
 def sanity_check(src, roots):

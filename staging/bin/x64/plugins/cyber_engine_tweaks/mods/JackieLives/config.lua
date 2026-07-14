@@ -503,15 +503,19 @@ Config.follow = {
 -- eddies** of his own to get himself to Rocky Ridge. If he (or anyone) plays it again, the bar beside the
 -- garage pays him back TENFOLD — and hands Jackie's Arch back on top.
 --
--- Fires on PROXIMITY, once per save, and is INDEPENDENT of the questline (it works at any stage). Two
--- separately-latched triggers on the same spot, so finding the money doesn't spend the hidden thank-you:
---   * the PAYOUT    — within `radius`: BIG, so you just have to walk into the bar (Antonia's call).
---   * the THANK-YOU — within `noticeRadius`: 0.5 m, a deliberate "stand exactly here" spot, so the tribute
---     card stays a genuinely hidden thing you have to be looking for.
+-- WHERE (Antonia, captured in-game): **behind the bar, in the BD shack next to the gas station** — the gas
+-- station being where Jackie's note is found. It sits ~42 m south-west of the note and 1.7 m higher.
 --
--- COORDS (Antonia, captured in-game): the bar sits ~42 m SOUTH-WEST of Jackie's note / the garage
--- (note = 2575.9, 0.3, 80.9), and 1.7 m higher — consistent with an interior right next door. `radius` is
--- kept well under that 42 m gap so the payout zone can never overlap the hideout's own trigger.
+-- Fires on PROXIMITY, once per save, and is INDEPENDENT of the questline (it works at any stage). Two
+-- separately-latched triggers on the same spot, so collecting the money doesn't spend the hidden thank-you.
+--
+-- ⚠️ WHY `radius` IS SMALL (5 m, not the 20 m first drafted). The payout is 38,470 eddies — a serious sum.
+-- At 20 m the zone covered the whole shack, so ANY player poking around Rocky Ridge (which the questline
+-- sends them to) would have collected it, and "the mod hands you 38k eddies" is the kind of thing Nexus
+-- reviewers call game-breaking. Antonia's answer: keep it exactly where she stood — BEHIND the bar — because
+-- "the other mod players will never go to that exact spot". 5 m honours that: you have to actually walk
+-- behind the bar, but you don't have to stand on a precise pixel. Reverend Flash gets his refund; a passer-by
+-- doesn't trip over it.
 --
 -- ⚠️ WHAT IT ACTUALLY GIVES: **eddies straight into your inventory** (`Items.money`) — NOT a lootable
 -- world item and NOT a shard you pick up. A physical money shard means spawning a world entity and wiring
@@ -519,8 +523,8 @@ Config.follow = {
 -- instant, safe, and impossible to miss or lose.
 Config.revflash = {
   enabled      = true,
-  pos          = { 2548.57, -31.076, 82.609 },   -- the bar next to the Rocky Ridge garage (captured in-game)
-  radius       = 20.0,    -- m — BIG: walk anywhere into the bar and the payout fires (garage is 42 m away, no overlap)
+  pos          = { 2548.57, -31.076, 82.609 },   -- behind the bar, in the BD shack by the gas station
+  radius       = 5.0,     -- m — you have to go BEHIND the bar. Deliberately small; see the note above.
   noticeRadius = 0.5,     -- m — the tight, hidden spot where the tribute card appears
 
   -- The payout: 3,847 eddies spent -> 38,470 back (10x).

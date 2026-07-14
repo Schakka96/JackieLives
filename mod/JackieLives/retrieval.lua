@@ -49,13 +49,47 @@ M.Config = {
   --   mode = "quest"  -> require the journal quest below to be Succeeded.
   -- Ships "off" so the chain is testable at Vik's without driving the prologue.
   -- Use M.debugQuestState() in-game to confirm the path, then flip to "quest".
+  -- v1.56: SHIPS "quest" NOW (was "off" — a testing default that should never have gone public).
+  -- With the gate off, Vik's "Jackie didn't die on my table" reveal fired on PROXIMITY ALONE. Every
+  -- new-game player visits Vik in Act 1 (The Ripperdoc) — so they got the reveal BEFORE Jackie had even
+  -- died. That's both a spoiler and nonsense.
+  --
+  -- The gate is now THREE-STATE (questGateState), not a boolean, because "I can't read the journal" is a
+  -- genuinely different situation from "the heist hasn't happened yet", and conflating them is what forced
+  -- the old unsafe default:
+  --    "met"     -> post-heist. The reveal may fire, and the welcome card shows.
+  --    "notyet"  -> the quest resolved and ISN'T done. Stay silent. (This is the case that was spoiling.)
+  --    "unknown" -> NO path resolved, so we know nothing. STAY SILENT — never guess and spoil — and let
+  --                 the player start the questline themselves from Esc -> Settings ("Start the search for
+  --                 Jackie"). That button is why turning the gate on can't brick the mod for anyone.
+  -- The journal paths below are still best-guesses (the real ones live in .journal resources, not in the
+  -- decompiled scripts, so they can't be confirmed off-Windows). "unknown" exists precisely so that a wrong
+  -- guess degrades to "the player presses a button", not to "the mod is dead" and not to "the mod spoils".
   gate = {
-    mode       = "off",
+    mode       = "quest",
     questPaths = {            -- tried in order; first that resolves is used
       "playing_for_time", "q101_playing_for_time",
       "main_quests/prologue/q101_playing_for_time",
+      "main_quests/prologue/q101_playing_for_time/q101_playing_for_time",
+      "quests/main_quests/prologue/q101_playing_for_time",
     },
     succeededOnly = true,     -- true = require Succeeded; false = Active-or-later also ok
+  },
+
+  -- v1.56 WELCOME CARD (Antonia). Shown ONCE, on the first load after installing, and ONLY to a player who
+  -- is already post-"Playing for Time" — i.e. only when the gate says "met", so it can never appear in a
+  -- pre-heist game and spoil Jackie's death. It tells them Vik's been trying to reach them, and — crucially
+  -- — that the questline can be started from the mod menu if it doesn't fire at Vik's. That last sentence is
+  -- the safety net for anyone whose journal path we failed to resolve.
+  welcome = {
+    fact  = "jackielives_welcome",
+    title = "Jackie Lives — installed",
+    text  = "Vik Vektor's been callin'. Says he's got somethin' to tell you about Jackie — somethin' he "
+         .. "should've told you a long time ago, and he won't say it over the phone.\n\n"
+         .. "Go see him at his clinic in Watson.\n\n"
+         .. "(If nothing happens when you get there, open Esc -> Settings -> Jackie Lives and hit "
+         .. "\"Start the search for Jackie\".)",
+    duration = 16.0,
   },
 
   -- Vik's tip — the reveal, shown as the lower-left tutorial popup when V returns to the clinic.
@@ -318,6 +352,18 @@ local function setStage(n)
 end
 
 -- ---------------------------------------------------------------------------
+-- Numeric game facts (persist in the save). Declared HERE, above the quest gate, because the welcome card
+-- and the manual start both need them — and a Lua local is only visible to code written below it.
+-- ---------------------------------------------------------------------------
+local function factNum(name)
+  local v; pcall(function() v = Game.GetQuestsSystem():GetFactStr(name) end)
+  return (type(v) == "number") and v or 0
+end
+local function setFactNum(name, n)
+  pcall(function() Game.GetQuestsSystem():SetFactStr(name, n) end)
+end
+
+-- ---------------------------------------------------------------------------
 -- Precondition: is V canonically post-heist (q101 done)?
 -- ---------------------------------------------------------------------------
 -- Best-effort journal lookup; fully guarded. Returns state string or nil.
@@ -335,19 +381,27 @@ local function questState(path)
   return result
 end
 
-local function preconditionMet()
+-- v1.56: THREE states, not a boolean. See the essay on M.Config.gate.
+--   "met"     -> post-heist: the reveal may fire, the welcome card may show.
+--   "notyet"  -> the quest resolved and isn't Succeeded: STAY SILENT (this is the spoiler case).
+--   "unknown" -> no path resolved: we know nothing, so STAY SILENT and rely on the manual start button.
+-- The old code collapsed "notyet" and "unknown" into a single `false`, which is why the only way to make
+-- the mod usable was to disable the gate entirely — and that's what leaked the spoiler into a new game.
+local function questGateState()
   local g = M.Config.gate or {}
-  if (g.mode or "off") ~= "quest" then return true end                    -- gate off -> always ok
+  if (g.mode or "off") ~= "quest" then return "met" end                   -- gate off -> no precondition
   for _, p in ipairs(g.questPaths or {}) do
     local st = questState(p)
     if st then
-      if st:find("Succeeded") then return true end
-      if not g.succeededOnly and (st:find("Active") or st:find("Succeeded")) then return true end
-      return false   -- the quest resolved but isn't done yet -> gate holds
+      if st:find("Succeeded") then return "met" end
+      if not g.succeededOnly and st:find("Active") then return "met" end
+      return "notyet"                    -- the quest resolved but isn't done -> pre-heist. Say nothing.
     end
   end
-  return false       -- couldn't resolve any path -> gate holds (use debug to fix the path)
+  return "unknown"                       -- couldn't resolve ANY path -> never guess. Say nothing.
 end
+
+local function preconditionMet() return questGateState() == "met" end
 
 -- Print candidate quest states so we can lock the gate path in-game.
 function M.debugQuestState()
@@ -355,8 +409,40 @@ function M.debugQuestState()
   for _, p in ipairs((M.Config.gate or {}).questPaths or {}) do
     log("  '" .. p .. "' -> " .. tostring(questState(p)))
   end
-  log("  preconditionMet = " .. tostring(preconditionMet()))
+  log("  gate state = " .. tostring(questGateState()))
   log("--------------------------")
+end
+
+-- v1.56: MANUAL START — the safety net that lets the gate be ON without any risk of bricking the mod.
+-- Wired to Esc -> Settings -> Jackie Lives -> "Start the search for Jackie", and to a CET button. It
+-- BYPASSES the gate entirely: the player is explicitly telling us they've already lost Jackie. So even if
+-- every journal path we guess is wrong ("unknown"), nobody is ever stuck — they press this and play.
+-- No-op once the questline has started, so it can't rewind anyone's progress.
+function M.startSearch()
+  if getStage() >= TIP then
+    log("Manual start: the search is already under way (stage " .. tostring(getStage()) .. ") — nothing to do.")
+    return false
+  end
+  setFactNum((M.Config.welcome or {}).fact or "jackielives_welcome", 1)   -- don't also pop the welcome card
+  log("Manual start: player started the search for Jackie from the menu (gate bypassed).")
+  M.giveTip()
+  return true
+end
+
+-- v1.56 WELCOME CARD — once per save, first load after install, and ONLY when the gate says "met" (so it
+-- can never appear pre-heist and spoil Jackie's death). Tells the player Vik's looking for them, and how to
+-- start the questline by hand if it doesn't fire at his clinic.
+local function welcomeTick()
+  local W = M.Config.welcome
+  if not (W and W.fact) then return end
+  if factNum(W.fact) >= 1 then return end             -- already shown (persisted)
+  if getStage() >= TIP then                            -- questline already started -> card is pointless
+    setFactNum(W.fact, 1); return
+  end
+  if questGateState() ~= "met" then return end         -- pre-heist, or we can't tell -> say NOTHING
+  setFactNum(W.fact, 1)
+  showTip(W.title, W.text, W.duration or 16.0)
+  log("Welcome card shown (post-'Playing for Time', first load after install).")
 end
 
 -- ---------------------------------------------------------------------------
@@ -443,13 +529,8 @@ end
 -- ---------------------------------------------------------------------------
 -- Post-reunion shards (Misty / Mama Welles) — one-time each, on proximity
 -- ---------------------------------------------------------------------------
-local function factNum(name)
-  local v; pcall(function() v = Game.GetQuestsSystem():GetFactStr(name) end)
-  return (type(v) == "number") and v or 0
-end
-local function setFactNum(name, n)
-  pcall(function() Game.GetQuestsSystem():SetFactStr(name, n) end)
-end
+-- (v1.56: factNum/setFactNum moved UP, above the quest gate — the welcome card and the manual start need
+--  them, and a Lua local is only visible to code written BELOW it. Left here, they resolved as nil globals.)
 
 -- ---------------------------------------------------------------------------
 -- REVEREND FLASH EASTER EGG (v1.55) — see Config.revflash in config.lua for the story + the coords.
@@ -641,6 +722,7 @@ function M.tick(dt)
   -- s == AWAITING: nothing to poll here — the reunion is driven by V calling Jackie
   -- (init.lua: always-answer + Config.reunionCallTree -> walk-in -> M.completeReunion()).
 
+  welcomeTick()     -- v1.56: the one-time "Vik's been callin'" card (only post-heist; never pre-heist)
   objectiveTick()   -- v1.54: land any queued objective banner once its delay is up
   postShardTick()   -- v0.84: Misty / Mama Welles notes, once Jackie's back
   revflashTick()       -- v1.55: the Reverend Flash refund at Rocky Ridge (self-gating; off until its coords land)
