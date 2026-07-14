@@ -59,15 +59,16 @@ M.Config = {
   },
 
   -- Vik's tip — the reveal, shown as the lower-left tutorial popup when V returns to the clinic.
-  -- v1.2: TWO versions. tipText = Husbando (base, charged — Jackie couldn't stop asking about V);
-  -- tipTextM = Hermano (canon, brotherly). init.lua picks via the mode selector (mvar).
+  -- v1.54: no Misty, and no "whatever's between you two" (Antonia — the pining is gone). Vik reports the
+  -- one thing he'd actually report: the boy shouldn't have lived, he asked for V, go bring him home.
+  -- tipText = Husbando (base, a shade warmer); tipTextM = Hermano (canon). init.lua picks via mvar().
   tipTitle    = "Viktor Vektor",
   tipText     = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
               .. "my table that night. Got a pulse back, called in a favor, moved him out before "
               .. "Arasaka came lookin' for the body. He's alive, V — layin' low out in the Badlands, "
-              .. "and it's gotta stay that way. Truth is... he's been askin' after you nonstop. Half-dead "
-              .. "and still your name was the first thing outta his mouth. Whatever's between you two kept "
-              .. "that boy fightin' when he had no business survivin'. I'm markin' the spot. Go get him.",
+              .. "and it's gotta stay that way. Kid had no business survivin' what he survived. And when "
+              .. "he could talk again, the first thing he asked was whether you got out. I'm markin' the "
+              .. "spot on your map. Go get him.",
   tipTextM    = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on "
               .. "my table that night. I got a pulse back, called in a favor, and moved him out "
               .. "before Arasaka came lookin' for the body. It just wasn't safe before to tell you, V. "
@@ -76,17 +77,20 @@ M.Config = {
   tipDuration = 10.0,
 
   -- Jackie's note — read on reaching the Badlands hideout (Rocky Ridge garage).
+  -- v1.54: Jackie's note does NOT mention Misty, in either track (Antonia). The old base version had him
+  -- brooding over her "story" and pining after V from the desert; both are gone. What's left is the thing
+  -- the note is actually for: he's alive, he's out of the life, and he wants V to call him.
   shardTitle  = "Shard — Jackie Welles",
-  -- v1.2: shardLines = Husbando (base — the desert gave him time to think, about Misty AND about V);
-  -- shardLinesM = Hermano (canon, brotherly). Picked by the mode selector in reachHideout().
+  -- shardLines = Husbando (base — a shade warmer). shardLinesM = Hermano (canon, brotherly).
+  -- Picked by the mode selector in reachHideout().
   shardLines  = {
     "If you're readin' this, V, then the doc kept his word and you made it all the way out here. It's me. I'm alive.",
     "Vik patched me up and smuggled me out 'fore 'Saka could stamp my name on a slab. Been layin' low ever "
       .. "since — nothin' but a whole lotta desert an' too much time to think.",
-    "Thinkin' 'bout the heist. 'Bout Mama. 'Bout Misty — that's... that's its own story, one I gotta tell "
-      .. "you face to face. And thinkin' 'bout you, V. More'n I got any right to, all the way out here.",
+    "Mostly I been thinkin' 'bout the heist. 'Bout Mama. 'Bout how the last thing I ever did was leave you "
+      .. "holdin' the bag in that motel.",
     "I'm done with the merc life for real this time. But I couldn't let you go on believin' you buried me. "
-      .. "Call me when you read this. Been countin' the days, chica. — Jackie",
+      .. "Call me when you read this, V. Please. — Jackie",
   },
   shardLinesM = {
     "If you're readin' this, V, then the doc kept his word and you made it out here. It's me. I'm alive.",
@@ -100,26 +104,40 @@ M.Config = {
 
   callDelay   = 1.0,          -- seconds after the shard is read before Jackie rings V
 
+  -- OBJECTIVE BANNERS (v1.54). The retrieval quest had NO on-screen objectives at all — the tip popup
+  -- and the shard fired, and then the player was simply expected to know to drive to the Badlands, and
+  -- later to phone Jackie and then stand still while he walked in. These are the game's neon on-screen
+  -- message band (the same "DIY objective" path the dinner outing already uses via showOnscreenMsg), so
+  -- they LOOK native without needing a real journal quest (which would mean WolvenKit + a .quest graph).
+  --
+  -- They're FLASHES, not a persistent tracker: each fires once on the transition into its step, and is
+  -- re-asserted once a few seconds after a save is loaded (see tick(), first-observation branch) so a
+  -- returning player is told what they're supposed to be doing. Set an entry to nil to silence that step.
+  objectives = {
+    tip      = "Find Jackie — Rocky Ridge, the Badlands",   -- Vik's just told you he's alive; pin is on the map
+    awaiting = "Call Jackie",                               -- the note's been read — he's waiting on YOUR call
+    arriving = "Wait for Jackie",                           -- the call's over; he's on his way to you on foot
+    done     = "Jackie's back.",                            -- reunited: the mod is unlocked
+  },
+  objectiveDuration = 8.0,
+  -- Delay before an objective lands, so it doesn't collide with the tip/shard popup that triggered it.
+  objectiveDelay    = 3.5,
+
   -- POST-REUNION shards (v0.84). Once Jackie's back (REUNITED), V comes across notes from the two
   -- people who took his "death" hardest — Misty and Mama Welles. These REPLACE the mourning
   -- conversations (see TODO: those base-game/mourning dialogue options are to be blocked). Each
   -- shard shows ONCE, on proximity to that person's spot, persisted via its own game fact.
   -- Coords: Misty's Esoterica + El Coyote Cojo, lifted from Config.locations (misty/coyote).
+  -- v1.54: BOTH notes are now single-track (no `linesM`) — mvar() falls through to `lines` when there's no
+  -- masculine variant, so one text serves every V. The old Husbando versions were the romance arc in
+  -- letter form (Misty releasing Jackie and blessing V; Mama warning V not to toy with her son's heart)
+  -- and Antonia cut it: Misty and Jackie are TOGETHER, and neither woman is writing about V's love life.
   postShards = {
     {
       fact  = "jackielives_shard_misty",
       pos   = { -1541.777, 1196.792, 15.905 }, radius = 8.0,
       title = "Shard — Misty",
-      -- v1.2: lines = Husbando (Misty as the ex — hurt, but releasing him, and she sees the V of it);
-      --       linesM = Hermano (canon — she's still his, grateful you brought him home). mvar() picks.
       lines = {
-        "You're the one who went out and found him. 'Course you were. He used to talk about you like the sun came up outta your smile — even back when it was still him an' me.",
-        "I won't lie to you, V. Some part of me knew long before that heist went sideways. Felt him driftin'. Every spread I turned showed two threads pullin' apart, and no shuffle in the world changed it.",
-        "We ended it gentle as two people can. I told him a heart can't live half in what's gone. He needs somethin' that makes him feel alive NOW — and I finally stopped pretendin' that was still me.",
-        "So whatever this is between you two — I'm not standin' in it. I turned the Lovers face-up for you both and left it there.",
-        "Just be good to him, V. He's been broken enough for three lifetimes. — Misty",
-      },
-      linesM = {
         "I keep the Death card turned face-down now. Couldn't look at it — for months it was all I saw when I shut my eyes.",
         "When Vik told me he'd made it, that he was out there breathin' in the Badlands, I sat down on the shop floor and cried till the incense burned out.",
         "I won't pretend I'm only happy, V. Some nights I'm so angry I could scream. He walked into that heist knowin' the risk. He almost left us. Almost left me.",
@@ -132,15 +150,7 @@ M.Config = {
       fact  = "jackielives_shard_mama",
       pos   = { -1262.463, -1002.345, 12.037 }, radius = 9.0,
       title = "Shard — Mama Welles",
-      -- v1.2: lines = Husbando (Mama's not blind to how her boy says V's name now); linesM = Hermano (canon).
       lines = {
-        "So. My Jackie is alive, and I am the last to hear of it. You wait until you are a mother, V, and someone keeps a thing like this from you — then we will talk about forgiveness.",
-        "I lit a candle for that boy every single day. I cooked for a ghost. And all the while he is out in the dust, breathin', lettin' me grieve. Dios mío.",
-        "And yet — he is ALIVE. My boy is alive. I have not stopped thankin' the Virgin since I heard. My knees are sore from it.",
-        "And do not think a mother is blind, mija. The way that boy says your name now — since Misty, since that desert — dios mío. I have eyes. So hear me: do not toy with my son's heart, and if he ever runs a gig like that heist again I will kill him myself before this city can.",
-        "Bring him to my table. Bring yourself. There has always been a plate waitin' — now set out two. — Mama Welles",
-      },
-      linesM = {
         "So. My Jackie is alive, and I am the last to hear of it. You wait until you are a mother, V, and someone keeps a thing like this from you — then we will talk about forgiveness.",
         "I lit a candle for that boy every single day. I cooked for a ghost. And all the while he is out in the dust, breathin', lettin' me grieve. Dios mío.",
         "And yet — he is ALIVE. My boy is alive. I have not stopped thankin' the Virgin since I heard. My knees are sore from it.",
@@ -166,14 +176,15 @@ local FACT_NAME     = "jackielives_stage"
 
 local deps  = {}              -- bound from init.lua: log, showTip, startCall, startArrival, startReunion, spawnAt
 local state = { fallbackStage = 0, mappinId = nil, lastStage = -1, vikFired = false,
-                clock = 0, callAt = nil, seq = nil }   -- seq: nil|"call"|"arrive"|"reunion"
+                clock = 0, callAt = nil, seq = nil,    -- seq: nil|"call"|"arrive"|"reunion"
+                objText = nil, objAt = nil }           -- v1.54: the one pending objective banner + when it lands
 
 local function log(msg) if deps.log then pcall(deps.log, "[Retrieval] " .. tostring(msg)) end end
 
--- v1.2: relationship-mode selector. init.lua binds `isHermano` (a function -> bool). When it
--- returns true the male-V (Hermano) track is active, so the recovery texts show their canon /
--- brotherly `*M` variant; otherwise the Husbando (base) text — flirtier, and Jackie's split with
--- Misty — is shown. mvar(husbando, hermano) picks the active one (the hermano arg is optional).
+-- v1.2: relationship-mode selector. init.lua binds `isHermano` (a function -> bool). When it returns
+-- true the male-V (Hermano) track is active, so a recovery text shows its `*M` variant; otherwise the
+-- base (Husbando) text is used. mvar(husbando, hermano) picks the active one — and the hermano arg is
+-- OPTIONAL: a text with no `*M` variant (both post-reunion shards, as of v1.54) serves every V.
 local function hermanoMode() return deps.isHermano and deps.isHermano() == true end
 local function mvar(h, m) if m ~= nil and hermanoMode() then return m end return h end
 
@@ -259,6 +270,34 @@ local function showTip(title, text, duration)
   if tutorialPopup(title, text) then return end
   if deps.showTip and pcall(deps.showTip, title, text) then return end
   onscreen(text, duration)
+end
+
+-- ---------------------------------------------------------------------------
+-- OBJECTIVE BANNERS (v1.54) — the blue/neon on-screen band that tells the player what to do next.
+-- Prefers init.lua's showOnscreenMsg (bound as `showObjective`) because that one also plays the UI
+-- sound cue, so the banner isn't silent; falls back to our own local band if it isn't bound.
+-- ---------------------------------------------------------------------------
+local function showObjective(text)
+  if not text or text == "" then return end
+  local dur = M.Config.objectiveDuration or 8.0
+  if not (deps.showObjective and pcall(deps.showObjective, text, dur)) then onscreen(text, dur) end
+  log("Objective: " .. tostring(text))
+end
+
+-- Queue an objective to land `delay` seconds from now (default objectiveDelay). Deferred rather than
+-- immediate so it doesn't fight the tutorial popup / shard text that triggered it for the player's eye.
+-- Only ONE objective is ever pending — a newer step always supersedes an older one that hasn't shown yet.
+local function queueObjective(text, delay)
+  if not text or text == "" then return end
+  state.objText = text
+  state.objAt   = state.clock + (delay or M.Config.objectiveDelay or 3.5)
+end
+
+local function objectiveTick()
+  if not state.objAt or state.clock < state.objAt then return end
+  local t = state.objText
+  state.objAt, state.objText = nil, nil
+  showObjective(t)
 end
 
 -- ---------------------------------------------------------------------------
@@ -385,12 +424,15 @@ function M.giveTip()                                   -- LOCKED -> TIP
   if getStage() >= TIP then return false end
   showTip(M.Config.tipTitle, mvar(M.Config.tipText, M.Config.tipTextM), M.Config.tipDuration)
   setStage(TIP)
+  queueObjective((M.Config.objectives or {}).tip)      -- v1.54: "Find Jackie — Rocky Ridge, the Badlands"
   return true
 end
 
 local function reachHideout()                          -- TIP -> AWAITING_CALL
   if getStage() ~= TIP then return end
   showTip(M.Config.shardTitle, table.concat(mvar(M.Config.shardLines, M.Config.shardLinesM), "\n"), M.Config.shardDuration)
+  -- v1.54: the note is long — let the player actually READ it before the "Call Jackie" banner lands.
+  queueObjective((M.Config.objectives or {}).awaiting, (M.Config.shardDuration or 12.0) * 0.6)
   log("Shard read at hideout -> AWAITING_CALL (V must call Jackie; he always answers now).")
   -- v0.85: no more auto-ring. Jackie now WAITS for V to call him (he always picks up in this
   -- stage — no schedule, never 'asleep'). init.lua plays Config.reunionCallTree, whose ending
@@ -441,10 +483,18 @@ function M.getStage()      return getStage() end
 -- v0.85: true once the shard's read and before the reunion completes. init.lua uses this to let
 -- V call Jackie (he ALWAYS answers — no schedule/asleep gate) and to pick Config.reunionCallTree.
 function M.isAwaitingCall() return getStage() == AWAITING end
+-- v1.54: called by init.lua's `reunion_arrival` action, i.e. the moment the reunion CALL hangs up and
+-- Jackie starts walking in. This is the step Antonia specifically flagged as missing — without it the
+-- player just stands there after the call with no idea they're supposed to wait.
+function M.notifyArrivalPending()
+  queueObjective((M.Config.objectives or {}).arriving, 1.0)
+end
+
 -- Called by init.lua when the first-meeting dialogue ends: unlock the whole mod. Permanent.
 function M.completeReunion()
   clearPin()
   setStage(REUNITED)
+  queueObjective((M.Config.objectives or {}).done, 1.5)   -- v1.54: quest-complete banner
   log("REUNITED — mod fully unlocked (schedule + calls + summon live).")
 end
 -- Player-facing stage names (shown at the top of the CET window).
@@ -467,7 +517,8 @@ function M.notifyUnavailable() onscreen(M.unavailableMsg(), 2.5) end   -- native
 --   startReunion(onDone)                  -- first-sight dialogue (Phase 4)
 function M.bind(opts)
   opts = opts or {}
-  for _, k in ipairs({ "log", "showTip", "startCall", "startArrival", "startReunion", "spawnAt", "isHermano" }) do
+  for _, k in ipairs({ "log", "showTip", "startCall", "startArrival", "startReunion", "spawnAt", "isHermano",
+                       "showObjective" }) do   -- v1.54: showObjective(text, secs) -> init.lua's showOnscreenMsg (banner + UI sound)
     if opts[k] ~= nil then deps[k] = opts[k] end
   end
 end
@@ -490,6 +541,16 @@ function M.tick(dt)
 
   if s ~= state.lastStage then                         -- pin follows the stage (survives reloads)
     if s == TIP then placePin() else clearPin() end
+    -- v1.54: RE-ASSERT the objective on the first tick of a session (lastStage is only -1 straight after
+    -- a load). These banners are flashes, not a persistent tracker, so a player who quits mid-quest and
+    -- comes back tomorrow gets told what they were doing. Live transitions queue their own banner in
+    -- giveTip / reachHideout / notifyArrivalPending — hence the first-observation guard, so they don't
+    -- fire twice.
+    if state.lastStage == -1 then
+      local o = M.Config.objectives or {}
+      if s == TIP then queueObjective(o.tip)
+      elseif s == SHARD or s == AWAITING then queueObjective(o.awaiting) end   -- SHARD = the legacy stage 2
+    end
     state.lastStage = s
   end
 
@@ -506,6 +567,7 @@ function M.tick(dt)
   -- s == AWAITING: nothing to poll here — the reunion is driven by V calling Jackie
   -- (init.lua: always-answer + Config.reunionCallTree -> walk-in -> M.completeReunion()).
 
+  objectiveTick()   -- v1.54: land any queued objective banner once its delay is up
   postShardTick()   -- v0.84: Misty / Mama Welles notes, once Jackie's back
 end
 

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.53"
+Config.version = "1.54"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -587,8 +587,7 @@ Config.date = {
           { text = "You ever miss the merc life, Jackie?",        to = "merc",      chance = 0.6 },
           { text = "This city's been grindin' me down lately.",   to = "nightcity", chance = 0.6 },
           { text = "Think Arasaka ever pays for what they did?",  to = "arasaka",   chance = 0.5 },
-          { text = "You doin' okay... since you and Misty split?", to = "misty",    chance = 0.6,
-            m = { text = "How're things with you and Misty?" } },
+          { text = "How're things with you and Misty?",           to = "misty",     chance = 0.6 },
           { text = "Enough chillin', let's get movin'.",          to = "leave" },
         },
       },
@@ -624,18 +623,18 @@ Config.date = {
         },
       },
       misty = {
-        -- v1.2: BASE = Husbando (he and Misty have split — raw, a door quietly opening toward V);
-        --       `m` = Hermano (canon: they're solid, she's his anchor).
+        -- v1.54: Misty and Jackie are TOGETHER, in both tracks — the old "we ended it" breakup (and the
+        -- "thinkin' 'bout someone else entirely" line aimed at V) is gone for good. Jackie never discusses
+        -- his relationship falling apart, because it doesn't. No `m` override needed: this is his answer
+        -- whichever track you're on.
         jackiePool = {
-          { text = "Me an' Misty... we ended it, V. For real, this time. She said I came back a different man from that desert — and maybe she's right. Maybe I been lookin' somewhere else without even meanin' to.",
-            m = { text = "Misty's my anchor, V. Keeps me lookin' up when I wanna look down. Dunno what I'd be without her." } },
-          { text = "Don't gimme that look. Misty and me are done. Some nights I still reach for the phone to text her... other nights, heh — I'm thinkin' 'bout someone else entirely.",
-            m = { text = "Me an' Misty? Solid. She reads them cards, says the stars got a plan. I just tell her she's my plan." } },
+          { text = "Misty's my anchor, V. Keeps me lookin' up when I wanna look down. Dunno what I'd be without her." },
+          { text = "Me an' Misty? Solid. She reads them cards, says the stars got a plan. I just tell her she's my plan." },
+          { text = "She sat with Mama every week I was gone, y'know. Every week. Ain't never gonna be able to pay that back." },
         },
         choices = {
-          { text = "Someone else, huh? Anyone I know?", to = "open",
-            m = { text = "She's good for you." } },
-          { text = "Let's get movin'.",   to = "leave" },
+          { text = "She's good for you.",  to = "open"  },
+          { text = "Let's get movin'.",    to = "leave" },
         },
       },
       leave = {
@@ -866,25 +865,29 @@ Config.locationDialogue = {
           { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
           { text = "Ah, thanks, Misty. You're the best.",                          sfx = "jl_1255773314399088640" },
         },
+        -- v1.54: V's lines here were rewritten so each one actually SETS UP the real voiced reply that
+        -- follows it (Miguel's clips are fixed — the question has to earn the answer). Misty stays very
+        -- much in the picture: this is his girl's shop and he talks about her like it.
         choices = {
-          { text = "You still swing by Misty's?", to = "her",
-            m = { text = "Things good with Misty?" } },
-          { text = "She read your cards yet?", to = "cards" },
-          { text = "I'll leave you to it.",    to = "bye"   },
+          { text = "So what's the plan for the rest of your day?", to = "her"   },
+          { text = "Did Misty see it comin'? You makin' it out?",  to = "cards" },
+          { text = "I'll leave you to it.",                        to = "bye"   },
         },
       },
       her = {
+        -- voiced: he's off to find Misty. V's question above ("what's the plan?") now flows straight in.
         jackie  = { text = "Now I go back, find Misty and we do somethin' to make me feel alive again.", sfx = "jl_1677043911795367936" },
         choices = {
-          { text = "You'll figure it out. Take care, hermano.", to = "bye",
-            m = { text = "Glad you got her. Take care, hermano." } },
-          { text = "When you surface, got a side gig.",      to = "gig" },
+          { text = "Then go feel alive, hermano. Tell her I said hey.", to = "bye" },
+          { text = "Before you do — got a side gig, if you're up for it.", to = "gig" },
         },
       },
       cards = {
+        -- voiced: "Misty knew... Misty always knows..." — reads as an answer now that V asked whether she
+        -- foresaw him surviving, instead of the old "she read your cards yet?" non-sequitur.
         jackie  = { text = "Misty knew... Misty always knows...", sfx = "jl_2024290835469197312" },
         choices = {
-          { text = "Spooky. Later, choom.",            to = "bye" },
+          { text = "Spooky. Later, choom.",              to = "bye" },
           { text = "Cards say you'll help me on a job?", to = "gig" },
         },
       },
@@ -1329,38 +1332,97 @@ Config.reunionCallTree = {
           m = { text = "I know. I KNOW. Scream at me all you want, mano, I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh." } },
       },
       choices = {
-        { text = "...You really scared me, choom.", to = "iffy" },
+        { text = "...You really scared me, choom.", to = "hub" },
       },
     },
-    -- v0.93: VOICED beat (Antonia's pick) — Jackie's real voice on how close the heist was. Subtitle =
-    -- the clip's actual words so his VO isn't a mismatch (see docs/reunion_voiced_options.md).
-    iffy = {
+
+    -- ======================= THE HUB (v1.54) ===============================
+    -- Was: one long forced chain of "fake" choices that only ever pushed the call forward. Now the call
+    -- OPENS UP here, right after V's anger burns off, and she decides what she actually wants to say.
+    -- The three topics are `once` — pick one, play it out, and it drops off the list when the branch
+    -- walks you back to `hub`, so you can work through all three, in any order, with no repeats.
+    -- `final = true` + first position = the yellow "point of no return" plate: it ENDS the call.
+    -- The hub line is a small pool so a return trip doesn't replay the same sentence verbatim.
+    hub = {
       jackiePool = {
-        { text = "Honestly, for a sec there, things looked iffy. Wasn't sure we'd worm outta that alive.", sfx = "jl_1918251744810168320" },
+        { text = "So... talk to me, V. Where do we even start, huh?" },
+        { text = "Yeah. I'm here. Ain't goin' nowhere this time. What else is on your mind?" },
+        { text = "(quiet) Somethin' else, chica? I got all the time in the world for ya.",
+          m = { text = "(quiet) Somethin' else, mano? I got nothin' but time out here." } },
       },
       choices = {
-        { text = "You weren't SURE — and you still didn't call me.", to = "whatyou" },
+        { text = "Enough talkin'. Get over here — I gotta see you with my own eyes.", to = "wrapup", final = true },
+        { text = "Your bike. She's still sittin' in my garage, y'know.", to = "bike",   once = "bike" },
+        { text = "It's been tough since you were gone, man...",          to = "vlife",  once = "vlife" },
+        { text = "So how you been holdin' up out there in the desert?",  to = "desert", once = "desert" },
       },
     },
-    whatyou = {
+
+    -- ---- BRANCH: the Arch --------------------------------------------------
+    -- v1.54: V raises it (she's the one who's had it all this time), and she gets a REAL say — hand it
+    -- back, or keep it. The `fact` writes the decision straight into the save, because a choice that
+    -- routes onward (`to = "hub"`) can't fire an `action`, and reunionMeetTree reads it later, face to face.
+    bike = {
       jackiePool = {
-        { text = "So talk to me. What'd I miss? What you been up to out there, huh — runnin' 'round Night City without your best choom watchin' your back?" },
+        { text = "...My wheels. Dios mío, I didn't wanna ask. C'mon, don't tease me, V — that bike's the one piece o' the old me I got left. Just tell me straight. Is she okay?" },
+      },
+      -- NO `once` on these two: the hub's bike TOPIC already carries once="bike", and a `once` key is
+      -- shared across the whole conversation — reusing it here would filter both rows out the moment the
+      -- topic was spent, leaving this node with nothing to pick and the decision never recorded.
+      choices = {
+        { text = "Relax, hermano. She's safe and sound. Come pick her up.",
+          to = "bikeback", fact = { name = "jackielives_bike", value = 1 } },   -- 1 = JL_BIKE_RETURNED
+        { text = "About that... I've gotten used to her, Jackie. I'm keepin' her.",
+          to = "bikekeep", fact = { name = "jackielives_bike", value = 2 } },   -- 2 = JL_BIKE_KEPT
+      },
+    },
+    bikeback = {
+      jackiePool = {
+        { text = "Phew... Gracias, V. You got no idea what that means to me. Kept her breathin' for me all this time." },
       },
       choices = {
-        { text = "It's... complicated. Long story.",                  to = "deflect" },
-        { text = "(hesitates) You wouldn't believe me if I told you.", to = "deflect" },
+        { text = "She's yours, Jackie. Always was.", to = "hub" },
       },
     },
-    deflect = {
+    -- The Arch stays with V. He's gutted for exactly one beat — and then he gives it to her, because
+    -- that's who he is. No sulking, no penalty: the quest runs on identically from here.
+    bikekeep = {
       jackiePool = {
-        { text = "Hmm ...Complicated. Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now.",
-          m = { text = "Hmm ...Complicated. Right. You always did go quiet on the heavy stuff, mano. A'ight. I won't push. For now." } },
+        { text = "...Heh. (a long beat) Nah, nah — you know what? Keep her. Way I see it she kept YOU breathin' while I couldn't. She's earned you, an' you earned her. Just don't let her sit, V. She hates that.",
+          m = { text = "...Heh. (a long beat) Nah — you know what? Keep her, hermano. She kept YOU breathin' while I couldn't. Just don't let her sit, V. She hates that." } },
       },
       choices = {
-        { text = "So what about YOU — done hidin'? Or you livin' in that crusty desert forever?", to = "hiding" },
+        { text = "...I'll take care of her. Promise.", to = "hub" },
       },
     },
-    hiding = {
+
+    -- ---- BRANCH: V's last months -------------------------------------------
+    -- The old `whatyou`/`deflect` pair, but now it's V who opens the door instead of Jackie prying.
+    -- She still can't say the word "Relic" out loud — that stays for the face-to-face (and the lie).
+    vlife = {
+      jackiePool = {
+        { text = "Tough how, V? (beat) Talk to me. Ain't like I got anywhere to be." },
+      },
+      choices = {
+        { text = "Everything went sideways after Konpeki. I'm not... I'm not the same.", to = "vdeflect" },
+        { text = "I lost more than you know that night. Damn near lost myself too.",     to = "vdeflect" },
+      },
+    },
+    vdeflect = {
+      jackiePool = {
+        { text = "Hmm. ...Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now.",
+          m = { text = "Hmm. ...Right. You always did go quiet on the heavy stuff, mano. A'ight. I won't push. For now." } },
+      },
+      choices = {
+        { text = "I'll tell you everything. Just... not over a phone.", to = "hub" },
+      },
+    },
+
+    -- ---- BRANCH: the desert ------------------------------------------------
+    -- The old spine (hiding -> daemon -> quest -> gigs) is exactly the "how've you been out there"
+    -- conversation, so that's what it became. It carries the plot (the 'Saka daemon still pinging his
+    -- location = why he can't just come home) and it holds BOTH mid-call exits Antonia asked for.
+    desert = {
       jackiePool = {
         { text = "(sigh) Honest? Layin' low out here's wearin' me down to nothin', V. Miss the city. The lights, the noise, Mama's cookin'. I wanna come home. But it ain't that simple." },
       },
@@ -1377,59 +1439,43 @@ Config.reunionCallTree = {
         { text = "We'll get it out of you. I'm not losin' you twice, Jackie.",     to = "quest" },
       },
     },
+    -- EXIT #1 (Antonia): the malware's on the table and V has agreed to help -> she can end the call here.
     quest = {
       jackiePool = {
         { text = "You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can pull this thing outta my skull... maybe I get my life back.",
           m = { text = "You'd really do that? ... 'Course you would. A'ight, mano. We find someone who can pull this thing outta my skull... maybe I get my life back." } },
       },
       choices = {
-        { text = "We'll get it done. No worries. I got your back till then.", to = "gigs" },
+        { text = "We'll get it done. But that's for tomorrow — get over here. Now.", to = "wrapup", final = true },
+        { text = "We'll get it done. No worries. I got your back till then.",        to = "gigs" },
       },
     },
+    -- EXIT #2 (Antonia): right after he admits he's out of the serious-gig life for good.
     gigs = {
       jackiePool = {
         { text = "(quieter) Gotta be straight with ya, choom. After what happened... I can't be runnin' serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried." },
       },
       choices = {
-        { text = "Nobody's askin' you to. We keep it low. Deal?",   to = "askbike" },
-        { text = "Good. You've bled enough for this city.", to = "askbike" },
+        { text = "Nobody's askin' you to. Now quit talkin' and get over here, hermano.", to = "wrapup", final = true },
+        { text = "Good. You've bled enough for this city.",                              to = "hub" },
       },
     },
-    askbike = {
+
+    -- ---- THE EXIT: wrap the call, send him on his way ----------------------
+    -- Every `final` choice above funnels here, so the call always lands the same way no matter which
+    -- topics V did or skipped. Nothing here assumes the bike (or anything else) ever came up.
+    wrapup = {
       jackiePool = {
-        { text = "Deal. ...An' V? (a beat) There's one more thing I gotta ask ya." },
-      },
-      choices = {
-        { text = "Yeah? What is it now?", to = "bike" },
-      },
-    },
-    bike = {
-      jackiePool = {
-        { text = "My Wheels you know... My bike. Vik said you been holdin' onto her for me. She... she still with you? She okay?" },
-      },
-      choices = {
-        { text = "(laughs) THAT's what you're nervous about?", to = "bikesafe" },
-      },
-    },
-    bikesafe = {
-      jackiePool = {
-        { text = "C'mon, don't tease me — that bike's the one piece o' the old me I got left. Just tell me straight, V. Is she okay?" },
-      },
-      choices = {
-        { text = "Relax, hermano. She's safe and sound. Come pick her up.", to = "coming" },
-      },
-    },
-    coming = {
-      jackiePool = {
-        { text = "Phew ... Gracias V. You got no idea what that means to me. Ok enough chatting, where you at? Nah — don't move, I'm already headed your way. Hang tight, chica.",
-          m = { text = "Phew ... Gracias V. You got no idea what that means to me. Ok enough chatting, where you at? Nah — don't move, I'm already headed your way. Hang tight, mano." } },
+        { text = "...Yeah. Yeah, okay. Enough chattin'. Where you at? Nah — don't move, I'm already headed your way. Hang tight, chica.",
+          m = { text = "...Yeah. Yeah, okay. Enough chattin'. Where you at? Nah — don't move, I'm already headed your way. Hang tight, mano." } },
       },
       choices = {
         { text = "Okay. I'll be right here. Hurry up.", to = "onmyway" },
       },
     },
     onmyway = {
-      -- terminal -> reunion_arrival: give the Arch back + Jackie walks in on foot -> first meeting.
+      -- terminal -> reunion_arrival: Jackie walks in on foot -> first meeting. v1.54: the Arch only goes
+      -- back if V promised it (jackielives_bike == 1); the action reads the fact, so this node is neutral.
       -- v0.93: VOICED sign-off — real clip "Made it. Almost at your place." (he's already on the way).
       jackiePool = {
         { text = "Made it. Almost at your place.", sfx = "jl_1866275454447677440" },
@@ -1455,13 +1501,24 @@ Config.reunionMeetTree = {
     },
     -- bespoke text-only (no clip fits the hug beat) — full emotional subtitle.
     used = {
-      -- v1.2: BASE = Husbando (slow-burn — he lets the look linger); `m` = Hermano (brotherly).
+      -- BASE = Husbando, `m` = Hermano. v1.54: the Husbando track is warmth, not a courtship — he's glad
+      -- to see her and says so. Nothing declared, nothing pined over. That's the whole register now.
       jackiePool = {
         { text = "Yeah, yeah — desert don't do a man's looks any favors. But you? ...Damn. Sight for sore eyes, V. Missed that face more'n I got words for.",
           m = { text = "Yeah, yeah — desert don't do a man's looks any favors. But you, hermano? Damn, you're a sight. Missed that ugly mug o' yours." } },
       },
+      -- v1.54: the bike is now OPTIONAL on the call, so the face-to-face has to ask the save what actually
+      -- happened before it opens its mouth — otherwise Jackie thanks V for an Arch he never got back.
+      -- Same V line, three destinations; `cond` shows exactly one of them. Each predicate is written
+      -- defensively (`f and ...`) so that if jlBikeOutcome were ever missing, the neutral route still wins
+      -- rather than every row vanishing.
       choices = {
-        { text = "We're both still standin'. That's what counts.", to = "drivehome" },
+        { text = "We're both still standin'. That's what counts.", to = "drivehome",
+          cond = function() local f = jlBikeOutcome; return (f ~= nil) and f() == 1 end },   -- 1 = she promised it back
+        { text = "We're both still standin'. That's what counts.", to = "keptride",
+          cond = function() local f = jlBikeOutcome; return (f ~= nil) and f() == 2 end },   -- 2 = she's keeping it
+        { text = "We're both still standin'. That's what counts.", to = "leave",
+          cond = function() local f = jlBikeOutcome; return (f == nil) or f() == 0 end },    -- 0 = never came up
       },
     },
     -- v0.93: VOICED — real clip ("...How about I drive you home, eh?"). V kept his bike safe = "savin' my ass".
@@ -1471,6 +1528,17 @@ Config.reunionMeetTree = {
       },
       choices = {
         { text = "Drive me home? She's your ride, Jackie — here, have your keys back.", to = "bikejoy" },
+      },
+    },
+    -- v1.54: V told him on the call she's keeping the Arch. He's already made his peace with it — so he
+    -- turns it into a joke and makes HER drive. Text-only (no clip fits); ends at the same `leave` beat.
+    keptride = {
+      jackiePool = {
+        { text = "So you really are keepin' her, huh. (laughs) A'ight, a'ight — then YOU'RE drivin', chica. C'mon. Show me she's been in good hands.",
+          m = { text = "So you really are keepin' her, huh. (laughs) A'ight — then YOU'RE drivin', hermano. C'mon. Show me she's been in good hands." } },
+      },
+      choices = {
+        { text = "Get on, Jackie. Let's go home.", to = "leave" },
       },
     },
     -- v0.94b: MUTE (text-only) — the Miguel VO clip didn't fit here. Bespoke subtitle: he's just

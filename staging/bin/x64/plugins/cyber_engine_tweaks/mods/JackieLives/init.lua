@@ -2111,34 +2111,40 @@ function jlVar(entry)
   return entry
 end
 
--- v1.2: detect V's BODY GENDER once and LOCK the relationship-mode default (Female V -> Husbando,
--- Male V -> Hermano). Player isn't ready in onInit, so this runs from onUpdate (world-ready-safe,
--- same pattern as nsTick) and only fires on the FIRST load after install — the persisted JL.genderLock
--- flag guards it, so afterwards the player's saved choice / manual toggle always wins. Global (200-cap).
-function jlDetectGenderOnce()
-  if JL.genderLock then return end                     -- already locked (persisted) -> respect saved/auto choice
-  local pl = Game.GetPlayer(); if not pl then return end   -- world not ready this tick -> retry next frame
-  -- v1.3 FIX: read the gender as a STRING, not by comparing CName userdata with `==` (that comparison
-  -- is unreliable in CET, so it returned false even for a female V -> wrongly locked to Hermano). We
-  -- pull the CName's `.value` (with NameToString / tostring fallbacks) and compare the plain string.
-  local gname = nil
-  pcall(function()
-    local g = pl:GetResolvedGenderName()               -- CName "Female" / "Male"
-    if g ~= nil then
-      gname = g.value                                  -- reliable string accessor
-      if gname == nil then pcall(function() gname = Game.NameToString(g) end) end
-      if gname == nil then gname = tostring(g) end
-    end
-  end)
-  if gname == nil or gname == "" or gname == "None" then return end   -- unreadable this tick -> retry (never lock on a bad read)
-  local female = (gname == "Female")
-  JL.husbando    = female                              -- female V -> Husbando, male V -> Hermano
-  JL.genderLock  = true
-  pcall(jlSaveSettings)
-  JL.ui.status = "Jackie mode auto-set: " .. (female and "Husbando (female V)" or "Hermano (male V)")
-  log("V body gender read as '" .. tostring(gname) .. "' -> relationship mode LOCKED to " ..
-      (female and "Husbando (female V)" or "Hermano (male V)") .. " (switch it anytime in Esc -> Settings).")
+-- v1.54: HERMANO IS THE DEFAULT FOR EVERY V. The old v1.2/v1.3 behaviour auto-read V's body gender on
+-- first load and locked Female V -> Husbando; that's gone (jlDetectGenderOnce deleted). Rationale: most
+-- players run a male V, Hermano is the canon track, and a player who wants Husbando can just flip the
+-- Esc -> Settings switch. So the mode is ONLY ever non-default if the player explicitly chose it.
+--
+-- JL.modeChosen (persisted) records that explicit choice — it is set ONLY by the settings switch. Until
+-- then we force Hermano on every load, which also MIGRATES old saves that the auto-detect had silently
+-- locked to Husbando. Global (200-local cap). Called from onInit, right after jlLoadSettings.
+function jlDefaultHermano()
+  if JL.modeChosen then return end       -- player flipped the switch themselves -> their choice wins, always
+  if JL.husbando ~= false then
+    JL.husbando = false                  -- no explicit choice on record -> Hermano (the default)
+    log("Relationship mode defaulted to Hermano (flip 'Husbando mode' in Esc -> Settings to change it).")
+  end
 end
+
+-- ---------------------------------------------------------------------------
+-- THE ARCH (v1.54). Jackie's bike is no longer an automatic hand-back: on the reunion call it's an
+-- OPTIONAL hub topic, and if V does raise it she can either promise it back or tell him she's keeping
+-- it. The outcome lives in the save (a game fact), not in memory, because the payoff is read LATER —
+-- by the reunion_arrival action and again by the face-to-face reunionMeetTree — across a possible
+-- save/reload in between. Globals, not locals (200-local cap).
+JL_BIKE_UNASKED  = 0   -- the bike never came up on the call
+JL_BIKE_RETURNED = 1   -- V told him she'd kept it safe -> he gets the Arch back on arrival
+JL_BIKE_KEPT     = 2   -- V told him she's keeping it -> it stays in her garage
+
+function jlFactNum(name)          -- read a numeric game fact; 0 if unset/unreadable
+  local v; pcall(function() v = Game.GetQuestsSystem():GetFactStr(name) end)
+  return (type(v) == "number") and v or 0
+end
+function jlSetFactNum(name, n)
+  pcall(function() Game.GetQuestsSystem():SetFactStr(name, n) end)
+end
+function jlBikeOutcome() return jlFactNum("jackielives_bike") end
 
 -- ---------------------------------------------------------------------------
 -- BRANCHING dialogue (v0.23): native-looking choice box driving a small tree.
@@ -2296,6 +2302,11 @@ local COL = {
   selTx = { 0.302, 0.082, 0.020, 1.0 },  -- #4d1505  selected text (dark, sits on the yellow bar)
   bar   = { 0.973, 0.859, 0.294, 1.0 },  -- #f8db4b  solid selection bar
   frame = { 0.453, 0.227, 0.224, 1.0 },  -- #743a39  red name-box frame
+  -- v1.54: muted gold for a `final` (irreversible) choice that is NOT under the cursor. The game marks
+  -- point-of-no-return options with a yellow plate; we keep the plate on such a row at all times, dim
+  -- when unhighlighted and full-brightness (COL.bar) once the cursor lands on it. Dark selTx text stays
+  -- legible on both shades, so a final row reads as "this one ends things" before you ever select it.
+  barDim = { 0.663, 0.586, 0.200, 1.0 },
 }
 
 -- defensive flag builder: sum only the flags that actually exist on this CET build.
@@ -2342,18 +2353,22 @@ local function drawChoiceRows(style)
   else
     -- styles 1 & 3: SOLID yellow bar behind the selected row, sized to the TEXT width
     -- (explicit Selectable size -> no more growing bar).
-    ImGui.PushStyleColor(ImGuiCol.Header,        COL.bar[1], COL.bar[2], COL.bar[3], 1.0)
-    ImGui.PushStyleColor(ImGuiCol.HeaderHovered, COL.bar[1], COL.bar[2], COL.bar[3], 1.0)
-    ImGui.PushStyleColor(ImGuiCol.HeaderActive,  COL.bar[1], COL.bar[2], COL.bar[3], 1.0)
+    -- v1.54: the bar colour is now pushed PER ROW, not once for the whole list, because a `final`
+    -- (irreversible) choice keeps its plate even when the cursor is elsewhere — just in the dimmer gold.
     for i, c in ipairs(menu.choices) do
       local label = " " .. tostring(c.text or "") .. " "
       local tw    = ImGui.CalcTextSize(label)            -- reflects the window font scale (set in Begin)
-      local col   = (i == menu.sel) and COL.selTx or COL.unsel
+      local isSel = (i == menu.sel)
+      local plate = isSel or (c.final == true)           -- does this row get a yellow plate at all?
+      local bar   = (isSel and COL.bar) or COL.barDim    -- cursor row = bright; a dim final row = muted gold
+      local col   = plate and COL.selTx or COL.unsel     -- dark text on a plate, cyan without one
+      ImGui.PushStyleColor(ImGuiCol.Header,        bar[1], bar[2], bar[3], 1.0)
+      ImGui.PushStyleColor(ImGuiCol.HeaderHovered, bar[1], bar[2], bar[3], 1.0)
+      ImGui.PushStyleColor(ImGuiCol.HeaderActive,  bar[1], bar[2], bar[3], 1.0)
       ImGui.PushStyleColor(ImGuiCol.Text, col[1], col[2], col[3], 1.0)
-      ImGui.Selectable(label, i == menu.sel, 0, tw, 0)   -- width = text width -> bar fits the text
-      ImGui.PopStyleColor(1)
+      ImGui.Selectable(label, plate, 0, tw, 0)           -- width = text width -> bar fits the text
+      ImGui.PopStyleColor(4)
     end
-    ImGui.PopStyleColor(3)
   end
   ImGui.EndGroup()
 end
@@ -2551,10 +2566,23 @@ local function openChoiceMenu(choices, title)
   --  • v0.83 `chance` (0..1): the choice only APPEARS with that probability (re-rolled per open) — used
   --    for the random "get it off your chest" dinner topics. A choice with no `chance` always shows.
   --  • v0.81 `textPool` (array): display a RANDOM line from it (like Jackie's jackiePool replies shuffle).
+  --  • v1.54 `once = "<key>"`: a ONE-TIME branch. Once the player picks it, it's struck off for the rest of
+  --    THIS conversation (bstate.taken) and never re-offered — how the reunion call's hub lets V work
+  --    through the bike / her-last-months / the-desert topics one by one without repeating one.
+  --  • v1.54 `final = true`: an IRREVERSIBLE choice (ends the call). Purely cosmetic here — drawChoiceRows
+  --    paints the row with the game's yellow "point of no return" background. Put it FIRST in the list.
+  --  • v1.54 `cond = function() return <bool> end`: the choice only appears when the predicate holds —
+  --    e.g. the face-to-face bike beats, which depend on what V decided about the Arch on the call. A
+  --    predicate that ERRORS is treated as false, so a bad cond hides its choice instead of crashing.
   local shown = {}
   for _, c in ipairs(choices or {}) do
     local appear = true
     if c.chance then local r = 1.0; pcall(function() r = math.random() end); appear = (r < c.chance) end
+    if c.once and bstate.taken and bstate.taken[c.once] then appear = false end   -- v1.54: already walked this branch
+    if appear and c.cond then
+      local ok, res = pcall(c.cond)
+      appear = (ok and res == true)
+    end
     if appear then
       -- v1.2: resolve the DISPLAY text into a shallow COPY so re-rolling a textPool or switching
       -- relationship mode never clobbers the config's base text. In Hermano mode a choice's `m`
@@ -2571,7 +2599,14 @@ local function openChoiceMenu(choices, title)
       shown[#shown + 1] = sc
     end
   end
-  if #shown == 0 then shown = choices end   -- safety: never open an empty menu
+  -- safety: never open an empty menu. Fall back only to choices that are still LEGAL (a spent `once`
+  -- branch must stay spent — resurrecting it would let the player replay a hub topic).
+  if #shown == 0 then
+    for _, c in ipairs(choices or {}) do
+      if not (c.once and bstate.taken and bstate.taken[c.once]) then shown[#shown + 1] = c end
+    end
+    if #shown == 0 then shown = choices end   -- everything was spent -> last resort, show the raw list
+  end
   menu.choices, menu.sel, menu.title = shown, 1, title or "Jackie"
   menu.shown, Branch.open = true, true
   log("Branch: menu open (" .. tostring(#shown) .. " choices). Cycle key=move, F=select.")
@@ -2592,6 +2627,7 @@ Branch.finish = function(reason)
   bstate.node, bstate.openAt = nil, nil
   bstate.pending, bstate.pendingAt, bstate.pendingAction = nil, nil, nil
   bstate.tree, bstate.talkCooldownKey = nil, nil
+  bstate.taken = nil                -- v1.54: drop the one-time-choice ledger with the conversation
   hideSubtitle()                    -- wipe the bottom band NOW (watchdog would catch it too)
   if reason then JL.ui.status = reason end
 end
@@ -2621,6 +2657,10 @@ end
 Branch.start = function(nodeKey, tree)
   tree = tree or bstate.tree or Config.dialogueTree
   if not tree or not tree.nodes then return end
+  -- v1.54: entering a DIFFERENT tree = a brand-new conversation, so wipe the one-time-choice ledger
+  -- (bstate.taken). Within one tree it persists, which is what makes a HUB node work: a branch the
+  -- player already walked (`once = "<key>"`) stays hidden when they come back to the hub.
+  if bstate.tree ~= tree then bstate.taken = nil end
   bstate.tree = tree
   nodeKey = nodeKey or tree.start
   local node = tree.nodes[nodeKey]
@@ -2649,6 +2689,14 @@ Branch.confirm = function(idx)
   if not c then return end
   closeChoiceMenu()
   log("Branch: selected #" .. tostring(idx) .. " '" .. tostring(c.text) .. "'")
+  if c.once then                    -- v1.54: strike this branch off the hub for the rest of the conversation
+    bstate.taken = bstate.taken or {}
+    bstate.taken[c.once] = true
+  end
+  -- v1.54 `fact = { name = "...", value = N }`: record the choice into the SAVE, right now. A choice that
+  -- routes onward (`to = "hub"`) can't fire an `action` — actions only run on a terminal choice — so this
+  -- is how a mid-conversation decision (V keeps the Arch / gives it back) survives to be read later.
+  if c.fact and c.fact.name then jlSetFactNum(c.fact.name, c.fact.value or 1) end
   hideSubtitle()
   -- v0.94: on the reunion beats, scale V's chosen line to its length too (so long picks aren't cut off).
   local hold = (isReunionBeat() and readingSecs(c.text))
@@ -2867,15 +2915,25 @@ local function runCallAction(name)
   end
   -- (v0.94b: the "return_bike" action handler was removed with the retired firstCallTree — the Arch is
   -- now returned by the reunion_arrival handler below and the "Give bike back" debug button.)
-  if name == "reunion_arrival" then   -- v0.85: the reunion CALL ended -> he comes to V on foot
-    if jlReturnJackiesBike then pcall(jlReturnJackiesBike) end                 -- his Arch is his again
+  -- v0.85: the reunion CALL ended -> he comes to V on foot.
+  -- v1.54: the Arch is only handed back if V actually PROMISED it on the call. The bike is now an
+  -- OPTIONAL hub topic, so there are three outcomes, recorded in the `jackielives_bike` fact by the
+  -- hub's bike choices (see JL_BIKE_* / Config.reunionCallTree):
+  --   0 = never came up (V hung up without asking) · 1 = V said she'd kept it safe · 2 = V is keeping it.
+  -- Only 1 returns the bike. 0 and 2 leave it in V's garage, and reunionMeetTree branches on the same
+  -- fact so the face-to-face never thanks him for a bike he never got back.
+  if name == "reunion_arrival" then
+    if jlBikeOutcome() == JL_BIKE_RETURNED and jlReturnJackiesBike then
+      pcall(jlReturnJackiesBike)                                              -- his Arch is his again
+    end
     pcall(function() Game.GetQuestsSystem():SetFactStr("jackielives_daemon", 1) end)  -- launch daemon-removal quest (stub)
     local delay = (Config.call and Config.call.vehicleSpawnDelay) or 2.0
     JL.varrival.at      = (JL.clock or 0) + delay
     JL.varrival.useBike = false          -- FOOT walk-in (reuse the standard foot arrival)
     JL.reunionPending   = true           -- arrivalGreetTick plays reunionMeetTree instead of a greeting
+    pcall(function() Retrieval.notifyArrivalPending() end)   -- v1.54: "Wait for Jackie" objective banner
     JL.ui.status = "Jackie's on his way in..."
-    log("Reunion: bike returned + FOOT walk-in armed; reunionMeet pending.")
+    log("Reunion: " .. (keep and "V KEPT the Arch" or "bike returned") .. " + FOOT walk-in armed; reunionMeet pending.")
     return
   end
   if name == "reunion_complete" then   -- v0.85: first-meeting dialogue ended -> UNLOCK the mod
@@ -5789,19 +5847,20 @@ local function nsTick()
     ns.addSwitch(
       "/jackielives/relationship",
       "Husbando mode",
-      "Picks Jackie's relationship track. Auto-set from your V the first time you load in " ..
-      "(Female V -> Husbando, Male V -> Hermano) and remembered after that — flip it here anytime. " ..
-      "ON = HUSBANDO: Jackie and V have a slow-burn thing going — he's a lot more flirty, the " ..
-      "tension's there, and he's broken things off with Misty. " ..
-      "OFF = HERMANO (canon): Jackie's your brother-in-arms, strictly choom, and still with Misty. " ..
+      "Picks Jackie's relationship track. DEFAULT = OFF (Hermano) for every V — flip it on here " ..
+      "if you want the other track. " ..
+      "OFF = HERMANO (canon, the default): Jackie's your brother-in-arms, strictly choom. " ..
+      "ON = HUSBANDO: same story, but there's an unspoken warmth between Jackie and V — he's softer, " ..
+      "and he calls you 'chica' instead of 'mano'. " ..
       "Changes his dialogue, greetings and the reunion/recovery notes to match.",
-      JL.husbando,   -- current state (auto-locked from V's gender on first load; then persisted)
-      true,          -- 'reset to default' value: Husbando (the flirty track)
+      JL.husbando,   -- current state (defaults to Hermano; persisted once the player flips it)
+      false,         -- 'reset to default' value: HERMANO (v1.54 — was Husbando)
       function(state)
-        JL.husbando = state
+        JL.husbando   = state
+        JL.modeChosen = true   -- v1.54: an EXPLICIT player choice — jlDefaultHermano stops forcing the default
         pcall(jlSaveSettings)
         JL.ui.status = "Jackie mode: " .. (state and "Husbando" or "Hermano")
-        log("Jackie relationship mode -> " .. (state and "Husbando" or "Hermano"))
+        log("Jackie relationship mode -> " .. (state and "Husbando" or "Hermano") .. " (player choice; remembered)")
       end
     )
 
@@ -5884,7 +5943,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "genderLock", "allowMainGigs", "disableCustomWalk" }  -- persisted JL.* boolean flags (genderLock v1.3: has the first-load gender lock happened? renamed from the old `modeInit`, so a save that was mis-locked to Hermano by the v1.2 CName-compare bug re-detects ONCE with the fixed read)
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "disableCustomWalk" }  -- persisted JL.* boolean flags (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
@@ -6623,8 +6682,12 @@ registerForEvent("onInit", function()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
+  pcall(jlDefaultHermano)  -- v1.54: Hermano for everyone unless the player explicitly flipped the switch
   pcall(jlLoadSeats)       -- v1.1: restore tuned sit coords into Config so they survive a reload (old-S4 fix)
-  pcall(function() Retrieval.bind{ log = log, isHermano = jlHermano } end)   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
+  -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
+  -- + v1.54 showObjective -> the native banner (with its UI sound), so the quest's steps actually
+  -- tell the player what to do next ("Find Jackie...", "Call Jackie", "Wait for Jackie").
+  pcall(function() Retrieval.bind{ log = log, isHermano = jlHermano, showObjective = showOnscreenMsg } end)
   -- v0.96 BLAZE: inject every game-touching primitive the set-piece needs, built from the
   -- proven helpers in this file. blaze.lua stays pure Lua; ONLY this table calls Game.*.
   pcall(function()
@@ -7318,7 +7381,8 @@ registerForEvent("onUpdate", function(dt)
     pcall(blazeFinaleSceneTick)                      -- v1.07: place Jackie + run the finale conversation (self-guards)
     pcall(function() Blaze.autoStartTick() end)      -- v1.0: auto-start when the start-fact flips (T-Bug opens the glass doors)
   end
-  pcall(jlDetectGenderOnce)   -- v1.2: one-shot — lock the Husbando/Hermano default from V's body gender
+  -- (v1.54: the per-frame jlDetectGenderOnce gender probe is gone — Hermano is now the flat default for
+  --  every V and is applied once at load by jlDefaultHermano. Nothing to poll here any more.)
   -- (nsTick moved above the session gate — it must also run at the main menu; see there.)
   pcall(updateTalkPrompt, dt)
   pcall(dialogueTick)
