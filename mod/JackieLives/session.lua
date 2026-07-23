@@ -1,5 +1,5 @@
 --[[
-  session.lua — SESSION GUARD + CRASH LOG  (v1.52)
+  session.lua — SESSION GUARD + CRASH LOG  (v1.59 — real load signal; was v1.52)
 
   Self-contained module (global `Session`, no top-level `local` in init.lua's main chunk ->
   respects the 200-local cap). Depends on nothing but the game API and a few injected hooks.
@@ -41,27 +41,28 @@
   ---------------------------------------------------------------------------
   HOW A SESSION BOUNDARY IS DETECTED (and why two signals, not one)
   ---------------------------------------------------------------------------
-  UNVERIFIED against the redscript dump (not available on the Mac; see the `cp2077-redscript-dump-source`
-  note). Two signals, with different jobs:
+  RESOLVED v1.59. The v1.52 design guessed that `Game.GetPlayer():GetEntityID().hash` changes on a
+  load-from-save. It does NOT: on game 2.31 that hash is the fixed constant 1ULL. jackie_debug.log proved
+  it — EVERY load-from-save logged "presence gap, SAME player entity (1ULL) — treating as fast-travel,
+  no reset", so the old signal A never fired and this whole guard was inert. That is exactly why Jackie
+  kept leaking into innocent saves and crashing the game on load.
 
-    A. playerHash — `Game.GetPlayer():GetEntityID().hash`. A load-from-save REBUILDS the player puppet;
-       a fast-travel only teleports the existing one. So a hash change means "new session". AUTHORITATIVE:
-       this and only this triggers the reset.
+  The fix is CDPR's OWN load flag, verified against the redscript dump (game 2.31):
+
+    A (REAL). game_was_loaded — a quest fact. `PlayerPuppet.OnGameAttached` sets it to 1, then a
+       1.0 s-delayed `OnGameLoadedFactReset` clears it to 0 (player.script:1245 / :1249). A load-from-save
+       re-attaches the player puppet -> fires. A fast-travel only TELEPORTS the existing puppet
+       (`TeleportationFacility.TeleportToNode`, fastTravelSystem.script:444) -> never fires. So the fact's
+       0->1 rising edge is the authoritative "new session" trigger. We latch the edge because the fact is
+       1 for only ~1 s and the player isn't in-world on the exact frame it flips (see M.tick / M.loadPending).
 
     B. presence gap — the player goes absent and comes back. EVERY load screen has one... but so does
        every fast-travel. So a gap is corroborating evidence, NOT a trigger. If a gap alone reset us, we
-       would drop Jackie's handle on every fast-travel and orphan his body — and with Config.persist
-       disabled, nothing would spawn him back. Gaps are logged, never acted on.
+       would drop Jackie's handle on every fast-travel and orphan his body. Gaps are logged, never acted on.
 
-  THE OPEN RISK, STATED PLAINLY: if the player's EntityID is a fixed well-known constant rather than a
-  per-session runtime id, signal A never fires and this guard never triggers. The design is deliberately
-  self-diagnosing — after one load-from-save the log reads either
-
-      [SESSION] #2 begins — player entity changed (...)        <- guard works
-      [SESSION] presence gap, SAME player entity (...)          <- guard never fires; needs a real hook
-
-  so ONE in-game load tells us the answer instead of us guessing. If it's the second line, the fix is an
-  observed load event (PlayerPuppet.OnGameAttached), which needs the dump to verify.
+  The old playerHash compare is KEPT as a dead-but-harmless belt-and-braces (it can only help if a future
+  patch makes the EntityID per-session again). The guard is still self-diagnosing: after one load the log
+  now reads "[SESSION] #2 begins — game_was_loaded (native load signal)" when it works.
 
   ---------------------------------------------------------------------------
   CRASH LOG
@@ -79,10 +80,12 @@
 local M = {}
 
 M.id               = 0      -- current session generation; 0 = no session seen yet
-M.playerHash       = nil    -- last observed player EntityID hash (signal A)
+M.playerHash       = nil    -- last observed player EntityID hash (legacy signal A — dead on 2.31, see below)
 M.sawPlayer        = false  -- was the player in-world last tick (signal B)
 M.companionAtStart = false  -- companion fact state at session start (guards the self-heal)
 M.marker           = nil    -- risky op currently in flight
+M.prevLoaded       = nil    -- last observed value of the native `game_was_loaded` fact (edge detect)
+M.loadPending      = false  -- latched: a load-from-save fired but the player isn't in-world yet
 
 -- Injected by init.lua so this module never reaches into init's locals.
 --   log(msg)              — the existing logger
@@ -161,6 +164,23 @@ function M.playerInWorld()
   return (ok and pos ~= nil), pos
 end
 
+-- THE REAL SIGNAL A (v1.59). CDPR's own load flag. `PlayerPuppet.OnGameAttached` sets the quest fact
+-- `game_was_loaded` = 1, then a 1.0 s-delayed `OnGameLoadedFactReset` sets it back to 0
+-- (player.script:1245 / :1249, verified against the game-2.31 redscript dump). A fast-travel only
+-- TELEPORTS the existing puppet (`TeleportationFacility.TeleportToNode`, fastTravelSystem.script:444) —
+-- it never detaches/re-attaches it — so this fact goes to 1 ONLY right after a genuine load-from-save
+-- (and on the initial launch into the world), and NEVER on fast-travel. This is exactly the
+-- load-vs-fast-travel discriminator the player EntityID hash could never be: on 2.31 that hash is the
+-- fixed constant 1ULL (proven in jackie_debug.log — every load logged "SAME player entity (1ULL)"),
+-- so the old signal A never fired and this whole guard was inert.
+--
+-- Returns 0 or 1 (facts default to 0 when unset), or nil only if the QuestsSystem call itself failed.
+function M.gameWasLoaded()
+  local v
+  local ok = pcall(function() v = Game.GetQuestsSystem():GetFactStr("game_was_loaded") end)
+  return ok and v or nil
+end
+
 -- Stamp a spawn record with the session that created it. Call at every spawn site.
 function M.stamp(rec)
   if type(rec) == "table" then rec.spawnSession = M.id end
@@ -183,20 +203,26 @@ end
 -- Jackie's handle on every fast-travel and orphan his body — and with Config.persist disabled nothing
 -- would bring him back. So the gap is NOT the trigger.
 --
--- The discriminator is the player ENTITY: a load-from-save rebuilds the player puppet, a fast-travel only
--- teleports the existing one. Hence signal A (hash change) is authoritative and signal B (gap) is only
--- corroborating evidence, logged so we can tell the two transitions apart.
---
--- ⚠️ THE OPEN RISK, STATED PLAINLY: if the player's EntityID turns out to be a fixed well-known constant
--- rather than a per-session runtime id, signal A never fires and this guard never triggers. That is
--- UNVERIFIED (no redscript dump on the Mac). It is also *self-diagnosing*: on the first load-from-save the
--- log will show either "[SESSION] #2 begins" (works) or "presence gap, SAME player entity" (doesn't). Read
--- jackie_debug.log after one load and we will know, instead of guessing.
+-- The discriminator is CDPR's native `game_was_loaded` fact (real signal A): a load-from-save re-attaches
+-- the player puppet and sets it to 1 for ~1 s; a fast-travel only teleports the puppet and never sets it.
+-- Signal B (presence gap) is only corroborating evidence, logged so we can tell the two transitions apart.
+-- (The old player-hash compare is dead on 2.31 — the hash is the constant 1ULL — and is kept only as a
+-- harmless fallback; see the module header for the full diagnosis.)
 function M.tick()
   local hash    = M.playerId()
   local inWorld = M.playerInWorld()
+  local loaded  = M.gameWasLoaded()
 
-  -- Player absent: mid-load or mid-fast-travel. Remember the gap; decide nothing yet.
+  -- Rising edge of the native load fact = a genuine load-from-save just began. LATCH it: the fact stays
+  -- 1 for ~1 s (dozens of frames) and the player is usually NOT yet in-world on the exact frame it flips,
+  -- so we remember it and act once he appears. Fast-travel never trips this (it doesn't re-attach).
+  if loaded == 1 and M.prevLoaded ~= 1 then
+    M.loadPending = true
+    M.log("[SESSION] game_was_loaded 0->1 — load-from-save detected (native signal); waiting for world.")
+  end
+  M.prevLoaded = loaded
+
+  -- Player absent: mid-load or mid-fast-travel. Remember the gap; keep the latch; decide nothing yet.
   if not inWorld then
     M.sawPlayer = false
     return false
@@ -206,20 +232,26 @@ function M.tick()
   local why = nil
   if M.id == 0 then
     why = "first session"                                        -- launch / first world entry
-  elseif hash and M.playerHash and hash ~= M.playerHash then     -- signal A: the player entity was rebuilt
+  elseif M.loadPending then                                      -- REAL signal A: CDPR's own load flag fired
+    why = "game_was_loaded (native load signal)" .. (gap and " after a load screen" or "")
+  elseif hash and M.playerHash and hash ~= M.playerHash then     -- legacy signal A: player entity rebuilt
+    -- Dead on 2.31 (hash is the constant 1ULL) — kept as a harmless belt-and-braces in case a future
+    -- patch makes the EntityID per-session again.
     why = ("player entity changed (%s -> %s)%s"):format(
             tostring(M.playerHash), tostring(hash), gap and " after a load screen" or "")
   end
 
-  -- A gap with the SAME player entity = fast-travel / district stream. Do NOT reset: dropping handles
-  -- here is what would orphan Jackie on every fast-travel. Log it so the two cases stay distinguishable.
+  -- A gap with NO load fact and the SAME player entity = fast-travel / district stream. Do NOT reset:
+  -- dropping handles here is what would orphan Jackie on every fast-travel. Log it so the two cases
+  -- stay distinguishable in jackie_debug.log.
   if gap and not why then
-    M.log(("[SESSION] presence gap, SAME player entity (%s) — treating as fast-travel, no reset.")
+    M.log(("[SESSION] presence gap, SAME player entity (%s), no load fact — fast-travel, no reset.")
             :format(tostring(hash)))
   end
 
-  M.playerHash = hash or M.playerHash
-  M.sawPlayer  = true
+  M.playerHash  = hash or M.playerHash
+  M.sawPlayer   = true
+  M.loadPending = false                                          -- consume the latch (whether or not it fired)
   if not why then return false end
 
   M.id = M.id + 1
