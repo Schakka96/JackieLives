@@ -84,7 +84,26 @@ M.yori = {
   -- z lowered 1 m (309.329 -> 308.329) so the DES-placed bosses land ON the floor instead of hovering:
   -- the exact-Z teleport was parking them ~1 m up and AMM's ragdoll/gravity didn't pull them down. (Antonia 2026-07-08)
   goro    = { rec = "Character.Takemura", pos = { x = -2226.165, y = 1765.743, z = 308.329, yaw = -157.5 }, hpMul = 0.20 },  -- ELEVATOR spot (= Smasher's old default coord, Antonia 2026-07-08)
-  smasher = { rec = "Character.Smasher",  hpMul = 0.50 },   -- spawns AT goro.pos (same elevator spot)
+  -- v1.56 (Antonia 2026-07-23): Smasher was too easy — he was pinned at a flat Health x0.50 with NO damage
+  -- scaling at all, on every difficulty. `diffScale` replaces that with FINAL multipliers on the stock
+  -- Character.Smasher record, picked from the player's difficulty at spawn time.
+  -- ⚠️ The base game does NOT scale an NPC's max Health or raw damage by difficulty — nothing in the script
+  -- dump does. Difficulty only drives the PLAYER-side damage caps (damageSystem.script:952/1035), NPC
+  -- ACCURACY (targetShootComponent.script:140), status-effect and AI-condition picks, and TweakDB curve
+  -- lookups. So without this table Smasher genuinely plays the same on Easy and on Very Hard.
+  smasher = { rec = "Character.Smasher" },   -- spawns AT goro.pos (same elevator spot)
+  -- Keys are the GAME's gameDifficulty enum names, which are OFF BY ONE from the menu labels
+  -- (see the `difficulty` binding in init.lua): Story = menu Easy, Easy = menu NORMAL, Hard = menu Hard,
+  -- VeryHard = menu Very Hard. Story keeps the old, gentle fight exactly as it was.
+  --   hp  (Antonia 2026-07-23): 1x stock Smasher on Normal, 1.6x on Hard, 2.4x on Very Hard.
+  --   dmg (Antonia 2026-07-23): 60% / 150% / 220% harder than the old fight, which dealt stock damage (x1).
+  diffScale = {
+    Story    = { hp = 0.50, dmg = 1.00 },   -- menu EASY      — exactly the old fight
+    Easy     = { hp = 1.00, dmg = 1.60 },   -- menu NORMAL
+    Hard     = { hp = 1.60, dmg = 2.50 },   -- menu HARD
+    VeryHard = { hp = 2.40, dmg = 3.20 },   -- menu VERY HARD
+  },
+  diffScaleFallback = "Easy",   -- tier used when the difficulty can't be read (treat as Normal)
   heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 }, radius = 5.0 },  -- OUR optional VTOL (only if M.cfg.heliRecord set)
   -- The AV ALREADY on the roof in the base scene.
   -- ⚠️ v1.51: DELIBERATELY UNREACHABLE. Antonia's explicit call (2026-07-09): *"the button never appearing was
@@ -238,13 +257,30 @@ function M.hasRecords()   local c = M.cfg; return (c.goroRecord and c.smasherRec
 -- ---------------------------------------------------------------------------
 -- Run / stop
 -- ---------------------------------------------------------------------------
-local function spawnOne(slot, rec, pos, hostile, weaken)
+-- v1.56: the boss's FINAL stat multipliers for the difficulty the player is on RIGHT NOW.
+-- Returns hpMul, dmgMul straight out of M.yori.diffScale — they are absolute multipliers on the stock
+-- TweakDB record, not deltas. Reading the difficulty at SPAWN time (not at load) is deliberate: the
+-- player can change it mid-playthrough from the pause menu, and the next run of the fight should follow.
+function M.bossMuls()
+  local name = M.bound.difficulty and M.bound.difficulty() or nil
+  local s = name and M.yori.diffScale[name] or nil
+  if not s then
+    s = M.yori.diffScale[M.yori.diffScaleFallback] or { hp = 1.0, dmg = 1.0 }
+    blog("difficulty unreadable (got " .. tostring(name) .. ") -> falling back to the " ..
+         tostring(M.yori.diffScaleFallback) .. " tier.")
+  end
+  blog(string.format("difficulty = %s (enum name) -> Smasher Health x%.2f, damage x%.2f",
+                     tostring(name), s.hp or 1.0, s.dmg or 1.0))
+  return s.hp or 1.0, s.dmg or 1.0
+end
+
+local function spawnOne(slot, rec, pos, hostile, weaken, dmgMul)
   if not M.bound.spawnDyn then blog("SPAWN FAIL " .. slot .. ": spawnDyn NOT BOUND -> Blaze.bind never ran (stale deploy? run DIAGNOSE)."); return end
   if not rec then blog("SPAWN FAIL " .. slot .. ": no record."); return end
   if not pos then blog("SPAWN FAIL " .. slot .. ": no position."); return end
   local id = M.bound.spawnDyn(rec, pos, pos.yaw, "JackieLives_blaze_" .. slot)
   if not id then blog("SPAWN FAIL " .. slot .. ": spawnDyn returned nil for rec='" .. tostring(rec) .. "' (DES refused the record? see the CreateEntity line)."); return end
-  M.st.ent[slot] = { id = id, pos = pos, yaw = pos.yaw, hostile = hostile, weaken = weaken, handle = nil, placed = false }
+  M.st.ent[slot] = { id = id, pos = pos, yaw = pos.yaw, hostile = hostile, weaken = weaken, dmgMul = dmgMul, handle = nil, placed = false }
   blog(string.format("%s SPAWNED id=%s rec=%s at %.1f,%.1f,%.1f yaw %.1f", slot, tostring(id), tostring(rec), pos.x, pos.y, pos.z, pos.yaw or 0))
 end
 
@@ -293,7 +329,8 @@ function M.startYorinobu()
   -- saidGoroFight=false, and uncomment the two lines below.
   -- spawnOne("goro", M.yori.goro.rec, M.yori.goro.pos, true, M.yori.goro.hpMul)
   -- say("goroSpawn")
-  spawnOne("smasher", M.yori.smasher.rec, M.yori.goro.pos, true, M.yori.smasher.hpMul)  -- Smasher at the elevator spot
+  local shp, sdmg = M.bossMuls()                                          -- v1.56: difficulty-scaled
+  spawnOne("smasher", M.yori.smasher.rec, M.yori.goro.pos, true, shp, sdmg)             -- Smasher at the elevator spot
   say("smasherSpawn")
   pushObjective("[ ] Find a weapon\n>> Defeat Adam Smasher")
   blog("EXPERIMENTAL Yorinobu fight STARTED (Smasher only; Jackie -> companion in heist suit).")
@@ -394,7 +431,8 @@ local function resolveAndPlace(e)
   if not e.handle then return end                       -- not streamed in yet; try again next frame
   if M.bound.teleport and e.pos then M.bound.teleport(e.handle, e.pos, e.yaw) end
   if e.hostile and M.bound.setHostile then M.bound.setHostile(e.handle) end
-  if e.weaken and M.bound.weaken then M.bound.weaken(e.handle, e.weaken) end   -- tone-down: Health ×weaken
+  -- stat scaling: Health ×weaken, outgoing damage ×dmgMul (both already difficulty-scaled at spawn)
+  if (e.weaken or e.dmgMul) and M.bound.weaken then M.bound.weaken(e.handle, e.weaken, e.dmgMul) end
   e.placed = true
 end
 
@@ -453,7 +491,8 @@ function M.tick(now, dt)
       if st.goroDead then
         st.stage = "smasher"
         say("goroDefeated")                                  -- "Luckily all clear for now..."
-        spawnOne("smasher", M.yori.smasher.rec, M.yori.goro.pos, true, M.yori.smasher.hpMul)   -- Smasher appears at the SAME elevator spot
+        local shp2, sdmg2 = M.bossMuls()                                        -- v1.56: difficulty-scaled
+        spawnOne("smasher", M.yori.smasher.rec, M.yori.goro.pos, true, shp2, sdmg2)            -- Smasher appears at the SAME elevator spot
         say("smasherSpawn")                                  -- "Is that Adam Smasher?" -> "Oh, SHIT!"
         st.smasherFightAt = now + (M.yori.fightLineDelay or 4.0)
         pushObjective("[x] Takemura down\n>> Defeat Adam Smasher")

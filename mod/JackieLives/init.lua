@@ -86,6 +86,9 @@ local JL = {
   -- v0.84 walk-abreast: keep-close variant that holds Jackie BESIDE/AHEAD of V (offset from V's
   -- forward vector) instead of trailing behind. lastAt is the re-issue throttle.
   abreast = { lastAt = nil },
+  -- v1.57 loiter halt: `still` is the latched "V is basically standing" state (jlVLoitering); slowSince /
+  -- fastSince are the two sustain timers that flip it; lastHoldAt throttles the re-issued hold command.
+  loiter  = { still = false, slowSince = nil, fastSince = nil, frame = nil, lastHoldAt = nil },
   -- v0.35 free-roam wander: placed=on a waypoint yet; phase=dwelling|walking; cur/tgtIdx=waypoints.
   -- v0.38 walk-away: leaving=true while he's strolling to a venue exit before despawning.
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
@@ -2308,6 +2311,11 @@ end
 local function startDinnerWalk(key)
   if not JL.summon.active then return end
   local D = Config.date or {}
+  -- v1.57: he AGREED to eat — so he is definitively not walking off any more. (Belt-and-braces: the invite
+  -- in runCallAction already aborts, but Jackie can also propose the outing himself, and a leaving Jackie
+  -- must never be left coasting on jlRetreatFollow once a dinner is on.) Full companion shift, since a
+  -- dinner is exactly the thing that resets his clock; dinnerTick resets it again when the meal is done.
+  pcall(function() jlAbortDeparture((Config.companion and Config.companion.maxGameHours) or 6.0, "dinner accepted") end)
   -- v0.47: the "not twice a day" refusal moved UP to the invite (runCallAction "start_date"), so by the
   -- time we get here V has already passed the cooldown gate and committed to a venue.
   local r = findRestaurant(key)
@@ -2962,6 +2970,11 @@ local function runCallAction(name)
       log("Dinner: refused at invite (within " .. tostring(D.resetCooldownHours or 24) .. "h of his last dinner).")
       return
     end
+    -- v1.57: he passed the cooldown gate, so the date tree is about to open. If he was mid-walk-off (his
+    -- shift expired), STOP him here — otherwise he strolls away, and often despawns, while V is still
+    -- picking a restaurant. Only a SHORT grace (`abortGraceHours`), so taking a raincheck at the picker
+    -- doesn't quietly hand him a whole extra shift; startDinnerWalk extends it properly if V goes through.
+    pcall(function() jlAbortDeparture(D.abortGraceHours or 1.0, "dinner invite") end)
     pcall(function() Branch.start(nil, Config.date.tree) end)
     return
   end
@@ -3734,6 +3747,40 @@ local function sendMoveToPoint(handle, pos, movementType, desiredDistance)
   end))
 end
 
+-- v1.57 STAND STILL. The counterpart to every "go there" command above: make Jackie hold the ground he is
+-- on and stop micro-correcting (see the loiter gate, jlVLoitering, and Config.loiter).
+-- DEFAULT PATH (`useHoldCommand = false`): an AIMoveToCommand to the point he is ALREADY standing on. It
+-- completes on arrival — he has arrived — and sending it REPLACES the standing AIFollowTargetCommand, which
+-- is what actually stops the shuffling. Unglamorous, but it runs on exactly the machinery the rest of this
+-- file already proves works on a follower-role puppet, which is why it's the default.
+-- OPTIONAL PATH (`useHoldCommand = true`): AIHoldPositionCommand (`scripts/core/ai/aiCommand.script:646` —
+-- `duration : Float`), consumed by HoldPositionCommandTask (`scripts/cyberpunk/ai/commands/aiIdleCommand.script`),
+-- which keeps the command IN_PROGRESS until `duration` elapses; occupying the command slot is what makes him
+-- stand. The base game stands roadblock NPCs up with exactly this (`preventionSystem.script:4457`, 240 s).
+-- ⚠️ UNVERIFIED IN-GAME on a FOLLOWER-role puppet: the dump proves the command and its handler exist, NOT
+-- that the follower behaviour tree includes that task. Toggle it in the CET walk tuner and see which reads
+-- better; if the hold command errors we drop to the move-to below anyway, so he is never left uncommanded.
+-- Either way `duration` is short and re-issued on a heartbeat, never -1, so nothing freezes him for good.
+-- Global (no top-level local) -> 200-local cap safe.
+function jlHalt(handle)
+  if not handle then return false end
+  local L  = Config.loiter or {}
+  local ok = false
+  if L.useHoldCommand ~= false then
+    ok = pcall(function()
+      local cmd = NewObject('handle:AIHoldPositionCommand')
+      cmd.duration = L.holdDuration or 6.0
+      handle:GetAIControllerComponent():SendCommand(cmd)
+    end)
+  end
+  if not ok then
+    local jp; pcall(function() jp = handle:GetWorldPosition() end)
+    if not jp then return false end
+    ok = sendMoveToPoint(handle, jp, "Walk", 0.5)
+  end
+  return ok
+end
+
 -- A point well past `reach` metres from V, in the direction from V to Jackie (so he keeps
 -- heading the way he's already facing, away from you). Falls back to +X if they overlap.
 -- A point well past `reach` metres from V, in the direction from V to Jackie (so he keeps
@@ -3818,6 +3865,47 @@ local function leavingTick()
     pcall(function() jlRetreatFollow(h, D.movement or "Walk", (D.despawnDistance or 30.0) + 4.0) end)
     if d then log(("Dismiss: walking off... %.1f m from V."):format(d)) end
   end
+end
+
+-- v1.57 ABORT A DEPARTURE — "he doesn't stop walking away when I ask him to dinner" (Antonia).
+-- Jackie's shift can run out (or a main quest can start) while he's with you; startLeaving then says his
+-- parting line and hands him to jlRetreatFollow, which deliberately walks him AWAY from V until leavingTick
+-- despawns him. Nothing cancelled that. So V could open the conversation mid-walk-off, invite him to dinner,
+-- get an "aight, let's eat" — and watch him carry on out the door and vanish, dinner and all.
+--
+-- This is the one cancel path. It:
+--   1) clears the leaving state so leavingTick stops re-issuing the retreat (and can no longer despawn him);
+--   2) wipes the parting-line subtitle immediately (it would otherwise hang around mid-conversation);
+--   3) RE-ARMS his companion clock. Non-negotiable: the clock EXPIRING is usually why he was leaving, so
+--      without this the auto-leave block in onUpdate simply sends him out the door again on the next tick;
+--   4) replaces the retreat command with the normal keep-close follow, so he turns around and comes back
+--      instead of coasting to the end of his last order.
+-- `graceHours` = how long the fresh shift is (a dinner accept passes the full companion duration; the mere
+-- invite passes a short grace, so a raincheck doesn't silently gift him a whole extra day at V's side).
+-- Returns true only if a departure was actually cancelled, so callers can log the interesting case.
+-- Global (no top-level local) -> 200-local cap safe. Defined AFTER sendWalkToPlayer so it closes over it.
+function jlAbortDeparture(graceHours, why)
+  if JL.leaving.phase ~= "walking" then return false end
+  -- Don't fight the MAIN-QUEST / cutscene exit. That one re-fires from onUpdate every tick while the quest
+  -- is live, so cancelling it would just replay his parting line in a loop. He genuinely isn't coming.
+  if not JL.allowMainGigs and (isMainQuestActive() or jlInCutscene()) then
+    log("Departure abort DECLINED (" .. tostring(why or "?") .. ") — he's excusing himself from a main quest.")
+    return false
+  end
+  JL.leaving.phase, JL.leaving.deadline, JL.leaving.lastReissue = nil, nil, nil
+  JL.leaving.subClearAt = nil
+  pcall(hideSubtitle)
+  JL.summon.companionExpiresGame = nil                 -- force armCompanionTimer to mint a fresh deadline
+  pcall(function() armCompanionTimer(graceHours) end)
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  if h then
+    pcall(function()
+      sendWalkToPlayer(h, (Config.follow or {}).movement or "Run", jlFollowDistance())
+    end)
+  end
+  log(("Departure ABORTED (%s) — Jackie stays; companion clock re-armed for %.1f game-hours.")
+      :format(tostring(why or "?"), graceHours or (Config.companion and Config.companion.maxGameHours) or 6.0))
+  return true
 end
 
 -- Teleport a PUPPET via the AI system (AITeleportCommand) - reliable for freshly-spawned NPCs,
@@ -4725,6 +4813,41 @@ function jlVWalking()
   return st.walking
 end
 
+-- v1.57 "IS V BASICALLY STANDING STILL?" — the loiter gate (Antonia: "when V is very slow, close to
+-- standing, he should stand still; only after some inertia he should start moving").
+-- A LATCH with two different thresholds, which is the whole point:
+--   * falling  edge: speed <= stopSpeed held for stopSustain  -> latch STILL (Jackie plants his feet)
+--   * rising   edge: speed >  goSpeed   held for goSustain     -> unlatch    (Jackie sets off again)
+-- goSpeed is deliberately ABOVE stopSpeed. With a single threshold, V drifting around the line would flip
+-- Jackie between halt and follow several times a second — visibly worse than the shuffling it replaces.
+-- The speed signal is the same smoothed one jlVWalking maintains, so we call it to force this frame's
+-- update and then read JL.abreast.vSpeed. That means the gate works identically whether the player has
+-- walk-beside on or off (jlVWalking is otherwise only consulted by the abreast path).
+-- Cached per frame; global -> 200-local cap safe.
+function jlVLoitering()
+  local L = Config.loiter or {}
+  if L.enabled == false then return false end
+  local st  = JL.loiter
+  local now = JL.clock or 0
+  if st.frame ~= now then
+    st.frame = now
+    jlVWalking()                                   -- refresh the shared per-frame speed EMA
+    local spd = JL.abreast.vSpeed or 0.0
+    if st.still then
+      if spd > (L.goSpeed or 1.10) then st.fastSince = st.fastSince or now else st.fastSince = nil end
+      if st.fastSince and (now - st.fastSince) >= (L.goSustain or 0.35) then
+        st.still, st.fastSince, st.slowSince = false, nil, nil
+      end
+    else
+      if spd <= (L.stopSpeed or 0.55) then st.slowSince = st.slowSince or now else st.slowSince = nil end
+      if st.slowSince and (now - st.slowSince) >= (L.stopSustain or 0.60) then
+        st.still, st.slowSince, st.fastSince = true, nil, nil
+      end
+    end
+  end
+  return st.still == true
+end
+
 -- v1.46 VERTICAL GATE — "is V on stairs / a slope / a ladder / a lift right now?"
 -- Walking abreast assumes FLAT ground. Two things break on an incline:
 --   * a staircase is rarely wide enough for two, so the side anchor lands in a wall or over a drop;
@@ -4994,7 +5117,7 @@ end
 -- Global -> 200-local cap safe.
 function jlAbreastOn()
   local A = Config.abreast or {}
-  if not A.enabled or JL.disableCustomWalk then return false end   -- player reverted to the plain follower
+  if not A.enabled or not JL.customWalk then return false end      -- v1.57: opt-in; default = plain trailing follower
   if not (JL.summon.active and JL.summon.companionSet) then return false end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return false end
   if jlCruise and jlCruise.active then return false end            -- not while cruising on his bike
@@ -5002,6 +5125,11 @@ function jlAbreastOn()
   if jlInCombat() then return false end                            -- fighting -> free him to fight
   if jlVertical() then return false end                            -- v1.46: stairs/slope -> single file
   if jlVSneaking() then return false end                           -- v1.46: crouched -> shadow her, never lead
+  -- v1.57: V is basically standing -> the TRAIL owns him, because that's where the loiter halt lives. With
+  -- stock values jlVWalking() already says no here (stopSpeed sits below walkMinSpeed), but the two are
+  -- independently tunable now, so state it explicitly rather than rely on the bands not overlapping — if
+  -- both ticks thought they owned him he'd be shoved to a side anchor and told to hold still at once.
+  if jlVLoitering() then return false end
   return jlVWalking()
 end
 
@@ -5029,12 +5157,29 @@ local function followKeepCloseTick()
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
   local now = JL.clock or 0
-  if (now - (JL.follow.lastAt or -1e9)) < (F.interval or 1.5) then return end
-  JL.follow.lastAt = now
+  -- v1.57: the geometry reads moved ABOVE the re-issue throttle so the loiter halt below can react within
+  -- its own sustain window instead of waiting out F.interval (1.5 s) as well.
   -- don't fight the catch-up teleport: if he's far enough for that to own him, leave it.
   local pp = playerPos(); if not pp then return end
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
   if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end
+  -- --- v1.57 LOITER HALT: V is basically standing -> so does Jackie -----------------------------------
+  -- The follow command has no "close enough, stop" state, so a V who's just nudging about (aiming, reading
+  -- a shard, browsing a vendor) had Jackie endlessly micro-correcting around her. jlVLoitering() is the
+  -- hysteretic gate — slow for `stopSustain` to plant him, and only faster than `goSpeed` for `goSustain`
+  -- to set him off again (the "inertia"). He is only allowed to plant himself once he's ALREADY close
+  -- (slider + holdSlack); further out he keeps closing the gap first, or a V who stops while he's 15 m
+  -- back would strand him there. Re-issued on `holdInterval` because the hold command is time-limited.
+  if jlVLoitering() and dist3(pp, jp) <= (jlFollowDistance() + ((Config.loiter or {}).holdSlack or 2.0)) then
+    if (now - (JL.loiter.lastHoldAt or -1e9)) >= ((Config.loiter or {}).holdInterval or 2.0) then
+      JL.loiter.lastHoldAt = now
+      jlHalt(h)
+    end
+    return
+  end
+  JL.loiter.lastHoldAt = nil   -- he's moving again -> the next halt takes effect immediately
+  if (now - (JL.follow.lastAt or -1e9)) < (F.interval or 1.5) then return end
+  JL.follow.lastAt = now
   -- v1.46: while V SNEAKS, shadow her — trail at the stealth gap and never Run (a running Jackie overshoots
   -- her and ends up in front, which is how he kept walking into the enemy she was creeping up on).
   local S = Config.stealth or {}
@@ -5065,8 +5210,8 @@ end
 --    inside `zoneRadius` he CALMS to a walk and holds there until he falls into the rear arc again.
 --  * WALK-ONLY. Only active while V WALKS (jlVWalking); at jog/sprint abreastTick yields and the trail
 --    (followKeepCloseTick) takes over — V has 3 speeds, Jackie 2, so he can't out-pace a jogging V.
---  * OPT-OUT. `JL.disableCustomWalk` (Esc -> Settings -> Jackie Lives -> Gameplay) turns this whole
---    behaviour off so Jackie reverts to the plain trailing follower for players who dislike walk-beside.
+--  * OPT-IN (v1.57). `JL.customWalk` (Esc -> Settings -> Jackie Lives -> Gameplay) turns this whole
+--    behaviour ON. It is OFF by default — out of the box Jackie is the plain trailing follower.
 -- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
 function abreastTick()
   local A = Config.abreast or {}
@@ -6059,7 +6204,7 @@ local function nsTick()
   if JL.husbando == nil then JL.husbando = false end                              -- v0.47 (false = Hermano)
   if JL.disableVehicleArrivals == nil then JL.disableVehicleArrivals = false end  -- v0.51 (false = bike allowed)
   if JL.allowMainGigs == nil then JL.allowMainGigs = false end                    -- v1.32 (false = Quiet Life: no main-mission summons)
-  if JL.disableCustomWalk == nil then JL.disableCustomWalk = false end            -- v1.39 (false = custom walk-beside ON)
+  if JL.customWalk == nil then JL.customWalk = false end                          -- v1.57 (false = plain trailing follower)
   if type(JL.followDistance) ~= "number" then JL.followDistance = Config.followDistanceDefault or 3.5 end  -- v1.55 slider
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
@@ -6124,15 +6269,15 @@ local function nsTick()
     ns.addSwitch(
       "/jackielives/gameplay",
       "Walk beside me (custom follow style)",
-      "ON (default) = when you're WALKING, Jackie holds a spot BESIDE you (the tuned walk-abreast style) " ..
-      "instead of trailing behind. OFF = revert to the plain default follower — Jackie just trails you " ..
-      "like a normal companion. Turn this OFF if you don't like the walk-beside style.",
-      not JL.disableCustomWalk,   -- current state (ON = custom walk-beside enabled; persisted)
-      true,                       -- 'reset to default' value: ON (custom walk-beside)
+      "OFF (default) = Jackie trails you like a normal companion. ON = when you're WALKING, he holds a " ..
+      "spot BESIDE you instead (the walk-abreast style) — nice on a stroll, but he needs room, so it can " ..
+      "look awkward in tight interiors. Turn it on if you want him at your shoulder.",
+      JL.customWalk,   -- current state (ON = walk-abreast enabled; persisted)
+      false,           -- 'reset to default' value: OFF (plain trailing follower) — v1.57
       function(state)
-        JL.disableCustomWalk = not state
+        JL.customWalk = state
         pcall(jlSaveSettings)
-        JL.ui.status = "Walk-beside style: " .. (state and "ON (custom)" or "OFF (default trailing follower)")
+        JL.ui.status = "Walk-beside style: " .. (state and "ON (walk abreast)" or "OFF (default trailing follower)")
         log("Custom walk-beside -> " .. (state and "ON" or "OFF (default follower)"))
       end
     )
@@ -6209,7 +6354,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "disableCustomWalk" }  -- persisted JL.* boolean flags (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "customWalk" }  -- persisted JL.* boolean flags (customWalk v1.57: walk-abreast is now OPT-IN, so the flag was INVERTED and RENAMED — the old `disableCustomWalk` line in an existing jl_settings.txt simply stops being read, which is exactly what we want: every existing player also drops back to the plain trailing follower until they turn walk-beside on) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
 
 -- v1.55: NUMERIC settings. The file used to serialize booleans only (plus the one `mode` string), which is
 -- precisely why a slider could never be added — its value didn't survive a reload. These keys round-trip as
@@ -6258,6 +6403,108 @@ end
 -- File format, one committed seat per line:  key|sitSeatIdx|x|y|z|yaw
 -- (sitSeatIdx indexes the venue's SIT waypoints in Config order — the same order the tuner uses.)
 -- ===========================================================================
+-- ===========================================================================
+-- v1.57 WALK TUNING — the knob list, and its persistence (jl_walk.txt).
+-- ===========================================================================
+-- Antonia: "add better walk abreast tuners (can't tweak much rn)". Two problems with the old tuner:
+-- only three of the twenty-odd knobs were exposed, and NOTHING it changed survived a reload — Config is
+-- re-required from the baked config.lua every load, so every tuning session evaporated. Same bug the seat
+-- tuner had in v1.1, and the same fix: write the overrides to a file and re-apply them into Config on load.
+--
+-- ONE table drives BOTH the sliders and the file, so a new knob is a single line here and never drifts out
+-- of sync. Fields: t = which Config table ("abreast" | "loiter"), k = the key, lo/hi = slider range,
+-- label = what the tuner calls it. Order is the order they appear in the panel.
+-- Global (no top-level local) -> 200-local cap safe.
+JL_WALK_KEYS = {
+  -- --- where he stands (walk-abreast) ---
+  { t = "abreast", k = "angleRight",           lo = 0.0,  hi = 3.0,  label = "Anchor angle RIGHT (dial steps of 12)" },
+  { t = "abreast", k = "angleLeft",            lo = 9.0,  hi = 12.0, label = "Anchor angle LEFT (dial steps of 12)" },
+  { t = "abreast", k = "sideHysteresis",       lo = 0.0,  hi = 2.0,  label = "Side-swap stickiness (m)" },
+  { t = "abreast", k = "minRadius",            lo = 0.5,  hi = 4.0,  label = "Accepted distance band: MIN (m)" },
+  { t = "abreast", k = "maxRadius",            lo = 2.0,  hi = 8.0,  label = "Accepted distance band: MAX (m)" },
+  -- --- how he moves ---
+  { t = "abreast", k = "smoothSeconds",        lo = 0.5,  hi = 6.0,  label = "Heading smoothing while holding (s)" },
+  { t = "abreast", k = "catchUpSmoothSeconds", lo = 0.1,  hi = 2.0,  label = "Heading smoothing while sprinting in (s)" },
+  { t = "abreast", k = "interval",             lo = 0.1,  hi = 1.0,  label = "Command re-issue interval (s)" },
+  { t = "abreast", k = "rearArcFrac",          lo = 0.15, hi = 0.60, label = "Sprint when behind: rear arc (frac of circle)" },
+  { t = "abreast", k = "zoneRadius",           lo = 0.5,  hi = 3.5,  label = "Free-walk zone radius (m)" },
+  { t = "abreast", k = "leadDistance",         lo = 0.0,  hi = 4.0,  label = "Walk lead ahead of anchor (m)" },
+  { t = "abreast", k = "catchUpTolerance",     lo = 0.1,  hi = 1.5,  label = "Sprint-in target tolerance (m)" },
+  -- --- when abreast is allowed at all (V's speed band + the sustain) ---
+  { t = "abreast", k = "walkMinSpeed",         lo = 0.1,  hi = 1.5,  label = "V counts as walking ABOVE (m/s)" },
+  { t = "abreast", k = "walkMaxSpeed",         lo = 1.0,  hi = 3.0,  label = "V counts as walking BELOW (m/s)" },
+  { t = "abreast", k = "jogMinSpeed",          lo = 1.5,  hi = 4.5,  label = "V counts as jogging ABOVE (m/s) -> trail" },
+  { t = "abreast", k = "walkSustainSeconds",   lo = 0.0,  hi = 6.0,  label = "Hold the walk band this long first (s)" },
+  -- --- the stairs / slope gate ---
+  { t = "abreast", k = "slopeRate",            lo = 0.1,  hi = 1.5,  label = "Stairs gate: V's vertical speed (m/s)" },
+  { t = "abreast", k = "maxZDelta",            lo = 0.3,  hi = 3.0,  label = "Stairs gate: Jackie-vs-V height gap (m)" },
+  { t = "abreast", k = "slopeReleaseSeconds",  lo = 0.0,  hi = 4.0,  label = "Stairs gate: stay trailing after (s)" },
+  { t = "abreast", k = "maxAnchorZDelta",      lo = 0.5,  hi = 5.0,  label = "Distrust navmesh anchor beyond (m)" },
+  -- --- v1.57 loiter halt (works in BOTH follow modes) ---
+  { t = "loiter",  k = "stopSpeed",            lo = 0.0,  hi = 2.0,  label = "STAND STILL when V is slower than (m/s)" },
+  { t = "loiter",  k = "goSpeed",              lo = 0.1,  hi = 3.0,  label = "SET OFF when V is faster than (m/s)" },
+  { t = "loiter",  k = "stopSustain",          lo = 0.0,  hi = 3.0,  label = "...slow for this long first (s)" },
+  { t = "loiter",  k = "goSustain",            lo = 0.0,  hi = 2.0,  label = "...fast for this long first (s) = inertia" },
+  { t = "loiter",  k = "holdSlack",            lo = 0.0,  hi = 6.0,  label = "Only stand still within slider + (m)" },
+  { t = "loiter",  k = "holdDuration",         lo = 1.0,  hi = 20.0, label = "Hold command duration (s)" },
+  { t = "loiter",  k = "holdInterval",         lo = 0.5,  hi = 8.0,  label = "Hold command re-issue every (s)" },
+}
+-- The two BOOLEAN walk knobs. Same file, written as 1/0.
+JL_WALK_BOOLS = {
+  { t = "loiter", k = "enabled",        label = "Loiter halt ON (Jackie stands still when V does)" },
+  { t = "loiter", k = "useHoldCommand", label = "Use AIHoldPositionCommand (off = move-to-own-spot fallback)" },
+}
+JL_WALK_FILE = "jl_walk.txt"
+
+-- Flush every live walk knob to disk. Called by the tuner's Save button (not on every slider frame — that
+-- would hammer io.open at 60 fps).
+function jlSaveWalk()
+  local f = io.open(JL_WALK_FILE, "w")
+  if not f then log("walk: could not write " .. JL_WALK_FILE); return false end
+  for _, d in ipairs(JL_WALK_KEYS) do
+    local tbl = Config[d.t]
+    if tbl and type(tbl[d.k]) == "number" then f:write(("%s.%s=%.4f\n"):format(d.t, d.k, tbl[d.k])) end
+  end
+  for _, d in ipairs(JL_WALK_BOOLS) do
+    local tbl = Config[d.t]
+    if tbl then f:write(("%s.%s=%s\n"):format(d.t, d.k, tbl[d.k] and "1" or "0")) end
+  end
+  f:close()
+  log("walk: tuning saved to " .. JL_WALK_FILE)
+  return true
+end
+
+-- Re-apply saved overrides INTO the live Config. Called from onInit, straight after jlLoadSeats — the whole
+-- point being that config.lua's baked defaults are the FLOOR, and whatever the tuner last saved wins.
+-- Unknown keys in the file are ignored, so deleting a knob here can never break a load.
+function jlLoadWalk()
+  local f = io.open(JL_WALK_FILE, "r")
+  if not f then return end
+  local n = 0
+  for line in f:lines() do
+    local t, k, v = line:match("^(%w+)%.(%w+)=([%w%.%-]+)$")
+    if t and Config[t] then
+      local num = tonumber(v)
+      for _, d in ipairs(JL_WALK_KEYS) do
+        if d.t == t and d.k == k and num then Config[t][k] = num; n = n + 1 end
+      end
+      for _, d in ipairs(JL_WALK_BOOLS) do
+        if d.t == t and d.k == k then Config[t][k] = (v == "1" or v == "true"); n = n + 1 end
+      end
+    end
+  end
+  f:close()
+  if n > 0 then log(("walk: %d tuned value(s) restored from %s."):format(n, JL_WALK_FILE)) end
+end
+
+-- Throw the saved overrides away and go back to config.lua's baked values. Needs a reload to take effect
+-- for real (Config is already patched in memory), so the button says so.
+function jlResetWalk()
+  local f = io.open(JL_WALK_FILE, "w")
+  if f then f:close() end
+  log("walk: tuning file cleared — reload the mod to get config.lua's defaults back.")
+end
+
 JL_SEATS_FILE = "jl_seats.txt"
 
 -- Re-apply one persisted override INTO the live Config, mirroring tunerPrint's in-memory patch so
@@ -6963,6 +7210,7 @@ registerForEvent("onInit", function()
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
   pcall(jlDefaultHermano)  -- v1.54: Hermano for everyone unless the player explicitly flipped the switch
   pcall(jlLoadSeats)       -- v1.1: restore tuned sit coords into Config so they survive a reload (old-S4 fix)
+  pcall(jlLoadWalk)        -- v1.57: same for the walk/loiter tuner's knobs (they used to die on every reload)
   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
   -- + v1.54 showObjective -> the native banner (with its UI sound), so the quest's steps actually
   -- tell the player what to do next ("Find Jackie...", "Call Jackie", "Wait for Jackie").
@@ -7077,15 +7325,56 @@ registerForEvent("onInit", function()
           choiceBox.shown = false
         end)
       end,
-      -- v1.03 BLAZE: TONE-DOWN a spawned boss — multiply its max Health by `mul` (e.g. 0.2 = 20%).
+      -- v1.03 BLAZE: TONE-DOWN a spawned boss — multiply its max Health by `hpMul` (e.g. 0.2 = 20%).
       -- Story Takemura/Smasher spawned at full boss stats are near-unkillable at V's low Heist level.
-      weaken = function(h, mul)
-        if not h or not mul then return end
+      -- v1.56 (Antonia 2026-07-23): also scales OUTGOING damage. `dmgMul` is a plain multiplier
+      -- (1.6 = +60% damage); it lands as an ADDITIVE modifier on AllDamageDonePercentBonus, which the
+      -- damage pipeline reads off the INSTIGATOR for every attack — NPC or player alike, no player gate:
+      --   damageSystem.script:2931  tempDamage += GetStatValue(instigatorID, AllDamageDonePercentBonus)
+      --   damageSystem.script:2977  attackValues[i] *= (1.0 + tempDamage)
+      -- (called from CalculateSourceModifiers, damageSystem.script:2137). The stat is a FRACTION, so
+      -- the modifier value is dmgMul - 1.0.
+      weaken = function(h, hpMul, dmgMul)
+        if not h then return end
         pcall(function()
           local ss = Game.GetStatsSystem()
-          local mod = RPGManager.CreateStatModifier(gamedataStatType.Health, gameStatModifierType.Multiplier, mul)
-          ss:AddModifier(h:GetEntityID(), mod)
+          if hpMul then
+            local mod = RPGManager.CreateStatModifier(gamedataStatType.Health, gameStatModifierType.Multiplier, hpMul)
+            ss:AddModifier(h:GetEntityID(), mod)
+          end
+          if dmgMul and dmgMul ~= 1.0 then
+            local dmod = RPGManager.CreateStatModifier(gamedataStatType.AllDamageDonePercentBonus,
+                                                       gameStatModifierType.Additive, dmgMul - 1.0)
+            ss:AddModifier(h:GetEntityID(), dmod)
+          end
         end)
+        log(string.format("[Blaze] boss stats scaled: Health x%s, damage x%s",
+                          tostring(hpMul or 1.0), tostring(dmgMul or 1.0)))
+      end,
+      -- v1.56 BLAZE: the player's chosen DIFFICULTY, as the game's own enum NAME. Source of truth is
+      -- StatsDataSystem.GetDifficulty() (statsDataSystem.script:23) — the same call the base game uses to
+      -- pick its damage constants (damageSystem.script:952).
+      -- ⚠️ The enum names are OFF BY ONE from the menu labels (verified in
+      -- characterCreationSummaryMenu.script:94 — Story/Easy/Hard/VeryHard map to LocKeys 52792/52791/
+      -- 52790/52789 = Easy/Normal/Hard/Very Hard, and corroborated at damageSystem.script:1231 where
+      -- `case gameDifficulty.Easy` reads the TweakDB field `.normalDifficultySelfDamagePerTick`). So:
+      --   "Story" = menu EASY · "Easy" = menu NORMAL · "Hard" = menu HARD · "VeryHard" = menu VERY HARD
+      -- ⚠️⚠️ And the DECLARATION ORDER is not the difficulty order either — statsDataSystem.script:1 is
+      -- literally `enum gameDifficulty { Easy, Hard, VeryHard, Story }`, i.e. 0/1/2/3 = Easy/Hard/
+      -- VeryHard/Story. Never infer these ordinals from the menu; that mapping is the numeric fallback below.
+      -- Returns nil if the system can't be reached, and callers then fall back to the Normal tier.
+      difficulty = function()
+        local d, name
+        pcall(function() d = Game.GetStatsDataSystem():GetDifficulty() end)
+        if d == nil then return nil end
+        pcall(function() name = tostring(d.value or d) end)
+        -- Numeric fallback: some CET builds hand back a bare Int for an imported enum.
+        if name == nil or not name:match("^%a+$") then
+          local n; pcall(function() n = EnumInt(d) end)
+          if type(n) ~= "number" then n = tonumber(name) end
+          name = ({ [0] = "Easy", [1] = "Hard", [2] = "VeryHard", [3] = "Story" })[n]
+        end
+        return name
       end,
       -- v1.03 BLAZE: EMERGENCY force-defeat whatever V is looking at (test lever / immortality bypass).
       -- Tries the script Kill(), then falls back to zeroing the Health pool. Won't touch companion Jackie.
@@ -7930,267 +8219,221 @@ registerForEvent("onDraw", function()
     if ImGui.Button("Unlock now — skip the quest, Jackie's back") then Retrieval.completeReunion() end
   end
 
-  local block, hour = currentScheduleBlock()
-  ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
-             "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
-  local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
-  ImGui.Text("Game time: " .. hhmm ..
-             "   Day-type: " .. tostring(JL.day.template or "?"))
-  if block then
-    if block.state == "at_location" then
-      local loc = Config.locations[block.locationKey]
-      ImGui.Text("Scheduled: " .. (loc and loc.name or block.locationKey) ..
-                 ((loc and loc.pos) and "" or "  (coords NOT captured)"))
-    else
-      ImGui.Text("Scheduled: unavailable (asleep / home / away)")
+  if ImGui.CollapsingHeader("Status & diagnostics") then
+    local block, hour = currentScheduleBlock()
+    ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
+               "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
+    local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
+    ImGui.Text("Game time: " .. hhmm ..
+               "   Day-type: " .. tostring(JL.day.template or "?"))
+    if block then
+      if block.state == "at_location" then
+        local loc = Config.locations[block.locationKey]
+        ImGui.Text("Scheduled: " .. (loc and loc.name or block.locationKey) ..
+                   ((loc and loc.pos) and "" or "  (coords NOT captured)"))
+      else
+        ImGui.Text("Scheduled: unavailable (asleep / home / away)")
+      end
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Cycle day-type") then          -- DEBUG: jump to the next day-type now
+      JL.day.template = nextDayTemplate()
+      log("Day-type forced -> " .. tostring(JL.day.template))
+    end
+    ImGui.Text("Companion: " .. tostring(JL.summon.active) ..
+               "   Idle-spawned: " .. tostring(JL.idle.spawn ~= nil))
+    if JL.idle.spawn then
+      ImGui.Text(("Wander: %s  wp %s/%s   collision: %s"):format(
+        tostring(JL.idle.phase or "-"),
+        tostring(JL.idle.curIdx or "?"),
+        tostring(JL.idle.tgtIdx or "-"),
+        JL.idle.collisionOff and "OFF" or "on"))
     end
   end
-  ImGui.SameLine()
-  if ImGui.Button("Cycle day-type") then          -- DEBUG: jump to the next day-type now
-    JL.day.template = nextDayTemplate()
-    log("Day-type forced -> " .. tostring(JL.day.template))
-  end
-  ImGui.Text("Companion: " .. tostring(JL.summon.active) ..
-             "   Idle-spawned: " .. tostring(JL.idle.spawn ~= nil))
-  if JL.idle.spawn then
-    ImGui.Text(("Wander: %s  wp %s/%s   collision: %s"):format(
-      tostring(JL.idle.phase or "-"),
-      tostring(JL.idle.curIdx or "?"),
-      tostring(JL.idle.tgtIdx or "-"),
-      JL.idle.collisionOff and "OFF" or "on"))
-  end
-  ImGui.Separator()
 
   -- v0.95 STORY MODE selector (Quiet Life vs Blaze of Glory). Buttons + wrapped description, using
   -- only idioms already proven in this file (Button/Text/SameLine/TextWrapped/TextColored).
-  ImGui.Text("Story mode:  ")
-  ImGui.SameLine()
-  ImGui.TextColored(1.0, 0.6, 0.2, 1.0, JL.mode == "blaze" and "BLAZE OF GLORY" or "QUIET LIFE")
-  if ImGui.Button("Use Quiet Life") then jlSetMode("quietlife"); JL.ui.blazeConfirm = false end
-  ImGui.SameLine()
-  -- v1.x SAFETY: clicking here only ARMS Blaze — it does NOT switch mode. The irreversible switch
-  -- happens only on the explicit "Yes" in the confirm prompt below (Blaze disables the main plot).
-  if ImGui.Button("Use Blaze of Glory") then JL.ui.blazeConfirm = true end
-  if JL.mode == "blaze" then
-    ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "Blaze of Glory  (EXTREMELY EXPERIMENTAL)")
-    ImGui.TextWrapped(BLAZE_DESC)
+  -- The header carries the LIVE mode in its label so you can read it without opening the section.
+  if ImGui.CollapsingHeader("Story mode — " .. (JL.mode == "blaze" and "BLAZE OF GLORY" or "QUIET LIFE")) then
+    if ImGui.Button("Use Quiet Life") then jlSetMode("quietlife"); JL.ui.blazeConfirm = false end
+    ImGui.SameLine()
+    -- v1.x SAFETY: clicking here only ARMS Blaze — it does NOT switch mode. The irreversible switch
+    -- happens only on the explicit "Yes" in the confirm prompt below (Blaze disables the main plot).
+    if ImGui.Button("Use Blaze of Glory") then JL.ui.blazeConfirm = true end
+    if JL.mode == "blaze" then
+      ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "Blaze of Glory  (EXTREMELY EXPERIMENTAL)")
+      ImGui.TextWrapped(BLAZE_DESC)
 
-    -- v0.96 MVP-A: Heist set-piece test controls (spawn Smasher+Goro+VTOL, run the
-    -- kill-Smasher -> reach-VTOL -> cut-to-black flow). Positions/records are captured
-    -- in-game; paste the console-logged values into blaze.lua M.cfg to make them stick.
-    ImGui.Separator()
-    ImGui.Text("Blaze set-piece:")
-    ImGui.TextWrapped(Blaze.status())
-    ImGui.TextWrapped("Bosses use hardcoded records + a fixed elevator spawn spot -- no record/position " ..
-      "capture needed. Testing tools:")
-    if ImGui.Button("Defeat target (look at)") then
-      local ok = false; pcall(function() ok = Blaze.bound.defeatLookAt and Blaze.bound.defeatLookAt() end)
-      JL.ui.status = ok and "Defeated the targeted NPC." or "Aim at an NPC first (see console)."
-    end
-    ImGui.SameLine()
-    if ImGui.Button("Identify target (look at)") then
-      pcall(function() if Blaze.bound.identifyLookAt then Blaze.bound.identifyLookAt() end end)
-      JL.ui.status = "Logged the targeted NPC's id / name / record (see console)."
-    end
-    ImGui.TextWrapped("TEST: fire the world-unlock directly (same as the set-piece's ending) -- lifts the " ..
-      "Watson barrier via watson_prolog_unlock. Use on a THROWAWAY save.")
-    if ImGui.Button("TEST: World unlock now (Watson barrier)") then
-      local ok = Blaze.testWorldUnlock()
-      JL.ui.status = ok and "Fired world unlock (watson_prolog_unlock=1, watson_prolog_lock=0)." or "World unlock helper not bound."
-    end
+      -- v0.96 MVP-A: Heist set-piece test controls (spawn Smasher+Goro+VTOL, run the
+      -- kill-Smasher -> reach-VTOL -> cut-to-black flow). Positions/records are captured
+      -- in-game; paste the console-logged values into blaze.lua M.cfg to make them stick.
+      -- The Heist set-piece. It AUTO-STARTS when the start-fact flips (the T-Bug call ends): Smasher at
+      -- the elevator -> defeat him -> sky clears -> roof-AV escape -> fade -> you wake at El Coyote Cojo
+      -- with a LIVING Jackie. Weather/scene-Jackie/world-unlock are all automatic now; only the manual
+      -- override + the diagnose dump are still worth a button. (Dev look-at + weather A/B tools removed —
+      -- blazeSetWeather / blazeMuteMusic / Blaze.bound.* are still callable from the CET console.)
+      ImGui.Separator()
+      ImGui.Text("Blaze set-piece:")
+      ImGui.TextWrapped(Blaze.status())
+      -- Kill the boss without fighting him: aim at Smasher and press. Still the fastest way to step
+      -- through the escape/ending without winning the fight first.
+      if ImGui.Button("Defeat target (look at)") then
+        local ok = false; pcall(function() ok = Blaze.bound.defeatLookAt and Blaze.bound.defeatLookAt() end)
+        JL.ui.status = ok and "Defeated the targeted NPC." or "Aim at an NPC first (see console)."
+      end
+      -- v1.11: the q005 scene music is fired NATIVELY and can get stuck; a fast-travel/checkpoint reload
+      -- black-screens (the live scene holds a world lock). MusicVolume->0 is the only thing that silences
+      -- it from CET, so this pair stays as a player-facing rescue.
+      if ImGui.Button("Mute ALL music (stuck heist music)") then
+        blazeMuteMusic(true); JL.ui.status = "MusicVolume -> 0 (all music off; use Restore to bring it back)."
+      end
+      ImGui.SameLine()
+      if ImGui.Button("Restore music") then
+        blazeMuteMusic(false); JL.ui.status = "MusicVolume restored."
+      end
+      ImGui.TextWrapped("Use a THROWAWAY save. Manual override / testing:")
+      if ImGui.Button("Start fight now (override)") then
+        local ok, err = pcall(function() Blaze.startYorinobu() end)   -- surface any error to the console
+        if ok then JL.ui.status = "Blaze: fight started (experimental)."
+        else log("[Blaze] startYorinobu ERROR: " .. tostring(err)); JL.ui.status = "Blaze start ERROR (see console)." end
+      end
+      ImGui.SameLine()
+      if ImGui.Button("DIAGNOSE (why no spawn?)") then
+        local ok, err = pcall(function() Blaze.diagnose() end)
+        if not ok then log("[Blaze] diagnose ERROR: " .. tostring(err)) end
+      end
+    elseif JL.ui.blazeConfirm then
+      -- v1.x SECOND LAYER: the toggle is armed but not committed. Show the description + a hard
+      -- confirm; only "Yes" actually flips to Blaze (jlSetMode). "Cancel" disarms.
+      ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "Blaze of Glory  (EXTREMELY EXPERIMENTAL)")
+      ImGui.TextWrapped(BLAZE_DESC)
+      ImGui.TextColored(1.0, 0.25, 0.15, 1.0, "Are you sure? This DISABLES the main plot and CANNOT be undone.")
+      if ImGui.Button("Yes") then jlSetMode("blaze"); JL.ui.blazeConfirm = false; JL.ui.status = "Blaze of Glory ENABLED." end
+      ImGui.SameLine()
+      if ImGui.Button("Cancel") then JL.ui.blazeConfirm = false end
+    else
+      ImGui.TextWrapped("Quiet Life: the main story plays out as normal, but Jackie secretly survived and " ..
+        "returns as a living Heywood NPC. Less invasive -- but Jackie can only join SIDE jobs, never the " ..
+        "main plot.")
 
-    -- v0.97 EXPERIMENTAL: one-button Yorinobu-apartment fight (hardcoded, WIP, not further developed).
-    ImGui.Separator()
-    ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "EXPERIMENTAL — Yorinobu apartment fight")
-    ImGui.TextWrapped("WIP. During the Heist it AUTO-STARTS when the start-fact flips (the T-Bug phone call " ..
-      "ends): Smasher appears at the elevator -> defeat him -> the sky clears -> escape (roof AV, +2 m [F] " ..
-      "prompt) -> Jackie's line -> fade -> world opens & you wake at El Coyote Cojo with a LIVING Jackie. " ..
-      "Jackie fights as your companion (dirty heist suit) and barks along the way. Use a THROWAWAY save. " ..
-      "(Takemura is commented out for now; the scene luggage-Jackie is auto-removed by id at fight start.)")
-    ImGui.TextWrapped("Scene luggage-Jackie auto-remove missed him? Aim at HIM and:")
-    if ImGui.Button("Remove the Jackie I'm looking at") then
-      local ok = false; pcall(function() ok = Blaze.bound.despawnLookAt and Blaze.bound.despawnLookAt() end)
-      JL.ui.status = ok and "Removed the targeted Jackie." or "Aim at the passive Jackie first (see console)."
+      -- v1.32: mourning suppression, minimal — just the two persisted settings + status. (The long
+      -- help text and the dev Preview/Apply buttons were removed; ticking a box already applies it
+      -- next tick via JL.mourningTimer. jlMourningApply still exists if we need it from the console.)
+      ImGui.Separator()
+      ImGui.Text("Mourning content:")
+      ImGui.SameLine()
+      ImGui.TextColored(0.6, 0.8, 1.0, 1.0, jlMourningStatus())
+      local newVal = ImGui.Checkbox("Suppress 'Jackie is dead' grief (ofrenda / condolence calls)", JL.mourningSuppress)
+      if newVal ~= JL.mourningSuppress then JL.mourningSuppress = newVal; jlSaveSettings(); JL.mourningTimer = 999 end  -- fire next tick
+      local barVal = ImGui.Checkbox("Keep El Coyote / Mama's bar OPEN", JL.keepBarOpen)
+      if barVal ~= JL.keepBarOpen then JL.keepBarOpen = barVal; jlSaveSettings(); JL.mourningTimer = 999 end
     end
-    ImGui.SameLine()
-    if ImGui.Button("Remove scene Jackie by id") then
-      local ok = false; pcall(function() ok = Blaze.bound.despawnSceneJackie and Blaze.bound.despawnSceneJackie(Blaze.yori.sceneJackieId) end)
-      JL.ui.status = ok and "Removed the scene Jackie by id." or "Scene Jackie not found by id (see console)."
-    end
-    -- v1.07 WEATHER A/B (Antonia): the escape auto-forces sunny; these buttons let you find the approach
-    -- that actually reads as sunshine (the heist is at night — pair 'sunny' with 'midday').
-    ImGui.TextWrapped("Weather test (escape auto-forces sunny; A/B here):")
-    if ImGui.Button("Sunny (prio3, 8s)") then blazeSetWeather("24h_weather_sunny", 8.0, 3); JL.ui.status = "Weather -> sunny (prio3)." end
-    ImGui.SameLine()
-    if ImGui.Button("Sunny (instant)") then blazeSetWeather("24h_weather_sunny", 0.0, 3); JL.ui.status = "Weather -> sunny (instant)." end
-    ImGui.SameLine()
-    if ImGui.Button("Clear") then blazeSetWeather("24h_weather_clear", 8.0, 3); JL.ui.status = "Weather -> clear." end
-    if ImGui.Button("Set time -> midday") then blazeSetMidday(12); JL.ui.status = "Time -> 12:00." end
-    ImGui.SameLine()
-    if ImGui.Button("Reset weather (natural)") then blazeResetWeather(); JL.ui.status = "Weather -> natural cycle." end
-    -- v1.11 STUCK-SCENE MUSIC (Antonia): fast-travel/checkpoint reload BLACK-SCREEN (the live q005 scene
-    -- holds a world lock) — do NOT use them. Kill the music directly instead: capture the event & Stop it,
-    -- or the guaranteed MusicVolume->0 mute. (blazeFastTravelEscape/blazeLoadCheckpoint stay console-only.)
-    ImGui.TextWrapped("STUCK heist MUSIC (fast-travel reload softlocks — kill the AUDIO instead):")
-    if ImGui.Button(JL.audioLog and "Audio logger: ON" or "Log audio events (capture music)") then
-      blazeLogAudio(not JL.audioLog)
-      JL.ui.status = JL.audioLog and "Audio logger ON — reproduce the music, read console, then blazeStopMusicEvent('<name>')." or "Audio logger OFF."
-    end
-    if ImGui.Button("Mute ALL music (guaranteed)") then
-      blazeMuteMusic(true); JL.ui.status = "MusicVolume -> 0 (all music off; use Restore to bring it back)."
-    end
-    ImGui.SameLine()
-    if ImGui.Button("Restore music") then
-      blazeMuteMusic(false); JL.ui.status = "MusicVolume restored."
-    end
-    ImGui.TextWrapped("Manual override / testing:")
-    if ImGui.Button("Start fight now (override)") then
-      local ok, err = pcall(function() Blaze.startYorinobu() end)   -- surface any error to the console
-      if ok then JL.ui.status = "Blaze: fight started (experimental)."
-      else log("[Blaze] startYorinobu ERROR: " .. tostring(err)); JL.ui.status = "Blaze start ERROR (see console)." end
-    end
-    ImGui.SameLine()
-    if ImGui.Button("DIAGNOSE (why no spawn?)") then
-      local ok, err = pcall(function() Blaze.diagnose() end)
-      if not ok then log("[Blaze] diagnose ERROR: " .. tostring(err)) end
-    end
-  elseif JL.ui.blazeConfirm then
-    -- v1.x SECOND LAYER: the toggle is armed but not committed. Show the description + a hard
-    -- confirm; only "Yes" actually flips to Blaze (jlSetMode). "Cancel" disarms.
-    ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "Blaze of Glory  (EXTREMELY EXPERIMENTAL)")
-    ImGui.TextWrapped(BLAZE_DESC)
-    ImGui.TextColored(1.0, 0.25, 0.15, 1.0, "Are you sure? This DISABLES the main plot and CANNOT be undone.")
-    if ImGui.Button("Yes") then jlSetMode("blaze"); JL.ui.blazeConfirm = false; JL.ui.status = "Blaze of Glory ENABLED." end
-    ImGui.SameLine()
-    if ImGui.Button("Cancel") then JL.ui.blazeConfirm = false end
-  else
-    ImGui.TextWrapped("Quiet Life: the main story plays out as normal, but Jackie secretly survived and " ..
-      "returns as a living Heywood NPC. Less invasive -- but Jackie can only join SIDE jobs, never the " ..
-      "main plot.")
-
-    -- v1.32: mourning suppression, minimal — just the two persisted settings + status. (The long
-    -- help text and the dev Preview/Apply buttons were removed; ticking a box already applies it
-    -- next tick via JL.mourningTimer. jlMourningApply still exists if we need it from the console.)
-    ImGui.Separator()
-    ImGui.Text("Mourning content:")
-    ImGui.SameLine()
-    ImGui.TextColored(0.6, 0.8, 1.0, 1.0, jlMourningStatus())
-    local newVal = ImGui.Checkbox("Suppress 'Jackie is dead' grief (ofrenda / condolence calls)", JL.mourningSuppress)
-    if newVal ~= JL.mourningSuppress then JL.mourningSuppress = newVal; jlSaveSettings(); JL.mourningTimer = 999 end  -- fire next tick
-    local barVal = ImGui.Checkbox("Keep El Coyote / Mama's bar OPEN", JL.keepBarOpen)
-    if barVal ~= JL.keepBarOpen then JL.keepBarOpen = barVal; jlSaveSettings(); JL.mourningTimer = 999 end
   end
-  ImGui.Separator()
 
-  if ImGui.Button("Summon Jackie (companion)") then summonJackie() end
-  ImGui.SameLine()
-  if ImGui.Button("Dismiss Jackie") then dismissJackie() end
-
-  -- v1.39: WALK-ABREAST (ANGULAR LEASH) tuner. Pace-match was removed (it broke the leash). These knobs
-  -- shape WHEN he may sprint (only once he falls into the rear arc behind V) + how wide his free-walk zone
-  -- is + how far ahead he aims. All live. Bottom line: V's speed + whether he's sprinting or free-walking.
-  local ab = Config.abreast
-  if ab then
-    ab.rearArcFrac  = ImGui.SliderFloat("Sprint when behind: rear arc (frac of circle)", ab.rearArcFrac or 0.40, 0.15, 0.60)
-    ab.zoneRadius   = ImGui.SliderFloat("Free-walk zone radius (m)", ab.zoneRadius or 1.5, 0.5, 3.5)
-    ab.leadDistance = ImGui.SliderFloat("Walk lead ahead of anchor (m)", ab.leadDistance or 2.0, 0.0, 4.0)
-    local vsp  = JL.abreast.vSpeed or 0.0
-    local gait = JL.disableCustomWalk and "OFF (default follower)"
-                 or ((JL.abreast.catching == true) and "SPRINT (fell behind)" or "walk (free)")
-    ImGui.Text(("Live: V %.2f m/s | %s"):format(vsp, gait))
-    -- v1.46: live read-out of the two gates that hand him from abreast back to the single-file trail.
-    ImGui.Text(("Live: %s | %s"):format(
-      jlVertical() and "STAIRS/SLOPE -> trailing" or "flat ground",
-      jlVSneaking() and "V SNEAKING -> shadowing" or "V upright"))
+  if ImGui.CollapsingHeader("Companion — summon & dismiss") then
+    if ImGui.Button("Summon Jackie (companion)") then summonJackie() end
+    ImGui.SameLine()
+    if ImGui.Button("Dismiss Jackie") then dismissJackie() end
   end
-  ImGui.Separator()
+
+  -- v1.57 MOVEMENT TUNER. Was three sliders that reset on every reload; now every knob that shapes how
+  -- Jackie moves with V is here, and "Save" writes them to jl_walk.txt so they survive (jlLoadWalk on
+  -- onInit re-applies them over config.lua's baked defaults). Everything is LIVE the instant you drag it.
+  -- Read the live line FIRST — it tells you which system currently owns him, so you know which group of
+  -- sliders is even doing anything right now.
+  if ImGui.CollapsingHeader("Movement tuning (walk beside / stand still)") then
+    do
+      local still = jlVLoitering()        -- ask FIRST: this is what refreshes the frame's speed EMA
+      local vsp   = JL.abreast.vSpeed or 0.0
+      ImGui.Text(("Live: V %.2f m/s  |  %s"):format(vsp,
+        still and "V STANDING -> Jackie holds position"
+          or ((not JL.customWalk) and "trailing (walk-beside OFF)"
+          or (jlAbreastOn() and ((JL.abreast.catching == true) and "abreast: SPRINT (fell behind)" or "abreast: walk (free)")
+          or "trailing (abreast stood down)"))))
+      ImGui.Text(("Live: %s | %s"):format(
+        jlVertical() and "STAIRS/SLOPE -> trailing" or "flat ground",
+        jlVSneaking() and "V SNEAKING -> shadowing" or "V upright"))
+    end
+    ImGui.Separator()
+    ImGui.TextWrapped("Drag to feel it change immediately. Press SAVE to keep it across reloads — " ..
+      "otherwise config.lua's defaults come back next time the mod loads. The 'stand still' group works " ..
+      "in BOTH follow modes; the rest only applies while 'Walk beside me' is ON.")
+    if ImGui.Button("SAVE walk tuning") then
+      JL.ui.status = jlSaveWalk() and "Walk tuning saved (survives reloads)." or "Could not write jl_walk.txt (see console)."
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Reset to config defaults") then
+      jlResetWalk(); JL.ui.status = "Walk tuning file cleared — reload the mod to get the defaults back."
+    end
+    for _, d in ipairs(JL_WALK_BOOLS) do
+      local tbl = Config[d.t]
+      if tbl then tbl[d.k] = ImGui.Checkbox(d.label, tbl[d.k] and true or false) end
+    end
+    for _, d in ipairs(JL_WALK_KEYS) do
+      local tbl = Config[d.t]
+      if tbl then tbl[d.k] = ImGui.SliderFloat(d.label, tbl[d.k] or d.lo, d.lo, d.hi) end
+    end
+  end
 
   -- v1.47 MVP: prove AIFollowerTakedownCommand actually works from Lua before anything is built on it.
   -- No CET mod is known to construct this command, so it is unproven — this button is the experiment.
   -- Aim at an UNAWARE enemy (the grapple that plays is a stealth takedown) and press it.
-  ImGui.Text("Follower takedown (experimental):")
-  ImGui.TextWrapped("Aim at an unaware enemy and press. Jackie must already be your companion. This is the " ..
-    "same AI command The Heist uses for his parallel takedown. If he grapples the target, the automatic " ..
-    "'V takes one, Jackie takes the other' behaviour can be built on top of it.")
-  if ImGui.Button("TEST: Jackie takedown (look at)") then
-    local ok, msg = jlTakedownLookAt()
-    JL.ui.status = (ok and "" or "Takedown refused: ") .. tostring(msg)
-    log("Takedown (look-at test): " .. tostring(msg))
+  if ImGui.CollapsingHeader("Follower takedown (experimental)") then
+    ImGui.TextWrapped("Aim at an unaware enemy and press. Jackie must already be your companion. This is the " ..
+      "same AI command The Heist uses for his parallel takedown. If he grapples the target, the automatic " ..
+      "'V takes one, Jackie takes the other' behaviour can be built on top of it.")
+    if ImGui.Button("TEST: Jackie takedown (look at)") then
+      local ok, msg = jlTakedownLookAt()
+      JL.ui.status = (ok and "" or "Takedown refused: ") .. tostring(msg)
+      log("Takedown (look-at test): " .. tostring(msg))
+    end
   end
-  ImGui.Separator()
 
   -- v0.50: TWO arrival modes only — toggle FOOT <-> BIKE, live. Pick one, then Call Jackie (or hit
   -- "Test arrival now"). Both spawn via DES out at distance and share the sprint -> walk -> companion tail.
-  local cc = Config.call
-  ImGui.Separator()
-  local bikeOn = (cc.arrivalMethod == "bike")
-  if ImGui.Button("Arrival method: " .. (bikeOn and "BIKE (ride in on his Arch)" or "FOOT (sprint -> walk in)")) then
-    cc.arrivalMethod = bikeOn and "foot" or "bike"
-    log("Arrival method -> " .. cc.arrivalMethod)
-  end
-  ImGui.SameLine()
-  if ImGui.Button("Test arrival now") then
-    -- fire the selected arrival immediately, no call needed (mirrors runCallAction's summon_arrival)
-    if isMainQuestActive() then jlDeclineMainQuest()   -- v0.93: same blue notice the player gets
-    elseif JL.summon.active then JL.ui.status = "Jackie's already with you."
-    else
-      JL.varrival.at = (JL.clock or 0) + 0.2; JL.varrival.useBike = (cc.arrivalMethod == "bike")
-      JL.ui.status = ("Testing %s arrival..."):format(cc.arrivalMethod == "bike" and "BIKE" or "FOOT")
-      log(("TEST: %s arrival armed."):format(cc.arrivalMethod == "bike" and "BIKE" or "FOOT"))
+  if ImGui.CollapsingHeader("Arrival & main-quest gate") then
+    local cc = Config.call
+    local bikeOn = (cc.arrivalMethod == "bike")
+    if ImGui.Button("Arrival method: " .. (bikeOn and "BIKE (ride in on his Arch)" or "FOOT (sprint -> walk in)")) then
+      cc.arrivalMethod = bikeOn and "foot" or "bike"
+      log("Arrival method -> " .. cc.arrivalMethod)
     end
+    ImGui.SameLine()
+    if ImGui.Button("Test arrival now") then
+      -- fire the selected arrival immediately, no call needed (mirrors runCallAction's summon_arrival)
+      if isMainQuestActive() then jlDeclineMainQuest()   -- v0.93: same blue notice the player gets
+      elseif JL.summon.active then JL.ui.status = "Jackie's already with you."
+      else
+        JL.varrival.at = (JL.clock or 0) + 0.2; JL.varrival.useBike = (cc.arrivalMethod == "bike")
+        JL.ui.status = ("Testing %s arrival..."):format(cc.arrivalMethod == "bike" and "BIKE" or "FOOT")
+        log(("TEST: %s arrival armed."):format(cc.arrivalMethod == "bike" and "BIKE" or "FOOT"))
+      end
+    end
+    -- DEBUG: pretend a main quest is active so you can test Jackie declining / excusing himself.
+    JL.ui.forceMainQuest = ImGui.Checkbox("Force main-quest active (test decline)", JL.ui.forceMainQuest)
+    ImGui.Text("Main quest detected: " .. (isMainQuestActive() and "YES (Jackie won't follow)" or "no"))
+    ImGui.Text("In cutscene (tier>=4): " .. (jlInCutscene() and "YES (Jackie leaves)" or "no"))
   end
-  -- DEBUG: pretend a main quest is active so you can test Jackie declining / excusing himself.
-  JL.ui.forceMainQuest = ImGui.Checkbox("Force main-quest active (test decline)", JL.ui.forceMainQuest)
-  ImGui.Text("Main quest detected: " .. (isMainQuestActive() and "YES (Jackie won't follow)" or "no"))
-  ImGui.Text("In cutscene (tier>=4): " .. (jlInCutscene() and "YES (Jackie leaves)" or "no"))
 
-  ImGui.Separator()
-  -- v1.33: "temporarily unavailable" fix workbench. Pick a MODE, then CALL Jackie from your in-game
-  -- phone and watch what shows. The raw buttons fire single native-call phases so you can see each one
-  -- in isolation. Tell me which mode kills the "number unavailable" card and I'll bake it as default.
-  if ImGui.CollapsingHeader("Call fix (temporarily-unavailable experiments)") then
+  -- v1.33 phone hijack. The mode contest is SETTLED — 'alive' won and is the default, so the mode
+  -- picker, the delay/ring knobs and the raw single-phase buttons are gone (jlCallFix().mode and
+  -- triggerNativeCall() are still there if a future experiment needs them from the console).
+  -- What's left: is the hijack live right now, and one button to watch the whole alive call.
+  if ImGui.CollapsingHeader("Phone call (Jackie answers alive)") then
     local cf = jlCallFix()
-    ImGui.TextWrapped("WINNER (default): 'alive' — rings/connects the live jackie contact, see-through " ..
-      "holo, NO 'unavailable' card. The dead/disconnected call is kept for EARLY GAME (before the shard " ..
-      "is read). Modes: 'quick'/'instant' dodge the card via the dead contact; 'vanilla' = no hijack.")
-    ImGui.Text("Mode: ")
-    ImGui.SameLine(); ImGui.TextColored(0.45, 0.85, 1.0, 1.0, cf.mode)
-    if ImGui.Button("alive")   then cf.mode = "alive"   end
-    ImGui.SameLine(); if ImGui.Button("quick")   then cf.mode = "quick"   end
-    ImGui.SameLine(); if ImGui.Button("instant") then cf.mode = "instant" end
-    ImGui.SameLine(); if ImGui.Button("vanilla") then cf.mode = "vanilla" end
-    cf.delay = ImGui.SliderFloat("Ring/hang-up delay (s) — quick mode", cf.delay or 0.75, 0.1, 2.0)
-    cf.ourRing = ImGui.Checkbox("quick/instant: also play our ring SFX (OFF avoids 'rings twice')", cf.ourRing and true or false)
-    -- v1.38 DIAGNOSTICS: the hijack only fires once the quest is "reachable" (shard read / reunited). If
-    -- the phone still shows the DEAD card + voicemail, it's almost always because the stage is pre-shard
-    -- (below) OR Jackie's currently summoned/asleep. Watch jackie_debug.log for the [Hijack] lines.
+    -- The hijack only fires once the quest is "reachable" (shard read / reunited). Still seeing the DEAD
+    -- card + voicemail? It's almost always a pre-shard stage OR Jackie being summoned/asleep. Watch
+    -- jackie_debug.log for the [Hijack] lines.
+    local reach = Retrieval.isUnlocked() or Retrieval.isAwaitingCall()
     ImGui.Text("Reunion stage: ")
     ImGui.SameLine(); ImGui.TextColored(0.45, 0.85, 1.0, 1.0, Retrieval.stageName())
-    local reach = Retrieval.isUnlocked() or Retrieval.isAwaitingCall()
     ImGui.Text("Phone hijack active: " .. ((reach or cf.forceHijack) and "YES (alive swap)" or "no — vanilla disconnected plays"))
     cf.forceHijack = ImGui.Checkbox("Force hijack even pre-shard (test the alive swap now)", cf.forceHijack and true or false)
-
-    ImGui.Separator()
-    -- v1.37: the FULL alive flow (ring the alive avatar -> connect -> our branching dialogue), no phone
-    -- needed. The raw RING/CONNECT buttons below only fire ONE phase, so they never start the dialogue.
     if ImGui.Button(">> Test full ALIVE call (with dialogue)") then jlStartAliveCall() end
-    ImGui.TextWrapped("Rings 1.2-3.0 s (random) with our ring SFX, connects the see-through holo, then " ..
-      "runs the branching call dialogue — exactly what happens when you phone Jackie in 'alive' mode.")
-
-    ImGui.Separator()
-    ImGui.Text("Raw native-call phases (watch each in isolation):")
-    if ImGui.Button("RING dead (jackie_dead)")  then triggerNativeCall("jackie_dead", "IncomingCall", 1) end
-    ImGui.SameLine(); if ImGui.Button("RING alive (jackie)") then triggerNativeCall("jackie", "IncomingCall", 1) end
-    if ImGui.Button("CONNECT dead")  then triggerNativeCall("jackie_dead", "StartCall", 2) end
-    ImGui.SameLine(); if ImGui.Button("CONNECT alive") then triggerNativeCall("jackie", "StartCall", 2) end
-    if ImGui.Button("END dead")  then triggerNativeCall("jackie_dead", "EndCall", 3) end
-    ImGui.SameLine(); if ImGui.Button("END alive") then triggerNativeCall("jackie", "EndCall", 3) end
-    ImGui.TextWrapped("The disconnected 'temporarily unavailable' card is the DEAD contact's holo — no " ..
-      "WolvenKit needed to dodge it: 'instant'/'alive' avoid showing it at all. If a mode wins, tell me " ..
-      "and I'll set Config.nativeCall.hijackMode to it permanently.")
+    ImGui.TextWrapped("Rings, connects the see-through holo, then runs the branching call dialogue — " ..
+      "exactly what happens when you phone Jackie from the in-game phone.")
   end
 
-  ImGui.Separator()
   -- v1.32: minimal reunion-quest DEV jumps (the everyday "Unlock now" button lives up top with the
   -- status). All the call-flow / bike-cruise / reunion-beats / shard TEST controls were removed.
   if ImGui.CollapsingHeader("Reunion quest — dev jumps") then
@@ -8202,26 +8445,25 @@ registerForEvent("onDraw", function()
   end
 
 
-  ImGui.Separator()
-  if ImGui.Button("Capture current position") then capturePosition() end
-  if JL.ui.lastCapture then
-    ImGui.Text("Last capture (also in console — copy into config.lua):")
-    ImGui.TextWrapped(JL.ui.lastCapture)
+  -- v1.55: position capture + the Reverend Flash easter egg. The egg is testable WITHOUT the real
+  -- coords — "Fire now" ignores position entirely. To arm it for real: stand in the bar, hit "Capture
+  -- current position", paste the x/y/z into Config.revflash.pos, set Config.revflash.enabled = true.
+  if ImGui.CollapsingHeader("Position capture & easter egg") then
+    if ImGui.Button("Capture current position") then capturePosition() end
+    if JL.ui.lastCapture then
+      ImGui.Text("Last capture (also in console — copy into config.lua):")
+      ImGui.TextWrapped(JL.ui.lastCapture)
+    end
+    ImGui.Separator()
+    local K = Config.revflash or {}
+    ImGui.Text(("Reverend Flash easter egg: %s  (%d eddies + the Arch)")
+               :format(K.enabled and "ARMED" or "off — needs the bar's coords", K.eddies or 0))
+    if ImGui.Button("Fire Reverend Flash egg now (ignores coords)") then pcall(function() Retrieval.debugRevflash() end) end
+    ImGui.SameLine()
+    if ImGui.Button("Re-arm Reverend Flash egg") then pcall(function() Retrieval.resetRevflash() end) end
   end
 
-  -- v1.55: Reverend Flash easter egg. Testable WITHOUT the real coords — "Fire now" ignores position entirely.
-  -- To arm it for real: stand in the bar, hit "Capture current position" above, paste the x/y/z into
-  -- Config.revflash.pos, and set Config.revflash.enabled = true.
-  ImGui.Separator()
-  local K = Config.revflash or {}
-  ImGui.Text(("Reverend Flash easter egg: %s  (%d eddies + the Arch)")
-             :format(K.enabled and "ARMED" or "off — needs the bar's coords", K.eddies or 0))
-  if ImGui.Button("Fire Reverend Flash egg now (ignores coords)") then pcall(function() Retrieval.debugRevflash() end) end
-  ImGui.SameLine()
-  if ImGui.Button("Re-arm Reverend Flash egg") then pcall(function() Retrieval.resetRevflash() end) end
-
   -- Consolidated "spots" tuning — idle collision, force-venue and the seat tuner, all in one place.
-  ImGui.Separator()
   if ImGui.CollapsingHeader("Jackie's spots fine tuning") then
 
     -- MASTER flip switch — collision off for idle Jackie's whole stay (so chairs/stalls can't block him).

@@ -11,6 +11,107 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🆕 v1.57 (2026-07-23) — movement pass: walk-beside is opt-in · he stops walking away · he stands still · a real tuner
+
+_`Config.version` bumped to **1.57**; `staging/fomod/info.xml` still needs bumping before release.
+All four items are **untested in-game** — they're Mac-side code changes awaiting a Windows deploy._
+
+> *"Make follow abreast OFF by default · when asking for dinner he doesn't abort departure after agreeing
+> to eat something · when V is very slow he should stand still, only after some inertia start moving ·
+> add better walk abreast tuners (can't tweak much rn)"*
+
+- [x] **Walk-beside is now OPT-IN.** The persisted flag was inverted and renamed
+  `JL.disableCustomWalk` → **`JL.customWalk`** (default `false`). Renaming it is what makes the default
+  reach EXISTING players too: their `jl_settings.txt` still holds a `disableCustomWalk=` line, which is now
+  simply not read, so everyone drops back to the plain trailing follower until they tick
+  *Esc → Settings → Jackie Lives → Gameplay → "Walk beside me"*. (Same trick as `genderLock` → `modeChosen`
+  in v1.54.) `Config.abreast.enabled` stays `true` — it's the feature master, not the per-player default.
+- [x] **Inviting him to dinner cancels his walk-off.** New `jlAbortDeparture(graceHours, why)` (init.lua,
+  next to `leavingTick`). Cause: when his shift expires, `startLeaving` hands him to `jlRetreatFollow`,
+  which walks him AWAY from V until `leavingTick` despawns him — and *nothing cancelled that*, so V could
+  invite him to dinner mid-walk-off and watch him agree and keep going. The abort clears the leaving state,
+  wipes the parting-line subtitle, **re-arms his companion clock** (without that, onUpdate's auto-leave just
+  sends him out again on the next tick) and replaces the retreat with the normal keep-close follow so he
+  turns around. Fires at the INVITE (`Config.date.abortGraceHours` = 1 h — enough to pick a restaurant,
+  not a free extra day if V takes a raincheck) and again on ACCEPT (full `companion.maxGameHours`).
+  It deliberately **declines** for the main-quest/cutscene exit, which re-fires every tick and would
+  otherwise loop his parting line.
+- [x] **Loiter halt — V barely moving ⇒ Jackie stands still.** New `Config.loiter` + `jlVLoitering()` +
+  `jlHalt()`, consulted by `followKeepCloseTick` (and `jlAbreastOn` yields to it, so exactly one system
+  ever owns him). `AIFollowTargetCommand` has no "close enough, stop" state, so a V nudging around at
+  0.2 m/s had him micro-correcting forever. It's a **latch with two thresholds** — slow below `stopSpeed`
+  for `stopSustain` ⇒ plant; faster than `goSpeed` for `goSustain` ⇒ set off again (that gap IS the
+  "inertia" Antonia asked for; a single threshold would flicker him several times a second). He only plants
+  himself when already within `slider + holdSlack` metres, or a V who stops while he's 15 m back would
+  strand him there.
+- [ ] **Which halt command? Needs the in-game A/B.** `Config.loiter.useHoldCommand` defaults to **false** =
+  an `AIMoveToCommand` to the spot he's already on (completes instantly, replaces the follow) — chosen
+  because that machinery is proven on a follower puppet here. `true` uses **`AIHoldPositionCommand`**
+  (`aiCommand.script:646` → `HoldPositionCommandTask` in `ai/commands/aiIdleCommand.script`; the base game
+  stands roadblock NPCs up with it, `preventionSystem.script:4457`). ⚠️ The dump proves the command and its
+  handler exist, **not** that the follower behaviour tree includes that task. Flip the checkbox in the CET
+  walk tuner, watch him, and make the winner the default.
+- [x] **A real movement tuner, and it finally persists.** The old three sliders reset on every reload
+  (Config is re-required from the baked `config.lua`), so no tuning session ever survived — same bug the
+  seat tuner had in v1.1, same fix: `jl_walk.txt` + `jlSaveWalk`/`jlLoadWalk`/`jlResetWalk`, re-applied on
+  `onInit` right after `jlLoadSeats`. **27 float knobs + 2 switches**, all live, driven from one
+  `JL_WALK_KEYS`/`JL_WALK_BOOLS` table so the sliders and the file can't drift apart. Grouped: where he
+  stands (anchor angles, distance band, side stickiness) · how he moves (smoothing, re-issue interval, rear
+  arc, free-walk zone, lead) · when abreast is allowed (V's speed band + sustain) · the stairs/slope gate ·
+  the new stand-still group. The live read-out now names **which system owns him right now** (standing /
+  abreast walk / abreast sprint / trailing / stairs / sneaking), so you can see which sliders are even live.
+
+## 🆕 v1.56 (2026-07-23) — Adam Smasher scales with the game difficulty
+
+_Code only — **`Config.version` / `fomod/info.xml` are still 1.55**; bump both when this ships after the
+in-game test below._
+
+> *"make smasher a LOT harder to defeat. Currently I'd say he's easy. He should be 60% harder on medium
+> both regarding damage and his HP and then 150% harder for hard and 220% harder for very hard."*
+> …then, after the mapping was explained: *"let's make his health 1x at normal, 1.6x at hard and 2.4x at
+> very hard"* — so **HP and damage now scale on separate curves**.
+
+- [x] `Blaze.yori.diffScale` holds the **final** multipliers on the stock `Character.Smasher` record
+  (they are absolute, not deltas):
+
+  | Menu difficulty | Health | Damage |
+  |---|---|---|
+  | Easy | ×0.50 (exactly the old fight) | ×1.00 |
+  | Normal | ×1.00 | ×1.60 |
+  | Hard | ×1.60 | ×2.50 |
+  | Very Hard | ×2.40 | ×3.20 |
+
+- [x] **Damage** is new — before this he only ever had his Health scaled. `M.bound.weaken(h, hpMul, dmgMul)`
+  now also adds an **Additive `AllDamageDonePercentBonus`** modifier of `dmgMul - 1.0`. The damage pipeline
+  reads that stat off the **instigator** for every attack with no player gate, so it works on an NPC:
+  `damageSystem.script:2931` → `attackValues[i] *= (1.0 + tempDamage)` (`:2977`), from
+  `CalculateSourceModifiers` (`:2137`).
+- [x] **Why he never scaled before:** two separate reasons, and neither is AMM.
+  1. Our own code pinned him at a flat `hpMul = 0.50` with no difficulty term and no damage term at all.
+  2. **The base game doesn't scale an NPC's Health or raw damage by difficulty either.** Every script-side
+     consumer of `GetDifficulty()` is player-side or cosmetic: the cap on damage the *player* takes
+     (`damageSystem.script:952`, `:1035`, `:1223`), NPC **accuracy** (`targetShootComponent.script:140`),
+     status-effect application, AI condition checks, hacking skill checks, XP. Nothing touches NPC HP or
+     base damage. So a spawned Smasher plays identically on Easy and Very Hard unless we scale him.
+- [x] ⚠️ **The `gameDifficulty` enum names are OFF BY ONE from the menu labels.** Verified in
+  `characterCreationSummaryMenu.script:94` (Story/Easy/Hard/VeryHard → LocKeys 52792/52791/52790/52789 =
+  Easy/Normal/Hard/Very Hard) and again at `damageSystem.script:1231`, where `case gameDifficulty.Easy`
+  reads the TweakDB field `.normalDifficultySelfDamagePerTick`. So **`Easy` in the enum IS the menu's
+  Normal**, and there is no `Medium` member at all. Read via `StatsDataSystem.GetDifficulty()`
+  (`statsDataSystem.script:23`).
+- [x] ⚠️⚠️ **And the ordinals are not in difficulty order.** `statsDataSystem.script:1` declares
+  `enum gameDifficulty { Easy, Hard, VeryHard, Story }` — i.e. **0/1/2/3 = Easy/Hard/VeryHard/Story**, with
+  Story (the menu's Easy) *last*. Caught only by reading the declaration; the intuitive 0=easiest ordering
+  is wrong in two different ways at once. Only the numeric-fallback path in `M.bound.difficulty` depends on
+  it — the normal path matches on the enum's name string.
+- [x] Difficulty is read **at spawn time**, not at load, so changing it from the pause menu mid-playthrough
+  takes effect on the next run of the fight. Unreadable difficulty falls back to the Normal tier and logs it.
+- [ ] **In-game test (Windows):** run the Yorinobu fight on Normal, then on Very Hard, and check the console
+  for `difficulty = <enum> -> boss scale xN` + `boss stats scaled: Health xN, damage xN`. If the difficulty
+  line reports `nil`, the CET enum unwrap needs the numeric fallback path — report what it printed.
+- ℹ️ The **legacy** `Blaze.start()` set-piece (the manual 3-record capture path) still spawns Smasher at
+  **full stock boss stats** with no scaling — it never had any. Only the Yorinobu fight is tuned.
+
 ## 🆕 v1.55 (2026-07-14) — Misty retired (Husbando) · follow-distance slider · the phone race finally won · K-Raff · Mac packaging
 
 `Config.version` + `staging/fomod/info.xml` are both **1.55**.

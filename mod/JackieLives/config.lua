@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.56"
+Config.version = "1.57"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -260,9 +260,13 @@ Config.persist = {
   cooldown      = 5.0,    -- s between respawn attempts (also covers the spawn->promote resolve window)
 }
 
--- ---- walk-abreast (v0.85b) — DEFAULT companion behaviour ------------------
+-- ---- walk-abreast (v0.85b) — OPT-IN companion behaviour --------------------
 -- A settled companion Jackie holds a spot BESIDE / slightly AHEAD of V instead of trailing — the "walk
--- next to me" feel, everywhere (not just the dinner outing). Tuned in-game by Antonia and now ON by default.
+-- next to me" feel, everywhere (not just the dinner outing).
+-- v1.57: this is now **OFF by default**. Out of the box Jackie is the plain trailing follower; walk-beside
+-- is a switch the player turns on in Esc -> Settings -> Jackie Lives -> Gameplay -> "Walk beside me".
+-- (`Config.abreast.enabled` below is the FEATURE master, not the default: it stays true so the switch has
+-- something to turn on. The per-player default lives in `JL.customWalk`, which defaults to false.)
 -- How it behaves:
 --  * WALK-ONLY. Only active while V WALKS (her slow toggle). At jog/sprint he falls back to the normal
 --    trail (V has 3 speeds, Jackie 2 — he can't out-pace a jogging V). Thresholds: walkMaxSpeed/jogMinSpeed.
@@ -277,7 +281,7 @@ Config.persist = {
 --    CALMS to a walk again — and stays walking until he falls behind into the rear arc once more.
 -- Angle values are FRACTIONAL dial steps (of `positions`). Pace + zone knobs live in the CET pace tuner.
 Config.abreast = {
-  enabled        = true,    -- v0.85b: ON by default for a companion (Antonia confirmed it feels great)
+  enabled        = true,    -- FEATURE master (leave true). The per-player default is JL.customWalk = false (v1.57: OFF)
   positions      = 12,      -- steps in the full dial the fractional angles are measured in
   angleRight     = 0.85,    -- near-front on V's RIGHT (Antonia's tuned value)
   angleLeft      = 11.25,   -- near-front on V's LEFT  (Antonia's tuned value)
@@ -309,8 +313,8 @@ Config.abreast = {
   catchUpTolerance = 0.35,  -- target distance while sprinting in
   -- v1.39: pace-match (SetIndividualTimeDilation speed-up) REMOVED — scaling his time made his stride float
   -- and broke the angular leash. He now just walks his own natural Walk gait; the rear-arc sprint handles
-  -- keeping up. Players who dislike walk-beside can turn it off entirely (Esc -> Settings -> Jackie Lives ->
-  -- Gameplay -> "Walk beside me"), which reverts him to the plain trailing follower (JL.disableCustomWalk).
+  -- keeping up. Walk-beside is OFF by default (v1.57); the player opts in at Esc -> Settings -> Jackie Lives ->
+  -- Gameplay -> "Walk beside me". OFF = the plain trailing follower (the flag is JL.customWalk).
   walkMaxSpeed   = 2.0,     -- m/s at/below which V counts as WALKING (abreast on)
   jogMinSpeed    = 2.8,     -- m/s above which V counts as jogging/sprinting (trail); band = hysteresis
   -- v0.93: abreast is a NARROW case — it only makes sense while V is genuinely STROLLING. Two extra gates
@@ -334,6 +338,48 @@ Config.abreast = {
   -- We snap it down onto the human navmesh; if the snap lands more than maxAnchorZDelta from V it's a
   -- different floor (a balcony/metro deck the downward search found) -> reject it and keep V's z.
   maxAnchorZDelta   = 2.5,  -- m the navmesh-snapped anchor may differ from V's height before we distrust it
+}
+
+-- ---- v1.57 LOITER HALT — "if V is barely moving, Jackie stands still" ------
+-- Antonia, in-game: "when V is very slow (close to standing) he should stand still. Only after some
+-- inertia he should start moving."
+--
+-- The problem: AIFollowTargetCommand has no concept of "close enough, stop". When V nudges around at
+-- 0.2 m/s — lining up a shot, reading a shard, poking at a vendor — the follow keeps micro-correcting and
+-- Jackie shuffles endlessly around her. It reads as fidgeting, not as a person standing with you.
+--
+-- The fix is a HYSTERETIC gate on V's own smoothed speed (the same signal jlVWalking already computes, so
+-- this costs nothing extra):
+--   * V's speed drops below `stopSpeed` and STAYS there for `stopSustain` -> Jackie HALTS where he stands.
+--   * He only starts following again once V EXCEEDS `goSpeed` for `goSustain` — the "inertia" Antonia asked
+--     for. goSpeed > stopSpeed is what stops him flickering between halt and follow on a single footstep.
+-- `holdSlack` is the safety valve: he only stands still if he's ALREADY reasonably close (within the
+-- follow-distance slider + this many metres). Further out he closes the gap first, then halts — otherwise a
+-- V who stops the instant Jackie is 15 m behind would strand him there forever.
+--
+-- HOW HE IS HALTED (`useHoldCommand`) — two implementations, switchable live in the CET walk tuner:
+--   * false (DEFAULT) -> an AIMoveToCommand to the point he is ALREADY standing on. It completes on arrival
+--              (he has arrived), which replaces the standing follow command and leaves him idle. Chosen as
+--              the default purely because it is PROVEN: the whole follow/abreast system already runs on
+--              AIMoveToCommand, so we know it takes on a follower-role puppet on this game build.
+--   * true   -> AIHoldPositionCommand (aiCommand.script:646), consumed by HoldPositionCommandTask in
+--              ai/commands/aiIdleCommand.script, which just holds the command slot for `duration` so
+--              nothing else can move him. Semantically the RIGHT command — the base game stands roadblock
+--              NPCs up with it (preventionSystem.script:4457) — but ⚠️ UNVERIFIED on a FOLLOWER puppet:
+--              the dump proves the command and its handler exist, not that the follower behaviour tree
+--              includes that task. Try it in-game; if he stands more convincingly, make it the default.
+-- `duration` is short and re-issued on `holdInterval` rather than infinite, so nothing can leave him frozen
+-- in place permanently. If the hold command errors outright we fall back to the move-to automatically.
+Config.loiter = {
+  enabled     = true,
+  stopSpeed   = 0.55,   -- m/s — V at or below this counts as "basically standing"
+  goSpeed     = 1.10,   -- m/s — V must EXCEED this to wake him back up (the inertia; keep > stopSpeed)
+  stopSustain = 0.60,   -- s V must stay slow before he plants his feet (a pause mid-step won't trip it)
+  goSustain   = 0.35,   -- s V must stay fast before he sets off again (a single lurch won't trip it)
+  holdSlack   = 2.0,    -- m past the follow-distance slider within which halting is allowed (else: close in first)
+  useHoldCommand = false,-- false = move-to-own-position (proven) · true = AIHoldPositionCommand (try it in-game)
+  holdDuration   = 6.0, -- s per hold command (re-issued every holdInterval; never infinite, so it always expires)
+  holdInterval   = 2.0, -- s between hold re-issues while V stays still
 }
 
 -- ---- stealth / sneaking (v1.46) -------------------------------------------
@@ -583,6 +629,11 @@ Config.date = {
   sitWaitSeconds    = 2.0,   -- seconds seated before he says his line + the clock resets
   getUpRadius       = 10.0,  -- metres: V this far from seated Jackie -> he gets up + re-follows
   resetCooldownHours = 24.0, -- the dinner FULL reset can only fire once per this many in-game hours
+  -- v1.57: inviting a WALKING-OFF Jackie to dinner cancels his departure (jlAbortDeparture) so he doesn't
+  -- stroll away — and despawn — while V is still choosing a restaurant. The invite alone only buys him this
+  -- short fresh shift; ACCEPTING (a venue picked) upgrades it to the full Config.companion.maxGameHours.
+  -- Keep it small: it's the "hang on, hear me out" window, not a free extra day at V's side.
+  abortGraceHours    = 1.0,
   objectiveText       = "Grab some food with Jackie: Go to %s",   -- neon-left flash when the walk starts (%s = place)
   objectiveTextDrinks = "Grab some drinks with Jackie: Go to %s",  -- v1.x: used for bars (restaurant with drinks=true)
   objectiveDuration   = 6.0,                                       -- seconds the flash stays up
