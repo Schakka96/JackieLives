@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.60"
+Config.version = "1.61"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -107,6 +107,11 @@ Config.smile = {
   -- category 3 in JackieLipsync for other happy idles and append them here — they auto-split the 40%.
   selfChance = 0.60,     -- 60% his own Smile; 40% shared across otherIdles
   otherIdles = { 5 },    -- other happy faces (5 = Joy). Grow this list as more are verified.
+  -- SPAWN-IN SMILE BOOST — for the first `spawnBoostSeconds` after idle Jackie spawns in at a venue,
+  -- he's `spawnBoostMult`x more likely to flash a smile when V catches his eye (fresh-arrival warmth).
+  -- Only affects HOW OFTEN, not which face. Keyed to the idle/venue spawn (JL.idle.spawnedAt).
+  spawnBoostSeconds = 10.0,
+  spawnBoostMult    = 3.0,
   -- v0.93 REUNION SMILE BOOST — during the first-meeting dialogue (reunionMeetTree) he beams:
   -- a forced smile for the first `reunionForceSeconds`, then `reunionChanceMult`x the normal smile
   -- chance for the rest of that chat. `reunionIdles` rotates his two happy faces (6 = Smile, 5 = Joy)

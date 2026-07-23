@@ -2063,6 +2063,12 @@ local function smileTick()
   end
   -- low likelihood normally; bumped while out for dinner with him (the happy occasion)
   local chance = (JL.dinner.phase and cfg.dinnerChance) or cfg.chance or 0.033
+  -- SPAWN-IN BOOST: for the first `spawnBoostSeconds` after idle Jackie spawns in, he's much more
+  -- likely to grin back (fresh-arrival warmth). Guard sp>0 so a fresh mod load doesn't false-boost.
+  local sp = JL.idle.spawnedAt or 0
+  if sp > 0 and (now - sp) < (cfg.spawnBoostSeconds or 10.0) then
+    chance = chance * (cfg.spawnBoostMult or 3.0)
+  end
   if math.random() >= chance then return end
 
   s.handle    = jackie
