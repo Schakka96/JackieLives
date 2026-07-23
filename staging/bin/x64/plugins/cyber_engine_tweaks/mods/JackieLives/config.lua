@@ -245,16 +245,20 @@ Config.companion = {
 -- if it says "companion" but no live Jackie exists — a fresh load wiped the runtime state, or a
 -- load-screen fast-travel culled his body (the case Config.catchUp can't recover) — it re-spawns and
 -- re-promotes him at V's side. Set enabled=false to go back to "he's gone after a reload".
--- ⚠️ v0.84b: DISABLED AGAIN — still breaks the save. The v0.84 world-ready + AMM gate did NOT fix it:
--- on test (2026-07-02) Jackie spawns VISIBLY in V's face on the FIRST frame after loading, then the game
--- crashes. So the respawn is firing immediately (the grace is being skipped) AND the settle-hide isn't
--- catching him. Leading hypothesis: on an in-session load onUpdate keeps running and playerPos() never
--- reads nil during the transition, so worldReadyAt is a STALE pre-load stamp -> the 8 s grace has
--- "already elapsed" -> spawn on frame 1. Real fix likely needs a genuine load EVENT (hook a save-load /
--- player OnGameAttached) to reset worldReadyAt, not an inferred nil-gap; and/or spawn HIDDEN and only
--- reveal once fully streamed. Deferred — see TODO "🐞 v0.84b persist still breaks the save". Stays OFF.
+-- ✅ v1.61: ENABLED. Phase 3 of the cross-save work — a save whose companion fact is set brings Jackie
+-- back at V's side on load. The v0.84b crash ("Jackie in V's face on frame 1, then crash") had exactly the
+-- root cause the old warning here predicted: worldReadyAt was a STALE pre-load stamp because the session
+-- reset that nils it NEVER FIRED (the guard's 1ULL hash was dead). Both halves of the predicted fix now
+-- exist: (1) a GENUINE load event — the native game_was_loaded fact (session.lua) — fires jlResetSessionState,
+-- which nils JL.persist (worldReadyAt included), so the 8 s startupGrace always restarts from real world-entry;
+-- and (2) respawnCompanionAtV already spawns him HIDDEN + no-collision (settleTick) and repositions him to V's
+-- front/side before revealing, so no pop-in / wall-clip. Plus OnDetach purges the prior body first, so there's
+-- never a stale companion to collide with. If a load ever DOES crash, the last jackie_debug.log.prev [MARK]
+-- names the call; raise startupGrace before anything else.
+-- NOTE: the duration timer still re-arms fresh on respawn (a 5 h-in companion gets a full 6 h) — that's
+-- Phase 4 (persist jackielives_companion_expires), a separate, smaller follow-up.
 Config.persist = {
-  enabled       = false,  -- ⚠️ still crashes the save on load (v0.84b) — see warning above; do not flip on
+  enabled       = true,   -- v1.61: safe now that the session boundary is really detected (see above)
   startupGrace  = 8.0,    -- s of settled, in-world time (from when the player appears) before we spawn
   gapSustain    = 1.5,    -- s the "should be here but isn't" condition must hold (rides out stream hiccups)
   cooldown      = 5.0,    -- s between respawn attempts (also covers the spawn->promote resolve window)
