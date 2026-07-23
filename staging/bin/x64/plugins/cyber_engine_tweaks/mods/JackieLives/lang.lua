@@ -128,8 +128,10 @@ function Lang.detect()
 end
 
 -- ---------------------------------------------------------------------------
--- LOAD — pull in lang_<code>.lua. A missing or broken file degrades to English
--- with a log line; it must never stop the mod loading.
+-- LOAD — index the active language out of the ONE consolidated translations.lua
+-- (v1.60.1: was one lang_<code>.lua per language; consolidated so the folder
+-- never accumulates a file per language — see translations.lua header). A missing
+-- or broken data file degrades to English with a log line; never stops loading.
 -- ---------------------------------------------------------------------------
 function Lang.load(code)
   code = tostring(code or "en")
@@ -139,9 +141,10 @@ function Lang.load(code)
     say("active language: English (source strings)")
     return true
   end
-  local ok, tbl = pcall(require, "lang_" .. code)
-  if not ok or type(tbl) ~= "table" then
-    say("could not load lang_" .. code .. ".lua (" .. tostring(tbl) .. ") -> falling back to English")
+  local ok, all = pcall(require, "translations")
+  local tbl = (ok and type(all) == "table") and all[code] or nil
+  if type(tbl) ~= "table" then
+    say("no '" .. code .. "' block in translations.lua (" .. tostring(all) .. ") -> falling back to English")
     Lang.code, Lang.map = "en", nil
     return false
   end

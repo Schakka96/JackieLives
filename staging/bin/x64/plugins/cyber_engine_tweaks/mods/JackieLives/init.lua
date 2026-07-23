@@ -56,8 +56,8 @@ Retrieval = require("retrieval")   -- "Where's Jackie?" questline + master mod g
 pcall(function() package.loaded["blaze"] = nil end)   -- v0.98: force a FRESH read on CET soft-reload; else the cached old module sticks (stale startYorinobu/diagnose)
 Blaze     = require("blaze")       -- v0.96 GLOBAL (200-cap): "Blaze of Glory" Heist set-piece (see blaze.lua)
 Session   = require("session")     -- v1.52 GLOBAL (200-cap): session guard + crash log (see session.lua)
-pcall(function() package.loaded["lang"] = nil end)    -- like blaze: re-read on CET soft-reload so a language swap takes effect
-Lang      = require("lang")        -- v1.60 GLOBAL (200-cap): localization; Lang.t(s) at the 4 text chokepoints (see lang.lua)
+pcall(function() package.loaded["lang"] = nil; package.loaded["translations"] = nil end)  -- like blaze: re-read on CET soft-reload so a language/text edit takes effect
+Lang      = require("lang")        -- v1.60 GLOBAL (200-cap): localization; Lang.t(s) at the text chokepoints (see lang.lua + translations.lua)
 -- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
 -- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
 -- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
@@ -8585,9 +8585,11 @@ registerForEvent("onDraw", function()
       end
     end
     ImGui.Text(string.format("translated %d / fell back to English %d (this session)", Lang.hits, Lang.miss))
-    ImGui.TextWrapped("Subtitles, notice banners and shards use the GAME's fonts and render every "
-      .. "language correctly. V's dialogue choices are drawn by CET, whose default font is Latin-only "
-      .. "-- for Japanese, Russian or Chinese choice text see docs/localization.md (one CET setting).")
+    ImGui.TextWrapped("Best results: leave this on Auto and run the GAME in your language. Subtitles, "
+      .. "banners and shards use the GAME's font, which only carries the glyphs of the language the "
+      .. "GAME is set to -- so forcing e.g. Japanese while the game runs in English shows blanks. "
+      .. "V's choice box + this menu are drawn by CET, whose font is Latin-only until you point it at "
+      .. "a CJK/Cyrillic font (see docs/localization.md).")
   end
   ImGui.Separator()
 
