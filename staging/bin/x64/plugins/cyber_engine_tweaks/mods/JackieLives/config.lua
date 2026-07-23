@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.57"
+Config.version = "1.59"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -496,12 +496,59 @@ Config.takedown = {
 -- So: beyond respawnDistance, OR if a teleport already fired but failed to close the gap (maxTeleTries),
 -- catchUpTick DESPAWNS the stranded body and RESPAWNS a fresh Jackie at V (respawnCompanionAtV). This runs
 -- 2 s+ AFTER the fast-travel with V fully in-world, so it does NOT hit the persist-on-LOAD crash (Config.persist).
+-- ---------------------------------------------------------------------------
+-- v1.59 PATIENCE PASS (Antonia: "he is spawning in front of V rather often because of a low tolerance to
+-- getting stuck / not reaching his target spot... he should easily be able to be outside of his target zone
+-- for 4 s, but if his zone is in reach he should try to sprint to it — just don't fall back to the teleport
+-- so much. Or if teleport, do teleport to BEHIND V on a valid spot.")
+-- Four things changed, in the order they bite:
+--   1. `sustainSeconds` 2 -> 4. This is THE tolerance knob: how long he may be beyond `distance` before we
+--      intervene at all.
+--   2. `progressGrace` — the real fix. A plain timer can't tell "stuck behind a fence" from "sprinting back
+--      and 8 m closer than last check". Now, while the gap is CLOSING by at least `progressEpsilon` per
+--      check, the timer is pushed back and he is left to run — up to `maxGraceSeconds`, so a genuinely
+--      stuck Jackie still gets rescued. Paired with the trail now SPRINTING him home while he's beyond
+--      `distance` (before v1.59 nobody commanded him out there: the trail stood down for catch-up and
+--      catch-up only ever teleported, so he coasted on a stale order — which is what made the teleport look
+--      necessary so often).
+--   3. `maxTeleTries` 1 -> 2. One failed teleport used to escalate straight to a full despawn+respawn, the
+--      most visible recovery of the lot.
+--   4. WHERE he lands. See `preferBehindWhenStill` + `requirePath` below.
+-- ---------------------------------------------------------------------------
 Config.catchUp = {
   enabled         = true,
   distance        = 25.0,   -- metres from V beyond which he's considered "left behind"
-  sustainSeconds  = 2.0,    -- he must stay that far for this long (rides out a fast-travel/load gap)
+  sustainSeconds  = 4.0,    -- v1.59 (was 2.0): he must stay that far for this long before we do anything
+  -- v1.59 PROGRESS GRACE — "he's making his way back, leave him alone".
+  progressGrace   = true,   -- false = the old plain timer
+  progressEpsilon = 0.5,    -- m the gap must SHRINK per check to count as progress (noise floor)
+  maxGraceSeconds = 20.0,   -- s of grace he can earn this way before we intervene regardless (anti-forever)
+  chaseMovement   = "Sprint",-- how the trail runs him home while he's beyond `distance` (he must out-pace V)
   cooldown        = 3.0,    -- minimum seconds between catch-up teleports (anti-thrash)
   placeDistance   = 3.0,    -- metres to V's side he's dropped (navmesh-snapped; never ON V)
+  -- v1.59 LAND HIM BEHIND HER WHEN SHE'S STANDING STILL. The v1.40 rule (always AHEAD/beside, see
+  -- frontSideRespawn) fixed fast-travel drops into the wall behind V — but a stationary V is usually LOOKING
+  -- at that front-side spot, so the recovery pops into view. Worse, if she's standing at a railing there is
+  -- often no walkable ground in front at all: the front-side search fails, the old code fell through to an
+  -- UNVALIDATED forward point, and he materialised in mid-air over the drop (Antonia: "sometimes he spawns
+  -- in the air in front of V if V is looking over a balcony"). So when V is standing still we try BEHIND
+  -- her first, then her sides, then the front — out of shot, and far likelier to be real ground. While she
+  -- is MOVING we keep the front-side order (dropping him behind a walking V just makes him chase again).
+  preferBehindWhenStill = true,
+  -- ...and while she's still, he no longer has to hit the narrow walk-abreast anchors: the sweep widens to
+  -- `stillAngleSpread` degrees either side of each base heading. This is Antonia's "he is allowed to be
+  -- outside of the defined abreast angles if V stops walking" — a standing V doesn't care where he stands.
+  stillAngleSpread = 75.0,  -- degrees of extra sweep either side of each base heading while V is still
+  -- v1.59 REACHABILITY. snapToNavmesh only proves a point is ON some navmesh — not that it is connected to
+  -- the patch V is standing on. That is how he ended up on the far side of a railing/canal, unable to path
+  -- back, which then re-triggers catch-up in a loop. Now every candidate is path-checked against V with
+  -- NavigationSystem.CalculatePathOnlyHumanNavmesh (navigationSystem.script:55) and rejected if no foot path
+  -- exists. If that call can't be made on this build, the check degrades to "accept" (pre-v1.59 behaviour)
+  -- and says so ONCE in jackie_debug.log rather than blocking every recovery.
+  requirePath     = true,
+  pathTolerance   = 1.0,    -- m find-point tolerance handed to the path query
+  -- v1.59: if NOTHING valid is found, we now SKIP the teleport and let him keep walking, instead of falling
+  -- through to a raw unsnapped point. That raw fallback is what put him in the air. Never re-add it.
   -- v1.40: on both recovery paths, place him AHEAD/beside V (reusing the walk-abreast angles), never BEHIND —
   -- the wall/structure behind a fast-travel point is where the old build dropped him. The teleport path uses
   -- frontSideArrivalPoint directly; the respawn path repositions him there (invisibly) during the settle-hide
@@ -509,7 +556,7 @@ Config.catchUp = {
   frontSideRespawn = true,
   respawnWhenStranded = true,-- v0.79: fall back to despawn+respawn when a teleport can't reach him (set false to disable)
   respawnDistance = 150.0,  -- metres beyond which we skip the doomed teleport and respawn immediately (district-scale FT)
-  maxTeleTries    = 1,      -- consecutive teleports that fail to close the gap before we escalate to a respawn
+  maxTeleTries    = 2,      -- v1.59 (was 1): failed teleports before we escalate to the visible despawn+respawn
 }
 
 -- ---- respawn settle-in (v0.82) --------------------------------------------

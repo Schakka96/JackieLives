@@ -71,7 +71,9 @@ local JL = {
   summon = { spawn = nil, active = false, companionSet = false, walkIn = false },
   -- v0.66 companion catch-up: while he's a confirmed, undismissed companion, if V gets far
   -- (fast-travel / ran off / he got left behind) he teleports back to V's SIDE (never onto V).
-  catchUp = { farSince = nil, lastAt = nil, teleTries = nil },
+  -- v1.59 lastDist/graceSince back the progress grace: lastDist is the previous check's gap (is it closing?),
+  -- graceSince caps how long "he's still closing" may keep deferring the rescue.
+  catchUp = { farSince = nil, lastAt = nil, teleTries = nil, lastDist = nil, graceSince = nil },
   -- v0.82 respawn-settle: after a respawn-at-V (catch-up FT recovery / persist) hide Jackie + drop his
   -- collision briefly so he doesn't visibly POP in or spawn into a wall, then reveal + re-collide by clock.
   -- v1.40 reposePending/reposeAt/reposeLast: one-shot "move him off AMM's drop spot to V's front/side" latch.
@@ -3541,6 +3543,41 @@ local function snapToNavmesh(candidate)
   return pt
 end
 
+-- v1.59 "CAN HE ACTUALLY WALK THERE FROM V?" — the check snapToNavmesh cannot make.
+-- snapToNavmesh only proves a point sits on SOME human navmesh. It says nothing about whether that navmesh
+-- is connected to the patch V is standing on, so a point across a railing, a canal, or one storey down
+-- passes it happily — and that is how a "recovered" Jackie ends up somewhere he can never path back from,
+-- which simply re-triggers the recovery. NavigationSystem.CalculatePathOnlyHumanNavmesh
+-- (`scripts/core/systems/navigationSystem.script:55`) answers the real question: it returns a NavigationPath
+-- whose `path` array is non-empty only when a walkable route exists.
+-- DEGRADES TO "YES": if the call can't be made on this build (renamed, or the NavGenAgentSize enum doesn't
+-- marshal from CET), we return true — i.e. pre-v1.59 behaviour — and log it ONCE. A reachability test that
+-- silently rejected everything would block every recovery and strand him, which is far worse than the bug
+-- it fixes. Global -> 200-local cap safe.
+function jlPathReachable(fromPt, toPt)
+  if not (fromPt and toPt) then return true end
+  local C = Config.catchUp or {}
+  if C.requirePath == false then return true end
+  local nav = Game.GetNavigationSystem(); if not nav then return true end
+  local path, ok
+  ok = pcall(function()
+    -- NavGenAgentSize has the single member Human; fall back to the raw 0 if the enum doesn't marshal.
+    local sz = NavGenAgentSize and NavGenAgentSize.Human
+    path = nav:CalculatePathOnlyHumanNavmesh(fromPt, toPt, sz or 0, C.pathTolerance or 1.0)
+  end)
+  if not ok or path == nil then
+    if not JL.pathApiWarned then
+      JL.pathApiWarned = true
+      log("Recovery: CalculatePathOnlyHumanNavmesh unavailable on this build -> reachability check SKIPPED " ..
+          "(candidates are navmesh+height checked only, as before v1.59).")
+    end
+    return true
+  end
+  local n = 0
+  pcall(function() n = #(path.path or {}) end)
+  return n > 0
+end
+
 -- Find a navmesh-valid arrival point ~`distance` m from V. Sweeps several headings and a few
 -- shorter distances, so a blocked forward direction (building/wall) still yields a spot.
 -- Returns a Vector4 (logged) or nil if nothing walkable is nearby.
@@ -3607,7 +3644,14 @@ end
 -- current pos — nil -> right first), then the other side, then straight ahead; each swept over a few nearby
 -- angles + shorter distances and navmesh-snapped + height-checked, exactly like navmeshArrivalPoint. Returns
 -- a snapped Vector4 or nil (caller falls back to navmeshArrivalPoint). GLOBAL: init.lua is at Lua's 200-local cap.
-function frontSideArrivalPoint(distance, jp)
+-- v1.59 `behindFirst`: flip the search order to BEHIND V -> her sides -> the front, and widen each sweep by
+-- Config.catchUp.stillAngleSpread. Used by catchUpTick when V is STANDING STILL, for two reasons Antonia hit
+-- in-game: a stationary V is usually looking straight at the front-side spot (so the recovery pops into
+-- shot), and if she's at a railing there may be no walkable ground in front at all — which used to end with
+-- him materialising in mid-air. A standing V doesn't care whether he's at the tuned abreast angle, so the
+-- constraint is dropped exactly when it stops earning anything. While she's MOVING the front-side order
+-- stands: dropping him behind a walking V only makes him chase her again.
+function frontSideArrivalPoint(distance, jp, behindFirst)
   local pl = Game.GetPlayer(); if not pl then return nil end
   local pp; pcall(function() pp = pl:GetWorldPosition() end)
   local fwd; pcall(function() fwd = pl:GetWorldForward() end)
@@ -3629,24 +3673,41 @@ function frontSideArrivalPoint(distance, jp)
   -- cutting across in front of V. No jp (fresh respawn, handle not resolved) -> right side first.
   local rightFirst = true
   if jp then rightFirst = ((jp.x - pp.x) * rx + (jp.y - pp.y) * ry) >= 0 end
-  local bases = rightFirst and { rAng, lAng, fwdAng } or { lAng, rAng, fwdAng }
+  -- v1.59: BEHIND (out of a standing V's view, and usually the ground she just walked over) goes first when
+  -- the caller asks for it; the near-front anchors stay first otherwise.
+  local bases
+  if behindFirst then
+    bases = rightFirst and { fwdAng + math.pi, rAng, lAng, fwdAng } or { fwdAng + math.pi, lAng, rAng, fwdAng }
+  else
+    bases = rightFirst and { rAng, lAng, fwdAng } or { lAng, rAng, fwdAng }
+  end
+  -- v1.59: widen the per-base sweep when V is still — "he's allowed to be outside the abreast angles".
+  local offs = { 0, 12, -12, 24, -24 }
+  if behindFirst then
+    local spread = (Config.catchUp or {}).stillAngleSpread or 75.0
+    offs = { 0, 12, -12, 24, -24, spread * 0.5, -spread * 0.5, spread, -spread }
+  end
   local maxZ  = (Config.vehicle and Config.vehicle.maxSpawnZDelta) or 4.0
   for _, baseAng in ipairs(bases) do
     for _, df in ipairs({ 1.0, 0.8, 0.6 }) do
       local d = distance * df
-      for _, deg in ipairs({ 0, 12, -12, 24, -24 }) do
+      for _, deg in ipairs(offs) do
         local a    = baseAng + math.rad(deg)
         local cand = Vector4.new(pp.x + math.cos(a) * d, pp.y + math.sin(a) * d, pp.z, 1.0)
         local snapped = snapToNavmesh(cand)
-        if snapped and math.abs(snapped.z - pp.z) <= maxZ then
-          log(("Recovery: front-side point base=%+.0f off=%+.0f d=%.1f dZ=%+.1f -> { %.2f, %.2f, %.2f }")
-              :format(math.deg(baseAng), deg, d, snapped.z - pp.z, snapped.x, snapped.y, snapped.z))
+        -- v1.59: navmesh + height + REACHABLE ON FOOT FROM V. The third test is the one that keeps him off
+        -- the wrong side of a railing (see jlPathReachable); it degrades to "accept" if the API is absent.
+        if snapped and math.abs(snapped.z - pp.z) <= maxZ and jlPathReachable(pp, snapped) then
+          log(("Recovery: %s point base=%+.0f off=%+.0f d=%.1f dZ=%+.1f -> { %.2f, %.2f, %.2f }")
+              :format(behindFirst and "behind-first" or "front-side",
+                      math.deg(baseAng), deg, d, snapped.z - pp.z, snapped.x, snapped.y, snapped.z))
           return snapped
         end
       end
     end
   end
-  log("Recovery: NO front-side navmesh point found -> caller falls back to navmeshArrivalPoint.")
+  log(("Recovery: NO %s navmesh point found (navmesh + dZ<=%.0f + reachable-on-foot)."):format(
+      behindFirst and "behind-first" or "front-side", maxZ))
   return nil
 end
 
@@ -4745,10 +4806,28 @@ local function catchUpTick()
   local now = JL.clock or 0
   local d   = dist3(pp, jp)
   -- back within range -> the last teleport (if any) took; clear the retry counter.
-  if d <= (C.distance or 25.0) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
+  if d <= (C.distance or 25.0) then
+    JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil
+    JL.catchUp.lastDist, JL.catchUp.graceSince = nil, nil
+    return
+  end
   -- he's far. Require it to PERSIST a beat (a fast-travel/load gap, not a momentary stream hiccup).
-  JL.catchUp.farSince = JL.catchUp.farSince or now
-  if (now - JL.catchUp.farSince) < (C.sustainSeconds or 2.0) then return end
+  JL.catchUp.farSince   = JL.catchUp.farSince or now
+  JL.catchUp.graceSince = JL.catchUp.graceSince or now
+  -- v1.59 PROGRESS GRACE. A bare timer treats "stuck behind a fence" and "sprinting back, 8 m closer than
+  -- last tick" identically, so a Jackie who only needed a few more seconds got yanked — and a teleport in
+  -- front of V is exactly what Antonia was seeing. While the gap is genuinely CLOSING, push the timer back
+  -- and let him run. `maxGraceSeconds` caps it from graceSince, so a Jackie inching forward against geometry
+  -- (or one who closes 0.6 m then stalls, over and over) still gets rescued rather than deferring forever.
+  if C.progressGrace ~= false then
+    local prev = JL.catchUp.lastDist
+    if prev and (prev - d) >= (C.progressEpsilon or 0.5)
+       and (now - JL.catchUp.graceSince) < (C.maxGraceSeconds or 20.0) then
+      JL.catchUp.farSince = now                 -- he's closing: restart the patience clock
+    end
+  end
+  JL.catchUp.lastDist = d
+  if (now - JL.catchUp.farSince) < (C.sustainSeconds or 4.0) then return end
   if (now - (JL.catchUp.lastAt or -1e9)) < (C.cooldown or 3.0) then return end
 
   -- v0.79 ESCALATION. aiTeleport (AITeleportCommand) can only move his body while it's still streamed with
@@ -4762,6 +4841,7 @@ local function catchUpTick()
   if (C.respawnWhenStranded ~= false)
      and (d >= (C.respawnDistance or 150.0) or tries >= (C.maxTeleTries or 1)) then
     JL.catchUp.lastAt, JL.catchUp.farSince, JL.catchUp.teleTries = now, nil, nil
+    JL.catchUp.lastDist, JL.catchUp.graceSince = nil, nil
     log(("CatchUp: Jackie stranded %.0f m from V (teleport can't cross) -> respawning at her side."):format(d))
     pcall(respawnCompanionAtV)   -- despawns the orphaned body + spawns fresh at V; onUpdate re-promotes next frame
     return
@@ -4772,9 +4852,27 @@ local function catchUpTick()
   -- (reuses the walk-abreast angles, picks the side he's already on via `jp`); fall back to the old
   -- side/behind navmesh sweep, then a plain forward point. Count the attempt so a no-op teleport escalates
   -- to a respawn on the next eligible tick.
-  local pt = frontSideArrivalPoint(C.placeDistance or 3.0, jp)
-             or navmeshArrivalPoint(C.placeDistance or 3.0) or arrivalPoint()
-  if not pt then return end
+  -- v1.59: when V is STANDING STILL, search BEHIND her first (out of shot, and real ground — the front-side
+  -- spot is both what she's looking at and, at a railing, often thin air), with a widened angle sweep.
+  -- "Is V standing still?" must NOT depend on the loiter-halt feature being switched on (jlVLoitering short-
+  -- circuits to false when Config.loiter.enabled is off), so fall back to the raw smoothed speed.
+  local behindFirst = false
+  if C.preferBehindWhenStill ~= false then
+    jlVWalking()          -- refresh the shared per-frame speed EMA before reading it
+    behindFirst = jlVLoitering()
+                  or ((JL.abreast.vSpeed or 0.0) <= ((Config.loiter or {}).stopSpeed or 0.55))
+  end
+  local pt = frontSideArrivalPoint(C.placeDistance or 3.0, jp, behindFirst)
+             or navmeshArrivalPoint(C.placeDistance or 3.0)
+  -- v1.59: the old third fallback was `arrivalPoint()`, which ends in `snapToNavmesh(pt) or pt` — i.e. it
+  -- hands back a RAW, unvalidated forward point when nothing snaps. That is precisely how he materialised in
+  -- mid-air in front of a V leaning over a balcony. There is no safe unvalidated point: if nothing walkable
+  -- was found, do NOTHING this tick. He keeps walking (the trail is sprinting him home), the cooldown holds,
+  -- and we try again shortly — or, if he really is stuck, the teleTries ladder escalates to a clean respawn.
+  if not pt then
+    log(("CatchUp: %.0f m out but NO reachable landing point near V -> not teleporting (he keeps walking)."):format(d))
+    return
+  end
   local yaw = 0.0
   pcall(function() local f = Game.GetPlayer():GetWorldForward(); yaw = math.deg(math.atan2(f.y, f.x)) end)
   aiTeleport(h, pt, yaw, false)
@@ -5185,7 +5283,18 @@ local function followKeepCloseTick()
   -- don't fight the catch-up teleport: if he's far enough for that to own him, leave it.
   local pp = playerPos(); if not pp then return end
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
-  if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then return end
+  -- v1.59 RUN HIM HOME. This used to be a bare `return` — "catch-up owns him out here". It didn't: catch-up
+  -- only ever TELEPORTS, so beyond this distance nobody was commanding him at all and he coasted on a stale
+  -- order. That is a large part of why the teleport looked necessary so often. Now the trail keeps issuing a
+  -- SPRINT follow while he's out there, which is what gives Config.catchUp.progressGrace something to
+  -- measure — he closes the gap himself, and the teleport stays the last resort it was meant to be.
+  if dist3(pp, jp) > ((Config.catchUp and Config.catchUp.distance) or 25.0) then
+    if (now - (JL.follow.lastAt or -1e9)) >= (F.interval or 1.5) then
+      JL.follow.lastAt = now
+      sendWalkToPlayer(h, (Config.catchUp and Config.catchUp.chaseMovement) or "Sprint", jlFollowDistance())
+    end
+    return
+  end
   -- --- v1.57 LOITER HALT: V is basically standing -> so does Jackie -----------------------------------
   -- The follow command has no "close enough, stop" state, so a V who's just nudging about (aiming, reading
   -- a shard, browsing a vendor) had Jackie endlessly micro-correcting around her. jlVLoitering() is the
@@ -6471,11 +6580,22 @@ JL_WALK_KEYS = {
   { t = "loiter",  k = "holdSlack",            lo = 0.0,  hi = 6.0,  label = "Only stand still within slider + (m)" },
   { t = "loiter",  k = "holdDuration",         lo = 1.0,  hi = 20.0, label = "Hold command duration (s)" },
   { t = "loiter",  k = "holdInterval",         lo = 0.5,  hi = 8.0,  label = "Hold command re-issue every (s)" },
+  -- --- v1.59 catch-up patience: how long he may be lost before we stop trusting his own legs ---
+  { t = "catchUp", k = "distance",             lo = 8.0,  hi = 60.0, label = "Counts as LEFT BEHIND beyond (m)" },
+  { t = "catchUp", k = "sustainSeconds",       lo = 1.0,  hi = 15.0, label = "...for this long before we step in (s)" },
+  { t = "catchUp", k = "progressEpsilon",      lo = 0.1,  hi = 3.0,  label = "Gap must close this much to count (m)" },
+  { t = "catchUp", k = "maxGraceSeconds",      lo = 5.0,  hi = 60.0, label = "Max grace while he's still closing (s)" },
+  { t = "catchUp", k = "cooldown",             lo = 1.0,  hi = 15.0, label = "Min gap between teleports (s)" },
+  { t = "catchUp", k = "placeDistance",        lo = 1.0,  hi = 8.0,  label = "Teleport lands him this far from V (m)" },
+  { t = "catchUp", k = "stillAngleSpread",     lo = 0.0,  hi = 120.0,label = "Extra placement sweep while V is still (deg)" },
 }
--- The two BOOLEAN walk knobs. Same file, written as 1/0.
+-- The BOOLEAN walk knobs. Same file, written as 1/0.
 JL_WALK_BOOLS = {
-  { t = "loiter", k = "enabled",        label = "Loiter halt ON (Jackie stands still when V does)" },
-  { t = "loiter", k = "useHoldCommand", label = "Use AIHoldPositionCommand (off = move-to-own-spot fallback)" },
+  { t = "loiter",  k = "enabled",              label = "Loiter halt ON (Jackie stands still when V does)" },
+  { t = "loiter",  k = "useHoldCommand",       label = "Use AIHoldPositionCommand (off = move-to-own-spot fallback)" },
+  { t = "catchUp", k = "progressGrace",        label = "Be patient while he's visibly closing the gap" },
+  { t = "catchUp", k = "preferBehindWhenStill",label = "Teleport him BEHIND a standing V (out of shot)" },
+  { t = "catchUp", k = "requirePath",          label = "Only place him where he can walk to V on foot" },
 }
 JL_WALK_FILE = "jl_walk.txt"
 
@@ -7127,7 +7247,7 @@ function jlResetSessionState(id, why)
                   placeAt = nil, driveAt = nil, sprintAt = nil, lastReissue = 0, deadline = nil, driveCmd = nil }
   JL.arrival  = { at = nil, phase = nil, pt = nil, placeAt = nil, moveAt = nil, deadline = nil, lastReissue = 0 }
   JL.leaving  = { phase = nil, deadline = nil, lastReissue = 0 }
-  JL.catchUp  = { farSince = nil, lastAt = nil, teleTries = nil }
+  JL.catchUp  = { farSince = nil, lastAt = nil, teleTries = nil, lastDist = nil, graceSince = nil }
   JL.follow   = { lastAt = nil }
   JL.abreast  = { lastAt = nil }
   JL.persist  = { gapSince = nil, lastRespawn = nil, worldReadyAt = nil }

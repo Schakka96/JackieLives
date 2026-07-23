@@ -116,6 +116,60 @@ overlay still shows 1.13 in-game, the deploy didn't take. **`Config.version` / `
 - ℹ️ The **legacy** `Blaze.start()` set-piece (the manual 3-record capture path) still spawns Smasher at
   **full stock boss stats** with no scaling — it never had any. Only the Yorinobu fight is tuned.
 
+## 🆕 v1.59 (2026-07-23) — catch-up patience: stop teleporting him in front of V (and never into thin air)
+
+_`Config.version` → **1.58**. Untested in-game._
+
+> *"He is spawning in front of V rather often because of a low tolerance to getting stuck / not reaching his
+> target spot… he should easily be able to be outside of his target zone for 4 s, but if his zone is in reach
+> he should try to sprint to it — just don't fall back to the teleport so much. Or if teleport, do teleport to
+> behind V on a valid spot. Sometimes he spawns in the air in front of V if V is looking over a balcony."*
+
+**Confirmed from `docs/jackie_debug.log.prev`** (Antonia's 2026-07-23 session), which shows both cases:
+```
+Recovery: front-side point base=-75 off=+0 d=3.0 dZ=+0.2 -> { -1064.66, 1438.73, 4.90 }
+CatchUp: Jackie was 29 m from V -> teleported to her side (try 1).      <- the bug: 29 m, barely over 25
+[SESSION] presence gap, SAME player entity — treating as fast-travel, no reset.
+CatchUp: Jackie stranded 1867 m from V (teleport can't cross) -> respawning at her side.  <- legitimate
+```
+**29 m is the smoking gun.** He was 4 m past the threshold — almost certainly walking back under his own
+steam — and got yanked anyway. The 1867 m one is a real district fast-travel and is working as designed.
+
+**The knob Antonia asked for: `Config.catchUp.sustainSeconds`, 2.0 → 4.0.** That's the tolerance — how long
+he may be beyond `distance` before we intervene at all. But it was only a third of the story:
+
+- [x] **Nobody was commanding him out there.** `followKeepCloseTick` had a bare `return` past
+  `catchUp.distance` ("catch-up owns him") — but catch-up only ever *teleports*, so beyond 25 m he coasted on
+  a stale order and never closed the gap himself. He now gets a **SPRINT follow** (`catchUp.chaseMovement`)
+  while he's out there. This is probably the single biggest cause of "the teleport fires constantly".
+- [x] **Progress grace** (`progressGrace` / `progressEpsilon` / `maxGraceSeconds`). A bare timer can't tell
+  "wedged behind a fence" from "sprinting back, 8 m closer than last check". While the gap is *closing* by
+  ≥ `progressEpsilon`, the patience clock restarts and he's left to run — capped at `maxGraceSeconds` so a
+  genuinely stuck Jackie (or one who closes 0.6 m then stalls, repeatedly) is still rescued.
+- [x] **`maxTeleTries` 1 → 2.** One failed teleport used to escalate straight to a full despawn+respawn — the
+  most visible recovery of the lot.
+- [x] **Mid-air spawn: found and killed.** The candidate chain ended `… or arrivalPoint()`, and `arrivalPoint`
+  ends in `snapToNavmesh(pt) or pt` — it hands back a **raw, unvalidated forward point** when nothing snaps.
+  Over a balcony railing, that point is thin air. **That fallback is gone**: if nothing walkable is found we
+  now skip the teleport entirely and let him keep walking (the cooldown holds, the teleTries ladder still
+  escalates to a clean respawn if he really is stuck). ⚠️ Never re-add an unvalidated fallback point.
+- [x] **Land him BEHIND a standing V** (`preferBehindWhenStill`). The v1.40 "always ahead/beside" rule fixed
+  fast-travel drops into the wall behind V — but a *stationary* V is usually looking straight at that
+  front-side spot, so every recovery popped into shot. When she's still we now search behind → sides → front.
+  While she's moving the front-side order stands (dropping him behind a walking V just restarts the chase).
+- [x] **He may leave the abreast angles when V stops** (`stillAngleSpread`, 75°) — Antonia's exact suggestion.
+  The per-heading sweep widens while she's still, because a standing V doesn't care where he stands, and the
+  narrow anchors are what made the search fail at a railing in the first place.
+- [x] **Reachability check** (`requirePath`). `snapToNavmesh` only proves a point is on *some* navmesh, not
+  that it connects to V's — which is how he landed across a railing or canal and then couldn't path back,
+  re-triggering catch-up in a loop. New `jlPathReachable()` uses
+  **`NavigationSystem.CalculatePathOnlyHumanNavmesh`** (`navigationSystem.script:55`): a non-empty `path`
+  array means a walkable route exists. ⚠️ It **degrades to "accept" and logs once** if the call can't be made
+  on this build — a reachability test that silently rejected everything would strand him, which is worse than
+  the bug it fixes. **If `jackie_debug.log` shows "reachability check SKIPPED", tell me** — the enum marshal
+  or the method name needs work.
+- [x] 7 new sliders + 3 switches for all of the above in the CET movement tuner (persisted via `jl_walk.txt`).
+
 ## 🆕 v1.57 (2026-07-23) — movement pass: walk-beside is opt-in · he stops walking away · he stands still · a real tuner
 
 _`Config.version` bumped to **1.57**; `staging/fomod/info.xml` still needs bumping before release.
