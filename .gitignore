@@ -90,3 +90,9 @@ tools/dialogue-editor/backups/
 
 # packaged Nexus zips (build output — rebuild with tools/package_nexus.sh)
 dist/
+
+# --- Video project files + raw footage (large, not mod source) --------
+*.kdenlive
+gameplay_showcase1/
+# rotated debug log (the live one is covered by *.log)
+*.log.prev

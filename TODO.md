@@ -11,6 +11,56 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🆕 v1.60 (2026-07-23) — LOCALIZATION: the mod's text now translates (Japanese shipping; 9 languages scaffolded)
+
+**Goal:** run every authored line — subtitles, notice banners, dialogue choices, questline cards, the
+shard — in the player's language, auto-following the game's own language setting. Audio stays English.
+
+### How it works (no config.lua restructuring)
+- New module **`lang.lua`** (loaded as the GLOBAL `Lang`, like Retrieval/Blaze/Session → **0** new
+  top-level locals in init.lua; still 189/200). `Lang.t(s)` returns the translation or `s` unchanged.
+  **The English string itself is the key** — a missing/edited key silently falls back to English, so a
+  half-done translation can never break loading or blank a line.
+- Applied at the **5 text chokepoints** every line already flows through: `showSubtitle`,
+  `showOnscreenMsg`, `drawChoiceRows`+picker title, the native `[F]` prompt label (`buildJackieHub` /
+  `Blaze.showPrompt`) in init.lua, and `onscreen`/`showTip` in retrieval.lua (its cards bypass init.lua).
+  blaze.lua needed **no** edits (it routes text through init.lua's injected primitives).
+- **Language pick:** auto-detects from the game (`/language OnScreen`, verified fallback to `VoiceOver`,
+  then English) or an explicit choice in **Esc ▸ Mods ▸ JackieLives ▸ Language**, persisted as `lang=`
+  in `jl_settings.txt` (chosen in onInit AFTER jlLoadSettings so the pick beats autodetect).
+- **`tools/lang_extract.py`** generates `lang_template.lua` (240 strings / ~2.3k words) from source and
+  `--check <code>` reports drift (STALE = edited English orphaned a translation; MISSING = still English).
+
+### Shipping this release
+- ✅ **Japanese** (`lang_ja.lua`) + **Spanish** (`lang_es.lua`, Mexican es-MX) — both **261/262**
+  strings (`[Blaze] ` is a log prefix, correctly English). JA keeps Jackie's Spanglish as katakana;
+  ES keeps his Spanish interjections verbatim and leaves proper venue names untranslated.
+- Scaffolded for de / fr / it / pl / ptbr / ru / zhcn (drop in `lang_<code>.lua` to ship).
+
+### The in-game shard is a TUTORIAL NOTICE, not a Codex entry — and it's now covered
+The shard text V reads at the hideout is retrieval.lua's on-screen `showTip` popup (see its header:
+"WolvenKit NOT required"), NOT the baked WolvenKit shard. Its lines (`shardLines`, `postShards`, Vik's
+`tipText`, the `objectives` banners) were MISSED by the first localization pass — joined-array strings
+with ad-hoc key names. Fixed: `concatT` translates each note line individually, and lang_extract.py now
+harvests retrieval.lua's keys + bare prose array elements. All shard/quest text is JA + ES now.
+
+### ⚠️ Known limit — the CET choice box font (documented in `docs/localization.md`)
+Subtitles, banners and the shard use the GAME's fonts → every language renders. V's **dialogue choices**
+are drawn by CET, whose default font is Latin-only → JA/RU/ZH choices show as boxes until the player
+points CET at a CJK/Cyrillic font (one global `cyber_engine_tweaks.json` setting; fixes all CET mods).
+Left English by design; subtitles carry the whole story regardless.
+
+### Shard (Japanese) — needs the WolvenKit step (NOT on the Lua path)
+`mod/JackieLives_shards/localization/jl_shards.ja-jp.json` is authored + ready. Importing it as the
+ja-jp localization resource in WolvenKit is a Windows-side step (see SHARD_SHEET.md); independent of the
+Lua translation and can follow later.
+
+### Verified (no game needed)
+luajit loads all Lua (mod/ + staging/), 189/200 locals, `--check ja` clean, ja-jp shard JSON valid, and a
+luajit harness confirms `Lang.init("ja")` translates samples + falls back to English for unknown/`nil`.
+
+---
+
 ## 🆕 v1.58 (2026-07-23) — Adam Smasher scales with the game difficulty + Arasaka reinforcements
 
 _⚠️ **The code markers for this work say `v1.56`, not `v1.58`.** It was written while v1.56 was the live
@@ -169,6 +219,25 @@ he may be beyond `distance` before we intervene at all. But it was only a third 
   the bug it fixes. **If `jackie_debug.log` shows "reachability check SKIPPED", tell me** — the enum marshal
   or the method name needs work.
 - [x] 7 new sliders + 3 switches for all of the above in the CET movement tuner (persisted via `jl_walk.txt`).
+
+### 🐞 STILL OPEN (reported 2026-07-23, after v1.61's `jlGrounded`) — DEFERRED, low priority
+> Antonia: *"He still spawns mid-air. This usually happens when V walks slowly along and then towards a
+> fence. Not super common, so leave it for now."*
+
+- [ ] **Mid-air spawn NOT fully fixed by the v1.61 never-in-air grounding.** Trigger: **V walking slowly,
+  then approaching a fence.** Build confirmed up to date (has `jlGrounded`), so it's a placement path that
+  code doesn't route through it. **Antonia's read (2026-07-23): most likely the walk-beside anchor.**
+  1. ⭐ **`abreastTick`'s anchor keeps V's z when the navmesh snap fails or is out of `maxAnchorZDelta`**
+     (`init.lua` ~L5610: `dest = Vector4(destX,destY, pp.z)`, only replaced when the snap validates). Beside
+     a fence the side anchor hangs over the drop → an air point. Only active when **"Walk beside me" is ON**
+     (off by default since v1.57, so Antonia has it enabled). Fits "walks slowly along" — abreast is the
+     WALKING-only mode. → **Fix idea:** route that `dest` through `jlGrounded`, OR when the anchor won't
+     ground, skip the re-issue this tick (leave him trailing) instead of sending him to V's-z-over-the-void.
+  2. Secondary: the **AMM respawn drop** in `respawnCompanionAtV` — AMM picks the spot; `settleTick` only
+     repositions onto a grounded front-side point *if one is found*, so against a fence he can be left where
+     AMM dropped him. → Fix idea: ground AMM's drop and make the settle reposition fall back to `jlGrounded`.
+- [ ] Grab `…\mods\JackieLives\jackie_debug.log` next time it happens to confirm — but the walk-beside
+  anchor (path 1) is a move command, so the log may show nothing at the moment of the pop.
 
 ## 🆕 v1.57 (2026-07-23) — movement pass: walk-beside is opt-in · he stops walking away · he stands still · a real tuner
 
