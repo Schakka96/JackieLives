@@ -243,13 +243,20 @@ local function nearPoint(pt, radius)
   return dist2(pp.x, pp.y, pt[1], pt[2]) <= (radius or 4.0)
 end
 
+-- v1.60 LOCALIZATION CHOKEPOINT 5 of 5. retrieval.lua does NOT go through init.lua's
+-- showOnscreenMsg for its own cards (only objectives do, via deps.showObjective), so the
+-- questline's popups/banners need the translation applied here too. Required directly
+-- rather than injected via bind() so a card can never render English just because the
+-- module was used before init.lua bound its deps.
+local Lang = require("lang")
+
 local function onscreen(text, duration)   -- native on-screen msg band (init.lua's path)
   pcall(function()
     local defs = GetAllBlackboardDefs()
     local bb = Game.GetBlackboardSystem():Get(defs.UI_Notifications)
     if not bb then return end
     local msg = SimpleScreenMessage.new()
-    msg.isShown, msg.duration, msg.message = true, duration or 6.0, text
+    msg.isShown, msg.duration, msg.message = true, duration or 6.0, Lang.t(text)
     bb:SetVariant(defs.UI_Notifications.OnscreenMessage, ToVariant(msg), true)
   end)
 end
@@ -302,9 +309,21 @@ end
 -- Show the tip via the native lower-left tutorial popup; fall back to an injected
 -- showTip helper (if init.lua ever binds one) and finally the on-screen band.
 local function showTip(title, text, duration)
+  title, text = Lang.t(title), Lang.t(text)
   if tutorialPopup(title, text) then return end
   if deps.showTip and pcall(deps.showTip, title, text) then return end
   onscreen(text, duration)
+end
+
+-- v1.60: the shard / postShard notes are TABLES of lines joined with "\n". Translate each line
+-- INDIVIDUALLY, then join — so the translation key is one shard line, not the whole multi-line note.
+-- Line-level keys stay stable when a single line is edited and match the mod's authored granularity;
+-- the joined-whole string would be one brittle key that breaks on any edit. showTip's own Lang.t then
+-- no-ops on the assembled (already-translated) text.
+local function concatT(lines)
+  local out = {}
+  for _, ln in ipairs(lines or {}) do out[#out + 1] = Lang.t(ln) end
+  return table.concat(out, "\n")
 end
 
 -- ---------------------------------------------------------------------------
@@ -517,7 +536,7 @@ end
 
 local function reachHideout()                          -- TIP -> AWAITING_CALL
   if getStage() ~= TIP then return end
-  showTip(M.Config.shardTitle, table.concat(mvar(M.Config.shardLines, M.Config.shardLinesM), "\n"), M.Config.shardDuration)
+  showTip(M.Config.shardTitle, concatT(mvar(M.Config.shardLines, M.Config.shardLinesM)), M.Config.shardDuration)
   -- v1.54: the note is long — let the player actually READ it before the "Call Jackie" banner lands.
   queueObjective((M.Config.objectives or {}).awaiting, (M.Config.shardDuration or 12.0) * 0.6)
   log("Shard read at hideout -> AWAITING_CALL (V must call Jackie; he always answers now).")
@@ -610,7 +629,7 @@ local function postShardTick()
   if getStage() < REUNITED then return end             -- only after Jackie's back
   for _, sh in ipairs(M.Config.postShards or {}) do
     if sh.fact and factNum(sh.fact) < 1 and nearPoint(sh.pos, sh.radius or 8.0) then
-      showTip(sh.title, table.concat(mvar(sh.lines, sh.linesM) or {}, "\n"), sh.duration or 14.0)
+      showTip(sh.title, concatT(mvar(sh.lines, sh.linesM)), sh.duration or 14.0)
       setFactNum(sh.fact, 1)
       log("Post-shard shown: " .. tostring(sh.title))
     end
@@ -626,7 +645,7 @@ end
 -- Debug: show both post-reunion shards right now (regardless of location / flags).
 function M.debugPostShards()
   for _, sh in ipairs(M.Config.postShards or {}) do
-    showTip(sh.title, table.concat(mvar(sh.lines, sh.linesM) or {}, "\n"), sh.duration or 14.0)
+    showTip(sh.title, concatT(mvar(sh.lines, sh.linesM)), sh.duration or 14.0)
   end
 end
 

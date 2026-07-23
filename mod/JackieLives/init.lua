@@ -56,6 +56,8 @@ Retrieval = require("retrieval")   -- "Where's Jackie?" questline + master mod g
 pcall(function() package.loaded["blaze"] = nil end)   -- v0.98: force a FRESH read on CET soft-reload; else the cached old module sticks (stale startYorinobu/diagnose)
 Blaze     = require("blaze")       -- v0.96 GLOBAL (200-cap): "Blaze of Glory" Heist set-piece (see blaze.lua)
 Session   = require("session")     -- v1.52 GLOBAL (200-cap): session guard + crash log (see session.lua)
+pcall(function() package.loaded["lang"] = nil end)    -- like blaze: re-read on CET soft-reload so a language swap takes effect
+Lang      = require("lang")        -- v1.60 GLOBAL (200-cap): localization; Lang.t(s) at the 4 text chokepoints (see lang.lua)
 -- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
 -- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
 -- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
@@ -74,6 +76,9 @@ local JL = {
   -- v1.59 lastDist/graceSince back the progress grace: lastDist is the previous check's gap (is it closing?),
   -- graceSince caps how long "he's still closing" may keep deferring the rescue.
   catchUp = { farSince = nil, lastAt = nil, teleTries = nil, lastDist = nil, graceSince = nil },
+  -- v1.61 weapon mirror: since = when V first went unarmed+calm this episode; reasserts = holster tries so
+  -- far; lastAt = throttle. Reset whenever V draws again or combat starts.
+  weaponMirror = { since = nil, reasserts = nil, lastAt = nil },
   -- v0.82 respawn-settle: after a respawn-at-V (catch-up FT recovery / persist) hide Jackie + drop his
   -- collision briefly so he doesn't visibly POP in or spawn into a wall, then reveal + re-collide by clock.
   -- v1.40 reposePending/reposeAt/reposeLast: one-shot "move him off AMM's drop spot to V's front/side" latch.
@@ -1083,6 +1088,58 @@ function dismissAllJackies()   -- global (not local): 200-local cap; see note at
   log("Dismiss ALL: " .. n .. " Jackie(s).")
 end
 
+-- ===========================================================================
+-- CROSS-SAVE LOAD CRASH FIX (v1.61) — purge Jackie's body BEFORE a load tears it down.
+-- A LIVE companion Jackie present when you load a save = a native crash: the game frees his
+-- companion/party link against the dying player puppet, and no `pcall` can catch a native fault.
+-- Proven in jackie_debug.log — DISMISS him first (which despawns his body) and the very same load
+-- never crashes; leave him following and it crashes every time. So on a load we do exactly what a
+-- manual dismiss does to the body — via the same proven `ammDespawn` path — but WITHOUT clearing the
+-- companion FACT. The per-save fact is the intent ("he belongs with V in this save"); a later
+-- persist-respawn reads it to bring him back. Losing the body is fine; losing the fact is not.
+-- Globals (no top-level `local` -> 200-cap safe). See setupDetachPurge for the trigger.
+-- ===========================================================================
+function jlPurgeJackieBodies(reason)
+  local amm = getAMM()
+  local n = 0
+  if amm and amm.Spawn and amm.Spawn.spawnedNPCs then
+    for _, sp in pairs(amm.Spawn.spawnedNPCs) do
+      local nm   = tostring(sp.name or "")
+      local path = tostring(sp.path or sp.id or "")
+      if nm:lower():find("jackie") or path:lower():find("jackie") then ammDespawn(sp); n = n + 1 end
+    end
+  end
+  if JL.summon.spawn then ammDespawn(JL.summon.spawn); n = n + 1 end
+  if JL.idle.spawn   then ammDespawn(JL.idle.spawn) end
+  -- Drop the Lua handles (the world they point into is about to die). Leave the companion FACT intact.
+  JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
+  JL.idle.spawn, JL.idle.locationKey = nil, nil
+  JL.settle.hideUntil, JL.settle.collideUntil, JL.settle.handle = nil, nil, nil
+  clearVehicleArrival()
+  pcall(function() if jlCruise and jlCruise.active then jlCruiseStop() end end)
+  log(("[SESSION] OnDetach: purged Jackie's body before load teardown (%s), n=%d — companion fact kept.")
+        :format(tostring(reason), n))
+end
+
+-- v1.61: run the purge the instant a load begins tearing the world down. PlayerPuppet.OnDetach fires at
+-- the START of a load (and on game exit / Johnny swaps) but NOT on fast-travel — fast-travel only teleports
+-- the existing puppet (fastTravelSystem.script:444), it never detaches — so a following Jackie survives a
+-- fast-travel exactly as before. We touch NOTHING on the detaching puppet (no `self:` deref); the callback
+-- is wrapped in a Session breadcrumb so if the purge itself ever dies mid-despawn, jackie_debug.log.prev names
+-- it. Global fn + JL flag (no new top-level local -> 200-cap safe). Registered once from onInit.
+function setupDetachPurge()
+  if JL.detachHooked then return end
+  local ok = pcall(function()
+    Observe("PlayerPuppet", "OnDetach", function()
+      Session.mark("OnDetach purge Jackie bodies (pre-load)")
+      pcall(function() jlPurgeJackieBodies("player OnDetach") end)
+      Session.clear()
+    end)
+  end)
+  JL.detachHooked = ok
+  log("Detach purge hook (PlayerPuppet:OnDetach) registered: " .. tostring(ok))
+end
+
 -- ---------------------------------------------------------------------------
 -- Voice-over playback test (v0.4): prove we can make Jackie speak on command
 -- ---------------------------------------------------------------------------
@@ -1620,7 +1677,7 @@ local function buildJackieHub()
     hub.active = true
     pcall(function() hub.title = "Jackie" end)
     local choice = InteractionChoiceData.new()
-    pcall(function() choice.localizedName = "Talk" end)
+    pcall(function() choice.localizedName = Lang.t("Talk") end)
     pcall(function() choice.inputAction   = CName.new("Choice1") end)
     hub.choices = { choice }
   end)
@@ -1697,7 +1754,7 @@ local function showOnscreenMsg(text, duration, silent)
     local msg = SimpleScreenMessage.new()
     msg.isShown = true
     msg.duration = duration or 3.0
-    msg.message = text
+    msg.message = Lang.t(text)   -- v1.60 LOCALIZATION CHOKEPOINT 2 of 4: every notice banner
     bb:SetVariant(defs.UI_Notifications.OnscreenMessage, ToVariant(msg), true)
   end)
   if not silent then playUiSound(Config.banner and Config.banner.sfx) end
@@ -1732,7 +1789,9 @@ local function showSubtitle(text, speakerName, duration, speakerObj)
   local line
   local ok, err = pcall(function()
     line = scnDialogLineData.new()
-    line.text         = tostring(text or "")
+    -- v1.60 LOCALIZATION CHOKEPOINT 1 of 4: every spoken line in the mod reaches the subtitle
+    -- band through here, so one Lang.t translates them all (English falls through unchanged).
+    line.text         = tostring(Lang.t(text) or "")
     line.speakerName  = tostring(speakerName or "")
     line.duration     = duration or 4.0
     line.isPersistent = false
@@ -1777,7 +1836,9 @@ end
 -- if scnDialogLineData / the blackboard push isn't available on this build.
 local function showDialogueText(speaker, text, duration, speakerObj)
   if not showSubtitle(text, speaker, duration, speakerObj) then
-    showOnscreenMsg(tostring(speaker) .. ":   " .. tostring(text), (duration or 4.0) + 0.5, true)  -- silent: subtitle fallback, not a notice banner
+    -- v1.60: translate BEFORE the concat — showOnscreenMsg would otherwise look up the whole
+    -- "Jackie:   <line>" string, which is not a key, and the line would stay English here.
+    showOnscreenMsg(tostring(speaker) .. ":   " .. tostring(Lang.t(text)), (duration or 4.0) + 0.5, true)  -- silent: subtitle fallback, not a notice banner
   end
 end
 
@@ -1821,7 +1882,7 @@ local function updateTalkPrompt(dt)
       local now = JL.clock or 0
       if (now - (talkUI.lastShow or -999)) > 2.5 then          -- heartbeat so it stays up while looking
         local key = (Config.talk and Config.talk.keyLabel) or "="
-        showOnscreenMsg("Talk to Jackie   [ " .. key .. " ]", 3.0, true)  -- silent: re-asserted every 2.5s while looking, don't beep
+        showOnscreenMsg(Lang.t("Talk to Jackie   [ ") .. key .. " ]", 3.0, true)  -- silent: re-asserted every 2.5s while looking, don't beep
         talkUI.lastShow = now
       end
     end
@@ -2441,7 +2502,7 @@ local function drawChoiceRows(style)
     for i, c in ipairs(menu.choices) do
       local col = (i == menu.sel) and COL.bar or (c.final and COL.barDim) or COL.unsel
       ImGui.PushStyleColor(ImGuiCol.Text, col[1], col[2], col[3], 1.0)
-      ImGui.Text(tostring(c.text or ""))
+      ImGui.Text(tostring(Lang.t(c.text) or ""))
       ImGui.PopStyleColor(1)
     end
   else
@@ -2450,7 +2511,7 @@ local function drawChoiceRows(style)
     -- v1.54: the bar colour is now pushed PER ROW, not once for the whole list, because a `final`
     -- (irreversible) choice keeps its plate even when the cursor is elsewhere — just in the dimmer gold.
     for i, c in ipairs(menu.choices) do
-      local label = " " .. tostring(c.text or "") .. " "
+      local label = " " .. tostring(Lang.t(c.text) or "") .. " "
       local tw    = ImGui.CalcTextSize(label)            -- reflects the window font scale (set in Begin)
       local isSel = (i == menu.sel)
       local plate = isSel or (c.final == true)           -- does this row get a yellow plate at all?
@@ -2581,10 +2642,10 @@ local function drawDialogueBox()
     ImGui.SetWindowFontScale((P.baseFont or 1.45) * s)
     if style == 3 then
       ImGui.PushStyleColor(ImGuiCol.Text, 0.80, 0.32, 0.30, 1.0)
-      ImGui.Text("[ " .. tostring(menu.title or "JACKIE"):upper() .. " ]")
+      ImGui.Text("[ " .. tostring(Lang.t(menu.title) or "JACKIE"):upper() .. " ]")
       ImGui.PopStyleColor(1)
     else
-      drawNameChild(menu.title)
+      drawNameChild(Lang.t(menu.title))
     end
     ImGui.SameLine(0, 16)
     drawChoiceRows(style)
@@ -2892,9 +2953,14 @@ local function arrivalPoint()
     pt = Vector4.new(pp.x + d, pp.y, pp.z, 1.0)   -- last resort: +X so he's NEVER on top of V
     how = "fallback+X"
   end
-  log(("Call: arrival point via %s -> { %.2f, %.2f, %.2f } (V at %.2f, %.2f, %.2f)")
-      :format(tostring(how), pt.x, pt.y, pt.z, pp.x, pp.y, pp.z))
-  return pt
+  -- v1.61: this is the arrival's LAST-RESORT point (callers try navmeshArrivalPoint first). It used to be
+  -- returned RAW — the forward point at V's own z, which over a balcony is mid-air. Ground it: jlGrounded
+  -- snaps it to navmesh, or drops back to V's own position. Never air.
+  local grounded = jlGrounded(pt)
+  log(("Call: arrival point via %s -> { %.2f, %.2f, %.2f } grounded { %.2f, %.2f, %.2f } (V at %.2f, %.2f, %.2f)")
+      :format(tostring(how), pt.x, pt.y, pt.z,
+              (grounded or pt).x, (grounded or pt).y, (grounded or pt).z, pp.x, pp.y, pp.z))
+  return grounded or pt
 end
 
 -- ---------------------------------------------------------------------------
@@ -3543,6 +3609,23 @@ local function snapToNavmesh(candidate)
   return pt
 end
 
+-- v1.61 THE NEVER-IN-AIR FLOOR. Ground a candidate world point, GUARANTEEING the result is real walkable
+-- ground (or nil only if the game itself is unqueryable). Snap the candidate to navmesh; if nothing snaps
+-- (the candidate hangs over a void — a balcony, a railing, a rooftop edge), fall back to V's OWN position,
+-- which is by definition on the human navmesh because she is standing on it. This is the hard floor under
+-- EVERY spawn/teleport placement in the mod. The bug it kills: the old fallbacks were `snapToNavmesh(x) or x`
+-- — when the snap failed they handed back the RAW ungrounded point, and over a balcony that point is thin
+-- air (Antonia: "he spawns in the air in front of V if V is looking over a balcony"). There is no safe raw
+-- point; the worst acceptable outcome is "on V, then he sorts himself out", never "floating".
+-- Global -> 200-local cap safe.
+function jlGrounded(candidate)
+  local g = candidate and snapToNavmesh(candidate)
+  if g then return g end
+  local pp = playerPos()
+  if pp then return snapToNavmesh(pp) or pp end   -- V's spot: snapped, else her exact pos (still real ground)
+  return candidate                                 -- V unresolvable (≈never): last resort, original point
+end
+
 -- v1.59 "CAN HE ACTUALLY WALK THERE FROM V?" — the check snapToNavmesh cannot make.
 -- snapToNavmesh only proves a point sits on SOME human navmesh. It says nothing about whether that navmesh
 -- is connected to the patch V is standing on, so a point across a railing, a canal, or one storey down
@@ -4156,7 +4239,7 @@ local function pointAheadOfV(d)
   local fwd; pcall(function() fwd = pl:GetWorldForward() end)
   local pt = fwd and Vector4.new(pp.x + fwd.x * d, pp.y + fwd.y * d, pp.z, 1.0)
                   or Vector4.new(pp.x + d, pp.y, pp.z, 1.0)
-  return snapToNavmesh(pt) or pt
+  return jlGrounded(pt)   -- v1.61: never a raw ungrounded point (was `snapToNavmesh(pt) or pt`)
 end
 
 -- Spawn candidate #idx from BIKE_CANDIDATES in front of V; despawns the previous test bike.
@@ -4780,6 +4863,79 @@ function jlInCombat()
   end)
   st.val = val
   return val
+end
+
+-- v1.61: does this GameObject currently have a weapon DRAWN? Reads it the game's own way — the active
+-- weapon in the WeaponRight/WeaponLeft attachment slots (GameObject.GetActiveWeapon, gameObject.script:757).
+-- Non-nil AND not fists => armed. Any failure -> false ("assume holstered"), so a bad read never makes us
+-- keep nagging him to holster. Global -> 200-local cap safe.
+function jlWeaponDrawn(handle)
+  if not handle then return false end
+  local drawn = false
+  pcall(function()
+    local w = GameObject.GetActiveWeapon(handle)
+    if not w then return end
+    -- fists aren't a "drawn weapon" — GetActiveWeapon returns the fists object when empty-handed-combat.
+    local isFists = false
+    pcall(function() isFists = WeaponObject.IsFists(w:GetItemID()) end)
+    drawn = not isFists
+  end)
+  return drawn
+end
+
+-- v1.61 HOLSTER JACKIE — issue AIUnequipCommand (aiCommand.script:383) for the right hand then the left,
+-- the game's documented "put this slot's item away" command. ⚠️ The dump proves the command and its handler
+-- (EquipItemCommandDelegate, aiEquipItemCommand.script) EXIST; it does NOT prove the follower behaviour tree
+-- runs that task, so this is the in-game unknown (like the loiter hold command). It is the only holster lever
+-- I could verify as constructible from CET — if it proves inert in testing, the fallback to research is an
+-- UpperBody "ForceEmptyHands" animation event, which isn't cleanly constructible here yet.
+-- pcall-guarded; returns true if a command issued without erroring (NOT proof it took — the caller re-checks
+-- jlWeaponDrawn and keeps re-issuing). Global -> 200-local cap safe.
+function jlHolster(handle)
+  if not handle then return false end
+  local any = false
+  for _, slot in ipairs({ "AttachmentSlots.WeaponRight", "AttachmentSlots.WeaponLeft" }) do
+    local ok = pcall(function()
+      local cmd = NewObject('handle:AIUnequipCommand')
+      cmd.slotId = TweakDBID.new(slot)
+      handle:GetAIControllerComponent():SendCommand(cmd)
+    end)
+    any = any or ok
+  end
+  return any
+end
+
+-- v1.61 WEAPON MIRROR TICK. "Jackie puts his guns away when V does." If V's weapon is holstered and neither
+-- of them is in combat, but Jackie's is still drawn, holster him — and keep re-issuing (throttled) until his
+-- hands read empty, because a single command often loses a race with his combat-exit animation. An episode
+-- resets the moment V draws again or a fight starts, so this never fights a legitimate armed moment.
+-- Global -> 200-local cap safe.
+function jlWeaponMirrorTick()
+  local W = Config.weaponMirror or {}
+  if W.enabled == false then return end
+  local st = JL.weaponMirror
+  if W.onlyWhenCompanion ~= false and not (JL.summon.active and JL.summon.companionSet) then
+    st.since, st.reasserts, st.lastAt = nil, nil, nil; return
+  end
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  if not h then st.since, st.reasserts, st.lastAt = nil, nil, nil; return end
+  local pl = Game.GetPlayer(); if not pl then return end
+  local now = JL.clock or 0
+  -- Only act in the calm case: V's weapon away, and nobody fighting. Any of these false -> reset the episode
+  -- so we start clean next time V holsters (and never nag him mid-fight or while V herself is armed).
+  if jlInCombat() or jlWeaponDrawn(pl) then st.since, st.reasserts, st.lastAt = nil, nil, nil; return end
+  -- V is peaceful and unarmed. Is Jackie still holding a gun?
+  if not jlWeaponDrawn(h) then st.since, st.reasserts, st.lastAt = nil, nil, nil; return end
+  -- start the grace timer; let a brief lull settle before insisting (V may re-draw within a second).
+  st.since = st.since or now
+  if (now - st.since) < (W.graceSeconds or 1.0) then return end
+  if (st.reasserts or 0) >= (W.maxReasserts or 6) then return end        -- gave it a fair few tries
+  if (now - (st.lastAt or -1e9)) < (W.interval or 0.5) then return end
+  st.lastAt    = now
+  st.reasserts = (st.reasserts or 0) + 1
+  jlHolster(h)
+  log(("WeaponMirror: V unarmed + calm but Jackie armed -> holster (try %d/%d)."):format(
+      st.reasserts, W.maxReasserts or 6))
 end
 
 local function catchUpTick()
@@ -6501,6 +6657,8 @@ function jlSaveSettings()
     if type(JL[k]) == "number" then f:write(k .. "=" .. string.format("%.3f", JL[k]) .. "\n") end
   end
   f:write("mode=" .. tostring(JL.mode or "quietlife") .. "\n")  -- v0.95 string setting (not a boolean)
+  -- v1.60 language: "auto" = follow the game's own language setting, else a code from Lang.LANGUAGES.
+  f:write("lang=" .. tostring(JL.langChoice or "auto") .. "\n")
   f:close()
 end
 
@@ -6513,6 +6671,7 @@ function jlLoadSettings()
     local k, v = line:match("^(%w+)=([%w%.%-]+)$")
     if k then
       if k == "mode" and (v == "quietlife" or v == "blaze") then JL.mode = v end  -- v0.95
+      if k == "lang" then JL.langChoice = v end                                   -- v1.60
       for _, want in ipairs(JL_SETTINGS_KEYS) do
         if k == want then JL[k] = (v == "true") end
       end
@@ -6990,7 +7149,7 @@ function jlCruiseStart()
   local behind = C.spawnBehind or 8.0
   local fwd; pcall(function() fwd = Game.GetPlayer():GetWorldForward() end)
   local pt = fwd and Vector4.new(pp.x - fwd.x * behind, pp.y - fwd.y * behind, pp.z, 1.0) or pp
-  pt = snapToNavmesh(pt) or pt
+  pt = jlGrounded(pt)   -- v1.61: never spawn the Arch in mid-air (was `snapToNavmesh(pt) or pt`)
   local bid = spawnDynEntity(C.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", pt,
                              yawToward(pt, pp), "JackieLives_cruisebike", C.bikeAppearance or "default")
   if not bid then log("Cruise: Arch spawn failed."); return end
@@ -7048,7 +7207,7 @@ function jlCruiseRightingTick()
   local fwd; pcall(function() fwd = Game.GetPlayer():GetWorldForward() end)
   local behind = (Config.cruise or {}).spawnBehind or 8.0
   local pt = fwd and Vector4.new(pp.x - fwd.x * behind, pp.y - fwd.y * behind, pp.z, 1.0) or pp
-  pt = snapToNavmesh(pt) or pt
+  pt = jlGrounded(pt)   -- v1.61: never spawn the Arch in mid-air (was `snapToNavmesh(pt) or pt`)
   pcall(function()
     Game.GetTeleportationFacility():Teleport(bh, pt, EulerAngles.new(0, 0, yawToward(pt, pp) or 0))
   end)
@@ -7349,9 +7508,13 @@ registerForEvent("onInit", function()
   pcall(function() math.randomseed((os.time and os.time() or 0)) end)  -- v0.36: random day-bag shuffle
   getAMM()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
+  pcall(setupDetachPurge)  -- v1.61: despawn a following Jackie at load-teardown START -> no cross-save load crash
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
   pcall(jlDefaultHermano)  -- v1.54: Hermano for everyone unless the player explicitly flipped the switch
+  -- v1.60: pick the language. AFTER jlLoadSettings so an explicit player choice beats autodetect;
+  -- nil/"auto" (the default, and every existing jl_settings.txt) follows the game's own language.
+  pcall(function() Lang.init(JL.langChoice) end)
   pcall(jlLoadSeats)       -- v1.1: restore tuned sit coords into Config so they survive a reload (old-S4 fix)
   pcall(jlLoadWalk)        -- v1.57: same for the walk/loiter tuner's knobs (they used to die on every reload)
   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
@@ -7445,7 +7608,7 @@ registerForEvent("onInit", function()
           hub.id, hub.active = choiceBox.id, true
           pcall(function() hub.title = "" end)
           local choice = InteractionChoiceData.new()
-          pcall(function() choice.localizedName = tostring(label or "Interact") end)
+          pcall(function() choice.localizedName = tostring(Lang.t(label) or "Interact") end)
           pcall(function() choice.inputAction = CName.new("Choice1") end)
           hub.choices = { choice }
           local idef = GetAllBlackboardDefs().UIInteractions
@@ -8209,6 +8372,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(abreastTick)      -- v0.84: OR (when enabled) hold him beside/ahead of V instead of trailing
   pcall(jlTakedownTick)   -- v1.48: watch an ordered takedown to a conclusion (grapple / down / timeout)
   pcall(blazeCalmHoldTick) -- v1.51: re-assert holster/uncrouch after the async finale teleport, and verify
+  pcall(jlWeaponMirrorTick) -- v1.61: Jackie holsters when V does (after combat he lingered armed too long)
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
   pcall(companionPersistTick)  -- v0.72: saved "is companion" but his body is gone (reload / culling FT) -> respawn at V
   pcall(settleTick)       -- v0.82: hide + no-collision for a beat after a respawn-at-V so he doesn't pop/clip in
@@ -8407,6 +8571,26 @@ registerForEvent("onDraw", function()
   end
   ImGui.Separator()
 
+  -- v1.60 LANGUAGE selector. Every local here is function-scoped (inside onDraw) so the main
+  -- chunk's 200-local budget is untouched — the third safe pattern from the cap note up top.
+  -- "Auto" follows the game's own language setting; an explicit pick persists to jl_settings.txt.
+  if ImGui.CollapsingHeader("Language — " .. Lang.labelFor(Lang.code) .. (Lang.auto and " (auto)" or "")) then
+    if ImGui.Button("Auto (follow game language)") then
+      JL.langChoice = "auto"; Lang.auto = true; Lang.load(Lang.detect()); jlSaveSettings()
+    end
+    for i, L in ipairs(Lang.LANGUAGES) do
+      if (i % 3) ~= 1 then ImGui.SameLine() end
+      if ImGui.Button(L.label) then
+        JL.langChoice = L.code; Lang.auto = false; Lang.load(L.code); jlSaveSettings()
+      end
+    end
+    ImGui.Text(string.format("translated %d / fell back to English %d (this session)", Lang.hits, Lang.miss))
+    ImGui.TextWrapped("Subtitles, notice banners and shards use the GAME's fonts and render every "
+      .. "language correctly. V's dialogue choices are drawn by CET, whose default font is Latin-only "
+      .. "-- for Japanese, Russian or Chinese choice text see docs/localization.md (one CET setting).")
+  end
+  ImGui.Separator()
+
   -- v0.95 STORY MODE selector (Quiet Life vs Blaze of Glory). Buttons + wrapped description, using
   -- only idioms already proven in this file (Button/Text/SameLine/TextWrapped/TextColored).
   -- The header carries the LIVE mode in its label so you can read it without opening the section.
@@ -8542,6 +8726,24 @@ registerForEvent("onDraw", function()
       local ok, msg = jlTakedownLookAt()
       JL.ui.status = (ok and "" or "Takedown refused: ") .. tostring(msg)
       log("Takedown (look-at test): " .. tostring(msg))
+    end
+    -- v1.61: prove the holster command in isolation. Reads V + Jackie weapon state, then forces a holster.
+    ImGui.Separator()
+    do
+      local pl = Game.GetPlayer()
+      local jh = JL.summon.spawn and JL.summon.spawn.handle
+      ImGui.Text(("Weapon drawn — V: %s | Jackie: %s"):format(
+        (pl and jlWeaponDrawn(pl)) and "YES" or "no",
+        (jh and jlWeaponDrawn(jh)) and "YES" or "no"))
+      if ImGui.Button("TEST: force Jackie to holster now") then
+        if jh then
+          local ok = jlHolster(jh)
+          JL.ui.status = ok and "Holster command sent — watch if his gun goes away." or "Holster command errored (see console)."
+          log("WeaponMirror TEST: manual holster issued (ok=" .. tostring(ok) .. ").")
+        else
+          JL.ui.status = "Summon Jackie first."
+        end
+      end
     end
   end
 

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.59"
+Config.version = "1.60"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -570,6 +570,31 @@ Config.respawnSettle = {
   enabled        = true,
   hideSeconds    = 2.0,   -- keep him invisible this long after the respawn (hides the pop-in)
   collideSeconds = 4.0,   -- keep his collision OFF this long (so he can't spawn stuck in a wall)
+}
+
+-- ---- v1.61 WEAPON MIRROR — Jackie holsters when V does --------------------
+-- Antonia: "Jack should reliably put away his guns when V does. After combat (though he had exited combat
+-- mode) he still carried them for too long."
+--
+-- Jackie's weapon state is otherwise driven by AMM's follower combat AI, which re-holsters only on its OWN
+-- threat assessment — so after a fight it lags V's holster by a long, immersion-breaking beat. This ticks
+-- the intent V actually expresses: if V has put her weapon AWAY and neither of them is in combat, Jackie is
+-- told to put his away too, and we keep re-issuing until his hands are actually observed empty.
+--
+-- "Weapon drawn" for BOTH of them is read the game's own way — GameObject.GetActiveWeapon() over the
+-- WeaponRight/WeaponLeft attachment slots (gameObject.script:757), non-nil and not fists => a weapon is out.
+--
+-- ⚠️ HOLSTER MECHANISM: the lever is AIUnequipCommand (aiCommand.script:383, slotId=AttachmentSlots.Weapon*),
+-- the game's documented "put this slot away" command. As with the loiter hold command, the dump proves it
+-- EXISTS but not that the follower behaviour tree consumes it — so it is the in-game unknown here. If it
+-- proves inert, the fallback to research is an UpperBody "ForceEmptyHands" animation event; it isn't cleanly
+-- constructible from CET yet, so it's deliberately NOT shipped as fake code.
+Config.weaponMirror = {
+  enabled     = true,
+  interval    = 0.5,        -- s between holster re-issues while V is away but Jackie still armed
+  graceSeconds= 1.0,        -- s after V holsters before we act (let a real re-draw during a lull settle first)
+  maxReasserts= 6,          -- stop re-issuing after this many tries in one holster episode (anti-spam)
+  onlyWhenCompanion = true, -- never touch his weapon unless he's V's settled companion
 }
 
 -- ---- keep-close follow (v0.67) --------------------------------------------
