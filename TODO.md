@@ -11,6 +11,111 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🆕 v1.58 (2026-07-23) — Adam Smasher scales with the game difficulty + Arasaka reinforcements
+
+_⚠️ **The code markers for this work say `v1.56`, not `v1.58`.** It was written while v1.56 was the live
+number, and its first tranche (the `weaken` damage arg, `bound.difficulty`, `diffScale`) was swept into the
+concurrent movement session's **`cdd8804` / v1.57** commit before it had its own. Renumbering committed
+comments on a contested file is churn for no gain — grep **`bossMuls` / `diffScale` / `spawnAdds` /
+`healthFrac` / `blazeDifficulty`** to find this feature, not a version string. See
+[[jackielives-concurrent-blaze-session]] for why two sessions share these files._
+
+_`blaze.lua`'s own **`M.VERSION` is bumped to 1.14** — that is the stale-deploy detector, so if the CET
+overlay still shows 1.13 in-game, the deploy didn't take. **`Config.version` / `fomod/info.xml` stay at
+1.57**; bump them only when this ships after the in-game test below._
+
+> *"make smasher a LOT harder to defeat. Currently I'd say he's easy. He should be 60% harder on medium
+> both regarding damage and his HP and then 150% harder for hard and 220% harder for very hard."*
+> …then, after the mapping was explained: *"let's make his health 1x at normal, 1.6x at hard and 2.4x at
+> very hard"* — so **HP and damage now scale on separate curves**.
+
+- [x] `Blaze.yori.diffScale` holds the **final** multipliers on the stock `Character.Smasher` record
+  (they are absolute, not deltas):
+
+  | Menu difficulty | Health | Damage |
+  |---|---|---|
+  | Easy | ×0.50 (exactly the old fight) | ×1.00 |
+  | Normal | ×1.00 | ×1.60 |
+  | Hard | ×1.60 | ×2.50 |
+  | Very Hard | ×2.40 | ×3.20 |
+
+- [x] **Damage** is new — before this he only ever had his Health scaled. `M.bound.weaken(h, hpMul, dmgMul)`
+  now also adds an **Additive `AllDamageDonePercentBonus`** modifier of `dmgMul - 1.0`. The damage pipeline
+  reads that stat off the **instigator** for every attack with no player gate, so it works on an NPC:
+  `damageSystem.script:2931` → `attackValues[i] *= (1.0 + tempDamage)` (`:2977`), from
+  `CalculateSourceModifiers` (`:2137`).
+- [x] **Why he never scaled before:** two separate reasons, and neither is AMM.
+  1. Our own code pinned him at a flat `hpMul = 0.50` with no difficulty term and no damage term at all.
+  2. **The base game doesn't scale an NPC's Health or raw damage by difficulty either.** Every script-side
+     consumer of `GetDifficulty()` is player-side or cosmetic: the cap on damage the *player* takes
+     (`damageSystem.script:952`, `:1035`, `:1223`), NPC **accuracy** (`targetShootComponent.script:140`),
+     status-effect application, AI condition checks, hacking skill checks, XP. Nothing touches NPC HP or
+     base damage. So a spawned Smasher plays identically on Easy and Very Hard unless we scale him.
+- [x] **Difficulty ORDER (settled).** `Story < Easy < Hard < VeryHard`. Two independent files define an
+  explicit rank helper `GetDifficultyValue()` returning **Story=1, Easy=2, Hard=3, VeryHard=4**
+  (`tweakAIConditionChecks.script:3807`, `aiActionHelperTask.script:381`). Story is the EASIEST tier.
+- [x] **Enum ORDINALS are NOT the difficulty order.** `statsDataSystem.script:1` declares
+  `enum gameDifficulty { Easy, Hard, VeryHard, Story }` → **0/1/2/3 = Easy/Hard/VeryHard/Story**, with the
+  easiest tier last (looks like `Story` was appended later, as enum members usually are). The very existence
+  of those two `GetDifficultyValue()` helpers is the corroboration: if the raw enum value were already a
+  difficulty rank, the game wouldn't need to convert it. Only the numeric-fallback path in
+  `M.bound.difficulty` depends on this — the normal path matches the enum's name string.
+- [x] **Enum names vs menu labels: `Easy` in the enum = the menu's NORMAL.** The argument is rank-matching,
+  and it's forced: the enum has exactly 4 tiers (Story<Easy<Hard<VeryHard) and the menu has exactly 4
+  options (Easy<Normal<Hard<Very Hard), and `difficultySelection.script:120-141` wires its 4 buttons to
+  exactly those 4 enum values. Any other pairing makes the menu's Normal *easier* than its Easy.
+  Corroborated at `damageSystem.script:1231`, where `case gameDifficulty.Easy` reads the TweakDB field
+  `.normalDifficultySelfDamagePerTick`.
+  - ⚠️ **Contrary evidence, logged honestly:** `targetShootComponent.script:140` shifts the other way —
+    Story→`.storyModeMultiplier`, Easy→`.easyModeMultiplier`, Hard→`.normalModeMultiplier`,
+    VeryHard→`.hardModeMultiplier`. The two files cannot both be right about a shared label vocabulary;
+    one of them is internally mislabeled. Rank-matching is what the mapping actually rests on.
+  - ⚠️ An earlier version of this entry cited the LocKey numbers in `characterCreationSummaryMenu.script:94`
+    as proof. **That argument was circular** — the label for each LocKey was itself inferred from the
+    ordering it was meant to establish. Dropped.
+- [x] **`blazeDifficulty()`** — new CET console one-liner that prints the live enum name and the tuning row
+  it selects. Run it, change the difficulty in Settings > Gameplay, run it again: that settles the mapping
+  by observation instead of inference. If it ever disagrees with the menu, re-key `Blaze.yori.diffScale`
+  and nothing else needs to change.
+
+### Arasaka reinforcements at the end of the Smasher fight
+> *"let's also spawn in some arasaka soldiers towards the end (smasher health <30%) sprinkling in some more difficulty"*
+
+- [x] `Blaze.yori.adds` — when Smasher's health fraction crosses **0.30**, a squad storms the elevator spot,
+  once per run (`st.addsSent` latches). Count comes from the difficulty row: **2 / 3 / 4 / 6** for menu
+  Easy / Normal / Hard / Very Hard. They spawn at stock grunt health but inherit Smasher's **damage**
+  multiplier, so they stay dangerous on the higher tiers without becoming second bosses.
+- [x] **0.30 is not arbitrary** — it is exactly Smasher's native **Emergency Phase** threshold
+  (`adamSmasherComponent.script:304` returns `30.0`; `:34` fires the phase change on crossing it and makes
+  him briefly **Invulnerable**). So the squad arrives on an authored beat of his own fight, right as the
+  player's damage stops landing. Happy accident from Antonia's number.
+- [x] Records are the **heist's own kill squad**, taken from base-game scene files where they appear as
+  `specRecordId` (a TweakDBID): `Character.q005_arasaka_kill_squad_4_officer` / `_4` / `_1`, from
+  `docs/Heist_scene_tree_base/.../q005_10_taking_the_chip.scene.json`. Real records, lore-correct for
+  Konpeki Plaza. The officer leads.
+- [x] Each soldier is an ordinary `st.ent` slot (`add1`…`addN`), so the existing resolve → place → hostile →
+  stat-scale path and `M.reset()`'s despawn loop pick them up with no special-casing. The tick's resolve
+  loop was changed from a fixed `{goro, smasher, heli}` list to `pairs(st.ent)` to cover them.
+- [x] Health is read via a new `M.bound.healthFrac` binding. Stat pools answer the `perc` form on a
+  **0–100** scale (`adamSmasherComponent.script:299-311` compares that exact call against `80.0`/`50.0`/
+  `30.0`/`5.0`), so it divides by 100. Polled on a 0.5 s heartbeat, not every frame.
+- [ ] **UNVERIFIED in-game:** whether DES accepts those three records, and whether the ring offsets
+  (±3–4 m around the elevator spot) land on walkable floor rather than inside geometry. A refused record
+  just logs `SPAWN FAIL add<N>` and the fight continues — it cannot break the set-piece.
+- [x] Difficulty is read **at spawn time**, not at load, so changing it from the pause menu mid-playthrough
+  takes effect on the next run of the fight. Unreadable difficulty falls back to the Normal tier and logs it.
+- [ ] **In-game test (Windows):** first run `blazeDifficulty()` in the CET console at each of the four menu
+  settings — that alone confirms the name mapping. Then run the Yorinobu fight on Normal and on Very Hard
+  and check the console for `difficulty = <enum name> -> Smasher Health xN, damage xN, N add(s)` +
+  `boss stats scaled:` + `ARASAKA REINFORCEMENTS: N soldier(s) sent in`. If the difficulty line reports
+  `nil`, the CET enum unwrap needs the numeric fallback path — report what it printed.
+- ⚠️ **Watch the Normal HP.** `hp = 1.00` restores him to the *stock* Smasher health that the original
+  `hpMul = 0.50` was added to tame — the v1.03 comment says the full-stat bosses were "near-unkillable at
+  V's low Heist level". That judgement covered Takemura too and predates a lot of the fight's tuning, so it
+  may no longer hold; but if Normal now feels like a wall rather than a fight, this is the line to move.
+- ℹ️ The **legacy** `Blaze.start()` set-piece (the manual 3-record capture path) still spawns Smasher at
+  **full stock boss stats** with no scaling — it never had any. Only the Yorinobu fight is tuned.
+
 ## 🆕 v1.57 (2026-07-23) — movement pass: walk-beside is opt-in · he stops walking away · he stands still · a real tuner
 
 _`Config.version` bumped to **1.57**; `staging/fomod/info.xml` still needs bumping before release.
@@ -60,57 +165,6 @@ All four items are **untested in-game** — they're Mac-side code changes awaiti
   arc, free-walk zone, lead) · when abreast is allowed (V's speed band + sustain) · the stairs/slope gate ·
   the new stand-still group. The live read-out now names **which system owns him right now** (standing /
   abreast walk / abreast sprint / trailing / stairs / sneaking), so you can see which sliders are even live.
-
-## 🆕 v1.56 (2026-07-23) — Adam Smasher scales with the game difficulty
-
-_Code only — **`Config.version` / `fomod/info.xml` are still 1.55**; bump both when this ships after the
-in-game test below._
-
-> *"make smasher a LOT harder to defeat. Currently I'd say he's easy. He should be 60% harder on medium
-> both regarding damage and his HP and then 150% harder for hard and 220% harder for very hard."*
-> …then, after the mapping was explained: *"let's make his health 1x at normal, 1.6x at hard and 2.4x at
-> very hard"* — so **HP and damage now scale on separate curves**.
-
-- [x] `Blaze.yori.diffScale` holds the **final** multipliers on the stock `Character.Smasher` record
-  (they are absolute, not deltas):
-
-  | Menu difficulty | Health | Damage |
-  |---|---|---|
-  | Easy | ×0.50 (exactly the old fight) | ×1.00 |
-  | Normal | ×1.00 | ×1.60 |
-  | Hard | ×1.60 | ×2.50 |
-  | Very Hard | ×2.40 | ×3.20 |
-
-- [x] **Damage** is new — before this he only ever had his Health scaled. `M.bound.weaken(h, hpMul, dmgMul)`
-  now also adds an **Additive `AllDamageDonePercentBonus`** modifier of `dmgMul - 1.0`. The damage pipeline
-  reads that stat off the **instigator** for every attack with no player gate, so it works on an NPC:
-  `damageSystem.script:2931` → `attackValues[i] *= (1.0 + tempDamage)` (`:2977`), from
-  `CalculateSourceModifiers` (`:2137`).
-- [x] **Why he never scaled before:** two separate reasons, and neither is AMM.
-  1. Our own code pinned him at a flat `hpMul = 0.50` with no difficulty term and no damage term at all.
-  2. **The base game doesn't scale an NPC's Health or raw damage by difficulty either.** Every script-side
-     consumer of `GetDifficulty()` is player-side or cosmetic: the cap on damage the *player* takes
-     (`damageSystem.script:952`, `:1035`, `:1223`), NPC **accuracy** (`targetShootComponent.script:140`),
-     status-effect application, AI condition checks, hacking skill checks, XP. Nothing touches NPC HP or
-     base damage. So a spawned Smasher plays identically on Easy and Very Hard unless we scale him.
-- [x] ⚠️ **The `gameDifficulty` enum names are OFF BY ONE from the menu labels.** Verified in
-  `characterCreationSummaryMenu.script:94` (Story/Easy/Hard/VeryHard → LocKeys 52792/52791/52790/52789 =
-  Easy/Normal/Hard/Very Hard) and again at `damageSystem.script:1231`, where `case gameDifficulty.Easy`
-  reads the TweakDB field `.normalDifficultySelfDamagePerTick`. So **`Easy` in the enum IS the menu's
-  Normal**, and there is no `Medium` member at all. Read via `StatsDataSystem.GetDifficulty()`
-  (`statsDataSystem.script:23`).
-- [x] ⚠️⚠️ **And the ordinals are not in difficulty order.** `statsDataSystem.script:1` declares
-  `enum gameDifficulty { Easy, Hard, VeryHard, Story }` — i.e. **0/1/2/3 = Easy/Hard/VeryHard/Story**, with
-  Story (the menu's Easy) *last*. Caught only by reading the declaration; the intuitive 0=easiest ordering
-  is wrong in two different ways at once. Only the numeric-fallback path in `M.bound.difficulty` depends on
-  it — the normal path matches on the enum's name string.
-- [x] Difficulty is read **at spawn time**, not at load, so changing it from the pause menu mid-playthrough
-  takes effect on the next run of the fight. Unreadable difficulty falls back to the Normal tier and logs it.
-- [ ] **In-game test (Windows):** run the Yorinobu fight on Normal, then on Very Hard, and check the console
-  for `difficulty = <enum> -> boss scale xN` + `boss stats scaled: Health xN, damage xN`. If the difficulty
-  line reports `nil`, the CET enum unwrap needs the numeric fallback path — report what it printed.
-- ℹ️ The **legacy** `Blaze.start()` set-piece (the manual 3-record capture path) still spawns Smasher at
-  **full stock boss stats** with no scaling — it never had any. Only the Yorinobu fight is tuned.
 
 ## 🆕 v1.55 (2026-07-14) — Misty retired (Husbando) · follow-distance slider · the phone race finally won · K-Raff · Mac packaging
 

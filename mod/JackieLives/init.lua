@@ -708,6 +708,29 @@ function blazeMuteMusic(on)
   return true
 end
 
+-- v1.56 BLAZE: print the CURRENT difficulty and the Smasher tuning row it selects. Type `blazeDifficulty()`
+-- in the CET console, change the difficulty in Settings > Gameplay, and run it again — that empirically
+-- settles the enum-name-vs-menu-label mapping documented on Blaze.bound.difficulty, which is inferred from
+-- the decompiled scripts rather than observed. If the menu label and the row below ever disagree, re-key
+-- Blaze.yori.diffScale to whatever this prints; nothing else needs to change.
+-- Global (no top-level local) -> 200-local cap safe.
+function blazeDifficulty()
+  local name = (Blaze and Blaze.bound and Blaze.bound.difficulty) and Blaze.bound.difficulty() or nil
+  local row  = name and Blaze.yori.diffScale[name] or nil
+  if not name then
+    log("[Blaze] difficulty: COULD NOT READ it (StatsDataSystem missing or the enum didn't unwrap).")
+  elseif not row then
+    log("[Blaze] difficulty enum = '" .. tostring(name) .. "' -> NO matching diffScale row! " ..
+        "Add that key to Blaze.yori.diffScale; the fight is falling back to the '" ..
+        tostring(Blaze.yori.diffScaleFallback) .. "' tier.")
+  else
+    log(string.format("[Blaze] difficulty enum = '%s' -> Smasher Health x%.2f, damage x%.2f, %d Arasaka add(s). " ..
+                      "Check that against the label in Settings > Gameplay.",
+                      name, row.hp or 1.0, row.dmg or 1.0, row.adds or 0))
+  end
+  return name
+end
+
 -- The combined at-black teardown the finale runs (music reset + combat clear, and scene fast-forward
 -- when Blaze.cfg.endSceneOnFinale). Order: clear combat first (so the mix re-evaluates clean), then music,
 -- then end the scene. Each layer is independently guarded. v1.11: also MUTE music at the finale when
@@ -7351,6 +7374,18 @@ registerForEvent("onInit", function()
         log(string.format("[Blaze] boss stats scaled: Health x%s, damage x%s",
                           tostring(hpMul or 1.0), tostring(dmgMul or 1.0)))
       end,
+      -- v1.56 BLAZE: a spawned NPC's CURRENT health as a 0..1 fraction (nil if it can't be read).
+      -- Stat pools answer the `perc` form on a 0..100 scale — adamSmasherComponent.script:299-311 compares
+      -- this exact call against the literals 80.0 / 50.0 / 30.0 / 5.0 — so divide by 100 here.
+      healthFrac = function(h)
+        if not h then return nil end
+        local v
+        pcall(function()
+          v = Game.GetStatPoolsSystem():GetStatPoolValue(h:GetEntityID(), gamedataStatPoolType.Health, true)
+        end)
+        if type(v) ~= "number" then return nil end
+        return v / 100.0
+      end,
       -- v1.56 BLAZE: the player's chosen DIFFICULTY, as the game's own enum NAME. Source of truth is
       -- StatsDataSystem.GetDifficulty() (statsDataSystem.script:23) — the same call the base game uses to
       -- pick its damage constants (damageSystem.script:952).
@@ -8219,37 +8254,38 @@ registerForEvent("onDraw", function()
     if ImGui.Button("Unlock now — skip the quest, Jackie's back") then Retrieval.completeReunion() end
   end
 
-  if ImGui.CollapsingHeader("Status & diagnostics") then
-    local block, hour = currentScheduleBlock()
-    ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
-               "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
-    local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
-    ImGui.Text("Game time: " .. hhmm ..
-               "   Day-type: " .. tostring(JL.day.template or "?"))
-    if block then
-      if block.state == "at_location" then
-        local loc = Config.locations[block.locationKey]
-        ImGui.Text("Scheduled: " .. (loc and loc.name or block.locationKey) ..
-                   ((loc and loc.pos) and "" or "  (coords NOT captured)"))
-      else
-        ImGui.Text("Scheduled: unavailable (asleep / home / away)")
-      end
-    end
-    ImGui.SameLine()
-    if ImGui.Button("Cycle day-type") then          -- DEBUG: jump to the next day-type now
-      JL.day.template = nextDayTemplate()
-      log("Day-type forced -> " .. tostring(JL.day.template))
-    end
-    ImGui.Text("Companion: " .. tostring(JL.summon.active) ..
-               "   Idle-spawned: " .. tostring(JL.idle.spawn ~= nil))
-    if JL.idle.spawn then
-      ImGui.Text(("Wander: %s  wp %s/%s   collision: %s"):format(
-        tostring(JL.idle.phase or "-"),
-        tostring(JL.idle.curIdx or "?"),
-        tostring(JL.idle.tgtIdx or "-"),
-        JL.idle.collisionOff and "OFF" or "on"))
+  -- === STATUS & DIAGNOSTICS: always visible (no header) — this is the at-a-glance state you
+  -- read every time you open the window, so it must never need a click to see.
+  local block, hour = currentScheduleBlock()
+  ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
+             "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
+  local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
+  ImGui.Text("Game time: " .. hhmm ..
+             "   Day-type: " .. tostring(JL.day.template or "?"))
+  if block then
+    if block.state == "at_location" then
+      local loc = Config.locations[block.locationKey]
+      ImGui.Text("Scheduled: " .. (loc and loc.name or block.locationKey) ..
+                 ((loc and loc.pos) and "" or "  (coords NOT captured)"))
+    else
+      ImGui.Text("Scheduled: unavailable (asleep / home / away)")
     end
   end
+  ImGui.SameLine()
+  if ImGui.Button("Cycle day-type") then          -- DEBUG: jump to the next day-type now
+    JL.day.template = nextDayTemplate()
+    log("Day-type forced -> " .. tostring(JL.day.template))
+  end
+  ImGui.Text("Companion: " .. tostring(JL.summon.active) ..
+             "   Idle-spawned: " .. tostring(JL.idle.spawn ~= nil))
+  if JL.idle.spawn then
+    ImGui.Text(("Wander: %s  wp %s/%s   collision: %s"):format(
+      tostring(JL.idle.phase or "-"),
+      tostring(JL.idle.curIdx or "?"),
+      tostring(JL.idle.tgtIdx or "-"),
+      JL.idle.collisionOff and "OFF" or "on"))
+  end
+  ImGui.Separator()
 
   -- v0.95 STORY MODE selector (Quiet Life vs Blaze of Glory). Buttons + wrapped description, using
   -- only idioms already proven in this file (Button/Text/SameLine/TextWrapped/TextColored).

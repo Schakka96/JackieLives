@@ -34,7 +34,7 @@ local M = { bound = {}, cfg = nil, st = nil }
 -- Bump on every blaze.lua change. init.lua logs this on load and the overlay shows it, so a STALE
 -- deploy is obvious at a glance: if this doesn't match the latest, your game is running an old blaze.lua
 -- (re-deploy + FULLY restart the game — CET can cache required modules across soft reloads).
-M.VERSION = "1.13 (2026-07-09 finale transport-calm: holster + force-stand (uncrouch) + out-of-combat)"
+M.VERSION = "1.14 (2026-07-23 Smasher scales with difficulty: HP + damage per tier, Arasaka adds at 30%)"
 
 -- ---- CONFIG (fill after in-game capture on Windows) -----------------------
 M.cfg = {
@@ -97,13 +97,40 @@ M.yori = {
   -- VeryHard = menu Very Hard. Story keeps the old, gentle fight exactly as it was.
   --   hp  (Antonia 2026-07-23): 1x stock Smasher on Normal, 1.6x on Hard, 2.4x on Very Hard.
   --   dmg (Antonia 2026-07-23): 60% / 150% / 220% harder than the old fight, which dealt stock damage (x1).
+  --   adds = how many Arasaka soldiers storm in at the end (see `adds` below).
   diffScale = {
-    Story    = { hp = 0.50, dmg = 1.00 },   -- menu EASY      — exactly the old fight
-    Easy     = { hp = 1.00, dmg = 1.60 },   -- menu NORMAL
-    Hard     = { hp = 1.60, dmg = 2.50 },   -- menu HARD
-    VeryHard = { hp = 2.40, dmg = 3.20 },   -- menu VERY HARD
+    Story    = { hp = 0.50, dmg = 1.00, adds = 2 },   -- menu EASY      — exactly the old fight
+    Easy     = { hp = 1.00, dmg = 1.60, adds = 3 },   -- menu NORMAL
+    Hard     = { hp = 1.60, dmg = 2.50, adds = 4 },   -- menu HARD
+    VeryHard = { hp = 2.40, dmg = 3.20, adds = 6 },   -- menu VERY HARD
   },
   diffScaleFallback = "Easy",   -- tier used when the difficulty can't be read (treat as Normal)
+  -- v1.56 (Antonia 2026-07-23): ARASAKA REINFORCEMENTS. When Smasher drops below `atHealthFrac`, a squad
+  -- storms the elevator spot — "sprinkling in some more difficulty" at the end of the fight.
+  -- ⚠️ 0.30 is not an arbitrary number: it is EXACTLY Smasher's native EMERGENCY-PHASE threshold
+  -- (adamSmasherComponent.script:304 returns 30.0, and :34 fires the phase change on crossing it, which
+  -- also makes him briefly Invulnerable). So the squad arrives on a real, authored beat of his fight —
+  -- right as he armours up and the player's damage stops landing. Retune here if that reads badly.
+  -- Records are the HEIST'S OWN kill squad, lifted from the base-game scene files (`specRecordId`, a
+  -- TweakDBID, in docs/Heist_scene_tree_base/.../q005_10_taking_the_chip.scene.json) — so they are real
+  -- records and lore-correct for Konpeki Plaza. The officer leads.
+  -- ⚠️ UNVERIFIED IN-GAME: whether DES accepts these records, and whether the offsets land on walkable
+  -- floor rather than inside the elevator geometry. A refused record just logs "SPAWN FAIL add<N>" and the
+  -- fight carries on without that soldier — it can't break the set-piece.
+  adds = {
+    enabled      = true,
+    atHealthFrac = 0.30,   -- spawn once Smasher's health fraction is at or below this
+    recs = {               -- cycled in order; index 1 spawns first
+      "Character.q005_arasaka_kill_squad_4_officer",
+      "Character.q005_arasaka_kill_squad_4",
+      "Character.q005_arasaka_kill_squad_1",
+    },
+    -- Metres from the elevator spot (M.yori.goro.pos), as {dx, dy}. Deliberately a spread ring so they
+    -- don't telefrag each other, and none of them lands on top of Smasher himself.
+    offsets = { { 3.0, 1.5 }, { -3.0, 1.5 }, { 1.5, 3.5 }, { -1.5, 3.5 }, { 4.0, -1.0 }, { -4.0, -1.0 } },
+    hpMul  = 1.00,         -- stock grunt health; they are chip damage + pressure, not a second boss
+    scaleDamage = true,    -- their damage rides the SAME difficulty multiplier as Smasher's
+  },
   heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 }, radius = 5.0 },  -- OUR optional VTOL (only if M.cfg.heliRecord set)
   -- The AV ALREADY on the roof in the base scene.
   -- ⚠️ v1.51: DELIBERATELY UNREACHABLE. Antonia's explicit call (2026-07-09): *"the button never appearing was
@@ -269,9 +296,9 @@ function M.bossMuls()
     blog("difficulty unreadable (got " .. tostring(name) .. ") -> falling back to the " ..
          tostring(M.yori.diffScaleFallback) .. " tier.")
   end
-  blog(string.format("difficulty = %s (enum name) -> Smasher Health x%.2f, damage x%.2f",
-                     tostring(name), s.hp or 1.0, s.dmg or 1.0))
-  return s.hp or 1.0, s.dmg or 1.0
+  blog(string.format("difficulty = %s (enum name) -> Smasher Health x%.2f, damage x%.2f, %d add(s)",
+                     tostring(name), s.hp or 1.0, s.dmg or 1.0, s.adds or 0))
+  return s.hp or 1.0, s.dmg or 1.0, s.adds or 0
 end
 
 local function spawnOne(slot, rec, pos, hostile, weaken, dmgMul)
@@ -282,6 +309,25 @@ local function spawnOne(slot, rec, pos, hostile, weaken, dmgMul)
   if not id then blog("SPAWN FAIL " .. slot .. ": spawnDyn returned nil for rec='" .. tostring(rec) .. "' (DES refused the record? see the CreateEntity line)."); return end
   M.st.ent[slot] = { id = id, pos = pos, yaw = pos.yaw, hostile = hostile, weaken = weaken, dmgMul = dmgMul, handle = nil, placed = false }
   blog(string.format("%s SPAWNED id=%s rec=%s at %.1f,%.1f,%.1f yaw %.1f", slot, tostring(id), tostring(rec), pos.x, pos.y, pos.z, pos.yaw or 0))
+end
+
+-- v1.56: ARASAKA REINFORCEMENTS — spawn the end-of-fight squad ONCE, in a ring around the elevator spot.
+-- Called from the tick when Smasher crosses `adds.atHealthFrac`. Each soldier is an ordinary `st.ent` slot
+-- ("add1", "add2", ...), so the existing resolve/place/hostile/scale path and M.reset()'s despawn loop
+-- pick them up for free — no special-casing anywhere else.
+local function spawnAdds(count, dmgMul)
+  local A = M.yori.adds
+  if not (A and A.enabled) or (count or 0) <= 0 then return end
+  local base = M.yori.goro.pos
+  if not base then blog("adds: no base position — skipping."); return end
+  for i = 1, count do
+    local off = A.offsets[((i - 1) % #A.offsets) + 1]
+    local rec = A.recs[((i - 1) % #A.recs) + 1]
+    local pos = { x = base.x + off[1], y = base.y + off[2], z = base.z, yaw = base.yaw }
+    spawnOne("add" .. i, rec, pos, true, A.hpMul, A.scaleDamage and dmgMul or nil)
+  end
+  blog(string.format("ARASAKA REINFORCEMENTS: %d soldier(s) sent in at %.0f%% Smasher health.",
+                     count, (A.atHealthFrac or 0.3) * 100))
 end
 
 function M.start()
@@ -329,7 +375,8 @@ function M.startYorinobu()
   -- saidGoroFight=false, and uncomment the two lines below.
   -- spawnOne("goro", M.yori.goro.rec, M.yori.goro.pos, true, M.yori.goro.hpMul)
   -- say("goroSpawn")
-  local shp, sdmg = M.bossMuls()                                          -- v1.56: difficulty-scaled
+  local shp, sdmg, sadds = M.bossMuls()                                   -- v1.56: difficulty-scaled
+  M.st.addsCount, M.st.addsDmg = sadds, sdmg                              -- held for the reinforcement wave
   spawnOne("smasher", M.yori.smasher.rec, M.yori.goro.pos, true, shp, sdmg)             -- Smasher at the elevator spot
   say("smasherSpawn")
   pushObjective("[ ] Find a weapon\n>> Defeat Adam Smasher")
@@ -464,8 +511,10 @@ end
 function M.tick(now, dt)
   local st = M.st; if not st or not st.active then return end
 
-  for _, slot in ipairs({ "goro", "smasher", "heli" }) do
-    resolveAndPlace(st.ent[slot])
+  -- v1.56: iterate whatever is actually spawned (pairs, not a fixed list) so the Arasaka adds get
+  -- resolved/placed/scaled by the same path as the bosses.
+  for _, e in pairs(st.ent) do
+    resolveAndPlace(e)
   end
 
   checkWeaponDrops()   -- MVP: hand V the staged weapons as they approach each spot (both modes)
@@ -491,7 +540,8 @@ function M.tick(now, dt)
       if st.goroDead then
         st.stage = "smasher"
         say("goroDefeated")                                  -- "Luckily all clear for now..."
-        local shp2, sdmg2 = M.bossMuls()                                        -- v1.56: difficulty-scaled
+        local shp2, sdmg2, sadds2 = M.bossMuls()                                 -- v1.56: difficulty-scaled
+        st.addsCount, st.addsDmg = sadds2, sdmg2
         spawnOne("smasher", M.yori.smasher.rec, M.yori.goro.pos, true, shp2, sdmg2)            -- Smasher appears at the SAME elevator spot
         say("smasherSpawn")                                  -- "Is that Adam Smasher?" -> "Oh, SHIT!"
         st.smasherFightAt = now + (M.yori.fightLineDelay or 4.0)
@@ -502,6 +552,21 @@ function M.tick(now, dt)
       st.smasherFightAt = st.smasherFightAt or (now + (M.yori.fightLineDelay or 4.0))  -- v1.07: lazy init (Smasher-first)
       if not st.saidSmasherFight and now >= st.smasherFightAt then
         st.saidSmasherFight = true; say("smasherFight")      -- "We ain't dyin' — not today!"
+      end
+      -- v1.56 ARASAKA REINFORCEMENTS: once Smasher is hurt past the threshold, the squad storms in. ONCE
+      -- (st.addsSent latches), and only while he's still up — no point sending them to an empty room.
+      -- Polled on a 0.5 s heartbeat rather than every frame; healthFrac is a stat-pool read per call.
+      if not st.addsSent and (M.yori.adds and M.yori.adds.enabled) and not st.smasherDead then
+        if now >= (st.addsCheckAt or 0) then
+          st.addsCheckAt = now + 0.5
+          local e = st.ent.smasher
+          local frac = (e and e.placed and M.bound.healthFrac) and M.bound.healthFrac(e.handle) or nil
+          if frac and frac <= (M.yori.adds.atHealthFrac or 0.30) then
+            st.addsSent = true
+            spawnAdds(st.addsCount or 0, st.addsDmg)
+            pushObjective(">> Defeat Adam Smasher\n!! Arasaka reinforcements inbound")
+          end
+        end
       end
       if st.smasherDead then
         st.stage = "escape"
