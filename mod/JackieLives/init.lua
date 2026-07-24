@@ -5400,7 +5400,7 @@ end
 -- Global -> 200-local cap safe.
 function jlAbreastOn()
   local A = Config.abreast or {}
-  if not A.enabled or not JL.customWalk then return false end      -- v1.57: opt-in; default = plain trailing follower
+  if not A.enabled or not JL.walkAbreast then return false end      -- v1.57: opt-in; default = plain trailing follower
   if not (JL.summon.active and JL.summon.companionSet) then return false end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return false end
   if jlCruise and jlCruise.active then return false end            -- not while cruising on his bike
@@ -5504,7 +5504,7 @@ end
 --    inside `zoneRadius` he CALMS to a walk and holds there until he falls into the rear arc again.
 --  * WALK-ONLY. Only active while V WALKS (jlVWalking); at jog/sprint abreastTick yields and the trail
 --    (followKeepCloseTick) takes over — V has 3 speeds, Jackie 2, so he can't out-pace a jogging V.
---  * OPT-IN (v1.57). `JL.customWalk` (Esc -> Settings -> Jackie Lives -> Gameplay) turns this whole
+--  * DEFAULT-ON (v1.61; was opt-in in v1.57). `JL.walkAbreast` (Esc -> Settings -> Jackie Lives -> Gameplay) turns this whole
 --    behaviour ON. It is OFF by default — out of the box Jackie is the plain trailing follower.
 -- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
 function abreastTick()
@@ -6498,7 +6498,7 @@ local function nsTick()
   if JL.husbando == nil then JL.husbando = false end                              -- v0.47 (false = Hermano)
   if JL.disableVehicleArrivals == nil then JL.disableVehicleArrivals = false end  -- v0.51 (false = bike allowed)
   if JL.allowMainGigs == nil then JL.allowMainGigs = false end                    -- v1.32 (false = Quiet Life: no main-mission summons)
-  if JL.customWalk == nil then JL.customWalk = false end                          -- v1.57 (false = plain trailing follower)
+  if JL.walkAbreast == nil then JL.walkAbreast = true end                         -- v1.61 (true = walk-abreast ON by default). RENAMED from customWalk (v1.57's opt-in flag) so every old `customWalk=...` line in jl_settings.txt simply stops being read — restoring default-ON for everyone, the same invalidate-by-rename trick v1.57 used to flip it OFF.
   if type(JL.followDistance) ~= "number" then JL.followDistance = Config.followDistanceDefault or 3.5 end  -- v1.55 slider
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
@@ -6563,13 +6563,13 @@ local function nsTick()
     ns.addSwitch(
       "/jackielives/gameplay",
       "Walk beside me (custom follow style)",
-      "OFF (default) = Jackie trails you like a normal companion. ON = when you're WALKING, he holds a " ..
-      "spot BESIDE you instead (the walk-abreast style) — nice on a stroll, but he needs room, so it can " ..
-      "look awkward in tight interiors. Turn it on if you want him at your shoulder.",
-      JL.customWalk,   -- current state (ON = walk-abreast enabled; persisted)
-      false,           -- 'reset to default' value: OFF (plain trailing follower) — v1.57
+      "ON (default) = when you're WALKING, Jackie holds a spot BESIDE you (the walk-abreast style) — nice " ..
+      "on a stroll, but he needs room, so it can look awkward in tight interiors. OFF = he trails you like " ..
+      "a normal companion. Turn it off if you prefer him on your tail.",
+      JL.walkAbreast,   -- current state (ON = walk-abreast enabled; persisted)
+      true,            -- 'reset to default' value: ON (walk abreast) — v1.61 default-on again
       function(state)
-        JL.customWalk = state
+        JL.walkAbreast = state
         pcall(jlSaveSettings)
         JL.ui.status = "Walk-beside style: " .. (state and "ON (walk abreast)" or "OFF (default trailing follower)")
         log("Custom walk-beside -> " .. (state and "ON" or "OFF (default follower)"))
@@ -6648,7 +6648,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "customWalk" }  -- persisted JL.* boolean flags (customWalk v1.57: walk-abreast is now OPT-IN, so the flag was INVERTED and RENAMED — the old `disableCustomWalk` line in an existing jl_settings.txt simply stops being read, which is exactly what we want: every existing player also drops back to the plain trailing follower until they turn walk-beside on) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
+JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
 
 -- v1.55: NUMERIC settings. The file used to serialize booleans only (plus the one `mode` string), which is
 -- precisely why a slider could never be added — its value didn't survive a reload. These keys round-trip as
@@ -8695,7 +8695,7 @@ registerForEvent("onDraw", function()
       local vsp   = JL.abreast.vSpeed or 0.0
       ImGui.Text(("Live: V %.2f m/s  |  %s"):format(vsp,
         still and "V STANDING -> Jackie holds position"
-          or ((not JL.customWalk) and "trailing (walk-beside OFF)"
+          or ((not JL.walkAbreast) and "trailing (walk-beside OFF)"
           or (jlAbreastOn() and ((JL.abreast.catching == true) and "abreast: SPRINT (fell behind)" or "abreast: walk (free)")
           or "trailing (abreast stood down)"))))
       ImGui.Text(("Live: %s | %s"):format(

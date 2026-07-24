@@ -275,7 +275,7 @@ Config.persist = {
 -- v1.57: this is now **OFF by default**. Out of the box Jackie is the plain trailing follower; walk-beside
 -- is a switch the player turns on in Esc -> Settings -> Jackie Lives -> Gameplay -> "Walk beside me".
 -- (`Config.abreast.enabled` below is the FEATURE master, not the default: it stays true so the switch has
--- something to turn on. The per-player default lives in `JL.customWalk`, which defaults to false.)
+-- something to turn on. The per-player default lives in `JL.walkAbreast`, which defaults to true (v1.61).)
 -- How it behaves:
 --  * WALK-ONLY. Only active while V WALKS (her slow toggle). At jog/sprint he falls back to the normal
 --    trail (V has 3 speeds, Jackie 2 — he can't out-pace a jogging V). Thresholds: walkMaxSpeed/jogMinSpeed.
@@ -290,7 +290,7 @@ Config.persist = {
 --    CALMS to a walk again — and stays walking until he falls behind into the rear arc once more.
 -- Angle values are FRACTIONAL dial steps (of `positions`). Pace + zone knobs live in the CET pace tuner.
 Config.abreast = {
-  enabled        = true,    -- FEATURE master (leave true). The per-player default is JL.customWalk = false (v1.57: OFF)
+  enabled        = true,    -- FEATURE master (leave true). The per-player default is JL.walkAbreast = true (v1.61: default-ON)
   positions      = 12,      -- steps in the full dial the fractional angles are measured in
   angleRight     = 0.85,    -- near-front on V's RIGHT (Antonia's tuned value)
   angleLeft      = 11.25,   -- near-front on V's LEFT  (Antonia's tuned value)
@@ -322,8 +322,8 @@ Config.abreast = {
   catchUpTolerance = 0.35,  -- target distance while sprinting in
   -- v1.39: pace-match (SetIndividualTimeDilation speed-up) REMOVED — scaling his time made his stride float
   -- and broke the angular leash. He now just walks his own natural Walk gait; the rear-arc sprint handles
-  -- keeping up. Walk-beside is OFF by default (v1.57); the player opts in at Esc -> Settings -> Jackie Lives ->
-  -- Gameplay -> "Walk beside me". OFF = the plain trailing follower (the flag is JL.customWalk).
+  -- keeping up. Walk-beside is ON by default (v1.61); the player can turn it off at Esc -> Settings -> Jackie Lives ->
+  -- Gameplay -> "Walk beside me". OFF = the plain trailing follower (the flag is JL.walkAbreast).
   walkMaxSpeed   = 2.0,     -- m/s at/below which V counts as WALKING (abreast on)
   jogMinSpeed    = 2.8,     -- m/s above which V counts as jogging/sprinting (trail); band = hysteresis
   -- v0.93: abreast is a NARROW case — it only makes sense while V is genuinely STROLLING. Two extra gates
