@@ -71,7 +71,11 @@ CALLS = re.compile(
 VENUE = re.compile(r'^\s*name\s*=\s*"((?:[^"\\]|\\.)*)"\s*,\s*appearance\s*=')
 
 # Values that are identifiers/paths rather than prose — never shown to a player.
-SKIP = re.compile(r'^(?:[a-z0-9_]+|[A-Za-z]+\.[A-Za-z0-9_.]+|jl_[0-9a-z_]+|\W*)$')
+# The bracketed-tag alternative (e.g. "[Blaze] ", "[JackieLives] ") is a LOG-LINE
+# PREFIX prepended to console/debug output, never rendered on screen; it only slips
+# in because blaze.lua assigns "[Blaze] " to a var named `line` (a prose-key). Log
+# tags stay English/ASCII — translating them serves no player and breaks log grep.
+SKIP = re.compile(r'^(?:[a-z0-9_]+|[A-Za-z]+\.[A-Za-z0-9_.]+|jl_[0-9a-z_]+|\[[A-Za-z][A-Za-z ]*\]\s*|\W*)$')
 
 
 def harvest():
