@@ -4209,6 +4209,41 @@ exact action CName) -> add it to `INTERACT_ACTIONS` in init.lua. These are the n
 - Whether "Heroes"/ofrenda fires regardless of body choice (needs in-game verification).
 
 ## Problems & Resolutions (log)
+- **Blaze escape: the working VTOL exit was deleted, and the [F] could be swallowed (2026-07-30) - RESOLVED (v1.63a).**
+  Two separate problems in the escape stage, found together while committing the pending v1.62 blaze work.
+  - **1. THE SPAWNED VTOL EXIT CAME BACK.** v1.62 retired `M.yori.heli` (our opt-in spawned VTOL, a plain
+    5 m 3-D sphere) on the reasoning that the level's own roof AV is the real exit. Antonia: *"I don't like
+    that the VTOL sphere got removed — it actually worked so bring it back."* Restored, and **both exits are
+    now live** — reaching either fires the fade. They deliberately use **different reach maths**, which is
+    the point of keeping both:
+    * **our VTOL** — a 3-D sphere is *correct* here, because WE choose the spawn point, so there is no
+      deck-vs-origin height offset to leak. This is the exit that has always fired.
+    * **the level's roof AV** — needs the horizontal footprint + `zTol` (the v1.49 diagnosis): its `z` is the
+      AV's own origin, floating above the deck V stands on, so a sphere eats the whole budget on `dz` alone.
+      ⏳ Still needs its one in-game tuning pass (`escapeDebug=true`, read `horiz=`/`vert=`, set `radiusXY` /
+      `zTol` just above them). Until then the VTOL is what carries the set-piece — which is exactly why
+      deleting it was the wrong call.
+    * Kept from v1.62: the heli is **opt-in, not required to start** (`hasRecords`/`hasPositions` no longer
+      demand it). New `spawnHeliIfConfigured()` spawns it only when `M.cfg.heliRecord` is set.
+    * ⚠️ That helper is a **file-local and must stay below `spawnOne`** — first draft put it above, which in
+      Lua silently compiles the call to a nil GLOBAL and throws at runtime. Same trap as NCLives v0.9.2.
+  - **2. THE NATIVE DIALOGUE BOX vs THE ESCAPE [F] — investigated (Antonia asked).** Two findings:
+    * **Rendering: NO conflict, confirmed.** There are two unrelated "choice hub" structs. The escape prompt
+      (`Blaze.showPrompt`) pushes **`InteractionChoiceHubData`** to the `UIInteractions.InteractionChoiceHub`
+      blackboard — the small yellow world prompt. v1.63's native picker drives **`ListChoiceHubData` inside
+      `DialogChoiceHubs`** by calling methods on `dialogWidgetGameController`. Different struct, different
+      controller, different mechanism; v1.63 never touches `showPrompt`. `updateTalkPrompt` already yields
+      the blackboard slot while `Blaze.escapePromptActive()`.
+    * **Input: a REAL defect, now fixed.** The `OnAction` hook opens with `if Branch.open then … return end`
+      — so with a conversation on screen, F went to the picker and **`Blaze.tryEscapePress` was never
+      reached**. V could be standing at the AV with "[F]: Get in the AV" showing and F would only pick
+      dialogue lines. ⚠️ **This is PRE-EXISTING (since v0.41's arrow handling), not caused by v1.63** — but
+      the escape is the one moment where losing F feels unrecoverable. FIX: the blaze escape check now sits
+      **above** the `Branch.open` block and outranks it, and `tryEscapePress` calls a new `closeDialogue`
+      binding so the menu can't survive into the fade (an open picker nothing is listening to still eats
+      input). Narrow by construction: `escapePromptActive()` is only true in the escape stage, in reach.
+  - Checks: `luajit -bl` clean on both files, `loadfile` OK (200-local cap), `tools/test_dialogui.lua` 31/31.
+    `mod/` and `staging/` re-synced and byte-identical.
 - **"Make Jackie callable by disabling his death flag" (2026-06-16) - REFRAMED, not needed.** Initial idea
   was to flip the "Jackie is dead" fact so a native holocall would connect. Investigated: the native holocall
   (portrait/video) is driven by quest `.scene`/`.questphase` resources and can't be fed custom audio from CET

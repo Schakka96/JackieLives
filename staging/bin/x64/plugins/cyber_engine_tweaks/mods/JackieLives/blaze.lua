@@ -131,18 +131,28 @@ M.yori = {
     hpMul  = 1.00,         -- stock grunt health; they are chip damage + pressure, not a second boss
     scaleDamage = true,    -- their damage rides the SAME difficulty multiplier as Smasher's
   },
-  -- v1.62: the escape exit is the AV ALREADY on the roof in the base scene — we no longer spawn our own
-  -- VTOL. (Antonia: "there's a helicopter in the level by default — we just use its position to mark the
-  -- exit point.") The old opt-in spawned `heli` record + its spawn/hint/reach code are retired.
+  -- ── TWO ESCAPE EXITS. Either one ends the set-piece; whichever V reaches first wins.
   --
-  -- REACH is now a HORIZONTAL (X/Y) footprint on the deck + a vertical tolerance — the fix the v1.49
-  -- diagnosis called for. `distToPlayer` was 3-D, and this z (the AV origin) sits ABOVE the deck V stands
-  -- on, so a plain sphere leaked that height and the [F] never fired. `radiusXY` = flat footprint metres;
-  -- `zTol` = how much vertical gap to forgive (generous, since the AV origin floats above the deck).
-  -- ⚠️ NEEDS ONE IN-GAME TUNING PASS: set escapeDebug=true, walk V to the AV, read the printed
-  --    "roof AV: horiz=X vert=Z" line, and set radiusXY just above that horiz and zTol just above that vert.
+  -- 1) OUR SPAWNED VTOL. Opt-in: only spawns when `M.cfg.heliRecord` is set (grab it from the overlay).
+  -- ⚠️ v1.63 — RESTORED after v1.62 retired it. Antonia, 2026-07-30: *"I don't like that the VTOL sphere
+  -- got removed — it actually worked so bring it back."* It is the exit that has always fired reliably,
+  -- and its plain 3-D sphere is correct BECAUSE we choose the spawn point: the VTOL sits where we put it,
+  -- so there is no deck-vs-origin height offset to leak (that problem is specific to the level's own AV
+  -- below). Do not "simplify" this away again — it is the working fallback for the one that needs tuning.
+  heli    = { pos = { x = -2191.0, y = 1752.0, z = 310.0, yaw = 45.0 }, radius = 5.0 },
+  --
+  -- 2) THE AV ALREADY ON THE ROOF in the base scene. (Antonia: "there's a helicopter in the level by
+  -- default — we just use its position to mark the exit point.") No spawn, we only read its coords.
+  -- REACH here is a HORIZONTAL (X/Y) footprint on the deck + a vertical tolerance — the fix the v1.49
+  -- diagnosis called for. `distToPlayer` is 3-D, and this z is the AV's own origin, which sits ABOVE the
+  -- deck V stands on, so a plain sphere leaks that height and the [F] can never fire no matter where she
+  -- stands. `radiusXY` = flat footprint metres; `zTol` = how much vertical gap to forgive (generous,
+  -- since the origin floats above the deck).
+  -- ⚠️ STILL NEEDS ONE IN-GAME TUNING PASS: set escapeDebug=true, walk V to the AV, read the printed
+  --    "roof AV: horiz=X vert=Z" line, and set radiusXY just above that horiz and zTol just above that
+  --    vert. Until that's done the VTOL above is the exit that carries the set-piece.
   roofHeli = { pos = { x = -2212.9, y = 1764.67, z = 320.0 }, radiusXY = 4.0, zTol = 14.0 },  -- Antonia's roof coords 2026-07-08
-  escapeDebug = false,   -- v1.62: true = log live HORIZONTAL + vertical distance to the roof AV once a second
+  escapeDebug = false,   -- v1.63: true = log the live gap to BOTH exits once a second while out of reach
   -- v1.07 (Antonia): the finale destination — V wakes here, Jackie (normal outfit) appears next to her
   -- facing her, and the finale conversation plays. Coords/yaw captured in-game 2026-07-09.
   finalePos = { x = -1787.921, y = -450.040, z = 7.747, yaw = -1.4 },
@@ -275,7 +285,10 @@ function M.setPos(slot, p)       -- slot: "smasher" | "goro" | "heli"; p = {x,y,
   if M.bound.persist then M.bound.persist() end   -- auto-write blaze_config.txt (no console copying)
 end
 
--- v1.62: heli no longer spawned (the level's roof AV is the exit), so it isn't required to start.
+-- v1.62/v1.63: the heli is OPT-IN, not required to start — the level's own roof AV is always available
+-- as an exit, so a run with no heliRecord captured is perfectly valid. (Pre-v1.62 both of these also
+-- demanded heliPos/heliRecord, which blocked the set-piece on a spawn that is merely a bonus exit.)
+-- The VTOL still spawns whenever the record IS set — see spawnHeliIfConfigured (below spawnOne).
 function M.hasPositions() local c = M.cfg; return (c.goroPos and c.smasherPos) and true or false end
 function M.hasRecords()   local c = M.cfg; return (c.goroRecord and c.smasherRecord) and true or false end
 
@@ -307,6 +320,19 @@ local function spawnOne(slot, rec, pos, hostile, weaken, dmgMul)
   if not id then blog("SPAWN FAIL " .. slot .. ": spawnDyn returned nil for rec='" .. tostring(rec) .. "' (DES refused the record? see the CreateEntity line)."); return end
   M.st.ent[slot] = { id = id, pos = pos, yaw = pos.yaw, hostile = hostile, weaken = weaken, dmgMul = dmgMul, handle = nil, placed = false }
   blog(string.format("%s SPAWNED id=%s rec=%s at %.1f,%.1f,%.1f yaw %.1f", slot, tostring(id), tostring(rec), pos.x, pos.y, pos.z, pos.yaw or 0))
+end
+
+-- v1.63: spawn OUR VTOL if (and only if) a record was captured for it. `at` is the position to use —
+-- the hardcoded Yorinobu run passes M.yori.heli.pos, the generic run passes M.cfg.heliPos. A silent
+-- no-op when unconfigured, which is exactly what makes the VTOL exit optional while the level's own
+-- roof AV always remains available.
+-- ⚠️ MUST live BELOW `spawnOne` — it is a file-local, and a local is not in scope above its own
+-- `local function` line: calling it from higher up compiles to a nil GLOBAL and throws at runtime.
+local function spawnHeliIfConfigured(at)
+  local c = M.cfg
+  if not (c and c.heliRecord and at) then return false end
+  spawnOne("heli", c.heliRecord, at, false)
+  return true
 end
 
 -- v1.56: ARASAKA REINFORCEMENTS — spawn the end-of-fight squad ONCE, in a ring around the elevator spot.
@@ -345,7 +371,7 @@ function M.start()
   local c = M.cfg
   spawnOne("goro",    c.goroRecord,    c.goroPos,    true)
   spawnOne("smasher", c.smasherRecord, c.smasherPos, true)
-  -- v1.62: heli spawn retired — the level's own roof AV (roofHeli) is the exit marker.
+  spawnHeliIfConfigured(c.heliPos)   -- v1.63: our VTOL exit, when a record was captured for it
   pushObjective("[ ] Kill Adam Smasher\n[ ] Kill Goro Takemura")
   blog("Set-piece STARTED.")
   return true
@@ -353,8 +379,10 @@ end
 
 -- ⚠️ EXPERIMENTAL: start the hardcoded Yorinobu-apartment fight. Spawns TAKEMURA FIRST; the tick
 -- sequences Smasher, then the heli, then the fade+finale. Coords/yaws from M.yori. Call from the
--- overlay's experimental button (which also flips mode -> blaze). v1.62: no heli spawn — the roof AV
--- already in the level (M.yori.roofHeli) is the exit; the tick sequences Smasher -> escape -> fade.
+-- overlay's experimental button (which also flips mode -> blaze). The tick sequences Smasher -> escape
+-- -> fade. TWO exits are live in the escape stage: our opt-in VTOL (spawned from M.cfg.heliRecord at
+-- M.yori.heli.pos, only when that record was captured) and the roof AV already in the level
+-- (M.yori.roofHeli) — reaching EITHER fires the fade.
 function M.startYorinobu()
   M.reset()
   -- v1.07 (Antonia): Takemura removed for now — start straight on Smasher (goroDead pre-set true so the
@@ -410,6 +438,10 @@ function M.tryEscapePress()
   local st = M.st
   if not st or not st.active or st.stage ~= "escape" or not st.escapeReady then return false end
   if M.bound.hidePrompt then M.bound.hidePrompt() end
+  -- v1.63a: the escape now outranks an open choice menu (see the OnAction hook), so we may be leaving
+  -- with a conversation still on screen. Tear it down, or the picker survives into the fade — and an
+  -- open menu that nothing is listening to still swallows the player's input.
+  if M.bound.closeDialogue then pcall(M.bound.closeDialogue) end
   st.stage = "cut"
   blog("[F] Get in the AV pressed -> escape.")
   return true
@@ -569,7 +601,7 @@ function M.tick(now, dt)
       end
       if st.smasherDead then
         st.stage = "escape"
-        -- v1.62: no VTOL spawn — the level's own roof AV is the exit (roofHeli).
+        spawnHeliIfConfigured(M.yori.heli and M.yori.heli.pos)   -- v1.63: our VTOL appears last
         pushObjective("[x] Smasher down\n>> Get to the roof and escape")
       end
 
@@ -580,27 +612,39 @@ function M.tick(now, dt)
       if not st.saidAvLine and M.bound.distToPlayer then
         local hr = M.yori.avHintRadius or 3.0
         local dg = M.bound.distToPlayer(M.yori.goro.pos)
-        local dv = M.yori.roofHeli and M.bound.distToPlayer(M.yori.roofHeli.pos) or 1e9
+        -- v1.63: nearest of EITHER exit — our spawned VTOL or the level's roof AV.
+        local dv = 1e9
+        if M.yori.heli     then dv = math.min(dv, M.bound.distToPlayer(M.yori.heli.pos))     end
+        if M.yori.roofHeli then dv = math.min(dv, M.bound.distToPlayer(M.yori.roofHeli.pos)) end
         if dg <= hr or dv <= hr then st.saidAvLine = true; say("avOnRoof") end
       end
-      -- v1.62: ONE exit — the roof AV (roofHeli). Reach is a HORIZONTAL footprint on the deck + a vertical
-      -- tolerance, NOT a 3-D sphere: the AV origin (roofHeli.pos.z) floats above the deck V stands on, so a
-      -- plain sphere leaked that dz and the [F] never fired (the v1.49 diagnosis). When V is within the
-      -- footprint AND under the vertical tolerance, show the "[F]: Get in the AV" prompt; the actual fade is
-      -- gated on the F press (M.tryEscapePress, from init.lua's OnAction hook). escapeDebug prints the live
-      -- horizontal + vertical gap once a second so radiusXY / zTol can be tuned from real numbers.
-      local rh = M.yori.roofHeli or {}
+      -- v1.63: TWO valid exits again — whichever V reaches first shows the "[F]: Get in the AV" prompt.
+      -- The actual fade is gated on the F press (M.tryEscapePress, from init.lua's OnAction hook).
+      --
+      -- They use DIFFERENT reach maths on purpose, and that is the whole point of keeping both:
+      --   * OUR VTOL (heli) — a plain 3-D sphere, which is correct because WE choose the spawn point,
+      --     so there is no deck-vs-origin height offset to leak. This is the exit that has always
+      --     worked, restored at Antonia's request after v1.62 deleted it.
+      --   * THE LEVEL'S ROOF AV (roofHeli) — a HORIZONTAL footprint + vertical tolerance. Its z is the
+      --     AV's own origin, floating above the deck V stands on, so a 3-D sphere leaks that dz and the
+      --     [F] can never fire (the v1.49 diagnosis). Still needs one in-game tuning pass.
+      -- escapeDebug prints BOTH gaps once a second so either can be tuned from real numbers.
+      local hl  = M.yori.heli or {}
+      local r1  = hl.radius or M.yori.reachRadius or 5.0
+      local d1  = (M.bound.distToPlayer and hl.pos) and M.bound.distToPlayer(hl.pos) or 1e9
+      local rh  = M.yori.roofHeli or {}
       local rXY = rh.radiusXY or M.yori.reachRadius or 5.0
       local zT  = rh.zTol or 14.0
       local dXY, dZ = 1e9, 1e9
       if M.bound.distToPlayerXY and rh.pos then dXY, dZ = M.bound.distToPlayerXY(rh.pos)
       elseif M.bound.distToPlayer and rh.pos then dXY = M.bound.distToPlayer(rh.pos); dZ = 0 end   -- fallback: old build w/o XY binding
-      local inRange = (dXY <= rXY) and (dZ <= zT)
+      local inRange = (d1 <= r1) or ((dXY <= rXY) and (dZ <= zT))
       if M.yori.escapeDebug and not inRange and now >= (st.escapeDbgAt or 0) then
         st.escapeDbgAt = now + 1.0
-        blog(("[F] prompt NOT shown — roof AV: horiz=%.1f m (need <= %.1f), vert=%.1f m (need <= %.1f). "
-              .. "Stand at the AV and set radiusXY just above horiz, zTol just above vert.")
-             :format(dXY, rXY, dZ, zT))
+        blog(("[F] prompt NOT shown — spawned VTOL %.1f m away (need <= %.1f); roof AV horiz=%.1f m "
+              .. "(need <= %.1f), vert=%.1f m (need <= %.1f). Stand at the roof AV and set radiusXY just "
+              .. "above horiz, zTol just above vert.")
+             :format(d1, r1, dXY, rXY, dZ, zT))
       end
       if inRange then
         st.escapeReady = true
@@ -648,13 +692,18 @@ function M.tick(now, dt)
     end
 
   elseif st.stage == "escape" then
-    -- v1.62: reach the level's roof AV (roofHeli) via the horizontal footprint + vertical tolerance,
-    -- same as the finale path (the opt-in spawned VTOL is retired).
+    -- v1.63: EITHER exit ends it, same pair as the finale path — our spawned VTOL (3-D sphere around
+    -- M.cfg.heliPos, the position captured in the overlay) or the level's roof AV (horizontal footprint
+    -- + vertical tolerance). The VTOL leg is skipped when no heliPos was captured.
+    local d1 = (M.bound.distToPlayer and M.cfg.heliPos) and M.bound.distToPlayer(M.cfg.heliPos) or 1e9
     local rh = M.yori and M.yori.roofHeli or {}
     local dXY, dZ = 1e9, 1e9
     if M.bound.distToPlayerXY and rh.pos then dXY, dZ = M.bound.distToPlayerXY(rh.pos)
     elseif M.bound.distToPlayer and rh.pos then dXY = M.bound.distToPlayer(rh.pos); dZ = 0 end
-    if dXY <= (rh.radiusXY or M.cfg.reachRadius or 6.0) and dZ <= (rh.zTol or 14.0) then st.stage = "cut" end
+    if d1 <= (M.cfg.reachRadius or 6.0)
+       or (dXY <= (rh.radiusXY or M.cfg.reachRadius or 6.0) and dZ <= (rh.zTol or 14.0)) then
+      st.stage = "cut"
+    end
 
   elseif st.stage == "cut" then
     if not st.firedFade then

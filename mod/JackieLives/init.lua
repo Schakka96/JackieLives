@@ -1564,6 +1564,23 @@ local function setupInteractHook()
   local ok = pcall(function()
     Observe("PlayerPuppet", "OnAction", function(self, action, consumer)
       local name = actionName(action)
+      -- ⚠️ v1.63a — THE BLAZE ESCAPE [F] OUTRANKS AN OPEN CHOICE MENU. This check MUST stay above the
+      -- `Branch.open` block below, which `return`s unconditionally: with a conversation open, F is
+      -- handed to the picker and Blaze.tryEscapePress is NEVER reached. So if V had a Jackie exchange
+      -- open when they walked up to the AV, the "[F]: Get in the AV" prompt was on screen and pressing
+      -- F just picked a dialogue line — no way to leave except answering the conversation first.
+      -- (Pre-existing since v0.41, not caused by the v1.63 native picker — but the escape is the one
+      -- moment where losing F is unrecoverable-feeling, so it wins.) Narrow by construction:
+      -- escapePromptActive() is only true in the escape stage with V already in reach.
+      if JL.mode == "blaze" and INTERACT_ACTIONS[name] and actionJustPressed(action) then
+        local esc = false
+        pcall(function() esc = Blaze.escapePromptActive and Blaze.escapePromptActive() end)
+        if esc then
+          local consumed = false
+          pcall(function() consumed = Blaze.tryEscapePress and Blaze.tryEscapePress() end)
+          if consumed then return end
+        end
+      end
       -- While a choice menu is open: hand the action to the native picker (v1.63). DialogUI owns
       -- the highlight, the debounce and the both-edges handling now (dialogui.lua, INPUT section) —
       -- it keeps the v0.41 finding that navigation arrives PRESSED on the first choice layer but
@@ -7655,6 +7672,12 @@ registerForEvent("onInit", function()
             choiceBox.shown, choiceBox.lastPush = true, JL.clock or 0
           end
         end)
+      end,
+      -- v1.63a: end any open Jackie conversation. Called by Blaze.tryEscapePress, because the escape
+      -- [F] can now fire WHILE a choice menu is up (see the OnAction hook) and that menu must not
+      -- survive into the fade — an open picker nothing is listening to still eats the player's input.
+      closeDialogue = function()
+        pcall(function() if Branch and Branch.open and Branch.finish then Branch.finish() end end)
       end,
       hidePrompt = function()
         pcall(function()
