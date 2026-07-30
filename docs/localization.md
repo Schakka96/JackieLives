@@ -24,9 +24,20 @@ That's the supported path, and it needs no font install. (This is why "does my P
 have Japanese fonts installed" doesn't matter — the game uses its own bundled
 fonts, not Windows'.)
 
-**2. V's choice box + this mod's settings menu — CET's font.** These are drawn by
-Cyber Engine Tweaks, whose built-in font is Latin-only, so they stay boxes `□□□`
-for CJK/Cyrillic **even when the game is in Japanese**. One-time fix:
+**2. V's choice box — the GAME's font too, since v1.63.** ✅ **Nothing to do.**
+
+Up to v1.62 the choice box was drawn by Cyber Engine Tweaks, whose built-in font
+is Latin-only, so translated replies stayed boxes `□□□` for CJK/Cyrillic even when
+the game was in Japanese — and the only fix was for the player to install a Noto
+font into CET by hand. v1.63 replaced that hand-drawn box with the game's **native
+dialogue widget** (`dialogui.lua`), which uses the game's own fonts exactly like
+the subtitles do. So point 1 above is now the *whole* story: set your game's
+language, leave the mod on Auto, done.
+
+**3. This mod's CET settings window — still CET's font.** The debug/tuning window
+(overlay open) is ImGui and remains Latin-only. It's a maintainer tool, not player
+text, and none of the story runs through it. If you want it legible in CJK/Cyrillic
+anyway, that's a global CET setting, not something a mod can set for you:
 
 1. Download a font with full coverage — **Noto Sans CJK** (JA/ZH) or **Noto Sans**
    (Cyrillic), OFL-licensed and free. A `.ttf`/`.otf`.
@@ -34,14 +45,6 @@ for CJK/Cyrillic **even when the game is in Japanese**. One-time fix:
 3. In `bin\x64\plugins\cyber_engine_tweaks\cyber_engine_tweaks.json`, set the
    `"font"` block's `"path"` to the filename and `"glyph_ranges"` to your script
    (`"Japanese"`, `"ChineseFull"`, `"Cyrillic"`). Restart the game.
-
-This is a global CET setting (fixes the choice box for *every* CET mod), not
-something a mod can set for you. If you skip it, the subtitles still carry the
-whole story — only the reply-picker labels are affected.
-
-> **The proper fix for the choice box** (no font install) is to render V's replies
-> through the game's *native* dialogue box instead of CET's — then they use the
-> game font like the subtitles. That's a planned change; see TODO.
 
 ## For maintainers
 
@@ -59,13 +62,19 @@ flows through:
 |---|-----------|------|--------|
 | 1 | `showSubtitle` | init.lua | every spoken line (subtitle band) |
 | 2 | `showOnscreenMsg` | init.lua | every notice banner |
-| 3 | `drawChoiceRows` / picker title | init.lua | V's dialogue choices |
+| 3 | `T()` / `buildHub` title | dialogui.lua | V's dialogue choices + the speaker plate |
 | 4 | `buildJackieHub` / `Blaze.showPrompt` | init.lua | the native `[F]` prompt label |
 | 5 | `onscreen` / `showTip` | retrieval.lua | questline popups & the welcome card |
 
 Because everything reaches the screen through those, `config.lua`, `blaze.lua`
 and `session.lua` needed no edits. `Lang` is a **global** (like `Retrieval` /
-`Blaze` / `Session`) so it costs no top-level local in init.lua's 200-local chunk.
+`Blaze` / `Session` / `DialogUI`) so it costs no top-level local in init.lua's
+200-local chunk.
+
+⚠️ Chokepoint 3 moved out of init.lua in v1.63 (ImGui picker → native dialogue
+widget). `dialogui.lua` calls `Lang.t` through its own local `T()` helper at build
+time — once per choice when the box opens, rather than once per row per frame as
+the old ImGui path did.
 
 Language is chosen in `onInit` *after* `jlLoadSettings`, so an explicit player
 pick (persisted as `lang=` in `jl_settings.txt`) beats autodetect. `"auto"` reads

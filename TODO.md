@@ -11,6 +11,156 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🆕 v1.63 (2026-07-30) — THE NATIVE DIALOGUE PICKER — the ImGui choice box is gone
+
+**All Mac-side (Lua + LuaJIT parse-checked, `mod/` + `staging/` in sync). Awaiting Windows in-game test.**
+
+### The change
+
+V's dialogue choices are now drawn by **the game's own dialogue widget** (`dialogWidgetGameController`) —
+the exact one every vanilla conversation uses. New module **`mod/JackieLives/dialogui.lua`** (global
+`DialogUI`, 200-cap safe like `Retrieval`/`Blaze`/`Session`/`Lang`).
+
+**Deleted** (git history is the archive): `drawDialogueBox`, `drawChoiceRows`, `drawNameChild`,
+`pickerWindowFlags`, the hand-matched `COL` palette, the three style variants, `JL.ui.pickerStyle` /
+`pickerScale`, `CYCLE_UP_ACTIONS` / `CYCLE_DOWN_ACTIONS` (moved into `dialogui.lua`), and the whole
+`Config.picker` geometry block. Two top-level locals freed in `init.lua`.
+
+### Why the previous forty versions of this failed
+
+There are **two** unrelated "choice hub" structs and v0.16/v0.17 picked the wrong one:
+
+| struct | what it draws | how it's driven |
+|---|---|---|
+| `InteractionChoiceHubData` | the small world prompt `[F] Talk` | write the `UIInteractions.InteractionChoiceHub` blackboard field |
+| `ListChoiceHubData` in a `DialogChoiceHubs` | **the dialogue list** | **call methods on the live controller — a blackboard write does nothing** |
+
+Our `[F] Talk` prompt and `Blaze.showPrompt` use the first one and are **correct + untouched**. The picker
+needed the second, and it is not blackboard-driven, which is why every attempt at "push it to the
+blackboard like the prompt" produced silence.
+
+Three conditions must ALL hold or nothing renders (decompiled `interactionUIBase.script:52-61`,
+`dialogUI.script:63-99`): the controller holds our data, `m_AreDialogsOpen` is true (else the whole root
+is `SetVisible(false)`), and `ActiveChoiceHubID` == our hub id (else no selection highlight).
+
+### What's better than the community reference (Nexus article 413 / QuestRunner)
+
+1. **Controller capture is exact.** `InteractionUIBase` is abstract with several subclasses; observing
+   `OnInitialize` on the *base* can capture the looting or interaction controller instead, whose
+   `UpdateDialogsData` is the base no-op — almost certainly the real cause of the reference's "press Esc
+   twice after a reload" wart. We only capture from methods **declared on `dialogWidgetGameController`**,
+   and `OnInteractionsChanged` fires there every time our own `[F] Talk` prompt updates — so the
+   controller is captured long before V can press F.
+2. **The protected field name is resolved, not assumed.** `m_AreDialogsOpen` vs `AreDialogsOpen` has
+   moved between CET builds, and getting it wrong means an invisible box with **no error**. We probe both,
+   log which won, and fall back to driving the base `OnDialogsData` handler if neither reads back.
+3. **Real dialogue wins.** If the game opens an actual conversation while our box is up, we stand down and
+   end the beat (`onPreempt` → `Branch.finish`) instead of fighting it for the widget.
+4. **No invisible menu.** If the widget can't be driven we retry for ~2 s, then end the conversation
+   cleanly — never leave a menu the player can't see but that still eats their input.
+
+### Bonus: this closes the localization caveat
+
+The ImGui box used **CET's** font, which is Latin-only, so JA/RU/ZH choices rendered as `□□□` and the only
+fix was asking players to hand-install a Noto font. The native widget uses the **game's** fonts. Point 2 of
+`docs/localization.md` went from "here's a 3-step font install" to "nothing to do" — and `TODO`'s own note
+that "the proper fix is to render through the native dialogue box" is now **done**.
+
+### Free, because the game does it
+
+Speaker plate (the widget upper-cases the title and frames it — the native original of the red "JACKIE"
+box we were painting by hand), cyan/gold row colours, the selection bar, fade + selection animations,
+correct placement and scale at **every** resolution and aspect ratio (v1.42/v1.47/v1.51 were all
+re-tunings of numbers that no longer exist), and hiding itself behind the pause menu.
+
+`final = true` choices now map to `gameinteractionsChoiceType.QuestImportant` — the game's real gold
+"point of no return" styling, which is what `COL.barDim` was imitating.
+
+### Still ours (the widget is draw-only)
+
+It reports nothing back — no click, no callback, no index. Navigation and confirm stay in
+`PlayerPuppet:OnAction`, forwarded to `DialogUI.onAction`; we publish the row to
+`UIInteractions.SelectedIndex` each frame. v0.41's hard-won finding (arrows arrive `BUTTON_PRESSED` on
+the first choice layer but only `BUTTON_RELEASED` on deeper ones) carried over verbatim — both edges
+accepted, debounced to one move per 0.12 s.
+
+### New knob
+
+`Config.dialogue.pickerNoCombat` (default **false**) — apply `GameplayRestriction.NoCombat` while the
+picker is up so V can't shoot mid-sentence. Off by default because it's a real gameplay change the ImGui
+box never made.
+
+### ⚠️ What to watch for in the Windows test
+
+1. **The box appears at all**, with the "JACKIE" plate, on the first `[F]` talk.
+2. Read the console for `[DialogUI] init: captures=3/3 overrides=4/4`. Anything less than `4/4` means a
+   guard didn't register and the heartbeat re-push auto-enabled — the box may visibly pulse once a second.
+3. `[DialogUI] controller fields resolved: open=...` — tells us which spelling this CET build uses. If it
+   says `open=nil` we're on the fallback path; still expected to work, worth reporting.
+4. Arrows/mouse-wheel move the highlight, F selects, one step per tap (no double-jumps).
+5. Start a chat, then trigger a real quest scene — ours should stand down, not fight it.
+
+### Problems & Resolutions (2026-07-30)
+
+1. 🐛 **Our own guards blocked our own push.** The overrides that stop the game from clobbering the hub
+   can't tell the game's push from ours. Without a `selfPush` re-entrancy flag around `pushHubs`, opening
+   a **new** node's choices while the box was already up got swallowed by our own override and the picker
+   silently kept showing the *previous* node's list. Caught in review, before the Windows test.
+2. **`hubPriority` is not a base-game field.** The reference sets it unconditionally; the decompiled
+   `ListChoiceHubData` has no such member — Codeware adds it (`Base/Addons/ListChoiceHubData.reds`). It's
+   `pcall`ed, so a player without Codeware just doesn't get it.
+3. **A leading `[` in a choice would be eaten.** With no caption parts, the widget parses `"[Tag] text"`
+   out of `localizedName` into a caption tag (`dialogUI.script:311-318`). Guarded with a leading space.
+4. **The research shortcut that mattered:** `rfuzzo/cyberpunk-nexus-script-dump` on GitHub holds the
+   decompiled Lua of ~every published CET mod. `gh search code` over it answers "how does a shipped mod
+   actually do X" in seconds. Worth reaching for before any more UI archaeology.
+
+## 🆕 v1.62 (2026-07-27) — main-quest GRACE PERIOD · pause walk-off on conversation · face V on F · retire the spawned VTOL
+
+**All Mac-side (Lua parse-checked, `mod/` + `staging/` in sync). Awaiting Windows in-game test.**
+
+### 1. Main-quest grace period + warning convo (Antonia's #1 ask) — `Config.mainExitGrace`
+**Problem:** finishing a side job makes the game AUTO-TRACK a main quest again, so Jackie would instantly
+excuse himself — abrupt and annoying. **Fix:** instead of leaving the moment a main quest goes active, he
+now **WARNS and waits** `seconds` (default **60 s real**). Drop the big fish inside that window (track a
+side job again / the main quest clears) and he **STAYS** with a reassurance line; stay on it and he leaves
+when the timer runs out.
+- New global **`jlMainExitTick()`** (init.lua, no top-level local — 200-cap safe) replaces the old
+  fire-once auto-leave block in `onUpdate`. Same guards (not blaze / not dinner / not already walking off).
+- **Debounce (`armDelay`, 2 s):** the auto-track often fires for a frame then gets replaced — he only
+  warns after the main quest is *continuously* active that long, so a transient blip never barks.
+- **Cutscene still ejects immediately** (`immediateOnCutscene`) — no countdown through a cinematic.
+- **Reminder** at `remindAt` (15 s left) + an on-screen `warnBanner`. All lines are **text-first**
+  (VO-optional; add `*Sfx` clips later and audio+subtitle sync). Set `enabled=false` to restore the old
+  leave-at-once behaviour.
+
+### 2. Pause the walk-off the moment V starts a conversation (was: only at the dinner picker) — Antonia's #5
+It's rude to keep walking away while V is talking. Opening a conversation (F) on a walking-off Jackie now
+**freezes his retreat immediately** and turns him to face V; `Branch.finish` **resumes** it if V didn't
+pick dinner (a dinner accept/invite already cancels it for good via `jlAbortDeparture`). New
+`JL.leaving.paused` gates `leavingTick`; a safety auto-resumes if the box closes without `Branch.finish`.
+
+### 3. Jackie faces V on F — new global `jlFaceV()`
+A **standing companion** turns his whole body to look at V when a face-to-face conversation opens (reuses
+`placeAtExact`+`yawToward`). **Skips** seated / venue-idle / mid-arrival Jackie — a teleport-in-place would
+eject him from a sit workspot; `jlLookAtTick`'s head-tracking already covers those.
+
+### 4. Retire the spawned VTOL — use the level's own roof AV as the exit (Antonia's #2) — RESOLVES two open items
+"There's a helicopter in the level by default — we just use its position to mark the exit point." So the
+opt-in `heliRecord`/`heliPos` spawn is **gone** (spawn calls, `hasRecords`/`hasPositions` requirement, both
+tick machines). The exit is now **`M.yori.roofHeli`** with a proper **HORIZONTAL (X/Y) footprint + vertical
+tolerance** (new `M.bound.distToPlayerXY` binding) — the fix the v1.49 diagnosis called for, since a 3-D
+sphere leaked the AV-origin height and the `[F]` never fired.
+- ✅ Resolves the two "📌 Open / carried forward" heli items (deliberately-unreachable prompt; latent `d1`).
+- [ ] **NEEDS ONE IN-GAME TUNING PASS:** set `M.yori.roofHeli.escapeDebug = true`, walk V to the roof AV,
+  read the `roof AV: horiz=X vert=Z` log line, then set `radiusXY` just above `horiz` and `zTol` just above
+  `vert`. Defaults (4 m / 14 m) are a first guess.
+- Vestigial (left in place, harmless): the cfg `heliRecord`/`heliPos` fields + the "grab heli record"
+  overlay button — unused now; remove later if desired.
+
+⚠️ **blaze.lua note:** edited the finale file. Git was clean at edit time (no concurrent session in flight),
+but confirm no other session is mid-edit before committing, and stage paths explicitly.
+
 ## 🆕 v1.60 (2026-07-23) — LOCALIZATION: the mod's text now translates (Japanese shipping; 9 languages scaffolded)
 
 **Goal:** run every authored line — subtitles, notice banners, dialogue choices, questline cards, the
@@ -44,11 +194,11 @@ The shard text V reads at the hideout is retrieval.lua's on-screen `showTip` pop
 with ad-hoc key names. Fixed: `concatT` translates each note line individually, and lang_extract.py now
 harvests retrieval.lua's keys + bare prose array elements. All shard/quest text is JA + ES now.
 
-### ⚠️ Known limit — the CET choice box font (documented in `docs/localization.md`)
-Subtitles, banners and the shard use the GAME's fonts → every language renders. V's **dialogue choices**
+### ✅ ~~Known limit — the CET choice box font~~ — RESOLVED in v1.63
+~~Subtitles, banners and the shard use the GAME's fonts → every language renders. V's **dialogue choices**
 are drawn by CET, whose default font is Latin-only → JA/RU/ZH choices show as boxes until the player
-points CET at a CJK/Cyrillic font (one global `cyber_engine_tweaks.json` setting; fixes all CET mods).
-Left English by design; subtitles carry the whole story regardless.
+points CET at a CJK/Cyrillic font.~~ v1.63 moved the choices to the **native dialogue widget**, which uses
+the game's fonts — no font install, no caveat. See v1.63 above and `docs/localization.md`.
 
 ### Shard (Japanese) — needs the WolvenKit step (NOT on the Lua path)
 `mod/JackieLives_shards/localization/jl_shards.ja-jp.json` is authored + ready. Importing it as the
@@ -544,15 +694,18 @@ silent-success bug (`ApplyStatusEffect` does not raise on an unknown TweakDBID).
 
 ### 📌 Open / carried forward
 
-- [ ] 🎯 **The follower takedown is still unproven in-game.** `AIFollowerTakedownCommand` + `combatCommand=true`
-  (v1.48) has never been confirmed to fire. CET overlay (`~`) → **"Jackie Lives"** window → bottom →
-  **`TEST: Jackie takedown (look at)`**. Aim at an *unaware* enemy. `jlTakedownTick` logs which of three
-  outcomes you got. Until that passes, `Config.takedown.auto = false` and no automatic behaviour is built.
-- [ ] 🚁 **Heli `[F]` prompt is deliberately unreachable** (`roofHeli.radius = 2.0`). Antonia's call — see the
-  v1.51 note. When revisited, the fix is a horizontal X/Y check with a vertical tolerance, not a bigger sphere.
-- [ ] 🐛 **Latent:** `d1` is measured against `heli.pos` unconditionally, even when no VTOL spawned
-  (`M.cfg.heliRecord` unset), so standing within 5 m of that empty coordinate would offer a prompt for a
-  helicopter that isn't there. Off the balcony edge, so unlikely to bite.
+- [ ] 🎯🔼 **PRIORITY-BUMPED (Antonia 2026-07-27) — follower takedown: the distance is the problem.** In tests
+  it "didn't perform well," most likely because **Jackie is too far behind** when V sneaks up on an enemy — the
+  `AIFollowerTakedownCommand` can't reach. **Next step (for later):** when V lines up a stealth takedown and
+  Jackie is out of range, have him **sneak-sprint to the SECOND-closest enemy within ~20 m** and attempt the
+  takedown there. ⚠️ **Still unverified whether the takedown mechanism fires AT ALL once he arrives** — so the
+  first in-game task is still the `TEST: Jackie takedown (look at)` button (CET overlay → "Jackie Lives" →
+  bottom): aim at an *unaware* enemy, read `jlTakedownTick`'s three-outcome log. Only build the rush-to-2nd
+  behaviour once that confirms the grab works. `Config.takedown.auto` stays **false** until then.
+- [x] 🚁 **Heli `[F]` prompt / latent `d1` — RESOLVED v1.62.** The spawned VTOL is retired; the level's own roof
+  AV (`M.yori.roofHeli`) is the exit, reached via a HORIZONTAL X/Y footprint + vertical tolerance
+  (`M.bound.distToPlayerXY`) — exactly the fix noted here. `d1`-against-empty-`heli.pos` is gone with the
+  spawn path. ⏳ One in-game pass still needed to tune `radiusXY`/`zTol` (see the v1.62 entry at the top).
 - [ ] 🔊 Copyrighted audio stays out of the repo; users add Jackie's voice themselves (`HOW_TO_ADD_JACKIE_VOICES.txt`).
 
 ### 🆕 Added 2026-07-09 (v1.52) — 🔴 loading a save with Jackie: the crash AND the cross-save leak, one root cause

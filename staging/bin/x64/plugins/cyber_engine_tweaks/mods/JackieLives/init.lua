@@ -58,6 +58,8 @@ Blaze     = require("blaze")       -- v0.96 GLOBAL (200-cap): "Blaze of Glory" H
 Session   = require("session")     -- v1.52 GLOBAL (200-cap): session guard + crash log (see session.lua)
 pcall(function() package.loaded["lang"] = nil; package.loaded["translations"] = nil end)  -- like blaze: re-read on CET soft-reload so a language/text edit takes effect
 Lang      = require("lang")        -- v1.60 GLOBAL (200-cap): localization; Lang.t(s) at the text chokepoints (see lang.lua + translations.lua)
+pcall(function() package.loaded["dialogui"] = nil end)   -- re-read on CET soft-reload, like blaze/lang
+DialogUI  = require("dialogui")    -- v1.63 GLOBAL (200-cap): V's choices in the GAME's own dialogue widget (see dialogui.lua)
 -- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
 -- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
 -- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
@@ -122,7 +124,14 @@ local JL = {
   -- holocall arrival state machine: spawn far (passive) -> walk in -> hand off to companion.
   arrival = { at = nil, phase = nil, pt = nil, placeAt = nil, moveAt = nil, deadline = nil, lastReissue = 0 },
   -- v0.33 "send Jackie off": drop follower role -> walk away -> despawn once far enough.
-  leaving = { phase = nil, deadline = nil, lastReissue = 0 },
+  -- v1.62 paused: talking to him mid-walk-off halts the retreat (leavingTick skips re-issuing) until
+  -- the conversation resolves — resume() clears it, dinner/accept leaves it cleared for good.
+  leaving = { phase = nil, deadline = nil, lastReissue = 0, paused = false },
+  -- v1.62 main-quest GRACE: when a main quest goes active he WARNS and waits Config.mainExitGrace.seconds
+  -- instead of leaving at once; if V drops it he stays. activeSince = when main FIRST went active this
+  -- episode (debounces a transient auto-track before we warn); until_ = real-clock leave deadline;
+  -- warned/reminded gate the one-shot beats.
+  mainExit = { activeSince = nil, until_ = nil, warned = false, reminded = false },
   -- v0.53 catch-his-eye smile: until_=hold-smile deadline; nextRoll=next gaze roll; nextApply=re-assert
   -- facial; cooldownUntil=earliest next smile; handle=who's smiling (to reset the right face).
   smile  = { until_ = 0, nextRoll = 0, nextApply = 0, cooldownUntil = 0, handle = nil,
@@ -1506,25 +1515,10 @@ local INTERACT_ACTIONS = {
   ["click"] = false,                      -- (placeholder; mouse, ignore)
 }
 
--- v0.33: move the highlighted choice with the ARROW keys (no CET binding needed). The exact
--- action CName the arrows fire under varies by build, so we accept several candidates and also
--- log unknown names while the box is open (Config.dialogue.cycleDebug) to confirm/extend these.
--- NOTE: arrow keys must emit a game input action on this build for this to fire; the bound
--- "Jackie dialogue: next choice" input remains as a guaranteed fallback either way.
--- v0.41: names CONFIRMED in-game on this build (deeper-layer release burst): up_button, popup_moveUp,
--- popup_navigate_up, navigate_up (+ UI_MoveUp). Kept the older speculative candidates too — harmless.
-local CYCLE_UP_ACTIONS = {
-  ["UI_MoveUp"] = true, ["up_button"] = true, ["popup_moveUp"] = true,
-  ["popup_navigate_up"] = true, ["navigate_up"] = true,
-  ["MoveUp"] = true, ["up"] = true, ["UI_Up"] = true,
-  ["menu_up"] = true, ["ChoiceScrollUp"] = true, ["NavigateUp"] = true, ["IK_Up"] = true,
-}
-local CYCLE_DOWN_ACTIONS = {
-  ["UI_MoveDown"] = true, ["down_button"] = true, ["popup_moveDown"] = true,
-  ["popup_navigate_down"] = true, ["navigate_down"] = true,
-  ["MoveDown"] = true, ["down"] = true, ["UI_Down"] = true,
-  ["menu_down"] = true, ["ChoiceScrollDown"] = true, ["NavigateDown"] = true, ["IK_Down"] = true,
-}
+-- (v1.63: the CYCLE_UP_ACTIONS / CYCLE_DOWN_ACTIONS tables that used to sit here moved into
+--  dialogui.lua's INPUT section along with the rest of the picker's navigation — v0.41's
+--  hard-won list of the action names this build actually emits went with them verbatim. Two
+--  fewer top-level locals here, which the 200-cap appreciates.)
 
 local function actionName(action)
   local n = "?"
@@ -1570,33 +1564,21 @@ local function setupInteractHook()
   local ok = pcall(function()
     Observe("PlayerPuppet", "OnAction", function(self, action, consumer)
       local name = actionName(action)
-      -- While a choice menu is open: route navigation + selection.
+      -- While a choice menu is open: hand the action to the native picker (v1.63). DialogUI owns
+      -- the highlight, the debounce and the both-edges handling now (dialogui.lua, INPUT section) —
+      -- it keeps the v0.41 finding that navigation arrives PRESSED on the first choice layer but
+      -- only RELEASED on deeper ones, so both edges are accepted and debounced.
       if Branch.open then
-        -- v0.40 DEBUG: log EVERY action while the box is open (name + type + value), BEFORE the
-        -- just-pressed gate, so arrows that arrive as an AXIS on deeper layers are visible too
-        -- (the old log sat behind that gate and hid them). Turn cycleDebug off once locked.
+        -- v0.40 DEBUG: log EVERY action while the box is open (name + type + value) so an arrow that
+        -- arrives as an AXIS on some layer is still visible. Turn cycleDebug off once locked.
         if Config.dialogue and Config.dialogue.cycleDebug then
           log(string.format("CYCLE action: %s  type=%s value=%s pressed=%s",
             tostring(name), tostring(actionType(action)), tostring(actionValue(action)),
             tostring(actionJustPressed(action))))
         end
-        -- v0.41: NAVIGATION fires on the RELEASED edge. On the first choice layer the arrows arrive as
-        -- BUTTON_PRESSED, but on DEEPER layers the dialog/popup input context delivers them ONLY as
-        -- BUTTON_RELEASED (confirmed: up_button/UI_MoveUp/popup_moveUp/popup_navigate_up/navigate_up all
-        -- arrive RELEASED, never just-pressed). RELEASE is the one edge present in EVERY context. A single
-        -- press emits several matching names in one frame, so debounce to one move per ~0.12 s (collapses
-        -- the same-frame burst; still lets distinct taps through).
-        if actionReleased(action) and (CYCLE_UP_ACTIONS[name] or CYCLE_DOWN_ACTIONS[name]) then
-          local now = JL.clock or 0
-          if (now - (JL.lastCycle or -999)) >= 0.12 then
-            JL.lastCycle = now
-            if CYCLE_UP_ACTIONS[name] then pcall(function() Branch.move(-1) end)  -- v0.42: UP = toward top row
-            else                           pcall(function() Branch.move(1)  end) end  -- DOWN = toward bottom row
-          end
-          return
-        end
-        -- SELECT stays on the press edge (F already works on every layer).
-        if actionJustPressed(action) and INTERACT_ACTIONS[name] then pcall(function() Branch.confirm() end) end
+        pcall(function()
+          DialogUI.onAction(name, actionJustPressed(action), actionReleased(action), JL.clock or 0)
+        end)
         return
       end
       if not actionJustPressed(action) then return end
@@ -2442,97 +2424,20 @@ end
 -- dinnerTick is defined further down (it needs sendMoveToPoint / aiTeleport
 -- / tryWorkspotPose / promoteToCompanion, all declared below this point).
 
--- v0.24: the choice menu is a CUSTOM ImGui box drawn during gameplay (overlay closed),
--- styled like the game's dialogue picker (docs/dialogue_picker_design.png): speaker name
--- on top, choices in a vertical column, the HIGHLIGHTED row in yellow. Navigation is OUR
--- cycle key + F - no native hub, so no side-by-side "F / R / 1" input prompts.
--- v0.26: picker styled toward the game's look (docs/dialogue_picker_design.png) -
--- BORDERLESS + TRANSPARENT (no title bar / collapse arrow / window bg), speaker name in a
--- red-framed box to the LEFT, choices stacked on the right. Three style variants so we can
--- compare what CET renders best (JL.ui.pickerStyle = 1/2/3, set by the testV1/2/3 buttons):
---   1: name = red-bordered child box ; selected row = translucent YELLOW HIGHLIGHT BAR
---   2: name = red-bordered child box ; selected row = bright YELLOW TEXT (no bar)
---   3: name = red "[ JACKIE ]" text  ; selected row = translucent YELLOW HIGHLIGHT BAR
-local dlgBoxWarned = false
-
--- Exact colors Antonia pulled from the game (RGBA 0-1):
-local COL = {
-  unsel = { 0.451, 0.937, 0.941, 1.0 },  -- #73eff0  unselected choice text
-  selTx = { 0.302, 0.082, 0.020, 1.0 },  -- #4d1505  selected text (dark, sits on the yellow bar)
-  bar   = { 0.973, 0.859, 0.294, 1.0 },  -- #f8db4b  solid selection bar
-  frame = { 0.453, 0.227, 0.224, 1.0 },  -- #743a39  red name-box frame
-  -- v1.54: muted gold for a `final` (irreversible) choice that is NOT under the cursor. The game marks
-  -- point-of-no-return options with a yellow plate; we keep the plate on such a row at all times, dim
-  -- when unhighlighted and full-brightness (COL.bar) once the cursor lands on it. Dark selTx text stays
-  -- legible on both shades, so a final row reads as "this one ends things" before you ever select it.
-  barDim = { 0.663, 0.586, 0.200, 1.0 },
-}
-
--- defensive flag builder: sum only the flags that actually exist on this CET build.
--- NOTE: AlwaysAutoResize is intentionally OMITTED - combined with Selectable it caused the
--- highlight bar to grow wider every frame. We set an explicit window size instead.
-local function pickerWindowFlags()
-  local f = 0
-  for _, n in ipairs({ "NoTitleBar", "NoResize", "NoMove", "NoCollapse", "NoScrollbar",
-                       "NoSavedSettings", "NoNav", "NoFocusOnAppearing", "NoMouseInputs",
-                       "NoBackground" }) do
-    local v = ImGuiWindowFlags[n]
-    if type(v) == "number" then f = f + v end
-  end
-  return f
-end
-
--- v1.42: the picker scales with the display, so the name plate has to scale with it too — otherwise a
--- 4K box gets a 1080p-sized "JACKIE" tag rattling around in the corner of it. drawDialogueBox stashes
--- the live scale on JL.ui.pickerScale just before it calls us.
-local function drawNameChild(name)
-  local P = Config.picker or {}
-  local s = JL.ui.pickerScale or 1.0
-  ImGui.PushStyleColor(ImGuiCol.Border, COL.frame[1], COL.frame[2], COL.frame[3], 1.0)
-  ImGui.PushStyleVar(ImGuiStyleVar.ChildBorderSize, 1.0)   -- thin frame
-  ImGui.BeginChild("##jkname", (P.nameW or 128.0) * s, (P.nameH or 34.0) * s, true)
-  ImGui.PushStyleColor(ImGuiCol.Text, 0.80, 0.32, 0.30, 1.0)
-  ImGui.Text(" " .. tostring(name or "JACKIE"):upper())
-  ImGui.PopStyleColor(1)
-  ImGui.EndChild()
-  ImGui.PopStyleVar(1)
-  ImGui.PopStyleColor(1)
-end
-
-local function drawChoiceRows(style)
-  ImGui.BeginGroup()
-  if style == 2 then
-    -- selected = recolored text (no bar); for comparison.
-    -- v1.54: no plate exists in this style, so a `final` row is marked by tinting its TEXT gold instead —
-    -- otherwise the irreversible option would look identical to a safe one here.
-    for i, c in ipairs(menu.choices) do
-      local col = (i == menu.sel) and COL.bar or (c.final and COL.barDim) or COL.unsel
-      ImGui.PushStyleColor(ImGuiCol.Text, col[1], col[2], col[3], 1.0)
-      ImGui.Text(tostring(Lang.t(c.text) or ""))
-      ImGui.PopStyleColor(1)
-    end
-  else
-    -- styles 1 & 3: SOLID yellow bar behind the selected row, sized to the TEXT width
-    -- (explicit Selectable size -> no more growing bar).
-    -- v1.54: the bar colour is now pushed PER ROW, not once for the whole list, because a `final`
-    -- (irreversible) choice keeps its plate even when the cursor is elsewhere — just in the dimmer gold.
-    for i, c in ipairs(menu.choices) do
-      local label = " " .. tostring(Lang.t(c.text) or "") .. " "
-      local tw    = ImGui.CalcTextSize(label)            -- reflects the window font scale (set in Begin)
-      local isSel = (i == menu.sel)
-      local plate = isSel or (c.final == true)           -- does this row get a yellow plate at all?
-      local bar   = (isSel and COL.bar) or COL.barDim    -- cursor row = bright; a dim final row = muted gold
-      local col   = plate and COL.selTx or COL.unsel     -- dark text on a plate, cyan without one
-      ImGui.PushStyleColor(ImGuiCol.Header,        bar[1], bar[2], bar[3], 1.0)
-      ImGui.PushStyleColor(ImGuiCol.HeaderHovered, bar[1], bar[2], bar[3], 1.0)
-      ImGui.PushStyleColor(ImGuiCol.HeaderActive,  bar[1], bar[2], bar[3], 1.0)
-      ImGui.PushStyleColor(ImGuiCol.Text, col[1], col[2], col[3], 1.0)
-      ImGui.Selectable(label, plate, 0, tw, 0)           -- width = text width -> bar fits the text
-      ImGui.PopStyleColor(4)
-    end
-  end
-  ImGui.EndGroup()
-end
+-- v1.63: THE PICKER IS NATIVE NOW. Everything that used to live here — the hand-matched COL
+-- palette, pickerWindowFlags(), drawNameChild(), drawChoiceRows() and the three style variants —
+-- was an ImGui imitation of the game's dialogue box. It is all gone; V's choices are rendered by
+-- the game's own dialogue widget instead, driven from dialogui.lua (global `DialogUI`).
+--
+-- What that buys us, beyond it finally looking right:
+--   * the speaker plate, the cyan/gold row colours, the selection bar and the fade animations are
+--     the REAL ones, not approximations that drifted at every aspect ratio;
+--   * it draws in the GAME's font, so the Japanese / Russian / Chinese translations render properly
+--     (the ImGui box was Latin-only — that was the caveat documented in lang.lua);
+--   * Config.picker's whole geometry block (topFrac / baseW / baseH / min-maxScale / xOffset) is
+--     obsolete: the game positions and scales its own widget.
+-- The `menu` table survives as the CHOICE MODEL (menu.choices / menu.sel / menu.title) that Branch.*
+-- works against; only the drawing moved.
 
 -- v0.33e: true while any game menu is up (pause/ESC, map, inventory...). UI_System.IsInMenu
 -- is the game's own blackboard flag, so this catches them all without per-menu hooks.
@@ -2607,61 +2512,11 @@ function drawBlazeFade()
   end)
 end
 
-local function drawDialogueBox()
-  if not menu.shown or not menu.choices then return end
-  -- v0.33e: don't draw over the pause/ESC menu (sit behind it); fully close if we've left to the
-  -- main menu (no player), so a dangling picker can't survive the session. (closeChoiceMenu is
-  -- defined below this fn, so reset inline.)
-  if not Game.GetPlayer() then
-    menu.shown, menu.choices, Branch.open, Branch.busy = false, nil, false, false
-    return
-  end
-  if uiInMenu() then return end
-  local style = JL.ui.pickerStyle or 1
-  local ok, err = pcall(function()
-    -- v1.42: TRUE-centre horizontally + sit in the lower fifth, at ANY resolution. See Config.picker.
-    local P = Config.picker or {}
-    local sw, sh = 1920.0, 1080.0
-    pcall(function() local x, y = ImGui.GetDisplaySize(); if x and x > 0 and y and y > 0 then sw, sh = x, y end end)
-
-    -- Uniform scale off the screen HEIGHT (not width): width varies wildly with ultrawides/21:9, height
-    -- is what actually tracks "how big is a pixel here". Clamped so extremes stay usable.
-    local s = math.max(P.minScale or 0.8, math.min(P.maxScale or 3.0, sh / (P.refH or 1080.0)))
-    JL.ui.pickerScale = s                                  -- drawNameChild reads this
-    local W, H = (P.baseW or 620.0) * s, (P.baseH or 240.0) * s
-
-    local px = (sw - W) * 0.5 + (P.xOffset or 0.0) * s     -- genuinely centred (the old -150 nudge is gone)
-    -- TOP EDGE of the box at `topFrac` of screen height, measured DOWN FROM THE TOP.
-    -- v1.51: was 0.36, which parked the box just ABOVE the middle of the screen (Antonia: "now it's VERY
-    -- high"). The "36%" she asked for was 36% measured UP FROM THE BOTTOM — i.e. topFrac = 1 - 0.36 = 0.64.
-    -- The box is baseH/refH ≈ 22% of screen height, so it now spans 64%..86%: squarely in the lower half and
-    -- still clear of the native subtitle band at the very bottom, which the old lower-fifth placement hit.
-    -- `bottomMargin` stays a safety clamp for extreme aspect ratios / scale clamps; at 0.64 it doesn't bind.
-    -- Both are fractions of the screen, so this holds identically at any resolution.
-    local py = (P.topFrac or 0.64) * sh
-    py = math.min(py, sh - H - (P.bottomMargin or 0.02) * sh)
-    py = math.max(py, 0.0)
-
-    ImGui.SetNextWindowPos(px, py, ImGuiCond.Always)
-    ImGui.SetNextWindowSize(W, H, ImGuiCond.Always)       -- fixed (transparent) -> stable layout
-    ImGui.Begin("##jkpicker", pickerWindowFlags())
-    ImGui.SetWindowFontScale((P.baseFont or 1.45) * s)
-    if style == 3 then
-      ImGui.PushStyleColor(ImGuiCol.Text, 0.80, 0.32, 0.30, 1.0)
-      ImGui.Text("[ " .. tostring(Lang.t(menu.title) or "JACKIE"):upper() .. " ]")
-      ImGui.PopStyleColor(1)
-    else
-      drawNameChild(Lang.t(menu.title))
-    end
-    ImGui.SameLine(0, 16)
-    drawChoiceRows(style)
-    ImGui.SetWindowFontScale(1.0)
-    ImGui.End()
-  end)
-  if not ok and not dlgBoxWarned then
-    log("PICKER draw FAILED (style " .. tostring(style) .. "): " .. tostring(err)); dlgBoxWarned = true
-  end
-end
+-- v1.63: drawDialogueBox() is gone with the rest of the ImGui picker — the native widget draws
+-- itself, so there is nothing to render from onDraw any more. Its two safety behaviours moved:
+--   * "close if we've left to the main menu"  -> DialogUI.tick()
+--   * "don't draw over the pause/ESC menu"    -> free; the game's own dialogWidgetGameController
+--     listens to UI_System.IsInMenu and hides itself (dialogUI.script:31, OnMenuVisibilityChange).
 
 -- v0.33: while Jackie is your COMPANION (following you), every face-to-face talk node also
 -- offers a "send him off" choice that walks him away + despawns him. Returns a FRESH list so
@@ -2769,12 +2624,31 @@ local function openChoiceMenu(choices, title)
     if #shown == 0 then shown = choices end   -- everything was spent -> last resort, show the raw list
   end
   menu.choices, menu.sel, menu.title = shown, 1, title or "Jackie"
+  -- v1.63: hand the resolved list to the GAME's dialogue widget (dialogui.lua). DialogUI owns the
+  -- highlight while it's up and calls Branch.confirm(idx) on select; `menu` stays the model Branch.*
+  -- reads. If the widget can't be driven for any reason we DON'T open a phantom menu that the player
+  -- can't see but that still swallows their input — we log and end the beat cleanly.
+  if not DialogUI.show(menu.title, shown, function(idx) menu.sel = idx; Branch.confirm(idx) end) then
+    menu.shown, menu.choices, Branch.open = false, nil, false
+    -- Almost always "the dialogue controller hasn't been captured yet", which resolves itself within
+    -- a frame or two. Re-arm openAt and try again for ~2 s rather than dropping the conversation on
+    -- the floor. Only if it never comes back do we end the beat — cleanly, and never by leaving an
+    -- INVISIBLE menu open that silently eats the player's movement and fire input.
+    bstate.pickerTries = (bstate.pickerTries or 0) + 1
+    if bstate.pickerTries <= 8 then bstate.openAt = (JL.clock or 0) + 0.25; return end
+    bstate.pickerTries = nil
+    log("Branch: NATIVE PICKER UNAVAILABLE after 8 tries — ending the conversation. See the [DialogUI] lines above.")
+    if Branch.finish then pcall(Branch.finish) end
+    return
+  end
+  bstate.pickerTries = nil
   menu.shown, Branch.open = true, true
-  log("Branch: menu open (" .. tostring(#shown) .. " choices). Cycle key=move, F=select.")
+  log("Branch: menu open (" .. tostring(#shown) .. " choices). Arrows/scroll=move, F=select.")
 end
 
 local function closeChoiceMenu()
   menu.shown, Branch.open, menu.choices = false, false, nil
+  pcall(DialogUI.hide)                          -- v1.63: take the native hub back down with it
 end
 
 -- Branch.finish (v0.80): the ONE authoritative "a conversation has ENDED" tool. Every path that ends a
@@ -2782,6 +2656,19 @@ end
 -- cleaned up together — no more per-branch bookkeeping. It's idempotent (safe to call twice) and is
 -- backed by subtitleWatchdogTick (onUpdate) as a guaranteed safety net for any path that still forgets.
 Branch.finish = function(reason)
+  -- v1.62: a conversation opened mid-walk-off PAUSED his retreat. If it's still paused now (V didn't pick
+  -- dinner — a dinner accept/invite calls jlAbortDeparture, which clears leaving.phase, so this won't fire),
+  -- RESUME the walk-off: re-issue the retreat and let leavingTick carry him out as before.
+  if JL.leaving.phase == "walking" and JL.leaving.paused then
+    JL.leaving.paused = false
+    JL.leaving.lastReissue = 0        -- force leavingTick to re-issue the move on its next tick
+    local h = JL.summon.spawn and JL.summon.spawn.handle
+    if h then
+      local D = Config.dismiss or {}
+      pcall(function() jlRetreatFollow(h, D.movement or "Walk", (D.despawnDistance or 30.0) + 4.0) end)
+    end
+    log("Departure RESUMED — conversation ended without a dinner; Jackie carries on out.")
+  end
   closeChoiceMenu()                 -- close the ImGui choice picker + drop Branch.open
   Branch.open, Branch.busy = false, false
   pcall(hideJackieChoiceBox)        -- clear the native "[F] Talk" prompt
@@ -2789,6 +2676,7 @@ Branch.finish = function(reason)
   bstate.pending, bstate.pendingAt, bstate.pendingAction = nil, nil, nil
   bstate.tree, bstate.talkCooldownKey = nil, nil
   bstate.taken = nil                -- v1.54: drop the one-time-choice ledger with the conversation
+  bstate.pickerTries = nil          -- v1.63: reset the native-picker retry counter with it
   hideSubtitle()                    -- wipe the bottom band NOW (watchdog would catch it too)
   if reason then JL.ui.status = reason end
 end
@@ -2869,12 +2757,13 @@ Branch.confirm = function(idx)
   bstate.pendingAt     = (JL.clock or 0) + hold                -- wait out V's line before Jackie replies
 end
 
--- move the highlight (wraps); the ImGui box redraws every frame, so no push needed
+-- move the highlight (wraps). v1.63: DialogUI is the source of truth while the native box is up —
+-- it publishes the row to UIInteractions.SelectedIndex, which is what actually repaints the
+-- highlight — so delegate and mirror the result back onto menu.sel for anything still reading it.
 Branch.move = function(delta)
   if not Branch.open or not menu.choices then return end
-  local n = #menu.choices
-  if n == 0 then return end
-  menu.sel = ((menu.sel - 1 + delta) % n) + 1
+  if #menu.choices == 0 then return end
+  pcall(function() DialogUI.move(delta); menu.sel = DialogUI.index() end)
 end
 
 -- v0.32: pick the talk tree for WHERE JACKIE CURRENTLY IS. If he's idle-spawned at a named
@@ -2915,6 +2804,22 @@ Branch.kick = function()
   end
   -- remember which tree to mark DONE when it ends (cooldown'd trees only, and not while companion)
   bstate.talkCooldownKey = (cd and not JL.summon.active) and key or nil
+  -- v1.62: if he's mid-walk-off, PAUSE it the instant V opens the conversation (not later, at the dinner
+  -- pick) — halt him and turn to face V. Branch.finish resumes the walk-off unless a dinner cancels it.
+  if JL.leaving.phase == "walking" and not JL.leaving.paused then
+    JL.leaving.paused = true
+    JL.leaving.subClearAt = nil
+    pcall(hideSubtitle)                 -- drop the parting line; a fresh conversation is starting
+    pcall(jlFaceV)                      -- stop (placeAtExact cancels the retreat move) + look at V
+    log("Departure PAUSED — V opened a conversation mid-walk-off.")
+  elseif JL.summon.active and JL.summon.companionSet
+         and not JL.dinner.phase and not JL.summon.walkIn
+         and not (JL.arrival and JL.arrival.phase) and not (JL.varrival and JL.varrival.phase) then
+    -- Standing companion turns his whole body to face V when a face-to-face conversation opens.
+    -- (Skip the SEATED / venue-idle / mid-arrival Jackie — a placeAtExact would eject him from a sit
+    --  workspot or fight the walk-in; jlLookAtTick's head-tracking already covers those cases.)
+    pcall(jlFaceV)
+  end
   Branch.start(nil, tree)   -- the chosen talk tree, never a leftover call tree
   return true
 end
@@ -3979,6 +3884,7 @@ startLeaving = function(opts)
   local sp = JL.summon.spawn
   local h  = sp and sp.handle
   if not h then return end
+  JL.leaving.paused = false            -- v1.62: a fresh walk-off never inherits a stale conversation-pause
   local D = Config.dismiss or {}
   opts = jlVar(opts or {})   -- v1.2: Hermano swap for an explicit parting line (e.g. mainQuestExit's "...mamita.")
   -- 1) parting line (real VO + subtitle), like any Jackie line. Capture its duration so we can WIPE the
@@ -4010,6 +3916,17 @@ end
 -- and despawn him once he's >= despawnDistance from V (or the safety deadline passes).
 local function leavingTick()
   if JL.leaving.phase ~= "walking" then return end
+  -- v1.62: V opened a conversation mid-walk-off -> FREEZE the retreat (it's rude to keep walking away).
+  -- No re-issue and no despawn while paused; Branch.finish resumes (or dinner cancels it for good).
+  -- Safety net: if the choice box is no longer open (a close path that skipped Branch.finish), unpause so
+  -- he can't get stuck frozen forever — leavingTick then re-issues the retreat on this very tick.
+  if JL.leaving.paused then
+    -- Branch.busy covers the gap while Jackie speaks his opening line (open flips true only once the
+    -- choices appear); either being set means a conversation is still live, so stay frozen.
+    if Branch and (Branch.open or Branch.busy) then return end
+    JL.leaving.paused, JL.leaving.lastReissue = false, 0
+    log("Departure auto-resumed — conversation box closed without Branch.finish.")
+  end
   -- wipe the parting-line subtitle once it has had its time on screen (one-off line, no auto-hide).
   if JL.leaving.subClearAt and (JL.clock or 0) >= JL.leaving.subClearAt then
     JL.leaving.subClearAt = nil; pcall(hideSubtitle)
@@ -4066,7 +3983,8 @@ function jlAbortDeparture(graceHours, why)
     return false
   end
   JL.leaving.phase, JL.leaving.deadline, JL.leaving.lastReissue = nil, nil, nil
-  JL.leaving.subClearAt = nil
+  JL.leaving.subClearAt, JL.leaving.paused = nil, false   -- v1.62: drop any conversation-pause too
+  JL.mainExit.activeSince, JL.mainExit.until_, JL.mainExit.warned, JL.mainExit.reminded = nil, nil, false, false
   pcall(hideSubtitle)
   JL.summon.companionExpiresGame = nil                 -- force armCompanionTimer to mint a fresh deadline
   pcall(function() armCompanionTimer(graceHours) end)
@@ -4215,6 +4133,96 @@ end
 local function yawToward(from, to)
   if not from or not to then return 0.0 end
   return math.deg(math.atan2(to.y - from.y, to.x - from.x)) - 90.0
+end
+
+-- v1.62: rotate spawned Jackie IN PLACE to look at V (no move — same spot, new yaw). Used when a
+-- conversation opens (it's rude to keep facing away) and by the main-quest warning. GLOBAL (200-local
+-- cap) — captures the placeAtExact/yawToward/playerPos locals declared above.
+function jlFaceV(handle)
+  if not handle then
+    local sp = JL.summon and JL.summon.spawn
+    handle = sp and sp.handle
+  end
+  if not handle then return false end
+  local jp; pcall(function() jp = handle:GetWorldPosition() end)
+  local pp = playerPos()
+  if not (jp and pp) then return false end
+  return placeAtExact(handle, jp, yawToward(jp, pp))
+end
+
+-- v1.62: MAIN-QUEST GRACE. Called every tick while Jackie is an active, undismissed companion who
+-- isn't at dinner or already walking off (the caller guards those). Instead of bolting the instant a
+-- main quest goes active — which the game loves to auto-track the moment a side job ends — he WARNS and
+-- waits Config.mainExitGrace.seconds. Drop the big fish inside that window and he STAYS; stay on it and
+-- he leaves when the timer runs out. A cutscene still ejects him immediately. GLOBAL (200-local cap);
+-- jlInCutscene is itself global so its later definition is fine (name resolved at call time).
+function jlMainExitTick()
+  local G  = Config.mainExitGrace or {}
+  local me = JL.mainExit
+  -- v1.62: don't arm/warn/expire while V is mid-conversation with him — the countdown FREEZES until the
+  -- talk ends, so a grace timeout can't interrupt an open dialogue with a walk-off. (Branch.busy covers
+  -- the gap while he speaks; Branch.open once the choices are up.)
+  if Branch and (Branch.open or Branch.busy) then return end
+  local cut  = false; pcall(function() cut  = jlInCutscene()      end)
+  local main = false; pcall(function() main = isMainQuestActive() end)
+
+  local now = JL.clock or 0
+
+  -- Cutscene -> eject now (a cinematic is playing; no point counting down through it).
+  if cut and G.immediateOnCutscene ~= false then
+    me.activeSince, me.until_, me.warned, me.reminded = nil, nil, false, false
+    log("Main-exit: cutscene -> Jackie leaves immediately.")
+    pcall(function() startLeaving(Config.mainQuestExit) end)
+    return
+  end
+
+  -- Grace switched off -> restore the old v0.62 behaviour (leave the instant a main quest is active).
+  if not G.enabled then
+    if main then
+      log("Main quest -> Jackie excuses himself (grace disabled).")
+      pcall(function() startLeaving(Config.mainQuestExit) end)
+    end
+    return
+  end
+
+  if main then
+    -- Debounce: the game briefly auto-TRACKS a main quest the moment a side job ends. Wait armDelay
+    -- seconds of *continuous* main-quest tracking before we warn, so a transient auto-select that V
+    -- immediately replaces never triggers a bark.
+    if not me.activeSince then me.activeSince = now end
+    if not me.until_ then
+      if (now - me.activeSince) < (G.armDelay or 2.0) then return end   -- still debouncing
+      me.until_, me.warned, me.reminded = now + (G.seconds or 60.0), true, false
+      if G.faceVOnWarn ~= false then pcall(jlFaceV) end
+      pcall(function() speakJackieLine(G.warnText, G.warnSfx) end)
+      if G.warnBanner then pcall(function() showOnscreenMsg(G.warnBanner, 8.0) end) end
+      JL.ui.status = "Jackie: main-quest grace (~" .. tostring(math.floor(G.seconds or 60)) .. "s)."
+      log(string.format("Main-exit: grace armed (%.0fs) — warn + wait.", G.seconds or 60.0))
+      return
+    end
+    local left = me.until_ - now
+    if not me.reminded and G.remindAt and G.remindAt > 0 and left <= G.remindAt then
+      me.reminded = true
+      pcall(function() speakJackieLine(G.remindText, G.remindSfx) end)
+      log(string.format("Main-exit: reminder (%.0fs left).", left))
+    end
+    if left <= 0 then
+      me.activeSince, me.until_, me.warned, me.reminded = nil, nil, false, false
+      log("Main-exit: grace expired, still on the main quest -> Jackie heads out.")
+      pcall(function() startLeaving(Config.mainQuestExit) end)
+    end
+    return
+  end
+
+  -- Main quest NOT active. Reset the debounce; if we'd actually WARNED (until_ set), V dropped the big
+  -- fish in time -> he STAYS with a reassurance line. (A debounce that never armed clears silently.)
+  me.activeSince = nil
+  if me.until_ then
+    me.until_, me.warned, me.reminded = nil, false, false
+    pcall(function() speakJackieLine(G.stayText, G.staySfx) end)
+    JL.ui.status = "Jackie: stayed (main quest dropped)."
+    log("Main-exit: main quest dropped within grace -> Jackie stays.")
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -7521,6 +7529,20 @@ registerForEvent("onInit", function()
   -- v1.60: pick the language. AFTER jlLoadSettings so an explicit player choice beats autodetect;
   -- nil/"auto" (the default, and every existing jl_settings.txt) follows the game's own language.
   pcall(function() Lang.init(JL.langChoice) end)
+  -- v1.63: the native dialogue picker. bind BEFORE init so the very first log line is attributed,
+  -- and init registers the controller capture + the four guards that keep our hub on screen.
+  -- onPreempt: a REAL in-game conversation is opening (a quest scene, a phone call) — the game's
+  -- dialogue always wins, so end whatever we were saying rather than fight it for the widget.
+  pcall(function()
+    DialogUI.bind{
+      log      = log,
+      clock    = function() return JL.clock or 0 end,
+      onPreempt = function() if Branch.finish then Branch.finish("Conversation ended — a scene took over.") end end,
+      noCombat = (Config.dialogue and Config.dialogue.pickerNoCombat) or false,
+      debug    = (Config.dialogue and Config.dialogue.cycleDebug) or false,
+    }
+    DialogUI.init()
+  end)
   pcall(jlLoadSeats)       -- v1.1: restore tuned sit coords into Config so they survive a reload (old-S4 fix)
   pcall(jlLoadWalk)        -- v1.57: same for the walk/loiter tuner's knobs (they used to die on every reload)
   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
@@ -7587,6 +7609,15 @@ registerForEvent("onInit", function()
         local pp = playerPos(); if not pp or not p then return 1e9 end
         local dx, dy, dz = pp.x - p.x, pp.y - p.y, pp.z - p.z
         return math.sqrt(dx * dx + dy * dy + dz * dz)
+      end,
+      -- v1.62: HORIZONTAL (X/Y) distance + the raw vertical gap, as two numbers. The roof-AV exit needs a
+      -- footprint check (a flat radius on the deck) plus a generous vertical tolerance, because the AV's
+      -- origin sits above the deck V stands on — a 3-D sphere leaks that dz and never fires (see the
+      -- roofHeli notes in blaze.lua). Returns (horizontalDist, |verticalGap|).
+      distToPlayerXY = function(p)
+        local pp = playerPos(); if not pp or not p then return 1e9, 1e9 end
+        local dx, dy = pp.x - p.x, pp.y - p.y
+        return math.sqrt(dx * dx + dy * dy), math.abs(pp.z - p.z)
       end,
       deleteById = function(id) deleteEntityById(id) end,
       -- v1.0 BLAZE: hand a weapon straight into V's inventory (MVP for the staged fight pickups).
@@ -8287,6 +8318,7 @@ registerForEvent("onUpdate", function(dt)
   --  every V and is applied once at load by jlDefaultHermano. Nothing to poll here any more.)
   -- (nsTick moved above the session gate — it must also run at the main menu; see there.)
   pcall(updateTalkPrompt, dt)
+  pcall(function() DialogUI.tick(JL.clock or 0) end)  -- v1.63: republish the highlighted row + drop the box if the world went away
   pcall(dialogueTick)
   pcall(branchTick)
   pcall(subtitleWatchdogTick)  -- v0.80: GUARANTEE no dialogue subtitle can stick after a talk ends
@@ -8367,11 +8399,13 @@ registerForEvent("onUpdate", function(dt)
   -- not already walking off; fires once (summon.active clears on despawn).
   -- v0.98: EXCEPTION for Blaze of Glory — that mode PUTS Jackie in the main quest on purpose (he fights
   -- the Heist alongside V), so the main-quest/cutscene excuse must NOT fire, or our companion walks off.
+  -- v1.62: hand off to jlMainExitTick (grace period + warning convo). Called every tick while he's an
+  -- active, undismissed, non-dinner companion who isn't already walking off — the function decides
+  -- whether to warn, wait, leave, or (V dropped the main quest in time) stay. Same guards as before.
   if JL.mode ~= "blaze"
      and JL.summon.active and JL.summon.companionSet and not JL.dinner.phase
-     and JL.leaving.phase ~= "walking" and startLeaving and (isMainQuestActive() or jlInCutscene()) then
-    log("Main quest / cutscene -> Jackie excuses himself and heads out.")
-    pcall(function() startLeaving(Config.mainQuestExit) end)
+     and JL.leaving.phase ~= "walking" and startLeaving then
+    pcall(jlMainExitTick)
   end
   pcall(jlCruiseTick)     -- v0.85: V on a BIKE -> Jackie trails on his Arch (gated before the foot ticks)
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
@@ -8527,8 +8561,8 @@ local function tunerPrint()
 end
 
 registerForEvent("onDraw", function()
-  pcall(drawDialogueBox)                      -- v0.24: the styled choice box draws DURING gameplay
-  pcall(drawBlazeFade)                         -- v1.02: fade-to-black overlay draws DURING gameplay (covers HUD, not the ESC menu)
+  -- (v1.63: the choice box is drawn by the GAME now — see dialogui.lua. Nothing to render here.)
+  pcall(drawBlazeFade)                      -- v1.02: fade-to-black overlay draws DURING gameplay (covers HUD, not the ESC menu)
   if not JL.ui.overlayOpen then return end   -- the debug window only draws while the overlay is open
   if not JL.ui.open then return end
   ImGui.Begin("Jackie Lives")
@@ -8549,6 +8583,10 @@ registerForEvent("onDraw", function()
   local block, hour = currentScheduleBlock()
   ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
              "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
+  -- v1.63: is the native dialogue picker actually able to draw? "controller MISSING" is the one
+  -- state that stops a conversation from opening, and it's invisible without this line.
+  ImGui.Text("Dialogue picker: " .. (DialogUI.hasController() and "native, controller ok" or "native, controller MISSING") ..
+             (DialogUI.isShown() and ("   [open, row " .. tostring(DialogUI.index()) .. "]") or ""))
   local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
   ImGui.Text("Game time: " .. hhmm ..
              "   Day-type: " .. tostring(JL.day.template or "?"))
@@ -8961,6 +8999,7 @@ end)
 
 registerForEvent("onShutdown", function()
   pcall(closeNativeCallWindow)   -- never leave a holocall window stuck open
+  pcall(DialogUI.hide)           -- v1.63: never leave the native dialogue hub stuck on screen
   pcall(hideJackieChoiceBox)
   pcall(hideSubtitle)
   pcall(jlLookAtStop)            -- v1.41: never leave a look-at overlay on a puppet we're about to drop

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.61"
+Config.version = "1.63"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -164,14 +164,18 @@ Config.testDialogue = {
 }
 
 -- ---- dialogue box display -------------------------------------------------
--- cycleHint = the key label shown in the box for "next choice". CET can't hard-set a
--- default binding in code, so bind "Jackie dialogue: next choice" in CET -> Bindings to
--- this key (you used "-") and keep this label matching it. F selects the highlighted row.
+-- v1.63: the box itself is the GAME's native dialogue widget now (dialogui.lua), so it draws its
+-- own input hints — arrows / mouse wheel move the highlight, F selects. `cycleHint` is vestigial.
 Config.dialogue = {
-  cycleHint  = "Up/Dn",  -- label shown in the box; v0.33 the ARROW keys cycle by default (no binding).
+  cycleHint  = "Up/Dn",  -- vestigial since v1.63: the native widget draws its own input hint.
   choiceHold = 2.5,      -- seconds V's chosen line stays on screen before Jackie's reply
-  cycleDebug = false,    -- v0.42 OFF: arrow CNames locked + release-edge handling confirmed working.
-                         --   Flip true only to re-log input-action names while a choice box is open.
+  cycleDebug = false,    -- v0.42 OFF: arrow CNames locked + both-edge handling confirmed working.
+                         --   Flip true to re-log input-action names while a choice box is open
+                         --   (v1.63: also switches on DialogUI's own per-action logging).
+  -- v1.63: apply GameplayRestriction.NoCombat while the picker is up, so V can't shoot mid-sentence.
+  -- OFF by default because it's a real gameplay change the ImGui box never made — flip it on if a
+  -- stray click during a chat ever ruins a moment.
+  pickerNoCombat = false,
 }
 
 -- ---- character-based subtitle reading time (v0.94) -----------------------
@@ -231,6 +235,33 @@ Config.dismiss = {
 Config.mainQuestExit = {
   text = Config.dismiss.partingText,   -- TODO: dedicated "excuse himself" VO + matching subtitle
   sfx  = Config.dismiss.partingSfx,
+}
+
+-- ---- main-quest GRACE PERIOD (v1.62) -------------------------------------
+-- Problem: finishing a side job often makes the game AUTO-TRACK a main quest again, so Jackie would
+-- instantly excuse himself even though V never meant to dive into the story — annoying and abrupt.
+-- Fix: instead of leaving the moment a main quest goes active, Jackie WARNS and waits `seconds`. If V
+-- drops the big fish (tracks a side job again, or the main quest clears) before the timer runs out, he
+-- STAYS. Only if V is still on the main quest when the grace expires does he actually walk off. A
+-- cutscene still ejects him immediately (a scene is playing — no point counting down through it).
+-- All lines are text-first; add `Sfx` clips from the bank later and audio+subtitle will sync.
+Config.mainExitGrace = {
+  enabled           = true,
+  seconds           = 60.0,   -- REAL seconds he'll hang back before leaving (the "1 min" warning)
+  armDelay          = 2.0,    -- main quest must stay active this long before he warns (ignores a brief
+                              -- auto-track that fires the instant a side job ends, then gets replaced)
+  immediateOnCutscene = true, -- a cinematic (SceneTier>=4) ejects him now, no countdown
+  faceVOnWarn       = true,   -- turn to look at V as he delivers the warning
+  remindAt          = 15.0,   -- seconds-left mark for a second "last call" nudge (0 = no reminder)
+  -- Spoken beats (VO optional — falls back to a generic grunt, subtitle always shows):
+  warnText   = "This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out.",
+  warnSfx    = nil,
+  remindText = "Clock's runnin', hermana. Ditch the big fish or I'm gone.",
+  remindSfx  = nil,
+  stayText   = "That's my girl. Let the corpo mess wait — I'm still with you.",
+  staySfx    = nil,
+  -- On-screen banner mirrors the warning (in case VO/subtitle is missed):
+  warnBanner = "Jackie will head out in ~1 min unless you stop chasing the main quest.",
 }
 
 -- ---- companion duration (v0.39) ------------------------------------------
@@ -1949,40 +1980,16 @@ Config.poses = {
   lean    = "stand_wall_lean180__2h_on_wall__01",
 }
 
--- ---- DIALOGUE PICKER placement (v1.42) -------------------------------------
--- The choice box used to sit at a fixed 620x240 px, horizontally centred then nudged 150 px LEFT, at
--- 46% screen height — i.e. middle-left-ish, and it drifted with resolution (on 4K it read as a tiny box
--- floating in the upper-left quadrant, because the pixel size never changed while the screen doubled).
+-- ---- DIALOGUE PICKER (v1.63) -----------------------------------------------
+-- The `Config.picker` geometry block that used to live here (refH / baseW / baseH / baseFont /
+-- nameW / nameH / topFrac / bottomMargin / min-maxScale / xOffset) is GONE, and with it the whole
+-- problem it existed to solve. It positioned and scaled our hand-drawn ImGui imitation of the
+-- game's dialogue box, and it needed re-tuning at every resolution and aspect ratio — v1.42, v1.47
+-- and v1.51 were all corrections to those numbers.
 --
--- Now: everything is expressed RELATIVE to the display. The box is uniformly scaled by `sh / refH`, then
--- horizontally CENTRED and dropped into the lower band of the screen. Because the box scales with the
--- screen, it occupies the same fraction of it at 1080p, 1440p, 4K and on ultrawides (where centring uses
--- the real width, so it stays under the crosshair rather than drifting left).
---
--- v1.47 (Antonia): the lower-fifth placement OVERLAPPED THE NATIVE SUBTITLE LINE, which lives at the bottom
--- of the screen. So the box top is positioned by `topFrac` instead.
---
--- ⚠️ v1.51: `topFrac` is measured DOWN FROM THE TOP of the screen. v1.47 set it to 0.36 by reading Antonia's
--- "36%" as 36% from the top — which put the box just ABOVE centre ("VERY high"). She meant 36% UP FROM THE
--- BOTTOM, so the correct value is 1 - 0.36 = 0.64. Since the box is baseH/refH ≈ 22% of screen height, it now
--- spans 64%..86%: lower half, clear of the subtitle band. If you retune this, remember the axis points DOWN —
--- a BIGGER topFrac means LOWER on screen. (History: lower-fifth ≈ 0.78 was too low and hit the subtitles;
--- 0.36 was far too high; 0.64 is the value Antonia picked from a mock-up.)
--- `bottomMargin` stays purely a safety clamp so the box can never run off the bottom at an extreme aspect
--- ratio / scale clamp; it should not bind at 0.64.
-Config.picker = {
-  refH        = 1080.0,  -- the resolution the base sizes below were designed at
-  baseW       = 620.0,   -- box width  @ refH
-  baseH       = 240.0,   -- box height @ refH (must fit the tallest choice list, unscrollable)
-  baseFont    = 1.45,    -- ImGui font scale @ refH
-  nameW       = 128.0,   -- "JACKIE" name plate @ refH
-  nameH       = 34.0,
-  topFrac     = 0.64,    -- TOP EDGE of the box, as a fraction of screen height DOWN FROM THE TOP (bigger = lower)
-  bottomMargin= 0.02,    -- safety clamp only: keep at least this fraction of the screen below the box
-  minScale    = 0.8,     -- clamp so a tiny window can't make it unreadable...
-  maxScale    = 3.0,     -- ...or a huge one make it cartoonish
-  xOffset     = 0.0,     -- px @ refH: nudge horizontally if you want it off-centre (+right / -left)
-}
+-- V's choices are now drawn by the GAME's own dialogue widget (see dialogui.lua), which positions,
+-- scales, colours, fonts and animates itself exactly as it does in every vanilla conversation.
+-- There is nothing left to tune. The one knob that survives is below.
 
 -- ---- LOOK-AT / head tracking (v1.41) ---------------------------------------
 -- As a COMPANION Jackie already head-tracks V, because sendWalkToPlayer's AIFollowTargetCommand carries

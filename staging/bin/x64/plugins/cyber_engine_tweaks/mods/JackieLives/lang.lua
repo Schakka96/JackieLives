@@ -19,7 +19,7 @@
 -- WHERE IT IS APPLIED — four chokepoints in init.lua, nothing else:
 --   showSubtitle()        the native bottom subtitle band  (all spoken lines)
 --   showOnscreenMsg()     the native blue banner           (all notices)
---   drawChoiceRows()      V's dialogue choices             (ImGui picker)
+--   dialogui.lua T()      V's dialogue choices             (native dialogue widget)
 --   buildJackieHub() / Blaze.showPrompt()   the native [F] prompt label
 -- Because every line in config.lua / blaze.lua / retrieval.lua reaches the
 -- screen through one of those, none of those files needed touching.
@@ -27,11 +27,12 @@
 -- 200-LOCAL CAP: init.lua holds this as the GLOBAL `Lang` (like Retrieval /
 -- Blaze / Session). Nothing here adds a top-level local to init.lua's chunk.
 --
--- ⚠️ FONTS: the native subtitle band, the native banner and the shards all use
--- the GAME's fonts, which ship full glyph coverage for every language below.
--- The dialogue-choice picker is drawn in ImGui with CET's own font, which is
--- Latin-only by default — see docs/localization.md for the one-line CET config
--- players need for Japanese / Russian / Chinese.
+-- FONTS: every chokepoint above now renders through a GAME widget, and the game's
+-- fonts ship full glyph coverage for every language below — so Japanese, Russian
+-- and Chinese all display correctly out of the box, with no CET font config.
+-- (Until v1.63 the dialogue-choice picker was the one exception: it was drawn in
+-- ImGui with CET's Latin-only font, so translated choices came out as boxes. That
+-- picker is gone — it's the native dialogue widget now, see dialogui.lua.)
 -- ===========================================================================
 
 local Lang = {}
