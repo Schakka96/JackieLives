@@ -1,8 +1,16 @@
-# Jackie Lives — CET prototype mod (MVP)
+# Jackie Lives — v1.64.1
 
-A Cyber Engine Tweaks mod that summons Jackie as a combat companion, declines the summon during main
-quests, and gives him a simple daily schedule at his Heywood spots. Spawn + combat AI are delegated to
-**AppearanceMenuMod (AMM)**; this mod owns the trigger / schedule / ban logic.
+Brings **Jackie Welles** back after his Act 1 death, in a lore-friendly way, as a **living Night City
+NPC** — not a default follower. He didn't die at Vik's: he was smuggled out and quietly healed, chose
+out of the merc life, and now works a bar and does low-level fixer work in Heywood.
+
+He's **gated behind a retrieval questline** — Vik lets slip that he's alive, you find his note in the
+Badlands, and a reunion brings him home. Only then does the rest unlock: a daily schedule at his
+Heywood haunts, branching voiced dialogue on **[F]**, calling him onto **side jobs** (never the main
+plot), dinner outings, and a companion who walks at your side and rides along when you take a bike.
+
+Spawning and combat AI are delegated to **AppearanceMenuMod (AMM)**; this mod owns the story, schedule,
+dialogue and companion logic.
 
 ## Requirements
 
@@ -22,8 +30,8 @@ quests, and gives him a simple daily schedule at his Heywood spots. Spawn + comb
   provides the "Talking" facial anims the lip-flap uses. Without it he still speaks, but his lips stay still.
 
 **For the in-game settings page:**
-- **Native Settings UI** (`nativeSettings`) — adds the in-game **Esc → Settings → Jackie Lives**
-  page (the "Go Home Jackie" recovery button). Get it from
+- **Native Settings UI** (`nativeSettings`) — adds the in-game **Jackie Lives** settings page
+  (relationship mode, arrivals, the "Go Home Jackie" recovery button). Get it from
   [Nexus mod 3518](https://www.nexusmods.com/cyberpunk2077/mods/3518).
   - ⚠️ **The folder MUST be named exactly `nativeSettings`** under
     `...\cyber_engine_tweaks\mods\`. `GetMod("nativeSettings")` looks it up *by folder name*; if a
@@ -31,128 +39,149 @@ quests, and gives him a simple daily schedule at his Heywood spots. Spawn + comb
     appears, and Native Settings' own panel shows *"No mods using native settings installed!"* (that
     message means Native Settings loaded fine but no mod registered with it). Rename the folder if so.
   - ℹ️ **Load order is handled in code, not by you.** CET loads mods alphabetically, so `JackieLives`
-    initializes before `nativeSettings`. Rather than register in `onInit` (where
-    `GetMod("nativeSettings")` could still be nil), we retry from `onUpdate` (`nsTick`) until it's
-    available, then register once. No manual load-order/priority setup is needed — just install the
-    dependency. If the page still doesn't show, check the CET console for the `[JackieLives]` line:
-    `…panel registered` (success), `…registration FAILED: <err>` (API error — send to Claude), or
-    `…not found after retries` (the `nativeSettings` folder is missing/misnamed — see the warning above).
+    initializes before `nativeSettings`. Rather than register at startup (where `GetMod("nativeSettings")`
+    could still be nil), the mod retries every frame until it's available, then registers once. No manual
+    load-order setup is needed — just install the dependency. If the page still doesn't show, check the
+    CET console for the `[JackieLives]` line: `…panel registered` (success), `…registration FAILED: <err>`
+    (report it), or `…not found after retries` (the `nativeSettings` folder is missing or misnamed — see
+    the warning above).
 
-## Install / update (one command)
-From the project root (`...\Cyberpunk_modding`), in PowerShell:
+## Install
 
-```powershell
-.\deploy.ps1
+Install the release zip with **Vortex or MO2** — it carries a FOMOD installer, so the manager puts
+everything in the right place. To do it **by hand**, extract the zip into your Cyberpunk 2077 folder so
+that:
+
+```
+bin\x64\plugins\cyber_engine_tweaks\mods\JackieLives\   <- the mod
+r6\audioware\JackieLives\                               <- the voice-bank manifest + the HOW_TO
 ```
 
-This copies `mod\JackieLives` into the game's CET mods folder
-(`...\Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\JackieLives`). If it can't auto-find the
-game, run `.\deploy.ps1 -GameDir "X:\path\to\Cyberpunk 2077"`.
+Restart the game after installing. The CET console should print `[JackieLives] Loaded v1.64.1`.
 
-**Fast iteration (no exe restart):** run `.\deploy.ps1` anytime (main menu, in-game, or alt-tabbed —
-files aren't locked), then open the CET overlay and click **"Reload all mods"** (main CET window, near
-the Console/Bindings tabs). Confirm it took: console prints `[JackieLives] Loaded vX`. You still need to
-**load a save to test spawning** (no world at the main menu). If a hot-reload acts weird, do a full
-restart to clear state.
+Updating over an older version is safe — it picks up your existing save. Your settings live in
+`jl_settings.txt` next to the mod and survive updates.
 
-## Use it
-1. In-game, open the CET overlay (default `~`). The **"Jackie Lives"** window appears — it shows *only*
-   while the overlay is open and closes with it (the "Hide window" button / toggle key hides just it).
-2. **Summon Jackie (companion):** click the button → Jackie spawns and should follow + fight on your side.
-3. **Dismiss Jackie:** removes the companion.
-4. **Test the main-quest decline:** tick **"Force main-quest active"**, then Summon → V declines instead.
-5. **Bind keys** in CET's **Bindings** tab: Summon / Dismiss / Capture / Show-Hide window / VO test, and
-   **"Talk to Jackie"**.
+## Getting started
+
+**Load a post-Heist save and play normally.** The search for Jackie starts on its own — go see Vik.
+A welcome card explains the first step the first time it triggers.
+
+If you'd rather skip straight to it, the settings page has **"Start the search for Jackie"**.
+On a **pre-Heist** save the mod stays completely silent, so it can't spoil anything.
+
+Once he's home:
+
+| Do this | How |
+|---|---|
+| **Talk to him** | Look at him and press **[F]** — a real dialogue box with choices, in the game's own widget |
+| **Call him onto a gig** | The **Call Jackie (holocall)** button, or the phone; he arrives from a distance and walks up |
+| **Take him to dinner** | Offer it in conversation → pick a restaurant → you get a waypoint → walk there together |
+| **Send him off** | Offer it in conversation; he says his goodbye and walks away |
+| **Find him** | He keeps a daily schedule around Heywood — walk near one of his spots in its time block |
+
+The CET overlay (default `~`) has the **Jackie Lives** window with the manual buttons, the story-mode
+selector and the tuners. It only shows while the overlay is open. You can bind keys for Summon /
+Dismiss / Talk in CET's **Bindings** tab.
 
 ### How he follows you
 - **He walks beside you**, slightly ahead, whenever you're at a walking pace on flat ground — rather than
-  trailing on a leash. Don't like it? **Esc → Settings → Jackie Lives → Gameplay → "Walk beside me"** turns
-  it off and he reverts to a plain trailing follower.
+  trailing on a leash. Don't like it? The settings page's **"Walk beside me"** turns it off and he reverts
+  to a plain trailing follower.
 - **On stairs and slopes he drops in behind you** and goes single file, then slides back to your side once
   you're on level ground again. (A staircase is rarely two abreast.)
 - **When you crouch, he crouches and shadows you** a few metres back, never in front — so he stays out of
   the vision cone you're sneaking through. As a proper companion he's ignored by enemy perception anyway.
+- **When you ride a bike, so does he** — his Arch spawns behind you, he mounts, and it trails your bike.
+  He's back on foot the moment you get off. (To switch this off, set `Config.cruise.enabled = false` in
+  `config.lua`; there's no in-game toggle for it.)
 - If you get far enough ahead (a long sprint, a fast-travel), he catches up on his own.
 
-### Talk to Jackie
-Bind **"Talk to Jackie"** (CET → Bindings), then **look at Jackie and press it** → he plays a random line
-(greeting after a 60s+ gap, else conversational; with a cooldown so he doesn't repeat). Tune
-`Config.talk` (range / cooldown / chance) and fill `Config.talkLines` with his event ids.
-- Want a native feel? You *can* bind "Talk to Jackie" to the same key you use to interact. A truly native
-  dialogue-choice prompt (like vendors) is a heavier future upgrade, not this.
-- Voice: with **Audioware** installed and his audio files added (see
-  `r6\audioware\JackieLives\HOW_TO_ADD_JACKIE_VOICES.txt`) he speaks his real lines; without them it's
-  subtitle-only. His lips move only if **AMM Expressions Overhaul** is installed.
-
 ### Call Jackie onto a gig (arrival)
-Click **"Call Jackie (holocall)"** → a short call plays; ask him along and he ARRIVES from a distance and
-walks up as your companion (he never just pops in next to you). Two **arrival methods**, toggled live in
-the window with **"Arrival method"** (and **"Test arrival now"** fires one without a call):
+Ask him along and he **arrives from a distance** and walks up as your companion — he never just pops in
+next to you. Two **arrival methods**, switchable in the window and on the settings page:
 - **FOOT** (default) — spawns ~50 m off to one side of you, sprints in, walks the last stretch.
 - **BIKE** — spawns ~60 m back on his Arch, rides in, parks on the road ~20 m out, walks the rest.
 
-He spawns on a valid street at *your* height (not a roof/other floor), and if he ever can't path to you
-he respawns a little closer until he reaches you. Tuning lives in `Config.call` + `Config.vehicle`
-(spawn distances, where he becomes a companion, bike park distance, etc. — all commented). The CET
-console logs his distance every few seconds (`riding in... 44 m to V`) so you can see what he's doing.
+He spawns on a valid street at *your* height (not a roof or another floor), and if he ever can't path to
+you he respawns a little closer until he reaches you. The CET console logs his distance every few
+seconds (`riding in... 44 m to V`) so you can see what he's doing.
 
-## Relationship mode — Husbando / Hermano (v1.2)
-Jackie has two dialogue tracks, set in **Esc → Settings → Jackie Lives → Relationship**:
-- **Husbando** — the female-V default: he and V have a slow-burn thing, he's more flirty, and he's
-  broken things off with Misty.
-- **Hermano** — the male-V default (canon): he's your brother-in-arms, strictly choom, still with Misty.
+He can only be called onto **side jobs**. Try it during a main quest and V declines — "not dragging
+Jackie into this mess".
 
-It's **auto-picked from your V's body gender the first time you load in** and locked from then on (a
-`genderLock` flag saved in `jl_settings.txt`); flip it anytime with the switch. It reshapes his talk /
-holocall / arrival / dismiss lines, the reunion, and the Vik / Misty / Mama recovery notes. Authoring
-lives in `config.lua` (`Config.hermanoLines` + inline `m = {...}` overrides) and `retrieval.lua` (the
-shard texts). ⚠️ The male-V voice pool is thin (68 clips), so some Hermano lines are subtitle-only (mute)
-by design; the voiced male clips are marked `⚠️ VERIFY` in `config.lua` for an in-game ear-check.
+## Relationship mode — Husbando / Hermano
 
-## Capture his locations (needed for the schedule)
-The schedule only spawns idle Jackie at spots whose coordinates you've captured.
-1. Walk to the exact spot (e.g. the noodle stand in front of MB8).
-2. In the "Jackie Lives" window, click **"Capture current position"**.
-3. A line like `pos = { 123.456, -78.900, 12.300 }, yaw = 90.0` is shown and printed to the CET console.
-4. Paste it into the matching entry in `config.lua` (e.g. `noodle = { name = "...", pos = { ... }, yaw = ... }`).
-5. Repeat for **coyote** (El Coyote Cojo) and **afterlife** (Afterlife).
-6. Re-deploy (`.\deploy.ps1`) and reload mods.
+Jackie has two dialogue tracks, set on the **Relationship** section of the settings page:
+- **Hermano** *(the default)* — canon: he's your brother-in-arms, strictly choom, still with Misty.
+- **Husbando** — he and V have a slow-burn thing, he's more flirty, and he's broken things off with Misty.
 
-Once captured, walk near a spot during its time block and Jackie appears; leave and he despawns.
-Schedule: a **5-day shuffle bag** (`active1/2/3/quiet/gone` in `config.lua`), one day-type per in-game
-day — all seven venues appear across the active days. He sleeps 00:00–06:00 and always winds down at El
-Coyote before bed (a `gone` day = out of town, no appearances).
+**Hermano is used until you pick for yourself**; once you flip the switch, your choice is remembered and
+never overridden. It reshapes his talk / holocall / arrival / dismiss lines, the reunion, and the Vik /
+Misty / Mama recovery notes.
 
-### Fine-tune his seats (the seat tuner)
-AMM's sit animation is freestanding (invisible chair), so a captured spot rarely lands him perfectly on
-a real stool/chair the first time. The **"Seat position tuner"** panel (in the Jackie Lives window) lets
-you nudge a seat live until it's right:
-1. In the tuner, click the **Venue** you want (only venues with a sit spot are listed) — this also sends
-   Jackie there. Walk over to him.
-2. Slide **X / Y / Z** (position) and **Yaw** (which way he faces) — with **Live** ticked he re-seats as
-   you go. Yaw is what fixes a seat that faces the wrong way; it's now consistent no matter how he arrived.
-3. If a venue has more than one stool, use **`< prev seat / next seat >`** to choose which one you're editing.
-4. Click **"Print coords → config.lua"**. The line appears in the console + the "Last capture" box. Paste
-   it to Claude (or into the venue's `waypoints` entry yourself) to make it permanent.
+⚠️ The male-V voice pool is thin (68 clips), so some Hermano lines are **subtitle-only** by design.
 
-Collision note: idle Jackie's collision is dropped while he's at a venue (so chairs can't block/shove
-him) — the window's **"Collision … live on Jackie"** line confirms it's off. Toggle with the
-**"Idle Jackie: collisions OFF"** checkbox.
+## Story modes
+
+Chosen in the CET window. **Quiet Life** is the default and the one all the polished content targets:
+the main story plays out as normal and Jackie returns as a living Heywood NPC.
+
+**Blaze of Glory** is an **extremely experimental** alternate timeline where you and Jackie fight out of
+the Heist — it **disables the main plot** (no Relic, no Johnny, no dying), must be chosen **before the
+Heist**, and **cannot be undone**. It's behind a two-step confirm and lives only in the CET overlay, not
+the in-game settings. Treat it as a throwaway-save toy.
+
+## Tuning his spots (optional)
+
+Jackie's schedule spawns him at fixed captured positions. If a seat looks slightly off in your game, the
+**Seat position tuner** in the Jackie Lives window nudges it live:
+
+1. Click the **Venue** you want (only venues with a sit spot are listed) — this also sends Jackie there.
+   Walk over to him.
+2. Slide **X / Y / Z** and **Yaw** (which way he faces) — with **Live** ticked he re-seats as you go.
+3. If a venue has more than one stool, use **`< prev seat / next seat >`** to pick which you're editing.
+4. **"Print coords → config.lua"** writes the line to the console so you can paste it into `config.lua`
+   and keep it.
+
+⚠️ Tuner values are written to their own file and re-applied on load, but anything you type directly into
+`config.lua` is yours to maintain — an update overwrites that file.
 
 ## Troubleshooting
-- Open the CET overlay; the console shows lines starting with `[JackieLives]`. **Red errors → send them
-  to Claude.** Common ones the status line will tell you: "AMM Spawn module not available" (AMM not
-  loaded), "Jackie record not found" (AMM character DB issue).
-- If Jackie spawns but doesn't follow/fight, that's the companion hedge not catching — tell Claude; it's
-  a known iteration point.
-- Exact placement: idle Jackie spawns when you reach his spot (within `proximityRadius`) and walks to his
-  waypoint. To dial a seat onto a real stool/chair, use the **seat tuner** (see "Fine-tune his seats").
+
+Open the CET overlay; the console shows lines starting with `[JackieLives]`. The status line in the
+window names the common failures:
+
+| Message | Means |
+|---|---|
+| `AMM Spawn module not available` | AMM isn't installed or didn't load |
+| `Jackie record not found` | AMM's character database didn't load properly |
+| `…not found after retries` | The `nativeSettings` folder is missing or misnamed (see Requirements) |
+
+- **He's silent.** Expected without Audioware plus his audio files — the mod is subtitle-only then. If you
+  *did* add the audio and he's still mute, Audioware rejects the **whole bank** when the manifest names a
+  file that isn't there; re-check the HOW_TO steps.
+- **His lips don't move.** Install AMM Expressions Overhaul.
+- **He's lost or stuck.** The settings page has **"Go Home Jackie"**, which despawns and resets him.
+- **Nothing happens at all.** Check you're on a post-Heist save, and look for `[JackieLives] Loaded` in
+  the console — if that line is missing, the mod isn't installed at the path shown under Install.
+
+Red errors in the console are bugs — please report them on the Nexus **Posts** tab with the console line.
 
 ## Files
-- `init.lua` — all logic (summon, schedule, ban, capture, UI, relationship-mode swap engine).
-- `config.lua` — **the file you edit**: locations, schedule, ban list, decline line, dialogue trees +
-  the Hermano line overrides (`Config.hermanoLines` / inline `m`).
-- `retrieval.lua` — the "Where's Jackie?" retrieval questline + the Husbando/Hermano recovery-note text.
-- `blaze.lua` — the optional "Blaze of Glory" story mode (the Konpeki set-piece and its finale).
-- `session.lua` — session guard: detects a new game / load-from-save so stale entity handles from the
-  previous session are never touched again.
+
+| File | What |
+|---|---|
+| `init.lua` | The engine — summon, schedule, follow, arrivals, dinner, dialogue flow, the CET window |
+| `config.lua` | The data — locations, schedule, dialogue trees, tuning. **The file to edit** if you're customizing |
+| `retrieval.lua` | The "Where's Jackie?" retrieval questline and its shard texts |
+| `blaze.lua` | The optional "Blaze of Glory" story mode |
+| `dialogui.lua` | Draws V's dialogue choices in the game's own dialogue widget |
+| `lang.lua` + `translations.lua` | Localization (Japanese ships; the English string is the key, so anything untranslated falls back to English) |
+| `lang_template.lua` | Starting point for a new translation |
+| `session.lua` | Session guard — detects a new game / load so stale entity handles are never touched |
+
+---
+
+Fan project, not affiliated with CD PROJEKT RED. **No game assets are distributed.** Requires a legally
+owned copy of Cyberpunk 2077. Original code: MIT.
