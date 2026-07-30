@@ -1585,7 +1585,11 @@ local function setupInteractHook()
       -- the highlight, the debounce and the both-edges handling now (dialogui.lua, INPUT section) —
       -- it keeps the v0.41 finding that navigation arrives PRESSED on the first choice layer but
       -- only RELEASED on deeper ones, so both edges are accepted and debounced.
-      if Branch.open then
+      -- v1.63.1: `or DialogUI.isShown()` so the STANDALONE test picker ("Show test picker" /
+      -- DialogUI.selfTest()) is navigable too. It runs with no conversation, so Branch.open is false
+      -- and the old condition routed nothing to it — which would have made a perfectly working picker
+      -- look input-dead. It's also simply more correct: if the native box is up, it owns the input.
+      if Branch.open or DialogUI.isShown() then
         -- v0.40 DEBUG: log EVERY action while the box is open (name + type + value) so an arrow that
         -- arrives as an AXIS on some layer is still visible. Turn cycleDebug off once locked.
         if Config.dialogue and Config.dialogue.cycleDebug then
@@ -7678,6 +7682,10 @@ registerForEvent("onInit", function()
       -- survive into the fade — an open picker nothing is listening to still eats the player's input.
       closeDialogue = function()
         pcall(function() if Branch and Branch.open and Branch.finish then Branch.finish() end end)
+        -- v1.64.1: also drop a STANDALONE native picker (the "Show test picker" diagnostic), which is
+        -- shown without Branch.open — so the check above would miss it and it would ride into the fade
+        -- still swallowing input, which is exactly what this hook exists to prevent.
+        pcall(function() if DialogUI and DialogUI.isShown() then DialogUI.hide() end end)
       end,
       hidePrompt = function()
         pcall(function()
@@ -8610,6 +8618,16 @@ registerForEvent("onDraw", function()
   -- state that stops a conversation from opening, and it's invisible without this line.
   ImGui.Text("Dialogue picker: " .. (DialogUI.hasController() and "native, controller ok" or "native, controller MISSING") ..
              (DialogUI.isShown() and ("   [open, row " .. tostring(DialogUI.index()) .. "]") or ""))
+  -- v1.63.1: the two buttons that turn "the box didn't appear" into an actual answer. Both write to
+  -- jackie_debug.log (in this mod's folder), which is the file to send when reporting a failure.
+  -- The native widget is GAME UI, so it draws out in the world (behind this window), not inside it.
+  -- "Diagnose" leaves its probe box up for ~10 s so you can close the overlay and look; the test
+  -- picker stays up until you select a row or hit "Close test picker".
+  if ImGui.Button("Diagnose picker") then pcall(function() DialogUI.diagnose() end) end
+  ImGui.SameLine()
+  if ImGui.Button("Show test picker") then pcall(function() DialogUI.selfTest() end) end
+  ImGui.SameLine()
+  if ImGui.Button("Close test picker") then pcall(function() DialogUI.hide() end) end
   local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
   ImGui.Text("Game time: " .. hhmm ..
              "   Day-type: " .. tostring(JL.day.template or "?"))

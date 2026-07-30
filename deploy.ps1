@@ -11,13 +11,19 @@
 #   .\deploy.ps1 -NoPull               # deploy what's already on disk; don't touch git
 #   .\deploy.ps1 -Force                # pull even with local edits (stashes + reapplies them)
 #   .\deploy.ps1 -GameDir "X:\...\Cyberpunk 2077"
+#   .\deploy.ps1 -ModName JackieSceneProbe    # deploy one of the standalone probe mods instead
 #
 # It NEVER throws your work away: if the repo has uncommitted changes it skips the pull and
 # says so, rather than clobbering them. -Force uses --autostash, which puts them back after.
-param([string]$GameDir = "", [switch]$NoPull, [switch]$Force)
+#
+# -ModName replaces the old deploy_probe.ps1 (deleted in v1.63.1): it was a near-copy of this
+# file that only existed to point at mod\<something-else>, and it never learned to pull. Any
+# folder under mod\ is a valid value: JackieSceneProbe, JackieLipsync, JackieVehicleTest,
+# JLFactDump, JackieAnimTest.
+param([string]$GameDir = "", [switch]$NoPull, [switch]$Force, [string]$ModName = "JackieLives")
 
 $ErrorActionPreference = "Stop"
-$modName = "JackieLives"
+$modName = $ModName
 $src = Join-Path $PSScriptRoot ("mod\" + $modName)
 
 if (-not (Test-Path $src)) { Write-Host "ERROR: source mod not found at $src"; exit 1 }
@@ -169,7 +175,12 @@ $luaCount = (Get-ChildItem -Path $dest -Filter *.lua -File -ErrorAction Silently
 Write-Host ""
 Write-Host "Restart the game (or reload the mod) to load JackieLives v$version." -ForegroundColor Green
 Write-Host "  $luaCount .lua files in $dest" -ForegroundColor DarkGray
-if (Test-Path (Join-Path $dest "dialogui.lua")) {
-  Write-Host "  dialogui.lua present - the native dialogue picker (v1.63+) is installed." -ForegroundColor DarkGray
+if ($modName -eq "JackieLives") {
+  if (Test-Path (Join-Path $dest "dialogui.lua")) {
+    Write-Host "  dialogui.lua present - the native dialogue picker (v1.63+) is installed." -ForegroundColor DarkGray
+  }
+  else {
+    Write-Host "  WARNING: dialogui.lua is MISSING - the dialogue picker cannot work." -ForegroundColor Red
+  }
 }
 exit 0

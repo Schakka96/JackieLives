@@ -19,7 +19,13 @@
 --     debounced to one move per burst, wrapping at both ends, 0-based on the wire / 1-based to us;
 --   * the game's empty DialogChoiceHubs push must NOT hide us...
 --   * ...but a REAL conversation must preempt us and win the widget;
---   * the box drops itself when the world goes away.
+--   * the box drops itself when the world goes away;
+--   * THE SANDBOX INVARIANT (v1.63.1) - the struct constructors must use BARE global references,
+--     never `_G[name]`. CET resolves RTTI type names through the mod sandbox's __index, which a
+--     `_G[...]` table index can bypass, returning nil. The original code used `_G[full]`, passed
+--     this harness (which defines real globals, so `_G` worked) and produced an empty picker
+--     in-game. The last test below reproduces that sandbox by hiding the types from `_G` while
+--     leaving them reachable as bare globals - it FAILS against the old code and passes now.
 --
 -- Run it twice, effectively: `resolveFields` picks the readable spelling of the protected
 -- `m_AreDialogsOpen` field, and if none reads back it falls back to driving OnDialogsData. Delete
@@ -205,6 +211,39 @@ DialogUI.show("Jackie", { { text = "x" } }, function() end)
 Game.GetPlayer = function() return nil end
 DialogUI.tick(9)
 ok(DialogUI.isShown() == false, "tick() drops the box when the player is gone")
+
+print("\n== sandbox: bare globals resolve, but _G[name] does NOT ==")
+-- Model CET's mod sandbox FAITHFULLY. In CET a mod chunk runs with a custom environment whose
+-- __index resolves RTTI type names; `_G` inside that chunk is a DIFFERENT table that does not.
+-- So: load a fresh copy of dialogui.lua under an env where bare `Foo` resolves but `_G.Foo` is nil.
+-- (An earlier attempt put the metatable on _G itself - which made `_G[name]` work too, so it passed
+--  against the very bug it was meant to catch. A regression test that can't fail is decoration.)
+local TYPE_NAMES = { "gameinteractionsvisListChoiceData", "gameinteractionsvisListChoiceHubData",
+                     "gameinteractionsvisDialogChoiceHubs", "gameinteractionsChoiceTypeWrapper",
+                     "gameinteractionsChoiceCaption", "ListChoiceData", "ListChoiceHubData",
+                     "DialogChoiceHubs", "ChoiceTypeWrapper", "InteractionChoiceCaption" }
+
+local plainG = {}                                  -- what `_G` looks like inside the sandbox
+for k, v in pairs(_G) do plainG[k] = v end
+for _, n in ipairs(TYPE_NAMES) do plainG[n] = nil end   -- ...with the game types absent
+
+local env = setmetatable({ _G = plainG }, { __index = _G })   -- bare names still resolve
+local chunk = assert(loadfile("mod/JackieLives/dialogui.lua"))
+if setfenv then setfenv(chunk, env) end                       -- Lua 5.1 / LuaJIT
+local D2 = chunk()
+
+-- sanity: the sandbox really is hostile to the _G[...] form
+ok(env._G["gameinteractionsvisListChoiceHubData"] == nil, "sandbox: _G[name] is nil (as in CET)")
+ok(env.gameinteractionsvisListChoiceHubData ~= nil, "sandbox: the bare name still resolves")
+
+Game.GetPlayer = function() return { alive = true } end
+D2.bind{ log = function(m) logs[#logs+1] = m end, clock = function() return 0 end }
+D2.init()
+fire("dialogWidgetGameController.OnInitialize")
+C.AreDialogsOpen = false; C.m_data = { choiceHubs = {} }; C.screen = nil
+local sandboxShown = D2.show("Jackie", { { text = "sandbox row" } }, function() end)
+ok(sandboxShown, "show() works when types are reachable ONLY as bare globals")
+ok(C.screen ~= nil and C.screen.rows[1].text == "sandbox row", "the row actually rendered")
 
 print(("\n%d/%d checks passed"):format(checks - fails, checks))
 os.exit(fails == 0 and 0 or 1)

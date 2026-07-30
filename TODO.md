@@ -11,6 +11,85 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🆕 v1.64.1 (2026-07-30) — 🔴 the native picker showed NOTHING: `_G[name]` can't resolve game types
+
+**Mac-side (LuaJIT parse-checked, `mod/` + `staging/` in sync). Awaiting Windows in-game test.**
+
+**Antonia's report:** *"I tested the new native dialogue picker in jackielives and it does NOT work.
+Nothing appears."* (NCLives still showing its custom box is **expected** — `dialogui.lua` was only
+ever added to JackieLives.)
+
+### The bug — one line, in v1.63
+
+`dialogui.lua`'s struct constructor used `_G[full].new()`. **CET resolves RTTI type names through the
+`__index` of the mod-sandbox environment, and `_G` inside a mod chunk is a different table that does
+not carry that resolution.** So `_G["gameinteractionsvisListChoiceHubData"]` was `nil` while the bare
+name `gameinteractionsvisListChoiceHubData` resolves fine — which is exactly why every shipped mod
+that builds these structs (QuestRunner, AMM, the Train/Metro mods) uses a bare direct reference.
+
+Consequence chain, every step silent: constructors returned `nil` → every choice failed to build →
+`show()` returned false → the 8-attempt retry expired → `Branch.finish()` ended the conversation.
+Player-visible result: **press F, nothing happens.**
+
+Fixed: bare direct reference first, alias second, `_G` only as a last resort — with `made[]` recording
+which form won, so `diagnose()` can report it.
+
+### ⚠️ Why the 31-check harness passed a build that could never work
+
+`tools/test_dialogui.lua` defined the game types as **real globals**, so `_G[name]` worked *in the
+harness*. It was faithful about the render path and blind about the environment.
+
+Now fixed properly, and this is the part worth keeping: the new test loads a fresh copy of
+`dialogui.lua` under a `setfenv` sandbox where bare names resolve but `_G[name]` is `nil`. It was
+**verified to actually fail on the old code** (33/35) and pass on the new (35/35). The first attempt
+put the metatable on `_G` itself, which made `_G[name]` work too — so it passed against the very bug
+it was written to catch. *A regression test you haven't watched fail is decoration.*
+
+### Also fixed while in there
+
+- **`pushHubs` ran the routes in the wrong order.** It wrote the protected gate field + made the three
+  calls, and only fell back to the game's own `OnDialogsData` handler `if not ok`. A protected-field
+  write that silently no-ops raises no error, so that route could "succeed" while doing nothing and
+  the fallback would never run. Now runs **both every time** (they're idempotent) and records which
+  the controller accepted.
+- **The standalone test picker was input-dead.** Forwarding was gated on `Branch.open`, false for a
+  picker opened outside a conversation — a working picker would have looked broken. Now
+  `Branch.open or DialogUI.isShown()`.
+- **`Blaze.closeDialogue` (v1.63a, concurrent session) had the same blind spot** — it now also calls
+  `DialogUI.hide()`, so a standalone picker can't ride into the escape fade still eating input.
+
+### 🔧 New: two diagnostic buttons (CET window, beside the "Dialogue picker:" line)
+
+- **"Diagnose picker"** — walks the four independent silent-failure modes *in order* and names the
+  first broken one: struct construction (and which name form resolved), controller capture, hook
+  registration counts, then a **live 2-row push** reporting which route the controller accepted. Holds
+  the probe box up 10 s so you can close the overlay and look. All of it to `jackie_debug.log`.
+- **"Show test picker"** / **"Close test picker"** — a real 3-row box with no conversation, no Jackie,
+  no cooldowns. Separates *"is the picker broken"* from *"is the dialogue tree broken"* — the first
+  thing worth knowing, and previously impossible to ask.
+
+### Housekeeping (Antonia's ask)
+
+- `deploy_probe.ps1` **deleted** — folded into `deploy.ps1 -ModName <folder>`, which also gains the
+  git-pull and the "what actually landed" report it never had. TODO references updated.
+- `audioware/JackieLives/JackieLives.yml.bak` **deleted** (6,385 lines diverged from the live
+  manifest; git history is the archive).
+- `deploy.ps1` now **warns in red if `dialogui.lua` didn't arrive** in the game folder.
+
+### Problems & Resolutions (2026-07-30, second pass)
+
+1. **The failure was invisible by construction.** Four things must hold for the box to render and all
+   four fail as "nothing appears". v1.63 logged which step failed — but only to a file, with no
+   on-screen signal and no way to exercise the picker without a conversation. The lesson: for a
+   feature with several silent failure modes, ship the probe **with** the feature, not after a
+   failed test session.
+2. **"Offline tests pass" is a claim about the stubs, not the game.** The stub environment was wrong
+   in a way that flattered the code. Where a harness models an environment, it must model that
+   environment's *hostile* property.
+3. **Version collision again.** v1.63/v1.64 were claimed by the concurrent Blaze/retrieval session
+   while this was in flight → renumbered to **v1.64.1** after reading `git log`. Their `init.lua`
+   edits and mine were in different regions — checked, not assumed. See the shared-tree memory.
+
 ## 🆕 v1.64 (2026-07-30) — 🔴 THE QUESTLINE NEVER STARTED FOR ANYONE (player-reported)
 
 **Mac-side (LuaJIT parse-checked, `mod/` + `staging/` in sync). Awaiting Windows in-game test.**
@@ -1948,7 +2027,7 @@ Scripted editing required (once the spike confirms facts):
   buttons play an AMM `Poses` animation on the looked-at Jackie, print `[JKAnim]` name to console, and
   "Save to library" appends good ones to `jackie_anim_library.txt`. Drives AMM.Poses:GetAllAnimations()
   + PlayAnimationOnTarget (workspot system). `- [ ] TEST:` deploy via
-  `.\deploy_probe.ps1 -ModName JackieAnimTest`, confirm anims play + names log + saves land.
+  `.\deploy.ps1 -ModName JackieAnimTest`, confirm anims play + names log + saves land.
 
 ### 🟢 START HERE next session (updated 2026-07-02, end of session) — SUCCESSFUL SESSION
 **Session 2026-07-02 recap:** the 2026-07-01 bug pile is closed, **walk-abreast landed and tested great**
@@ -2949,7 +3028,7 @@ pinning the model — needs in-game evidence to tell which.
 ## 🆕 v0.62 — CET window declutter + main-quest detection + companion safety dismount (DEPLOY + test, 2026-06-19)
 - **Disabled the VEHICLE + LIPSYNC test windows.** Renamed their deployed `init.lua → init.lua.disabled`
   in the game's CET mods folder (windows gone on reload; nothing deleted). Source stays under `mod/`
-  so `deploy_probe.ps1 -ModName JackieVehicleTest|JackieLipsync` redeploys them instantly to test again.
+  so `deploy.ps1 -ModName JackieVehicleTest|JackieLipsync` redeploys them instantly to test again.
 - **Decluttered the main "Jackie Lives" CET window** — permanently removed the UI for: push-subtitle test,
   NATIVE phone test (RING/CONNECT/END/Force-hang-up), "Play branching dialogue" button, proximity-bark +
   bump-grunt sliders, the "Arrival test modes" (BEHIND/foot-dist/arrive-dist) block, and the picker-styles
@@ -2976,7 +3055,7 @@ pinning the model — needs in-game evidence to tell which.
 Goal: make a SPAWNED Jackie speak a SPECIFIC line by VO string id WITH the game's own baked
 lipsync, WITHOUT authoring a `.scene` file. If it works, the heavy WolvenKit scene-authoring
 route (Track B) is unnecessary.
-- **Built:** standalone CET probe `mod/JackieSceneProbe/` + `deploy_probe.ps1`. Dump-first
+- **Built:** standalone CET probe `mod/JackieSceneProbe/` + `deploy.ps1 -ModName ...` (was `deploy_probe.ps1`, folded in v1.63.1). Dump-first
   pattern (same one that cracked the phone system): reflection-dump scene/voiceset/dialog/VO
   classes → `scene_methods.txt`; placeholder "play the line" attempts → `scene_attempts.txt`.
   Test line: **"Ka-ching, baby!"** stringId `1927336253241237504`, lipsync `f_1ABF461C612D2000`.

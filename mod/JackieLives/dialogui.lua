@@ -1,5 +1,5 @@
 --[[
-  dialogui.lua — THE NATIVE DIALOGUE PICKER  (v1.63)
+  dialogui.lua — THE NATIVE DIALOGUE PICKER  (v1.64.1)
 
   Self-contained module (global `DialogUI`, no top-level `local` in init.lua's main chunk ->
   respects the 200-local cap, same as Retrieval / Blaze / Session / Lang).
@@ -76,7 +76,7 @@
 --]]
 
 local DialogUI = {}
-DialogUI.VERSION = "1.63"
+DialogUI.VERSION = "1.64.1"
 
 -- deps injected from init.lua (DialogUI.bind{...})
 local deps = {}
@@ -130,14 +130,68 @@ local function T(s)
   return tostring(out or "")
 end
 
--- Construct a game struct by full name, falling back to its alias. Both spellings exist in the
--- RTTI (`gameinteractionsvisListChoiceData` / `ListChoiceData`); which one CET exposes has moved
--- around between builds, so try the pair rather than betting on one.
-local function newStruct(full, alias)
-  local v
-  pcall(function() v = _G[full].new() end)
-  if v == nil then pcall(function() v = _G[alias].new() end) end
-  return v
+-- Construct a game struct.
+--
+-- ⚠️ v1.63.1 — DO NOT go back to `_G[name].new()`. CET resolves RTTI type names through the
+-- __index of the MOD SANDBOX environment, and a plain `_G[...]` table index can bypass that
+-- resolution entirely and hand back nil. Every shipped mod that builds these structs
+-- (QuestRunner, AMM, the Train/Metro mods) uses a BARE direct reference, and so must we. The
+-- first cut of this file used `_G[full]`; it passed the offline harness (which defines real
+-- globals, so `_G` lookup worked there) and produced an empty picker in-game.
+--
+-- Each candidate is a thunk, so an unresolved name is a caught pcall error rather than a crash.
+-- Both spellings exist in the RTTI (`gameinteractionsvisListChoiceData` / `ListChoiceData`) and
+-- which one CET exposes has moved between builds, so try the pair. `made` records which form won,
+-- purely so DialogUI.diagnose() can report it.
+local made = {}
+local function tryNew(label, thunks)
+  for i, f in ipairs(thunks) do
+    local ok, v = pcall(f)
+    if ok and v ~= nil then
+      if made[label] == nil then made[label] = i end
+      return v
+    end
+  end
+  made[label] = false
+  return nil
+end
+
+local function newListChoiceData()
+  return tryNew("ListChoiceData", {
+    function() return gameinteractionsvisListChoiceData.new() end,
+    function() return ListChoiceData.new() end,
+    function() return _G["gameinteractionsvisListChoiceData"].new() end,
+  })
+end
+
+local function newListChoiceHubData()
+  return tryNew("ListChoiceHubData", {
+    function() return gameinteractionsvisListChoiceHubData.new() end,
+    function() return ListChoiceHubData.new() end,
+    function() return _G["gameinteractionsvisListChoiceHubData"].new() end,
+  })
+end
+
+local function newDialogChoiceHubs()
+  return tryNew("DialogChoiceHubs", {
+    function() return gameinteractionsvisDialogChoiceHubs.new() end,
+    function() return DialogChoiceHubs.new() end,
+    function() return _G["gameinteractionsvisDialogChoiceHubs"].new() end,
+  })
+end
+
+local function newChoiceTypeWrapper()
+  return tryNew("ChoiceTypeWrapper", {
+    function() return gameinteractionsChoiceTypeWrapper.new() end,
+    function() return ChoiceTypeWrapper.new() end,
+  })
+end
+
+local function newChoiceCaption()
+  return tryNew("ChoiceCaption", {
+    function() return gameinteractionsChoiceCaption.new() end,
+    function() return InteractionChoiceCaption.new() end,
+  })
 end
 
 -- ---------------------------------------------------------------------------
@@ -152,7 +206,7 @@ end
 --   no type at all -> the default cyan (dialogUI.script:765 `iconColor = m_Active`), i.e. what a
 --     normal V dialogue line looks like. Do NOT set Blueline here - that's the world-prompt style.
 local function buildChoice(c)
-  local choice = newStruct("gameinteractionsvisListChoiceData", "ListChoiceData")
+  local choice = newListChoiceData()
   if not choice then return nil end
 
   local text = T(c.text)
@@ -168,7 +222,7 @@ local function buildChoice(c)
 
   if c.final or c.dim then
     pcall(function()
-      local w = newStruct("gameinteractionsChoiceTypeWrapper", "ChoiceTypeWrapper")
+      local w = newChoiceTypeWrapper()
       if not w then return end
       w:SetType(c.dim and gameinteractionsChoiceType.Inactive or gameinteractionsChoiceType.QuestImportant)
       choice.type = w
@@ -180,7 +234,7 @@ local function buildChoice(c)
     pcall(function()
       local rec = TweakDBInterface.GetChoiceCaptionIconPartRecord("ChoiceCaptionParts." .. tostring(c.icon))
       if not rec then return end
-      local cap = newStruct("gameinteractionsChoiceCaption", "InteractionChoiceCaption")
+      local cap = newChoiceCaption()
       if not cap then return end
       cap:AddPartFromRecord(rec)
       choice.captionParts = cap
@@ -194,7 +248,7 @@ end
 -- frame when the hub is active and the title is non-empty (dialogUI.script:429-436) — which is the
 -- native original of the red "JACKIE" box drawNameChild used to paint by hand.
 local function buildHub(title, choices)
-  local hub = newStruct("gameinteractionsvisListChoiceHubData", "ListChoiceHubData")
+  local hub = newListChoiceHubData()
   if not hub then return nil end
   pcall(function() hub.id = S.hubId end)
   pcall(function() hub.title = T(title or "Jackie") end)
@@ -244,33 +298,40 @@ local function pushHubs(hubs, now)
   if not ctrl then return false end
   resolveFields(ctrl)
 
-  local data = newStruct("gameinteractionsvisDialogChoiceHubs", "DialogChoiceHubs")
+  local data = newDialogChoiceHubs()
   if not data then log("DialogChoiceHubs.new() failed - cannot push"); return false end
   pcall(function() data.choiceHubs = hubs end)
   local n = #hubs
 
-  local ok = false
+  -- v1.63.1: BOTH routes, every time, in this order. They are individually idempotent, and each
+  -- covers the other's failure mode:
+  --
+  --  A) OnDialogsData is the game's OWN complete handler (interactionUIBase.script:52-61) — it sets
+  --     m_AreDialogsOpen itself and makes the three follow-up calls. Preferred, because it needs no
+  --     guess about what CET calls a protected field.
+  --  B) Write the gate + make the three calls by hand. Covers the case where OnDialogsData can't be
+  --     invoked from Lua at all.
+  --
+  -- The first cut ran B first and only fell back to A `if not ok`. That was a real hole: a protected
+  -- field WRITE that silently no-ops raises no error, so B "succeeded" while doing nothing at all and
+  -- A never ran. Running both removes the guesswork entirely for the price of a redundant redraw.
   S.selfPush = true
-  if S.fieldOpen then
-    -- Preferred route: set the visibility gate ourselves, then run the same three calls the base
-    -- handler would (interactionUIBase.script:56-60).
-    ok = pcall(function()
+  local okA = pcall(function() ctrl:OnDialogsData(ToVariant(data)) end)
+  local okB = pcall(function()
+    if S.fieldOpen then
       ctrl[S.fieldOpen] = (n > 0)
       if S.fieldScroll then ctrl[S.fieldScroll] = (n > 1) end
-      ctrl:UpdateDialogsData(data)
-      ctrl:OnInteractionsChanged()
-      ctrl:UpdateListBlackboard()
-    end)
-  end
-  if not ok then
-    -- Fallback (no readable field name): hand the whole thing to the game's own base handler, which
-    -- sets m_AreDialogsOpen and makes those three calls itself.
-    ok = pcall(function() ctrl:OnDialogsData(ToVariant(data)) end)
-  end
+    end
+    ctrl:UpdateDialogsData(data)
+    ctrl:OnInteractionsChanged()
+    pcall(function() ctrl:UpdateListBlackboard() end)   -- `private`; nice-to-have, never fatal
+  end)
   S.selfPush = false
 
+  S.pushRoute = (okA and "OnDialogsData" or "-") .. "/" .. (okB and "fields+calls" or "-")
   S.lastPush = now or CLOCK()
-  return ok
+  if not (okA or okB) then log("push FAILED on both routes (controller rejected every call)") end
+  return (okA or okB)
 end
 
 -- Publish the highlighted row. SetInt only signals on an actual change, so calling this every
@@ -370,6 +431,7 @@ function DialogUI.init()
   -- the heartbeat re-push as a safety net. When all four registered (the normal case) it stays off,
   -- because a re-push re-runs the widget's selection animation and would visibly pulse.
   S.reassert = (overrides < 4)
+  S.diagCaptures, S.diagOverrides = captured, overrides   -- for DialogUI.diagnose()
 
   log("init: captures=" .. captured .. "/3  overrides=" .. overrides .. "/4" ..
       (S.reassert and "  <- GUARD MISSING, heartbeat re-push ENABLED" or ""))
@@ -387,6 +449,96 @@ end
 
 function DialogUI.isShown() return S.shown end
 function DialogUI.hasController() return S.ctrl ~= nil end
+
+-- ---------------------------------------------------------------------------
+-- DIAGNOSE — the one-button "why is there no box?" report.
+-- ---------------------------------------------------------------------------
+-- The picker has four independent ways to fail silently, and from the player's chair all four look
+-- identical (nothing appears). This walks them in order and names the FIRST one that's broken, so a
+-- Windows test session produces an answer instead of "it didn't work". Everything is pcall'd; it is
+-- safe to run any time, in or out of a conversation.
+--
+-- Reads the log at:  bin\x64\plugins\cyber_engine_tweaks\mods\JackieLives\jackie_debug.log
+function DialogUI.diagnose()
+  log("================ DIALOGUE PICKER DIAGNOSE (v" .. DialogUI.VERSION .. ") ================")
+
+  -- 1. Can we even construct the structs? This is the failure that shipped in the first cut.
+  local t = {
+    { "ListChoiceData",    newListChoiceData },
+    { "ListChoiceHubData", newListChoiceHubData },
+    { "DialogChoiceHubs",  newDialogChoiceHubs },
+    { "ChoiceTypeWrapper", newChoiceTypeWrapper },
+    { "ChoiceCaption",     newChoiceCaption },
+  }
+  local structsOk = true
+  for _, e in ipairs(t) do
+    local v = e[2]()
+    local how = made[e[1]]
+    local form = (how == 1 and "full name") or (how == 2 and "alias") or (how == 3 and "_G lookup") or "NONE"
+    log(("1. struct %-18s %s   (resolved via: %s)"):format(e[1], v ~= nil and "OK" or "*** FAILED ***", form))
+    if v == nil then structsOk = false end
+  end
+  if not structsOk then
+    log("VERDICT: the game structs can't be constructed -> every choice fails to build -> empty box.")
+    log("         This is an RTTI-name / CET-version problem, not a logic problem. Send this log.")
+    log("=====================================================================")
+    return false
+  end
+
+  -- 2. Do we hold the dialogue controller? Without it there is nothing to draw into.
+  log("2. controller captured: " .. tostring(S.ctrl ~= nil))
+  if not S.ctrl then
+    log("   The dialogWidgetGameController was never handed to us. Observe() may not have registered,")
+    log("   or its methods never fired. Open+close the ESC menu once and run this again.")
+    log("VERDICT: no controller. Nothing can render.")
+    log("=====================================================================")
+    return false
+  end
+  resolveFields(S.ctrl)
+  log("   protected-field spelling: open=" .. tostring(S.fieldOpen) .. " scroll=" .. tostring(S.fieldScroll))
+
+  -- 3. Did the hooks register? A missing guard means the game can wipe the box a frame later, which
+  --    looks exactly like "it never appeared".
+  log("3. hooks: captures=" .. tostring(S.diagCaptures) .. "/3  overrides=" .. tostring(S.diagOverrides) .. "/4" ..
+      (S.reassert and "   (heartbeat re-push ON)" or ""))
+
+  -- 4. Actually push a hub and report which route the controller accepted. This is the real test:
+  --    if it prints two OKs and you still see nothing, the problem is downstream of us (the widget
+  --    itself), which is a completely different investigation.
+  local probe = { { text = "DIAGNOSE row 1" }, { text = "DIAGNOSE row 2", final = true } }
+  local before = S.shown
+  local shown  = DialogUI.show("Jackie", probe, function(i) log("   diagnose: row " .. i .. " confirmed") end)
+  log("4. live push: show()=" .. tostring(shown) .. "  routes=" .. tostring(S.pushRoute))
+  if shown then
+    log("VERDICT: the picker was driven successfully. A 2-row test box should be ON SCREEN NOW.")
+    log("         If you can SEE it -> the plumbing is fine; the problem is in the conversation flow.")
+    log("         If you CANNOT see it -> the controller accepted our calls but drew nothing.")
+    log("         Leaving it up for 10 s so you can close the overlay and look, then closing it.")
+    S.diagUntil = CLOCK() + 10.0
+  else
+    log("VERDICT: show() refused. The log lines above this one say why.")
+    if not before then DialogUI.hide() end
+  end
+  log("=====================================================================")
+  return shown
+end
+
+-- Standalone picker test: put a real 3-row box up with no conversation, no Jackie, no cooldowns.
+-- Decouples "is the picker broken" from "is the dialogue tree broken" — the single most useful thing
+-- to know first, and it works from the main menu... er, from anywhere V exists.
+function DialogUI.selfTest()
+  local rows = {
+    { text = "Test choice one" },
+    { text = "Test choice two" },
+    { text = "Test choice three (final)", final = true },
+  }
+  local ok = DialogUI.show("Jackie", rows, function(i)
+    log("selfTest: you picked row " .. tostring(i) .. " - input routing WORKS.")
+  end)
+  log("selfTest: show()=" .. tostring(ok) .. "  routes=" .. tostring(S.pushRoute) ..
+      "  (arrows/wheel to move, F to select)")
+  return ok
+end
 
 -- 1-based index of the highlighted row (init.lua / Branch think in 1-based).
 function DialogUI.index() return S.sel + 1 end
@@ -545,6 +697,14 @@ function DialogUI.tick(now)
   if not Game.GetPlayer() then
     S.shown = false
     S.sel, S.count, S.choices, S.onConfirm = 0, 0, nil, nil
+    return
+  end
+
+  -- DialogUI.diagnose() leaves its probe box up for a few seconds so you can actually look at it.
+  if S.diagUntil and (now or 0) >= S.diagUntil then
+    S.diagUntil = nil
+    log("diagnose: closing the test box.")
+    DialogUI.hide()
     return
   end
 
