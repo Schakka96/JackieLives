@@ -17,10 +17,20 @@
 
 -- call them EVERY simulated frame, exactly as onUpdate does in-game.
 
+-- ⚠️ `walkAbreast` is the LIVE name of the abreast opt-in flag, and it has been renamed twice:
+-- pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in) → v1.61 `walkAbreast`
+-- (default-on again). Each rename is deliberately invalidating, so an old saved flag stops being read.
+-- This harness kept setting `disableCustomWalk`, which jlAbreastOn stopped consulting at v1.57 — so
+-- `JL.walkAbreast` was nil, the very first gate returned false, and all six abreast-ON assertions
+-- failed against a mod that was working fine. If these fail again after a rename, fix the NAME here.
 JL = { clock = 0, abreast = {}, summon = { active = true, companionSet = true, spawn = { handle = {} } },
-       dinner = {}, leaving = {}, disableCustomWalk = false }
+       dinner = {}, leaving = {}, loiter = {}, walkAbreast = true }
 Config = { abreast = { enabled = true, slopeRate = 0.45, maxZDelta = 1.0, slopeReleaseSeconds = 1.5,
                        walkMinSpeed = 0.6, walkMaxSpeed = 2.0, jogMinSpeed = 2.8, walkSustainSeconds = 2.0 },
+           -- v1.57 added a loiter gate to jlAbreastOn (V standing still -> the TRAIL owns Jackie, because
+           -- that's where the halt lives). Real values, so the harness exercises the real hysteresis.
+           loiter  = { enabled = true, stopSpeed = 0.55, goSpeed = 1.10,
+                       stopSustain = 0.60, goSustain = 0.35 },
            stealth = { enabled = true } }
 jlCruise = nil
 
@@ -42,6 +52,7 @@ local function extract(name)
 end
 load(extract("jlVWalking"))()
 load(extract("jlVertical"))()
+load(extract("jlVLoitering"))()   -- v1.57 gate, extracted (not stubbed) so it can't drift either
 load(extract("jlAbreastOn"))()
 
 local fails = 0
