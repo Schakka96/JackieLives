@@ -13,7 +13,8 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 
 ## 🆕 v1.64.1 (2026-07-30) — 🔴 the native picker showed NOTHING: `_G[name]` can't resolve game types
 
-**Mac-side (LuaJIT parse-checked, `mod/` + `staging/` in sync). Awaiting Windows in-game test.**
+✅ **CONFIRMED WORKING IN-GAME on Windows, 2026-07-30** (Antonia: *"it works for jackie now"*).
+The native dialogue picker is live. `mod/` + `staging/` in sync.
 
 **Antonia's report:** *"I tested the new native dialogue picker in jackielives and it does NOT work.
 Nothing appears."* (NCLives still showing its custom box is **expected** — `dialogui.lua` was only
@@ -76,6 +77,12 @@ it was written to catch. *A regression test you haven't watched fail is decorati
   manifest; git history is the archive).
 - `deploy.ps1` now **warns in red if `dialogui.lua` didn't arrive** in the game folder.
 
+### Ported to NCLives
+
+Landed there as **v1.3** (`Schakka96/NCLives`, commit e0ca63a) on 2026-07-30, with the `_G[name]`
+trap documented in its CLAUDE.md so the mistake can't be repeated, and its `loadsim.lua` taught to
+stub the dialogue widget. Both repos now retire the custom ImGui picker permanently.
+
 ### Problems & Resolutions (2026-07-30, second pass)
 
 1. **The failure was invisible by construction.** Four things must hold for the box to render and all
@@ -124,6 +131,8 @@ The journal lookup is kept as a harmless secondary path.
 "Start the search for Jackie". It bypasses the gate and always worked.
 
 ## v1.63 (2026-07-30) — THE NATIVE DIALOGUE PICKER — the ImGui choice box is gone
+
+_(Shipped broken — see v1.64.1 above for the one-line `_G[name]` cause and the fix. Confirmed working in-game after that.)_
 
 **All Mac-side (Lua + LuaJIT parse-checked, `mod/` + `staging/` in sync). Awaiting Windows in-game test.**
 
