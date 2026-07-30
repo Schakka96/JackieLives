@@ -65,9 +65,24 @@ M.Config = {
   -- The journal paths below are still best-guesses (the real ones live in .journal resources, not in the
   -- decompiled scripts, so they can't be confirmed off-Windows). "unknown" exists precisely so that a wrong
   -- guess degrades to "the player presses a button", not to "the mod is dead" and not to "the mod spoils".
+  --
+  -- v1.64 THE REAL FIX (this is why players reported "nothing happens at Vik's"): the journal paths below
+  -- never resolved. `JournalManager:GetEntryByString` wants a real .journal resource path, and none of our
+  -- five guesses is one — so questGateState() returned "unknown" for EVERYBODY. "unknown" means stay silent,
+  -- so the reveal never fired at the clinic AND the welcome card that advertises the manual-start button was
+  -- suppressed too. Net effect: a correctly-installed mod looked completely dead, with no hint of the way out.
+  --
+  -- The gate now leads with a QUEST FACT, which CET can read reliably and which we have positively confirmed:
+  -- `q101_done = 1` is set in `q101_cleanup.questphase` (WolvenKit export, docs/research/q101_raw — see
+  -- docs/research/q005_graph_findings.md for how these were harvested). That is exactly "Playing for Time is
+  -- complete" = canonically post-heist. Facts default to 0, so a pre-heist save reads 0 and we still say
+  -- nothing — the spoiler protection that v1.56 bought is kept intact.
+  -- The journal lookup stays as a secondary path (harmless if it keeps failing), and "unknown" now only
+  -- happens if the fact system itself can't be read at all.
   gate = {
     mode       = "quest",
-    questPaths = {            -- tried in order; first that resolves is used
+    doneFacts  = { "q101_done" },   -- CONFIRMED setter: q101_cleanup.questphase -> q101_done = 1
+    questPaths = {            -- secondary: tried in order; first that resolves is used
       "playing_for_time", "q101_playing_for_time",
       "main_quests/prologue/q101_playing_for_time",
       "main_quests/prologue/q101_playing_for_time/q101_playing_for_time",
@@ -89,6 +104,14 @@ M.Config = {
          .. "Go see him at his clinic.\n\n"
          .. "(For mod settings go to Esc -> Mods -> JackieLives) ",
     duration = 16.0,
+    -- v1.64: shown instead of the above when the gate can't read the quest state AT ALL ("unknown"). Says
+    -- nothing about Jackie being alive or dead — safe in a pre-heist save — but it does point at the manual
+    -- start button, so nobody is ever left with a mod that silently does nothing.
+    unknownTitle = "Jackie Lives — installed",
+    unknownText  = "The mod is loaded, but it couldn't read your story progress, so it won't start "
+         .. "Jackie's questline on its own.\n\n"
+         .. "Once the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> "
+         .. "\"Start the search for Jackie\".",
   },
 
   -- Vik's tip — the reveal, shown as the lower-left tutorial popup when V returns to the clinic.
@@ -407,9 +430,29 @@ end
 --   "unknown" -> no path resolved: we know nothing, so STAY SILENT and rely on the manual start button.
 -- The old code collapsed "notyet" and "unknown" into a single `false`, which is why the only way to make
 -- the mod usable was to disable the gate entirely — and that's what leaked the spoiler into a new game.
+-- v1.64: read a fact and report whether the READ itself worked, so "the fact is 0" (= pre-heist, stay silent)
+-- can be told apart from "the quest system didn't answer" (= genuinely unknown). factNum() collapses both to
+-- 0, which is fine for our own facts but not for a gate that must never guess.
+local function factRead(name)
+  local v, ok
+  ok = pcall(function() v = Game.GetQuestsSystem():GetFactStr(name) end)
+  if ok and type(v) == "number" then return v, true end
+  return 0, false
+end
+
 local function questGateState()
   local g = M.Config.gate or {}
   if (g.mode or "off") ~= "quest" then return "met" end                   -- gate off -> no precondition
+  -- PRIMARY: the confirmed quest fact. Reliable, cheap, and readable on every platform.
+  local anyFactRead = false
+  for _, f in ipairs(g.doneFacts or {}) do
+    local v, ok = factRead(f)
+    if ok then
+      anyFactRead = true
+      if v >= 1 then return "met" end
+    end
+  end
+  -- SECONDARY: the journal lookup. Kept because it costs nothing; it has never actually resolved in the wild.
   for _, p in ipairs(g.questPaths or {}) do
     local st = questState(p)
     if st then
@@ -418,7 +461,9 @@ local function questGateState()
       return "notyet"                    -- the quest resolved but isn't done -> pre-heist. Say nothing.
     end
   end
-  return "unknown"                       -- couldn't resolve ANY path -> never guess. Say nothing.
+  -- The fact system answered and said "not done" -> that's a real answer: pre-heist. Stay silent.
+  if anyFactRead then return "notyet" end
+  return "unknown"                       -- nothing answered at all -> never guess. Say nothing.
 end
 
 local function preconditionMet() return questGateState() == "met" end
@@ -426,6 +471,10 @@ local function preconditionMet() return questGateState() == "met" end
 -- Print candidate quest states so we can lock the gate path in-game.
 function M.debugQuestState()
   log("---- quest-gate probe ----")
+  for _, f in ipairs((M.Config.gate or {}).doneFacts or {}) do
+    local v, ok = factRead(f)
+    log("  fact '" .. f .. "' -> " .. tostring(v) .. (ok and "" or "  (READ FAILED)"))
+  end
   for _, p in ipairs((M.Config.gate or {}).questPaths or {}) do
     log("  '" .. p .. "' -> " .. tostring(questState(p)))
   end
@@ -459,7 +508,15 @@ local function welcomeTick()
   if getStage() >= TIP then                            -- questline already started -> card is pointless
     setFactNum(W.fact, 1); return
   end
-  if questGateState() ~= "met" then return end         -- pre-heist, or we can't tell -> say NOTHING
+  local gs = questGateState()
+  if gs == "notyet" then return end                    -- confirmed pre-heist -> say NOTHING (no spoiler)
+  if gs == "unknown" then                              -- can't read the story at all -> spoiler-free notice
+    if not W.unknownText then return end
+    setFactNum(W.fact, 1)
+    showTip(W.unknownTitle or W.title, W.unknownText, W.duration or 16.0)
+    log("Welcome card shown (gate UNKNOWN variant — points at the manual start button).")
+    return
+  end
   setFactNum(W.fact, 1)
   showTip(W.title, W.text, W.duration or 16.0)
   log("Welcome card shown (post-'Playing for Time', first load after install).")

@@ -11,7 +11,40 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
-## 🆕 v1.63 (2026-07-30) — THE NATIVE DIALOGUE PICKER — the ImGui choice box is gone
+## 🆕 v1.64 (2026-07-30) — 🔴 THE QUESTLINE NEVER STARTED FOR ANYONE (player-reported)
+
+**Mac-side (LuaJIT parse-checked, `mod/` + `staging/` in sync). Awaiting Windows in-game test.**
+
+### The bug
+
+Players reported "nothing happens at Vik's". Correct — for **everyone**, on every save. `retrieval.lua`'s
+quest gate (shipped ON since v1.56) resolved V's post-heist state via
+`JournalManager:GetEntryByString("playing_for_time")` and four sibling guesses. None of those is a real
+`.journal` resource path, so every lookup returned `nil` → `questGateState()` = `"unknown"` → the code's
+"never guess, stay silent" branch. That branch suppressed **both** the reveal at the clinic **and** the
+v1.56 welcome card — which was the only thing that told players the manual-start button exists. So a
+correctly-installed mod was inert and self-concealing. The v1.56 comment block even predicted this failure
+mode ("the journal paths are best-guesses") and mitigated it with a card that was itself behind the same gate.
+
+### The fix
+
+1. **The gate now leads with a quest fact, not the journal:** `q101_done`. Confirmed setter —
+   `q101_cleanup.questphase` sets `q101_done = 1` (WolvenKit export in `docs/research/q101_raw`, harvested
+   the same way as the Watson levers in `docs/research/q005_graph_findings.md`). CET reads facts reliably.
+2. **Spoiler protection is preserved.** Facts default to 0, so a pre-heist save reads 0 → `"notyet"` → silent.
+   New `factRead()` reports whether the *read* succeeded, so "fact is 0" (a real answer) is no longer
+   conflated with "nothing answered" — which is what forced v1.56's over-cautious `"unknown"`.
+3. **`"unknown"` can no longer brick the mod.** It now only happens if the quest system can't be read at all,
+   and in that case the welcome card shows a **spoiler-free** variant (`welcome.unknownText`) that mentions
+   Jackie's *fate* not at all and points at Esc → Settings → Mods → JackieLives → "Start the search for Jackie".
+4. `M.debugQuestState()` / the CET "Quest probe" button now print the fact values too.
+
+The journal lookup is kept as a harmless secondary path.
+
+**Player workaround on v1.63 and earlier:** Esc → Settings → Mods → JackieLives → The search for Jackie →
+"Start the search for Jackie". It bypasses the gate and always worked.
+
+## v1.63 (2026-07-30) — THE NATIVE DIALOGUE PICKER — the ImGui choice box is gone
 
 **All Mac-side (Lua + LuaJIT parse-checked, `mod/` + `staging/` in sync). Awaiting Windows in-game test.**
 
