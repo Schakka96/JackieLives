@@ -4,6 +4,10 @@
 -- Regenerate + drift-check:  python3 tools/lang_extract.py --check <code>
 return {
   ["ja"] = {
+    ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "これはメインイベント級の厄介事の匂いがするぜ、V。1分だけ待つ——だが手を引かねぇなら、オレは抜ける。",
+    ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "時間が無くなってきたぜ、エルマーナ。デカい獲物は諦めな、さもなきゃオレは行く。",
+    ["That's my girl. Let the corpo mess wait — I'm still with you."] = "そうこなくちゃな。企業のゴタゴタは待たせとけ——オレはまだあんたと一緒だ。",
+    ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "MODは読み込まれていますが、ストーリーの進行状況を読み取れなかったため、ジャッキーのクエストラインは自動では始まりません。\n\n強盗を終えたら、Esc -> 設定 -> Mods -> JackieLives -> \"Start the search for Jackie\" から開始してください。",
     ["Talk to me, choomba."] = "話そうぜ、チョンバ。",
     ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "あんまここ来ねぇだろ？ヘヘッ。会えて嬉しいぜ、チカ。",
     ["How you feel? You all right?"] = "調子は？大丈夫か？",
@@ -277,6 +281,10 @@ return {
     ["No answer."] = "応答なし。",
   },
   ["es"] = {
+    ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Esto huele a problemas de los gordos, V. Espero un minuto — pero déjalo, o me largo.",
+    ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "El reloj corre, hermana. Suelta el pez gordo o me voy.",
+    ["That's my girl. Let the corpo mess wait — I'm still with you."] = "Esa es mi chica. Que el lío corpo espere — sigo contigo.",
+    ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "El mod está cargado, pero no ha podido leer tu progreso en la historia, así que no iniciará la questline de Jackie por su cuenta.\n\nCuando hayas terminado el atraco, iníciala desde Esc -> Ajustes -> Mods -> JackieLives -> \"Start the search for Jackie\".",
     ["Talk to me, choomba."] = "Háblame, choomba.",
     ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "No vienes seguido por aquí, ¿verdad? Jeje. Qué gusto verte, chica.",
     ["How you feel? You all right?"] = "¿Cómo te sientes? ¿Estás bien?",
@@ -550,6 +558,10 @@ return {
     ["No answer."] = "No contesta.",
   },
   ["de"] = {
+    ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Das riecht nach ganz großem Ärger, V. Ich warte 'ne Minute — aber lass es, oder ich bin weg.",
+    ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "Die Uhr läuft, hermana. Lass den dicken Fisch los, oder ich bin weg.",
+    ["That's my girl. Let the corpo mess wait — I'm still with you."] = "Das ist mein Mädchen. Der Konzern-Mist kann warten — ich bin noch bei dir.",
+    ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "Die Mod ist geladen, konnte aber deinen Story-Fortschritt nicht auslesen und startet Jackies Questreihe daher nicht von selbst.\n\nWenn der Heist hinter dir liegt, starte sie über Esc -> Einstellungen -> Mods -> JackieLives -> \"Start the search for Jackie\".",
     ["Talk to me, choomba."] = "Sprich mit mir, choomba.",
     ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "Kommst nicht oft her, was? Heheh. Schön, dich zu sehen, chica.",
     ["How you feel? You all right?"] = "Wie fühlst du dich? Alles in Ordnung?",
@@ -823,6 +835,10 @@ return {
     ["No answer."] = "Keine Antwort.",
   },
   ["fr"] = {
+    ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Ça sent les gros ennuis, V. J'attends une minute — mais laisse tomber, ou je me casse.",
+    ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "Le temps tourne, hermana. Lâche le gros poisson ou je m'en vais.",
+    ["That's my girl. Let the corpo mess wait — I'm still with you."] = "Voilà ma fille. Le bordel corpo peut attendre — je reste avec toi.",
+    ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "Le mod est chargé, mais il n'a pas pu lire ta progression dans l'histoire, donc il ne lancera pas la quête de Jackie tout seul.\n\nUne fois le braquage derrière toi, lance-la depuis Esc -> Paramètres -> Mods -> JackieLives -> \"Start the search for Jackie\".",
     ["Talk to me, choomba."] = "Parle-moi, choomba.",
     ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "Tu viens pas souvent par ici, hein ? Héhé. Content de te voir, chica.",
     ["How you feel? You all right?"] = "Comment tu te sens ? Ça va ?",
@@ -1096,6 +1112,10 @@ return {
     ["No answer."] = "Pas de réponse.",
   },
   ["it"] = {
+    ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Questa puzza di guai grossi, V. Aspetto un minuto — ma lascia perdere, o me ne vado.",
+    ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "Il tempo scorre, hermana. Molla il pesce grosso o me ne vado.",
+    ["That's my girl. Let the corpo mess wait — I'm still with you."] = "Ecco la mia ragazza. Il casino corpo può aspettare — resto con te.",
+    ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "La mod è caricata, ma non è riuscita a leggere i tuoi progressi nella storia, quindi non avvierà da sola la questline di Jackie.\n\nQuando il colpo sarà alle tue spalle, avviala da Esc -> Impostazioni -> Mod -> JackieLives -> \"Start the search for Jackie\".",
     ["Talk to me, choomba."] = "Parlami, choomba.",
     ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "Non vieni spesso da queste parti, eh? Eheh. Che bello vederti, chica.",
     ["How you feel? You all right?"] = "Come ti senti? Tutto a posto?",
@@ -1369,6 +1389,10 @@ return {
     ["No answer."] = "Nessuna risposta.",
   },
   ["pl"] = {
+    ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "To pachnie grubą aferą, V. Poczekam minutę — ale odpuść, albo mnie tu nie ma.",
+    ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "Zegar tyka, hermana. Odpuść grubą rybę, albo mnie tu nie ma.",
+    ["That's my girl. Let the corpo mess wait — I'm still with you."] = "Tak jest, moja dziewczyna. Korpo-bajzel może poczekać — zostaję z tobą.",
+    ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "Mod jest wczytany, ale nie udało mu się odczytać twoich postępów w fabule, więc nie uruchomi questa Jackiego samodzielnie.\n\nGdy skok będzie już za tobą, odpal go z Esc -> Ustawienia -> Mody -> JackieLives -> \"Start the search for Jackie\".",
     ["Talk to me, choomba."] = "Mów do mnie, choomba.",
     ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "Nie zaglądasz tu często, co? Heheh. Dobrze cię widzieć, chica.",
     ["How you feel? You all right?"] = "Jak się czujesz? W porządku?",
@@ -1642,6 +1666,10 @@ return {
     ["No answer."] = "Brak odpowiedzi.",
   },
   ["ptbr"] = {
+    ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Isso tá cheirando a encrenca grande, V. Espero um minuto — mas larga isso, ou eu vou embora.",
+    ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "O relógio tá correndo, hermana. Larga o peixe grande ou eu vou embora.",
+    ["That's my girl. Let the corpo mess wait — I'm still with you."] = "Essa é a minha garota. A treta corpo que espere — eu continuo com você.",
+    ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "O mod está carregado, mas não conseguiu ler o seu progresso na história, então não vai iniciar a missão do Jackie sozinho.\n\nQuando o assalto ficar para trás, inicie em Esc -> Configurações -> Mods -> JackieLives -> \"Start the search for Jackie\".",
     ["Talk to me, choomba."] = "Fala comigo, choomba.",
     ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "Não aparece muito por aqui, né? Heheh. Que bom te ver, chica.",
     ["How you feel? You all right?"] = "Como você tá? Tudo certo?",
@@ -1915,6 +1943,10 @@ return {
     ["No answer."] = "Não atende.",
   },
   ["ru"] = {
+    ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Пахнет крупными неприятностями, V. Подожду минуту — но бросай это, или я ухожу.",
+    ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "Время идёт, hermana. Бросай крупную рыбу, или я ухожу.",
+    ["That's my girl. Let the corpo mess wait — I'm still with you."] = "Вот это моя девочка. Корпоративная возня подождёт — я всё ещё с тобой.",
+    ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "Мод загружен, но не смог прочитать ваш прогресс по сюжету, поэтому не запустит сюжетную линию Джеки сам.\n\nКогда ограбление останется позади, запустите её через Esc -> Настройки -> Моды -> JackieLives -> \"Start the search for Jackie\".",
     ["Talk to me, choomba."] = "Говори со мной, choomba.",
     ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "Нечасто сюда заглядываешь, а? Хе-хе. Рад тебя видеть, chica.",
     ["How you feel? You all right?"] = "Как ты? В порядке?",
@@ -2188,6 +2220,10 @@ return {
     ["No answer."] = "Нет ответа.",
   },
   ["zhcn"] = {
+    ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "这闻着就是大事的麻烦，V。我等一分钟——但你不撒手，我就走了。",
+    ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "时间不多了，hermana。放掉那条大鱼，不然我就走了。",
+    ["That's my girl. Let the corpo mess wait — I'm still with you."] = "这才是我的姑娘。公司的破事先放着——我还在你身边。",
+    ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "模组已加载，但无法读取你的剧情进度，因此不会自动开始杰基的任务线。\n\n等你完成了那场抢劫，请从 Esc -> 设置 -> Mods -> JackieLives -> \"Start the search for Jackie\" 开始。",
     ["Talk to me, choomba."] = "跟我说说话，choomba。",
     ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "不常来这儿吧？嘿嘿。见到你真高兴，chica。",
     ["How you feel? You all right?"] = "感觉怎么样？你还好吧？",

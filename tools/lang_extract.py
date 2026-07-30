@@ -208,11 +208,76 @@ def check(code, found):
             print(f"    {s[:90]}")
     if not stale and not missing:
         print("  in sync ✅")
-    return 1 if stale else 0
+    # ⚠️ MISSING must fail too. Until 2026-07-30 this returned `1 if stale else 0`, so the common
+    # case — someone adds or edits an English line and every language silently falls back to it —
+    # exited 0 and sailed past any gate. That is exactly the drift this tool exists to catch: it
+    # is how v1.62/v1.64 shipped four untranslated strings to nine languages.
+    return 1 if (stale or missing) else 0
+
+
+# --- POLICY ---------------------------------------------------------------------------------
+# REQUIRE_FULL decides what --check-all treats as a release blocker.
+#   True  -> every shipping language must cover every English string. Use this once a mod IS
+#            fully translated: it is the only thing that stops a reworded line from silently
+#            falling back to English in nine languages.
+#   False -> MISSING is reported as a coverage figure, not a failure, because the mod is
+#            knowingly part-translated. STALE still fails either way: a dead key is never
+#            correct, it means a translation points at text that no longer exists.
+REQUIRE_FULL = True
+
+
+def _languages():
+    """The shipping language codes, read from lang.lua so this can never drift from the mod."""
+    try:
+        src = (MOD / "lang.lua").read_text(encoding="utf-8")
+    except OSError:
+        return []
+    block = re.search(r"Lang\.LANGUAGES\s*=\s*\{(.*?)\n\}", src, re.S)
+    if not block:
+        return []
+    codes = re.findall(r'code\s*=\s*"(\w+)"', block.group(1))
+    return [c for c in codes if c != "en"]          # English is the source, not a translation
+
+
+def check_all(found):
+    """Release gate: every shipping language must be in sync. Non-zero exit if any isn't."""
+    codes = _languages()
+    if not codes:
+        print("could not read Lang.LANGUAGES from lang.lua — nothing checked")
+        return 1
+    source = set(found)
+    bad, partial = [], []
+    for code in codes:
+        keys = _block_keys(code)
+        stale, missing = keys - source, source - keys
+        covered = len(source) - len(missing)
+        pct = (100.0 * covered / len(source)) if source else 100.0
+        note = "in sync" if not (stale or missing) else \
+               f"{len(missing)} missing, {len(stale)} stale"
+        print(f"  {code:<5} {covered:>5}/{len(source)} strings  ({pct:5.1f}%)  {note}")
+        if stale:
+            bad.append(code)                      # a dead key is always wrong
+        elif missing:
+            (bad if REQUIRE_FULL else partial).append(code)
+    print()
+    if bad:
+        print(f"DRIFT in {len(bad)}/{len(codes)} languages: {', '.join(bad)}")
+        print("Run  python3 tools/lang_extract.py --check <code>  to see the exact strings.")
+        return 1
+    if partial:
+        print(f"{len(partial)}/{len(codes)} languages are PART-translated (known, not a blocker).")
+        print("Untranslated lines fall back to English, so nothing breaks - but non-English")
+        print("players see them in English. REQUIRE_FULL is False in this repo; flip it once")
+        print("coverage reaches 100% and this becomes a hard gate.")
+        return 0
+    print(f"All {len(codes)} languages in sync with the English source ✅")
+    return 0
 
 
 if __name__ == "__main__":
     strings = harvest()
+    if len(sys.argv) > 1 and sys.argv[1] == "--check-all":
+        sys.exit(check_all(strings))
     if len(sys.argv) > 2 and sys.argv[1] == "--check":
         sys.exit(check(sys.argv[2], strings))
     write_template(strings)

@@ -38,6 +38,24 @@ for d in fomod bin r6; do
   [ -d "$STAGING/$d" ] || { echo "❌ staging/$d is missing — staging must mirror the game root."; exit 1; }
 done
 
+# --- translations must be in sync with the English source ---------------------------------------
+# The English string IS the translation key, so editing or adding one player-facing line silently
+# un-translates it in every language — it falls back to English, with no error anywhere. That is how
+# v1.62/v1.64 shipped four untranslated strings to nine languages. A release is the last place to
+# catch it, so catch it here. Non-blocking only if python3 is unavailable.
+if command -v python3 >/dev/null 2>&1; then
+  echo "Checking translations against the English source..."
+  if ! python3 tools/lang_extract.py --check-all; then
+    echo
+    echo "❌ Translation drift — fix it, or ship English fallbacks to every non-English player."
+    echo "   python3 tools/lang_extract.py --check <code>   shows the exact strings."
+    exit 1
+  fi
+  echo
+else
+  echo "⚠️  python3 not found — SKIPPING the translation drift check."
+fi
+
 # --- the fomod version must match Config.version (Vortex shows this) ----------------------------
 FOMOD_VER="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$STAGING/fomod/info.xml" | head -1)"
 if [ "$FOMOD_VER" != "$VERSION" ]; then

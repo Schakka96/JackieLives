@@ -2,546 +2,554 @@
 -- The English keys, for reference. Translations live in translations.lua,
 -- one block per language. Do NOT edit the keys — they must match source exactly.
 return {
-  -- config.lua:158, config.lua:999, config.lua:1129
+  -- config.lua:158, config.lua:1030, config.lua:1160
   ["Talk to me, choomba."] = "Talk to me, choomba.",
-  -- config.lua:159, config.lua:907, config.lua:956
+  -- config.lua:159, config.lua:938, config.lua:987
   ["Don't come here often, do ya? Heheh. Good to see you, chica."] = "Don't come here often, do ya? Heheh. Good to see you, chica.",
   -- config.lua:160
   ["How you feel? You all right?"] = "How you feel? You all right?",
-  -- config.lua:161, config.lua:915, config.lua:967
+  -- config.lua:161, config.lua:946, config.lua:998
   ["Does not get any higher, choom."] = "Does not get any higher, choom.",
   -- config.lua:162
   ["Ready to mosey?"] = "Ready to mosey?",
-  -- config.lua:163, config.lua:922, config.lua:981
+  -- config.lua:163, config.lua:953, config.lua:1012
   ["So let's do our thing."] = "So let's do our thing.",
-  -- config.lua:199
+  -- config.lua:203
   ["Head home, Jackie. I got this from here."] = "Head home, Jackie. I got this from here.",
-  -- config.lua:201, config.lua:210, config.lua:928
+  -- config.lua:205, config.lua:214, config.lua:959
   ["Time we were on our way, mamita."] = "Time we were on our way, mamita.",
-  -- config.lua:211
+  -- config.lua:215
   ["Ahí luego, V."] = "Ahí luego, V.",
-  -- config.lua:217
+  -- config.lua:221
   ["Time we were on our way, mano."] = "Time we were on our way, mano.",
-  -- config.lua:218
+  -- config.lua:222
   ["Ahí luego, mano."] = "Ahí luego, mano.",
-  -- config.lua:219, config.lua:892, config.lua:1217
+  -- config.lua:223, config.lua:923, config.lua:1248
   ["Make moves, mano."] = "Make moves, mano.",
-  -- config.lua:668
+  -- config.lua:257
+  ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out.",
+  -- config.lua:259
+  ["Clock's runnin', hermana. Ditch the big fish or I'm gone."] = "Clock's runnin', hermana. Ditch the big fish or I'm gone.",
+  -- config.lua:261
+  ["That's my girl. Let the corpo mess wait — I'm still with you."] = "That's my girl. Let the corpo mess wait — I'm still with you.",
+  -- config.lua:699
   ["Something's been left here for you..."] = "Something's been left here for you...",
-  -- config.lua:669
+  -- config.lua:700
   ["Jackie Lives — thank you, Reverend Flash"] = "Jackie Lives — thank you, Reverend Flash",
-  -- config.lua:671
+  -- config.lua:702
   ["You paid 3,847 eddies out of your own pocket to ride all the way out to Rocky Ridge — just to find out whether Jackie was really still breathin' out here. Then you went and told the world about it.\\n\\nSo here's your 3,847 eddies back, returned TEN FOLD: 38,470. And Jackie's Arch with it.\\n\\nNobody puts in road miles like that for a mod they don't love. Gracias, Reverend. — Jackie & the Jackie Lives team"] = "You paid 3,847 eddies out of your own pocket to ride all the way out to Rocky Ridge — just to find out whether Jackie was really still breathin' out here. Then you went and told the world about it.\\n\\nSo here's your 3,847 eddies back, returned TEN FOLD: 38,470. And Jackie's Arch with it.\\n\\nNobody puts in road miles like that for a mod they don't love. Gracias, Reverend. — Jackie & the Jackie Lives team",
-  -- config.lua:703
+  -- config.lua:734
   ["Wanna get something to eat?"] = "Wanna get something to eat?",
-  -- config.lua:718
+  -- config.lua:749
   ["Grab some food with Jackie: Go to %s"] = "Grab some food with Jackie: Go to %s",
-  -- config.lua:732
+  -- config.lua:763
   ["...then I say we hit the Afterlife, hahaha... You know, do some shots."] = "...then I say we hit the Afterlife, hahaha... You know, do some shots.",
-  -- config.lua:735
+  -- config.lua:766
   ["Meet me at Lizzie's."] = "Meet me at Lizzie's.",
-  -- config.lua:740, config.lua:1442
+  -- config.lua:771, config.lua:1473
   ["Right on, chica."] = "Right on, chica.",
-  -- config.lua:741, config.lua:1451
+  -- config.lua:772, config.lua:1482
   ["Anyway, what's goin' on?"] = "Anyway, what's goin' on?",
-  -- config.lua:742, config.lua:747, config.lua:776
+  -- config.lua:773, config.lua:778, config.lua:807
   ["Why, what's the rush?"] = "Why, what's the rush?",
-  -- config.lua:755, config.lua:957
+  -- config.lua:786, config.lua:988
   ["C'mon, let's go have some lunch."] = "C'mon, let's go have some lunch.",
-  -- config.lua:768
+  -- config.lua:799
   ["Yeah, had enough for one day, lemme tell you."] = "Yeah, had enough for one day, lemme tell you.",
-  -- config.lua:771
-  ["You pick, hermano."] = "You pick, hermano.",
-  -- config.lua:772
-  ["Actually... raincheck."] = "Actually... raincheck.",
-  -- config.lua:777
-  ["(Maybe next time.)"] = "(Maybe next time.)",
-  -- config.lua:794
-  ["Man, this hits the spot. No gigs, no gunfire — just you an' me."] = "Man, this hits the spot. No gigs, no gunfire — just you an' me.",
-  -- config.lua:795
-  ["Could get used to this quiet-life thing, y'know?"] = "Could get used to this quiet-life thing, y'know?",
-  -- config.lua:796
-  ["Good to just sit a minute, huh, chica?"] = "Good to just sit a minute, huh, chica?",
-  -- config.lua:797
-  ["Good to just sit a minute, huh, hermano?"] = "Good to just sit a minute, huh, hermano?",
-  -- config.lua:798
-  ["Anyway... what's on your mind, V?"] = "Anyway... what's on your mind, V?",
-  -- config.lua:801
-  ["You ever miss the merc life, Jackie?"] = "You ever miss the merc life, Jackie?",
   -- config.lua:802
-  ["This city's been grindin' me down lately."] = "This city's been grindin' me down lately.",
+  ["You pick, hermano."] = "You pick, hermano.",
   -- config.lua:803
-  ["Think Arasaka ever pays for what they did?"] = "Think Arasaka ever pays for what they did?",
-  -- config.lua:804
-  ["How're things with you and Misty?"] = "How're things with you and Misty?",
-  -- config.lua:805
-  ["Enough chillin', let's get movin'."] = "Enough chillin', let's get movin'.",
-  -- config.lua:810
-  ["Miss it? Some days. The rush, the crew... but it took more than it gave, V. You know that better'n anyone."] = "Miss it? Some days. The rush, the crew... but it took more than it gave, V. You know that better'n anyone.",
-  -- config.lua:811
-  ["The life? Nah. The good runs, maybe. Not the endings — we both seen how those go."] = "The life? Nah. The good runs, maybe. Not the endings — we both seen how those go.",
-  -- config.lua:814
-  ["Yeah. We made it out, though."] = "Yeah. We made it out, though.",
-  -- config.lua:815, config.lua:826, config.lua:836
-  ["Let's get movin'."] = "Let's get movin'.",
-  -- config.lua:820
-  ["Night City don't care if you live or die, chica. All you can do is find your people and hold on tight."] = "Night City don't care if you live or die, chica. All you can do is find your people and hold on tight.",
-  -- config.lua:821
-  ["Night City don't care if you live or die, mano. All you can do is find your people and hold on tight."] = "Night City don't care if you live or die, mano. All you can do is find your people and hold on tight.",
-  -- config.lua:822
-  ["This town chews everybody up. Trick's not lettin' it swallow ya whole. You got me, I got you — that's the trick."] = "This town chews everybody up. Trick's not lettin' it swallow ya whole. You got me, I got you — that's the trick.",
+  ["Actually... raincheck."] = "Actually... raincheck.",
+  -- config.lua:808
+  ["(Maybe next time.)"] = "(Maybe next time.)",
   -- config.lua:825
-  ["Guess that's enough."] = "Guess that's enough.",
-  -- config.lua:831
-  ["'Saka? Heh. Big fish like that never pays, V. But we're still breathin' and they don't know our names. That's a win."] = "'Saka? Heh. Big fish like that never pays, V. But we're still breathin' and they don't know our names. That's a win.",
+  ["Man, this hits the spot. No gigs, no gunfire — just you an' me."] = "Man, this hits the spot. No gigs, no gunfire — just you an' me.",
+  -- config.lua:826
+  ["Could get used to this quiet-life thing, y'know?"] = "Could get used to this quiet-life thing, y'know?",
+  -- config.lua:827
+  ["Good to just sit a minute, huh, chica?"] = "Good to just sit a minute, huh, chica?",
+  -- config.lua:828
+  ["Good to just sit a minute, huh, hermano?"] = "Good to just sit a minute, huh, hermano?",
+  -- config.lua:829
+  ["Anyway... what's on your mind, V?"] = "Anyway... what's on your mind, V?",
   -- config.lua:832
-  ["Corpo rats always land on their feet. Best revenge's livin' good — like right now, full plate in front of us."] = "Corpo rats always land on their feet. Best revenge's livin' good — like right now, full plate in front of us.",
+  ["You ever miss the merc life, Jackie?"] = "You ever miss the merc life, Jackie?",
+  -- config.lua:833
+  ["This city's been grindin' me down lately."] = "This city's been grindin' me down lately.",
+  -- config.lua:834
+  ["Think Arasaka ever pays for what they did?"] = "Think Arasaka ever pays for what they did?",
   -- config.lua:835
-  ["Livin' good. I'll drink to that."] = "Livin' good. I'll drink to that.",
+  ["How're things with you and Misty?"] = "How're things with you and Misty?",
+  -- config.lua:836
+  ["Enough chillin', let's get movin'."] = "Enough chillin', let's get movin'.",
+  -- config.lua:841
+  ["Miss it? Some days. The rush, the crew... but it took more than it gave, V. You know that better'n anyone."] = "Miss it? Some days. The rush, the crew... but it took more than it gave, V. You know that better'n anyone.",
+  -- config.lua:842
+  ["The life? Nah. The good runs, maybe. Not the endings — we both seen how those go."] = "The life? Nah. The good runs, maybe. Not the endings — we both seen how those go.",
   -- config.lua:845
+  ["Yeah. We made it out, though."] = "Yeah. We made it out, though.",
+  -- config.lua:846, config.lua:857, config.lua:867
+  ["Let's get movin'."] = "Let's get movin'.",
+  -- config.lua:851
+  ["Night City don't care if you live or die, chica. All you can do is find your people and hold on tight."] = "Night City don't care if you live or die, chica. All you can do is find your people and hold on tight.",
+  -- config.lua:852
+  ["Night City don't care if you live or die, mano. All you can do is find your people and hold on tight."] = "Night City don't care if you live or die, mano. All you can do is find your people and hold on tight.",
+  -- config.lua:853
+  ["This town chews everybody up. Trick's not lettin' it swallow ya whole. You got me, I got you — that's the trick."] = "This town chews everybody up. Trick's not lettin' it swallow ya whole. You got me, I got you — that's the trick.",
+  -- config.lua:856
+  ["Guess that's enough."] = "Guess that's enough.",
+  -- config.lua:862
+  ["'Saka? Heh. Big fish like that never pays, V. But we're still breathin' and they don't know our names. That's a win."] = "'Saka? Heh. Big fish like that never pays, V. But we're still breathin' and they don't know our names. That's a win.",
+  -- config.lua:863
+  ["Corpo rats always land on their feet. Best revenge's livin' good — like right now, full plate in front of us."] = "Corpo rats always land on their feet. Best revenge's livin' good — like right now, full plate in front of us.",
+  -- config.lua:866
+  ["Livin' good. I'll drink to that."] = "Livin' good. I'll drink to that.",
+  -- config.lua:876
   ["Misty's my anchor, V. Keeps me lookin' up when I wanna look down. Dunno what I'd be without her."] = "Misty's my anchor, V. Keeps me lookin' up when I wanna look down. Dunno what I'd be without her.",
-  -- config.lua:846
+  -- config.lua:877
   ["Me an' Misty? Solid. She reads them cards, says the stars got a plan. I just tell her she's my plan."] = "Me an' Misty? Solid. She reads them cards, says the stars got a plan. I just tell her she's my plan.",
-  -- config.lua:847
+  -- config.lua:878
   ["She sat with Mama every week I was gone, y'know. Every week. Ain't never gonna be able to pay that back."] = "She sat with Mama every week I was gone, y'know. Every week. Ain't never gonna be able to pay that back.",
-  -- config.lua:850
+  -- config.lua:881
   ["She's good for you."] = "She's good for you.",
-  -- config.lua:857
+  -- config.lua:888
   ["Heh, alright. Let's roll, chica."] = "Heh, alright. Let's roll, chica.",
-  -- config.lua:858
+  -- config.lua:889
   ["Heh, alright. Let's roll, hermano."] = "Heh, alright. Let's roll, hermano.",
-  -- config.lua:859
+  -- config.lua:890
   ["Yeah, we got a city to look after. Vamonos."] = "Yeah, we got a city to look after. Vamonos.",
-  -- config.lua:860
+  -- config.lua:891
   ["Right behind ya, hermano. Let's move."] = "Right behind ya, hermano. Let's move.",
-  -- config.lua:885
+  -- config.lua:916
   ["Don't come here often, do ya? Good to see you, cabrón."] = "Don't come here often, do ya? Good to see you, cabrón.",
-  -- config.lua:888, config.lua:1215
+  -- config.lua:919, config.lua:1246
   ["Straight to biz, eh, mano?"] = "Straight to biz, eh, mano?",
-  -- config.lua:894
+  -- config.lua:925
   ["Right on, mano."] = "Right on, mano.",
-  -- config.lua:909
+  -- config.lua:940
   ["How you been, Jackie?"] = "How you been, Jackie?",
-  -- config.lua:910
+  -- config.lua:941
   ["Got a gig - you in?"] = "Got a gig - you in?",
-  -- config.lua:911, config.lua:1004
+  -- config.lua:942, config.lua:1035
   ["Just passin' through."] = "Just passin' through.",
-  -- config.lua:917
+  -- config.lua:948
   ["Good to hear. Let's roll."] = "Good to hear. Let's roll.",
-  -- config.lua:918
+  -- config.lua:949
   ["Take it easy, hermano."] = "Take it easy, hermano.",
-  -- config.lua:924, config.lua:1023, config.lua:1064
+  -- config.lua:955, config.lua:1054, config.lua:1095
   ["Let's go."] = "Let's go.",
-  -- config.lua:958, config.lua:1130
+  -- config.lua:989, config.lua:1161
   ["V, how you feel? You all right?"] = "V, how you feel? You all right?",
-  -- config.lua:961
+  -- config.lua:992
   ["What's good here?"] = "What's good here?",
-  -- config.lua:962
+  -- config.lua:993
   ["How's the quiet life treatin' ya?"] = "How's the quiet life treatin' ya?",
-  -- config.lua:963
+  -- config.lua:994
   ["Just grabbin' a bite. Later."] = "Just grabbin' a bite. Later.",
-  -- config.lua:969
+  -- config.lua:1000
   ["Heh. Save me a stool."] = "Heh. Save me a stool.",
-  -- config.lua:970
+  -- config.lua:1001
   ["Got a little side gig, you up for it?"] = "Got a little side gig, you up for it?",
-  -- config.lua:974, config.lua:1426
+  -- config.lua:1005, config.lua:1457
   ["Eh, you know how it is, can't complain. But we ain't here to shoot the shit about me."] = "Eh, you know how it is, can't complain. But we ain't here to shoot the shit about me.",
-  -- config.lua:976
+  -- config.lua:1007
   ["Fair. Take it easy, hermano."] = "Fair. Take it easy, hermano.",
-  -- config.lua:977
-  ["Could use you on a side job."] = "Could use you on a side job.",
-  -- config.lua:982
-  ["Let's roll."] = "Let's roll.",
-  -- config.lua:998
-  ["Mama told me things come to those who wait, and some're even good!"] = "Mama told me things come to those who wait, and some're even good!",
-  -- config.lua:1002
-  ["Mama Welles around?"] = "Mama Welles around?",
-  -- config.lua:1003
-  ["Pour me one?"] = "Pour me one?",
   -- config.lua:1008
-  ["She's my blood, all right. Coyote's her dive."] = "She's my blood, all right. Coyote's her dive.",
-  -- config.lua:1010
-  ["Family's everything. Later, hermano."] = "Family's everything. Later, hermano.",
-  -- config.lua:1011
-  ["When you're done playin' barkeep, got a side gig."] = "When you're done playin' barkeep, got a side gig.",
-  -- config.lua:1015
-  ["Andale, let's drink."] = "Andale, let's drink.",
-  -- config.lua:1017
-  ["Heh. To the quiet life."] = "Heh. To the quiet life.",
-  -- config.lua:1018
-  ["One drink, then I got work. You in?"] = "One drink, then I got work. You in?",
-  -- config.lua:1038
-  ["Hey, V, you alive? How's things in the viper pit?"] = "Hey, V, you alive? How's things in the viper pit?",
+  ["Could use you on a side job."] = "Could use you on a side job.",
+  -- config.lua:1013
+  ["Let's roll."] = "Let's roll.",
+  -- config.lua:1029
+  ["Mama told me things come to those who wait, and some're even good!"] = "Mama told me things come to those who wait, and some're even good!",
+  -- config.lua:1033
+  ["Mama Welles around?"] = "Mama Welles around?",
+  -- config.lua:1034
+  ["Pour me one?"] = "Pour me one?",
   -- config.lua:1039
-  ["Legends are born here."] = "Legends are born here.",
-  -- config.lua:1040, config.lua:1410
-  ["Straight to biz, eh, chica?"] = "Straight to biz, eh, chica?",
-  -- config.lua:1043
-  ["You miss it? The merc life?"] = "You miss it? The merc life?",
-  -- config.lua:1044
-  ["Drink to old times?"] = "Drink to old times?",
-  -- config.lua:1045
-  ["Just soakin' it in. Later."] = "Just soakin' it in. Later.",
+  ["She's my blood, all right. Coyote's her dive."] = "She's my blood, all right. Coyote's her dive.",
+  -- config.lua:1041
+  ["Family's everything. Later, hermano."] = "Family's everything. Later, hermano.",
+  -- config.lua:1042
+  ["When you're done playin' barkeep, got a side gig."] = "When you're done playin' barkeep, got a side gig.",
+  -- config.lua:1046
+  ["Andale, let's drink."] = "Andale, let's drink.",
+  -- config.lua:1048
+  ["Heh. To the quiet life."] = "Heh. To the quiet life.",
   -- config.lua:1049
-  ["It's the biz, V. Everyone's got blood on their hands. You deal with it, you move on."] = "It's the biz, V. Everyone's got blood on their hands. You deal with it, you move on.",
-  -- config.lua:1051
-  ["You earned the quiet. Take it easy."] = "You earned the quiet. Take it easy.",
-  -- config.lua:1052
-  ["Then do one last easy one, side gig, with me."] = "Then do one last easy one, side gig, with me.",
-  -- config.lua:1056
-  ["Heheh, I'll drink to that!"] = "Heheh, I'll drink to that!",
-  -- config.lua:1058
-  ["To Jackie Welles. Later, choom."] = "To Jackie Welles. Later, choom.",
-  -- config.lua:1059
-  ["Now help me run a quick side job."] = "Now help me run a quick side job.",
+  ["One drink, then I got work. You in?"] = "One drink, then I got work. You in?",
+  -- config.lua:1069
+  ["Hey, V, you alive? How's things in the viper pit?"] = "Hey, V, you alive? How's things in the viper pit?",
+  -- config.lua:1070
+  ["Legends are born here."] = "Legends are born here.",
+  -- config.lua:1071, config.lua:1441
+  ["Straight to biz, eh, chica?"] = "Straight to biz, eh, chica?",
+  -- config.lua:1074
+  ["You miss it? The merc life?"] = "You miss it? The merc life?",
+  -- config.lua:1075
+  ["Drink to old times?"] = "Drink to old times?",
+  -- config.lua:1076
+  ["Just soakin' it in. Later."] = "Just soakin' it in. Later.",
   -- config.lua:1080
-  ["Ah, thanks, Misty. You're the best."] = "Ah, thanks, Misty. You're the best.",
-  -- config.lua:1086
-  ["So what's the plan for the rest of your day?"] = "So what's the plan for the rest of your day?",
+  ["It's the biz, V. Everyone's got blood on their hands. You deal with it, you move on."] = "It's the biz, V. Everyone's got blood on their hands. You deal with it, you move on.",
+  -- config.lua:1082
+  ["You earned the quiet. Take it easy."] = "You earned the quiet. Take it easy.",
+  -- config.lua:1083
+  ["Then do one last easy one, side gig, with me."] = "Then do one last easy one, side gig, with me.",
   -- config.lua:1087
+  ["Heheh, I'll drink to that!"] = "Heheh, I'll drink to that!",
+  -- config.lua:1089
+  ["To Jackie Welles. Later, choom."] = "To Jackie Welles. Later, choom.",
+  -- config.lua:1090
+  ["Now help me run a quick side job."] = "Now help me run a quick side job.",
+  -- config.lua:1111
+  ["Ah, thanks, Misty. You're the best."] = "Ah, thanks, Misty. You're the best.",
+  -- config.lua:1117
+  ["So what's the plan for the rest of your day?"] = "So what's the plan for the rest of your day?",
+  -- config.lua:1118
   ["Did Misty see it comin'? You makin' it out?"] = "Did Misty see it comin'? You makin' it out?",
-  -- config.lua:1088
+  -- config.lua:1119
   ["I'll leave you to it."] = "I'll leave you to it.",
-  -- config.lua:1093
+  -- config.lua:1124
   ["Now I go back, find Misty and we do somethin' to make me feel alive again."] = "Now I go back, find Misty and we do somethin' to make me feel alive again.",
-  -- config.lua:1095
+  -- config.lua:1126
   ["Then go feel alive, hermano. Tell her I said hey."] = "Then go feel alive, hermano. Tell her I said hey.",
-  -- config.lua:1096
+  -- config.lua:1127
   ["Before you do — got a side gig, if you're up for it."] = "Before you do — got a side gig, if you're up for it.",
-  -- config.lua:1102
+  -- config.lua:1133
   ["Misty knew... Misty always knows..."] = "Misty knew... Misty always knows...",
-  -- config.lua:1104
+  -- config.lua:1135
   ["Spooky. Later, choom."] = "Spooky. Later, choom.",
-  -- config.lua:1105
+  -- config.lua:1136
   ["Cards say you'll help me on a job?"] = "Cards say you'll help me on a job?",
-  -- config.lua:1131, config.lua:1204, config.lua:1244
+  -- config.lua:1162, config.lua:1235, config.lua:1275
   ["¿Qué onda?"] = "¿Qué onda?",
-  -- config.lua:1205, config.lua:1449
+  -- config.lua:1236, config.lua:1480
   ["Got me right behind you."] = "Got me right behind you.",
-  -- config.lua:1206, config.lua:1219, config.lua:1448
+  -- config.lua:1237, config.lua:1250, config.lua:1479
   ["So? You ready?"] = "So? You ready?",
-  -- config.lua:1207
+  -- config.lua:1238
   ["V, hey! ¿Cómo te sientes?"] = "V, hey! ¿Cómo te sientes?",
-  -- config.lua:1214
+  -- config.lua:1245
   ["Man of the hour! Took you long enough — worked up an appetite just waitin'."] = "Man of the hour! Took you long enough — worked up an appetite just waitin'.",
-  -- config.lua:1216
+  -- config.lua:1247
   ["Hey, you with me, mano?"] = "Hey, you with me, mano?",
-  -- config.lua:1241, config.lua:1754
+  -- config.lua:1272, config.lua:1785
   ["Don't come here often, do ya? Heheh. It's good to see you, chica."] = "Don't come here often, do ya? Heheh. It's good to see you, chica.",
-  -- config.lua:1242, config.lua:1251
+  -- config.lua:1273, config.lua:1282
   ["Hey, V – you alive? How's things in the viper pit?"] = "Hey, V – you alive? How's things in the viper pit?",
-  -- config.lua:1243
+  -- config.lua:1274
   ["Chica! Finally!"] = "Chica! Finally!",
-  -- config.lua:1249
+  -- config.lua:1280
   ["Don't come here often, do ya? Heheh. It's good to see you, cabrón."] = "Don't come here often, do ya? Heheh. It's good to see you, cabrón.",
-  -- config.lua:1250
+  -- config.lua:1281
   ["Hermano, finally!"] = "Hermano, finally!",
-  -- config.lua:1409
-  ["Hey V - you alive? How's things in the viper pit?"] = "Hey V - you alive? How's things in the viper pit?",
-  -- config.lua:1411
-  ["V, hey! Como te sientes?"] = "V, hey! Como te sientes?",
-  -- config.lua:1412
-  ["Que onda?"] = "Que onda?",
-  -- config.lua:1413
-  ["About time."] = "About time.",
-  -- config.lua:1415
-  ["Checkin' to see if I'm not rotting in some dumpster, like most o' the Welles boys?"] = "Checkin' to see if I'm not rotting in some dumpster, like most o' the Welles boys?",
-  -- config.lua:1418
-  ["Got a gig. You in?"] = "Got a gig. You in?",
-  -- config.lua:1419
-  ["Just checkin' in on you."] = "Just checkin' in on you.",
-  -- config.lua:1420
-  ["Never mind."] = "Never mind.",
-  -- config.lua:1429
-  ["Good. Actually - got a gig."] = "Good. Actually - got a gig.",
-  -- config.lua:1430
-  ["Glad to hear it."] = "Glad to hear it.",
-  -- config.lua:1439
-  ["Hold on, V, I'm comin'."] = "Hold on, V, I'm comin'.",
   -- config.lua:1440
-  ["Yeah, OK."] = "Yeah, OK.",
-  -- config.lua:1441
-  ["All right, all right, all right."] = "All right, all right, all right.",
+  ["Hey V - you alive? How's things in the viper pit?"] = "Hey V - you alive? How's things in the viper pit?",
+  -- config.lua:1442
+  ["V, hey! Como te sientes?"] = "V, hey! Como te sientes?",
   -- config.lua:1443
-  ["You're all right."] = "You're all right.",
+  ["Que onda?"] = "Que onda?",
   -- config.lua:1444
-  ["Shit's finally happenin'..."] = "Shit's finally happenin'...",
-  -- config.lua:1445
-  ["Too late to back out now. Come on, V."] = "Too late to back out now. Come on, V.",
+  ["About time."] = "About time.",
   -- config.lua:1446
-  ["And we'd best be quick."] = "And we'd best be quick.",
-  -- config.lua:1447
-  ["You comin'? Time's precious."] = "You comin'? Time's precious.",
+  ["Checkin' to see if I'm not rotting in some dumpster, like most o' the Welles boys?"] = "Checkin' to see if I'm not rotting in some dumpster, like most o' the Welles boys?",
+  -- config.lua:1449
+  ["Got a gig. You in?"] = "Got a gig. You in?",
   -- config.lua:1450
+  ["Just checkin' in on you."] = "Just checkin' in on you.",
+  -- config.lua:1451
+  ["Never mind."] = "Never mind.",
+  -- config.lua:1460
+  ["Good. Actually - got a gig."] = "Good. Actually - got a gig.",
+  -- config.lua:1461
+  ["Glad to hear it."] = "Glad to hear it.",
+  -- config.lua:1470
+  ["Hold on, V, I'm comin'."] = "Hold on, V, I'm comin'.",
+  -- config.lua:1471
+  ["Yeah, OK."] = "Yeah, OK.",
+  -- config.lua:1472
+  ["All right, all right, all right."] = "All right, all right, all right.",
+  -- config.lua:1474
+  ["You're all right."] = "You're all right.",
+  -- config.lua:1475
+  ["Shit's finally happenin'..."] = "Shit's finally happenin'...",
+  -- config.lua:1476
+  ["Too late to back out now. Come on, V."] = "Too late to back out now. Come on, V.",
+  -- config.lua:1477
+  ["And we'd best be quick."] = "And we'd best be quick.",
+  -- config.lua:1478
+  ["You comin'? Time's precious."] = "You comin'? Time's precious.",
+  -- config.lua:1481
   ["Si, si, me acuerdo."] = "Si, si, me acuerdo.",
-  -- config.lua:1452
+  -- config.lua:1483
   ["We'll snap their necks before they realize."] = "We'll snap their necks before they realize.",
-  -- config.lua:1454
+  -- config.lua:1485
   ["Heh, City Hall should be fuckin' thankin' us!"] = "Heh, City Hall should be fuckin' thankin' us!",
-  -- config.lua:1556
-  ["Finally!"] = "Finally!",
-  -- config.lua:1559
-  ["...Jackie? Is that really you?"] = "...Jackie? Is that really you?",
-  -- config.lua:1564
-  ["It's me, V. Been starin' at this phone for ages wonderin' if you'd ever ring it."] = "It's me, V. Been starin' at this phone for ages wonderin' if you'd ever ring it.",
-  -- config.lua:1567
-  ["You son of a bitch. You're ALIVE?"] = "You son of a bitch. You're ALIVE?",
-  -- config.lua:1568
-  ["Jackie. I buried you. I MOURNED you."] = "Jackie. I buried you. I MOURNED you.",
-  -- config.lua:1573
-  ["Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us."] = "Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us.",
-  -- config.lua:1574
-  ["Yeah. Yeah, I'm alive, mano. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us."] = "Yeah. Yeah, I'm alive, mano. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us.",
-  -- config.lua:1577
-  ["Weeks, Jackie. You let me think you were GONE."] = "Weeks, Jackie. You let me think you were GONE.",
-  -- config.lua:1578
-  ["I'm so mad at you I can't—  ...  you're okay?"] = "I'm so mad at you I can't—  ...  you're okay?",
-  -- config.lua:1583, config.lua:1584
-  ["I know. I KNOW. I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh."] = "I know. I KNOW. I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh.",
   -- config.lua:1587
-  ["...You really scared me, choom."] = "...You really scared me, choom.",
-  -- config.lua:1600
-  ["So... talk to me, V. Where do we even start, huh?"] = "So... talk to me, V. Where do we even start, huh?",
-  -- config.lua:1601
-  ["Yeah. I'm here. Ain't goin' nowhere this time. What else is on your mind?"] = "Yeah. I'm here. Ain't goin' nowhere this time. What else is on your mind?",
-  -- config.lua:1602
-  ["(quiet) Somethin' else, chica?"] = "(quiet) Somethin' else, chica?",
-  -- config.lua:1603
-  ["(quiet) Somethin' else, mano?"] = "(quiet) Somethin' else, mano?",
-  -- config.lua:1606
-  ["Enough talkin'. Get over here — I gotta see you with my own eyes."] = "Enough talkin'. Get over here — I gotta see you with my own eyes.",
-  -- config.lua:1607
-  ["Your bike. She's still sittin' in my garage, y'know."] = "Your bike. She's still sittin' in my garage, y'know.",
+  ["Finally!"] = "Finally!",
+  -- config.lua:1590
+  ["...Jackie? Is that really you?"] = "...Jackie? Is that really you?",
+  -- config.lua:1595
+  ["It's me, V. Been starin' at this phone for ages wonderin' if you'd ever ring it."] = "It's me, V. Been starin' at this phone for ages wonderin' if you'd ever ring it.",
+  -- config.lua:1598
+  ["You son of a bitch. You're ALIVE?"] = "You son of a bitch. You're ALIVE?",
+  -- config.lua:1599
+  ["Jackie. I buried you. I MOURNED you."] = "Jackie. I buried you. I MOURNED you.",
+  -- config.lua:1604
+  ["Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us."] = "Yeah. Yeah, I'm alive, chica. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us.",
+  -- config.lua:1605
+  ["Yeah. Yeah, I'm alive, mano. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us."] = "Yeah. Yeah, I'm alive, mano. And I'm sorry. Wanted to call a thousand times — Vik wouldn't let me. Said 'Saka'd trace it straight to the both of us.",
   -- config.lua:1608
-  ["It's been tough since you were gone, man..."] = "It's been tough since you were gone, man...",
+  ["Weeks, Jackie. You let me think you were GONE."] = "Weeks, Jackie. You let me think you were GONE.",
   -- config.lua:1609
-  ["So how you been holdin' up out there in the desert?"] = "So how you been holdin' up out there in the desert?",
-  -- config.lua:1619
-  ["...My wheels. Dios mío, I didn't wanna ask. C'mon, don't tease me, V — that bike's the one piece o' the old me I got left. Just tell me straight. Is she okay?"] = "...My wheels. Dios mío, I didn't wanna ask. C'mon, don't tease me, V — that bike's the one piece o' the old me I got left. Just tell me straight. Is she okay?",
-  -- config.lua:1625
-  ["Relax, hermano. She's safe and sound. Come pick her up."] = "Relax, hermano. She's safe and sound. Come pick her up.",
-  -- config.lua:1627
-  ["About that... I've gotten used to her, Jackie. I'm keepin' her."] = "About that... I've gotten used to her, Jackie. I'm keepin' her.",
+  ["I'm so mad at you I can't—  ...  you're okay?"] = "I'm so mad at you I can't—  ...  you're okay?",
+  -- config.lua:1614, config.lua:1615
+  ["I know. I KNOW. I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh."] = "I know. I KNOW. I earned every word. C'mon — hit me with it. I can take it better'n a slab in Vik's morgue, heh.",
+  -- config.lua:1618
+  ["...You really scared me, choom."] = "...You really scared me, choom.",
+  -- config.lua:1631
+  ["So... talk to me, V. Where do we even start, huh?"] = "So... talk to me, V. Where do we even start, huh?",
+  -- config.lua:1632
+  ["Yeah. I'm here. Ain't goin' nowhere this time. What else is on your mind?"] = "Yeah. I'm here. Ain't goin' nowhere this time. What else is on your mind?",
   -- config.lua:1633
-  ["Phew... Gracias, V. You got no idea what that means to me. Kept her breathin' for me all this time."] = "Phew... Gracias, V. You got no idea what that means to me. Kept her breathin' for me all this time.",
-  -- config.lua:1636
-  ["She's yours, Jackie. Always was."] = "She's yours, Jackie. Always was.",
-  -- config.lua:1643
-  ["...Heh. (a long beat) Nah, nah — you know what? Keep her. Way I see it she kept YOU breathin' while I couldn't. She's earned you, an' you earned her. Just don't let her sit, V. She hates that."] = "...Heh. (a long beat) Nah, nah — you know what? Keep her. Way I see it she kept YOU breathin' while I couldn't. She's earned you, an' you earned her. Just don't let her sit, V. She hates that.",
-  -- config.lua:1644
-  ["...Heh. (a long beat) Nah — you know what? Keep her, hermano. She kept YOU breathin' while I couldn't. Just don't let her sit, V. She hates that."] = "...Heh. (a long beat) Nah — you know what? Keep her, hermano. She kept YOU breathin' while I couldn't. Just don't let her sit, V. She hates that.",
-  -- config.lua:1647
-  ["...I'll take care of her. Promise."] = "...I'll take care of her. Promise.",
+  ["(quiet) Somethin' else, chica?"] = "(quiet) Somethin' else, chica?",
+  -- config.lua:1634
+  ["(quiet) Somethin' else, mano?"] = "(quiet) Somethin' else, mano?",
+  -- config.lua:1637
+  ["Enough talkin'. Get over here — I gotta see you with my own eyes."] = "Enough talkin'. Get over here — I gotta see you with my own eyes.",
+  -- config.lua:1638
+  ["Your bike. She's still sittin' in my garage, y'know."] = "Your bike. She's still sittin' in my garage, y'know.",
+  -- config.lua:1639
+  ["It's been tough since you were gone, man..."] = "It's been tough since you were gone, man...",
+  -- config.lua:1640
+  ["So how you been holdin' up out there in the desert?"] = "So how you been holdin' up out there in the desert?",
+  -- config.lua:1650
+  ["...My wheels. Dios mío, I didn't wanna ask. C'mon, don't tease me, V — that bike's the one piece o' the old me I got left. Just tell me straight. Is she okay?"] = "...My wheels. Dios mío, I didn't wanna ask. C'mon, don't tease me, V — that bike's the one piece o' the old me I got left. Just tell me straight. Is she okay?",
   -- config.lua:1656
-  ["Tough how? Talk to me V. What's goin on?"] = "Tough how? Talk to me V. What's goin on?",
-  -- config.lua:1659
-  ["Everything went sideways after Konpeki. It's .. complicated. Long story."] = "Everything went sideways after Konpeki. It's .. complicated. Long story.",
-  -- config.lua:1660
-  ["I lost more than you know that night. Damn near lost myself too."] = "I lost more than you know that night. Damn near lost myself too.",
-  -- config.lua:1665
-  ["Hmm. ...Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now."] = "Hmm. ...Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now.",
-  -- config.lua:1666
-  ["Hmm. ...Right. You always did go quiet on the heavy stuff, mano. A'ight. I won't push. For now."] = "Hmm. ...Right. You always did go quiet on the heavy stuff, mano. A'ight. I won't push. For now.",
-  -- config.lua:1669
-  ["I'll tell you everything. Just... not over a phone."] = "I'll tell you everything. Just... not over a phone.",
-  -- config.lua:1679
-  ["(sigh) Honest? Layin' low out here's wearin' me down to nothin', V. Miss the city. The lights, the noise, Mama's cookin'. I wanna come home. But it ain't that simple."] = "(sigh) Honest? Layin' low out here's wearin' me down to nothin', V. Miss the city. The lights, the noise, Mama's cookin'. I wanna come home. But it ain't that simple.",
-  -- config.lua:1682
-  ["Why not? What's keepin' you stuck out there?"] = "Why not? What's keepin' you stuck out there?",
+  ["Relax, hermano. She's safe and sound. Come pick her up."] = "Relax, hermano. She's safe and sound. Come pick her up.",
+  -- config.lua:1658
+  ["About that... I've gotten used to her, Jackie. I'm keepin' her."] = "About that... I've gotten used to her, Jackie. I'm keepin' her.",
+  -- config.lua:1664
+  ["Phew... Gracias, V. You got no idea what that means to me. Kept her breathin' for me all this time."] = "Phew... Gracias, V. You got no idea what that means to me. Kept her breathin' for me all this time.",
+  -- config.lua:1667
+  ["She's yours, Jackie. Always was."] = "She's yours, Jackie. Always was.",
+  -- config.lua:1674
+  ["...Heh. (a long beat) Nah, nah — you know what? Keep her. Way I see it she kept YOU breathin' while I couldn't. She's earned you, an' you earned her. Just don't let her sit, V. She hates that."] = "...Heh. (a long beat) Nah, nah — you know what? Keep her. Way I see it she kept YOU breathin' while I couldn't. She's earned you, an' you earned her. Just don't let her sit, V. She hates that.",
+  -- config.lua:1675
+  ["...Heh. (a long beat) Nah — you know what? Keep her, hermano. She kept YOU breathin' while I couldn't. Just don't let her sit, V. She hates that."] = "...Heh. (a long beat) Nah — you know what? Keep her, hermano. She kept YOU breathin' while I couldn't. Just don't let her sit, V. She hates that.",
+  -- config.lua:1678
+  ["...I'll take care of her. Promise."] = "...I'll take care of her. Promise.",
   -- config.lua:1687
-  ["That chip ... whatever got left behind's still runnin'. Some Arasaka security soft - pingin' out where I am like a beacon. That's how 'Saka'd find me — why I gotta stay outta range. Vik tried to cut it. Couldn't."] = "That chip ... whatever got left behind's still runnin'. Some Arasaka security soft - pingin' out where I am like a beacon. That's how 'Saka'd find me — why I gotta stay outta range. Vik tried to cut it. Couldn't.",
+  ["Tough how? Talk to me V. What's goin on?"] = "Tough how? Talk to me V. What's goin on?",
   -- config.lua:1690
-  ["Then we find someone who CAN. A netrunner, a ripper — anyone."] = "Then we find someone who CAN. A netrunner, a ripper — anyone.",
+  ["Everything went sideways after Konpeki. It's .. complicated. Long story."] = "Everything went sideways after Konpeki. It's .. complicated. Long story.",
   -- config.lua:1691
-  ["We'll get it out of you. I'm not losin' you twice, Jackie."] = "We'll get it out of you. I'm not losin' you twice, Jackie.",
+  ["I lost more than you know that night. Damn near lost myself too."] = "I lost more than you know that night. Damn near lost myself too.",
+  -- config.lua:1696
+  ["Hmm. ...Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now."] = "Hmm. ...Right. You always did go quiet on the heavy stuff, chica. A'ight. I won't push. For now.",
   -- config.lua:1697
-  ["You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can wipe this thing. Maybe I get my life back."] = "You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can wipe this thing. Maybe I get my life back.",
-  -- config.lua:1698
-  ["You'd really do that? ... 'Course you would. A'ight, mano. We find someone who can wipe this thing. Maybe I get my life back."] = "You'd really do that? ... 'Course you would. A'ight, mano. We find someone who can wipe this thing. Maybe I get my life back.",
-  -- config.lua:1701
-  ["We'll get it done. But that's for tomorrow — get over here. Now."] = "We'll get it done. But that's for tomorrow — get over here. Now.",
-  -- config.lua:1702
-  ["We'll get it done. No worries. I got your back till then."] = "We'll get it done. No worries. I got your back till then.",
-  -- config.lua:1708
-  ["Gotta be straight with ya, choom. After what happened... I can't run serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried."] = "Gotta be straight with ya, choom. After what happened... I can't run serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried.",
-  -- config.lua:1711
-  ["Nobody's askin' you to. Now quit stallin' and get over here, Jackie."] = "Nobody's askin' you to. Now quit stallin' and get over here, Jackie.",
-  -- config.lua:1712
-  ["Good. You've bled enough for this city."] = "Good. You've bled enough for this city.",
+  ["Hmm. ...Right. You always did go quiet on the heavy stuff, mano. A'ight. I won't push. For now."] = "Hmm. ...Right. You always did go quiet on the heavy stuff, mano. A'ight. I won't push. For now.",
+  -- config.lua:1700
+  ["I'll tell you everything. Just... not over a phone."] = "I'll tell you everything. Just... not over a phone.",
+  -- config.lua:1710
+  ["(sigh) Honest? Layin' low out here's wearin' me down to nothin', V. Miss the city. The lights, the noise, Mama's cookin'. I wanna come home. But it ain't that simple."] = "(sigh) Honest? Layin' low out here's wearin' me down to nothin', V. Miss the city. The lights, the noise, Mama's cookin'. I wanna come home. But it ain't that simple.",
+  -- config.lua:1713
+  ["Why not? What's keepin' you stuck out there?"] = "Why not? What's keepin' you stuck out there?",
+  -- config.lua:1718
+  ["That chip ... whatever got left behind's still runnin'. Some Arasaka security soft - pingin' out where I am like a beacon. That's how 'Saka'd find me — why I gotta stay outta range. Vik tried to cut it. Couldn't."] = "That chip ... whatever got left behind's still runnin'. Some Arasaka security soft - pingin' out where I am like a beacon. That's how 'Saka'd find me — why I gotta stay outta range. Vik tried to cut it. Couldn't.",
   -- config.lua:1721
-  ["...Yeah. Yeah, okay. Enough chattin'. Where you at? Nah — don't move, I'm already headed your way. Hang tight, chica."] = "...Yeah. Yeah, okay. Enough chattin'. Where you at? Nah — don't move, I'm already headed your way. Hang tight, chica.",
+  ["Then we find someone who CAN. A netrunner, a ripper — anyone."] = "Then we find someone who CAN. A netrunner, a ripper — anyone.",
   -- config.lua:1722
+  ["We'll get it out of you. I'm not losin' you twice, Jackie."] = "We'll get it out of you. I'm not losin' you twice, Jackie.",
+  -- config.lua:1728
+  ["You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can wipe this thing. Maybe I get my life back."] = "You'd really do that? ... 'Course you would. A'ight, chica. We find someone who can wipe this thing. Maybe I get my life back.",
+  -- config.lua:1729
+  ["You'd really do that? ... 'Course you would. A'ight, mano. We find someone who can wipe this thing. Maybe I get my life back."] = "You'd really do that? ... 'Course you would. A'ight, mano. We find someone who can wipe this thing. Maybe I get my life back.",
+  -- config.lua:1732
+  ["We'll get it done. But that's for tomorrow — get over here. Now."] = "We'll get it done. But that's for tomorrow — get over here. Now.",
+  -- config.lua:1733
+  ["We'll get it done. No worries. I got your back till then."] = "We'll get it done. No worries. I got your back till then.",
+  -- config.lua:1739
+  ["Gotta be straight with ya, choom. After what happened... I can't run serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried."] = "Gotta be straight with ya, choom. After what happened... I can't run serious gigs no more. Body won't take it. An' Mama? (chuckle) She'd finish what 'Saka started if I even tried.",
+  -- config.lua:1742
+  ["Nobody's askin' you to. Now quit stallin' and get over here, Jackie."] = "Nobody's askin' you to. Now quit stallin' and get over here, Jackie.",
+  -- config.lua:1743
+  ["Good. You've bled enough for this city."] = "Good. You've bled enough for this city.",
+  -- config.lua:1752
+  ["...Yeah. Yeah, okay. Enough chattin'. Where you at? Nah — don't move, I'm already headed your way. Hang tight, chica."] = "...Yeah. Yeah, okay. Enough chattin'. Where you at? Nah — don't move, I'm already headed your way. Hang tight, chica.",
+  -- config.lua:1753
   ["...Yeah. Yeah, okay. Enough chattin'. Where you at? Nah — don't move, I'm already headed your way. Hang tight, mano."] = "...Yeah. Yeah, okay. Enough chattin'. Where you at? Nah — don't move, I'm already headed your way. Hang tight, mano.",
-  -- config.lua:1725
+  -- config.lua:1756
   ["Okay. I'll be right here. Hurry up."] = "Okay. I'll be right here. Hurry up.",
-  -- config.lua:1735
-  ["I'm already movin', V. Don't you go nowhere. ...I'll see you by the gas station."] = "I'm already movin', V. Don't you go nowhere. ...I'll see you by the gas station.",
-  -- config.lua:1757
-  ["You've looked better yourself, choom."] = "You've looked better yourself, choom.",
-  -- config.lua:1758
-  ["(just look at him a moment) ...It's you."] = "(just look at him a moment) ...It's you.",
   -- config.lua:1766
-  ["Yeah, yeah — desert don't do a man's looks any favors. But you? ...Damn. Sight for sore eyes, V. Missed that face more'n I got words for."] = "Yeah, yeah — desert don't do a man's looks any favors. But you? ...Damn. Sight for sore eyes, V. Missed that face more'n I got words for.",
-  -- config.lua:1767
-  ["Yeah, yeah — desert don't do a man's looks any favors. But you, hermano? Damn, you're a sight. Missed that ugly mug o' yours."] = "Yeah, yeah — desert don't do a man's looks any favors. But you, hermano? Damn, you're a sight. Missed that ugly mug o' yours.",
-  -- config.lua:1775, config.lua:1777, config.lua:1779
-  ["We're both still standin'. That's what counts."] = "We're both still standin'. That's what counts.",
+  ["I'm already movin', V. Don't you go nowhere. ...I'll see you by the gas station."] = "I'm already movin', V. Don't you go nowhere. ...I'll see you by the gas station.",
   -- config.lua:1788
-  ["...Hold up. My bike. You still got her? All this time, you kept her?"] = "...Hold up. My bike. You still got her? All this time, you kept her?",
-  -- config.lua:1791
-  ["She's in my garage, Jackie. Waiting for you. Here — your keys."] = "She's in my garage, Jackie. Waiting for you. Here — your keys.",
+  ["You've looked better yourself, choom."] = "You've looked better yourself, choom.",
+  -- config.lua:1789
+  ["(just look at him a moment) ...It's you."] = "(just look at him a moment) ...It's you.",
+  -- config.lua:1797
+  ["Yeah, yeah — desert don't do a man's looks any favors. But you? ...Damn. Sight for sore eyes, V. Missed that face more'n I got words for."] = "Yeah, yeah — desert don't do a man's looks any favors. But you? ...Damn. Sight for sore eyes, V. Missed that face more'n I got words for.",
   -- config.lua:1798
-  ["So you really are keepin' her, huh. (laughs) A'ight, a'ight — then YOU'RE drivin', chica. C'mon. Show me she's been in good hands."] = "So you really are keepin' her, huh. (laughs) A'ight, a'ight — then YOU'RE drivin', chica. C'mon. Show me she's been in good hands.",
-  -- config.lua:1799
-  ["So you really are keepin' her, huh. (laughs) A'ight — then YOU'RE drivin', hermano. C'mon. Show me she's been in good hands."] = "So you really are keepin' her, huh. (laughs) A'ight — then YOU'RE drivin', hermano. C'mon. Show me she's been in good hands.",
-  -- config.lua:1802
-  ["Get on, Jackie. Let's go home."] = "Get on, Jackie. Let's go home.",
-  -- config.lua:1809
-  ["You kept her runnin' for me. All this time... Damn, V. That's the last piece o' the old me, right there."] = "You kept her runnin' for me. All this time... Damn, V. That's the last piece o' the old me, right there.",
-  -- config.lua:1812
-  ["Let's go, hermano, and you can take her for a spin."] = "Let's go, hermano, and you can take her for a spin.",
-  -- config.lua:1821
-  ["C'mon, V. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?"] = "C'mon, V. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?",
+  ["Yeah, yeah — desert don't do a man's looks any favors. But you, hermano? Damn, you're a sight. Missed that ugly mug o' yours."] = "Yeah, yeah — desert don't do a man's looks any favors. But you, hermano? Damn, you're a sight. Missed that ugly mug o' yours.",
+  -- config.lua:1806, config.lua:1808, config.lua:1810
+  ["We're both still standin'. That's what counts."] = "We're both still standin'. That's what counts.",
+  -- config.lua:1819
+  ["...Hold up. My bike. You still got her? All this time, you kept her?"] = "...Hold up. My bike. You still got her? All this time, you kept her?",
   -- config.lua:1822
-  ["C'mon, hermano. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?"] = "C'mon, hermano. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?",
+  ["She's in my garage, Jackie. Waiting for you. Here — your keys."] = "She's in my garage, Jackie. Waiting for you. Here — your keys.",
+  -- config.lua:1829
+  ["So you really are keepin' her, huh. (laughs) A'ight, a'ight — then YOU'RE drivin', chica. C'mon. Show me she's been in good hands."] = "So you really are keepin' her, huh. (laughs) A'ight, a'ight — then YOU'RE drivin', chica. C'mon. Show me she's been in good hands.",
+  -- config.lua:1830
+  ["So you really are keepin' her, huh. (laughs) A'ight — then YOU'RE drivin', hermano. C'mon. Show me she's been in good hands."] = "So you really are keepin' her, huh. (laughs) A'ight — then YOU'RE drivin', hermano. C'mon. Show me she's been in good hands.",
+  -- config.lua:1833
+  ["Get on, Jackie. Let's go home."] = "Get on, Jackie. Let's go home.",
   -- config.lua:1840
-  ["Híjole... we made it. We actually made it. Can't believe it, V."] = "Híjole... we made it. We actually made it. Can't believe it, V.",
-  -- config.lua:1842
-  ["(catch your breath) ...Yeah. We did."] = "(catch your breath) ...Yeah. We did.",
-  -- config.lua:1846
-  ["We're alive, chica. Both of us."] = "We're alive, chica. Both of us.",
-  -- config.lua:1848
-  ["Barely caught a breath since Konpeki. ...Feels good to just stop a second."] = "Barely caught a breath since Konpeki. ...Feels good to just stop a second.",
+  ["You kept her runnin' for me. All this time... Damn, V. That's the last piece o' the old me, right there."] = "You kept her runnin' for me. All this time... Damn, V. That's the last piece o' the old me, right there.",
+  -- config.lua:1843
+  ["Let's go, hermano, and you can take her for a spin."] = "Let's go, hermano, and you can take her for a spin.",
+  -- config.lua:1852
+  ["C'mon, V. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?"] = "C'mon, V. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?",
   -- config.lua:1853
-  ["Heh... yeah. It does. ...Shame nobody's ever gonna know it was us up there."] = "Heh... yeah. It does. ...Shame nobody's ever gonna know it was us up there.",
-  -- config.lua:1855
-  ["By the way -- where'd you store the case?"] = "By the way -- where'd you store the case?",
-  -- config.lua:1861
-  ["...Jackie?"] = "...Jackie?",
-  -- config.lua:1866
-  ["I had it. Right in my hands, V, I swear I did..."] = "I had it. Right in my hands, V, I swear I did...",
-  -- config.lua:1868
-  ["Jackie! The biochip -- the fucking case with the biochip, where is it?!"] = "Jackie! The biochip -- the fucking case with the biochip, where is it?!",
+  ["C'mon, hermano. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?"] = "C'mon, hermano. Let's go home. ...And hey — no more funerals. Not for a good long while, yeah?",
+  -- config.lua:1871
+  ["Híjole... we made it. We actually made it. Can't believe it, V."] = "Híjole... we made it. We actually made it. Can't believe it, V.",
   -- config.lua:1873
-  ["I tried to hold onto it, I swear. Smasher -- that hijo de puta... Case took a round, cracked wide open. Chip's slag. So I dropped it. ...I'm sorry, V. I really am."] = "I tried to hold onto it, I swear. Smasher -- that hijo de puta... Case took a round, cracked wide open. Chip's slag. So I dropped it. ...I'm sorry, V. I really am.",
-  -- config.lua:1876
-  ["Fuck! That was our ticket Jackie! Everything we worked for!"] = "Fuck! That was our ticket Jackie! Everything we worked for!",
+  ["(catch your breath) ...Yeah. We did."] = "(catch your breath) ...Yeah. We did.",
   -- config.lua:1877
+  ["We're alive, chica. Both of us."] = "We're alive, chica. Both of us.",
+  -- config.lua:1879
+  ["Barely caught a breath since Konpeki. ...Feels good to just stop a second."] = "Barely caught a breath since Konpeki. ...Feels good to just stop a second.",
+  -- config.lua:1884
+  ["Heh... yeah. It does. ...Shame nobody's ever gonna know it was us up there."] = "Heh... yeah. It does. ...Shame nobody's ever gonna know it was us up there.",
+  -- config.lua:1886
+  ["By the way -- where'd you store the case?"] = "By the way -- where'd you store the case?",
+  -- config.lua:1892
+  ["...Jackie?"] = "...Jackie?",
+  -- config.lua:1897
+  ["I had it. Right in my hands, V, I swear I did..."] = "I had it. Right in my hands, V, I swear I did...",
+  -- config.lua:1899
+  ["Jackie! The biochip -- the fucking case with the biochip, where is it?!"] = "Jackie! The biochip -- the fucking case with the biochip, where is it?!",
+  -- config.lua:1904
+  ["I tried to hold onto it, I swear. Smasher -- that hijo de puta... Case took a round, cracked wide open. Chip's slag. So I dropped it. ...I'm sorry, V. I really am."] = "I tried to hold onto it, I swear. Smasher -- that hijo de puta... Case took a round, cracked wide open. Chip's slag. So I dropped it. ...I'm sorry, V. I really am.",
+  -- config.lua:1907
+  ["Fuck! That was our ticket Jackie! Everything we worked for!"] = "Fuck! That was our ticket Jackie! Everything we worked for!",
+  -- config.lua:1908
   ["Honestly? Thing probably woulda been more trouble than it was worth."] = "Honestly? Thing probably woulda been more trouble than it was worth.",
-  -- config.lua:1878
+  -- config.lua:1909
   ["We're both breathing, cabrón. That's the only score that matters."] = "We're both breathing, cabrón. That's the only score that matters.",
-  -- config.lua:1882
+  -- config.lua:1913
   ["Yeah... I know. Chinga'o. But hey -- you're still here to be pissed about it, right?"] = "Yeah... I know. Chinga'o. But hey -- you're still here to be pissed about it, right?",
-  -- config.lua:1884, config.lua:1890
+  -- config.lua:1915, config.lua:1921
   ["You and me. Took down Smasher and walked outta Konpeki Plaza. Nobody's ever gonna believe it."] = "You and me. Took down Smasher and walked outta Konpeki Plaza. Nobody's ever gonna believe it.",
-  -- config.lua:1888
+  -- config.lua:1919
   ["...Yeah. Maybe you're right. Corpo tech like that only ever buys you a shorter life."] = "...Yeah. Maybe you're right. Corpo tech like that only ever buys you a shorter life.",
-  -- config.lua:1896
+  -- config.lua:1927
   ["Hehe yeah. A tale for the ages V!  \\n(A pause) So... What's next?"] = "Hehe yeah. A tale for the ages V!  \\n(A pause) So... What's next?",
-  -- config.lua:1898
+  -- config.lua:1929
   ["Whatever we want, hermano. For once, nobody's writing our story but us."] = "Whatever we want, hermano. For once, nobody's writing our story but us.",
-  -- config.lua:1903
+  -- config.lua:1934
   ["...Heh. I like the sound o' that. C'mon, then. Night City's aint gonna solo itself!"] = "...Heh. I like the sound o' that. C'mon, then. Night City's aint gonna solo itself!",
-  -- config.lua:2058
+  -- config.lua:2065
   ["Noodle bar."] = "Noodle bar.",
-  -- config.lua:2069
+  -- config.lua:2076
   ["Misty's Esoterica."] = "Misty's Esoterica.",
-  -- config.lua:2082
+  -- config.lua:2089
   ["El Coyote Cojo."] = "El Coyote Cojo.",
-  -- config.lua:2096
+  -- config.lua:2103
   ["Afterlife."] = "Afterlife.",
-  -- config.lua:2109
+  -- config.lua:2116
   ["Ginger Panda."] = "Ginger Panda.",
-  -- config.lua:2122
+  -- config.lua:2129
   ["Redwood Market."] = "Redwood Market.",
-  -- config.lua:2134
+  -- config.lua:2141
   ["Lizzie's Bar."] = "Lizzie's Bar.",
-  -- config.lua:2148
+  -- config.lua:2155
   ["(secret nap spot)."] = "(secret nap spot).",
-  -- config.lua:2284
+  -- config.lua:2291
   ["V: Not draggin' Jackie into this mess. Not after everything he went through."] = "V: Not draggin' Jackie into this mess. Not after everything he went through.",
-  -- config.lua:2289
+  -- config.lua:2296
   ["Can't call Jackie during a main mission — not draggin' him into this."] = "Can't call Jackie during a main mission — not draggin' him into this.",
-  -- blaze.lua:182
+  -- blaze.lua:189
   ["Shigure"] = "Shigure",
-  -- blaze.lua:204
-  ["Oh, shit..."] = "Oh, shit...",
-  -- blaze.lua:205
-  ["Estamos bien chingados!"] = "Estamos bien chingados!",
-  -- blaze.lua:206
-  ["¡Muerte, cabrón!"] = "¡Muerte, cabrón!",
-  -- blaze.lua:208
-  ["Luckily all clear for now. Shouldn't stick around, though."] = "Luckily all clear for now. Shouldn't stick around, though.",
-  -- blaze.lua:210
-  ["Is tha— is that Adam Smasher?"] = "Is tha— is that Adam Smasher?",
   -- blaze.lua:211
-  ["Oh, SHIT!"] = "Oh, SHIT!",
+  ["Oh, shit..."] = "Oh, shit...",
   -- blaze.lua:212
-  ["We ain't dyin' — not today!"] = "We ain't dyin' — not today!",
+  ["Estamos bien chingados!"] = "Estamos bien chingados!",
+  -- blaze.lua:213
+  ["¡Muerte, cabrón!"] = "¡Muerte, cabrón!",
   -- blaze.lua:215
-  ["Bien pensado. Old man Arasaka's AV should still be parked on the roof."] = "Bien pensado. Old man Arasaka's AV should still be parked on the roof.",
+  ["Luckily all clear for now. Shouldn't stick around, though."] = "Luckily all clear for now. Shouldn't stick around, though.",
   -- blaze.lua:217
+  ["Is tha— is that Adam Smasher?"] = "Is tha— is that Adam Smasher?",
+  -- blaze.lua:218
+  ["Oh, SHIT!"] = "Oh, SHIT!",
+  -- blaze.lua:219
+  ["We ain't dyin' — not today!"] = "We ain't dyin' — not today!",
+  -- blaze.lua:222
+  ["Bien pensado. Old man Arasaka's AV should still be parked on the roof."] = "Bien pensado. Old man Arasaka's AV should still be parked on the roof.",
+  -- blaze.lua:224
   ["C'mon, V — let's get outta here."] = "C'mon, V — let's get outta here.",
-  -- retrieval.lua:86
+  -- retrieval.lua:101, retrieval.lua:110
   ["Jackie Lives — installed"] = "Jackie Lives — installed",
-  -- retrieval.lua:87
+  -- retrieval.lua:102
   ["Vik called. Left a message. Says he's got somethin' to tell you about Jackie — somethin' he wouldn't say over the phone.\\n\\nGo see him at his clinic.\\n\\n(For mod settings go to Esc -> Mods -> JackieLives) "] = "Vik called. Left a message. Says he's got somethin' to tell you about Jackie — somethin' he wouldn't say over the phone.\\n\\nGo see him at his clinic.\\n\\n(For mod settings go to Esc -> Mods -> JackieLives) ",
-  -- retrieval.lua:98
+  -- retrieval.lua:111
+  ["The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\"."] = "The mod is loaded, but it couldn't read your story progress, so it won't start Jackie's questline on its own.\\n\\nOnce the heist is behind you, start it from Esc -> Settings -> Mods -> JackieLives -> \\\"Start the search for Jackie\\\".",
+  -- retrieval.lua:121
   ["Vik:"] = "Vik:",
-  -- retrieval.lua:99
+  -- retrieval.lua:122
   ["I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on my table that night. I got a pulse back, called in a favor, moved him out before Arasaka came lookin' for the body. He's alive, V — layin' low out in the Badlands, and it's gotta stay that way. Kid had no business survivin' what he survived. And when he could talk again, the first thing he asked was whether you got out. It just wasn't safe before to tell you V. I'm sorry. I'm markin' the spot on your map. Go bring him back."] = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on my table that night. I got a pulse back, called in a favor, moved him out before Arasaka came lookin' for the body. He's alive, V — layin' low out in the Badlands, and it's gotta stay that way. Kid had no business survivin' what he survived. And when he could talk again, the first thing he asked was whether you got out. It just wasn't safe before to tell you V. I'm sorry. I'm markin' the spot on your map. Go bring him back.",
-  -- retrieval.lua:107
+  -- retrieval.lua:130
   ["I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on my table that night. I got a pulse back, called in a favor, moved him out before Arasaka came lookin' for the body. It just wasn't safe before to tell you, V. He's alive. Layin' low out in the Badlands — and it's gotta stay that way. He's been waitin' on you. I'm markin' the spot on your map. Go bring him back."] = "I shoulda told you a long time ago, and I'm sorry I didn't. Jackie didn't die on my table that night. I got a pulse back, called in a favor, moved him out before Arasaka came lookin' for the body. It just wasn't safe before to tell you, V. He's alive. Layin' low out in the Badlands — and it's gotta stay that way. He's been waitin' on you. I'm markin' the spot on your map. Go bring him back.",
-  -- retrieval.lua:119
+  -- retrieval.lua:142
   ["Shard — Jackie Welles"] = "Shard — Jackie Welles",
-  -- retrieval.lua:123, retrieval.lua:131
+  -- retrieval.lua:146, retrieval.lua:154
   ["If you're readin' this, V, then the doc kept his word and sent you out here. It's me. I'm alive."] = "If you're readin' this, V, then the doc kept his word and sent you out here. It's me. I'm alive.",
-  -- retrieval.lua:124, retrieval.lua:132
+  -- retrieval.lua:147, retrieval.lua:155
   ["Vik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since."] = "Vik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.",
-  -- retrieval.lua:125, retrieval.lua:133
+  -- retrieval.lua:148, retrieval.lua:156
   ["Mama Welles was so mad when she heard. Think she'd kill me if I went back doin' gigs — maybe she's right. I'm done with the merc life, V. For real. But I couldn't let you go on thinkin' you buried me."] = "Mama Welles was so mad when she heard. Think she'd kill me if I went back doin' gigs — maybe she's right. I'm done with the merc life, V. For real. But I couldn't let you go on thinkin' you buried me.",
-  -- retrieval.lua:128, retrieval.lua:136
+  -- retrieval.lua:151, retrieval.lua:159
   ["Give me a call when you read this. — Jackie"] = "Give me a call when you read this. — Jackie",
-  -- retrieval.lua:152
+  -- retrieval.lua:175
   ["Find Jackie — Rocky Ridge, the Badlands"] = "Find Jackie — Rocky Ridge, the Badlands",
-  -- retrieval.lua:153
-  ["Call Jackie"] = "Call Jackie",
-  -- retrieval.lua:154
-  ["Wait for Jackie"] = "Wait for Jackie",
-  -- retrieval.lua:155
-  ["Jackie's back."] = "Jackie's back.",
-  -- retrieval.lua:174
-  ["Shard — Misty"] = "Shard — Misty",
   -- retrieval.lua:176
-  ["I keep the Death card turned face-down now. Couldn't look at it — for months it was all I saw when I shut my eyes."] = "I keep the Death card turned face-down now. Couldn't look at it — for months it was all I saw when I shut my eyes.",
+  ["Call Jackie"] = "Call Jackie",
   -- retrieval.lua:177
-  ["When Vik told me he'd made it, that he was out there breathin' in the Badlands, I sat down on the shop floor and cried till the incense burned out."] = "When Vik told me he'd made it, that he was out there breathin' in the Badlands, I sat down on the shop floor and cried till the incense burned out.",
+  ["Wait for Jackie"] = "Wait for Jackie",
   -- retrieval.lua:178
+  ["Jackie's back."] = "Jackie's back.",
+  -- retrieval.lua:197
+  ["Shard — Misty"] = "Shard — Misty",
+  -- retrieval.lua:199
+  ["I keep the Death card turned face-down now. Couldn't look at it — for months it was all I saw when I shut my eyes."] = "I keep the Death card turned face-down now. Couldn't look at it — for months it was all I saw when I shut my eyes.",
+  -- retrieval.lua:200
+  ["When Vik told me he'd made it, that he was out there breathin' in the Badlands, I sat down on the shop floor and cried till the incense burned out."] = "When Vik told me he'd made it, that he was out there breathin' in the Badlands, I sat down on the shop floor and cried till the incense burned out.",
+  -- retrieval.lua:201
   ["I won't pretend I'm only happy, V. Some nights I'm so angry I could scream. He walked into that heist knowin' the risk. He almost left us. Almost left me."] = "I won't pretend I'm only happy, V. Some nights I'm so angry I could scream. He walked into that heist knowin' the risk. He almost left us. Almost left me.",
-  -- retrieval.lua:179
+  -- retrieval.lua:202
   ["But the cards weren't wrong. His thread didn't cut. It just frayed... and held."] = "But the cards weren't wrong. His thread didn't cut. It just frayed... and held.",
-  -- retrieval.lua:180
+  -- retrieval.lua:203
   ["Go easy on him. And thank you — for goin' to bring him home. — Misty"] = "Go easy on him. And thank you — for goin' to bring him home. — Misty",
-  -- retrieval.lua:187
+  -- retrieval.lua:210
   ["Shard — Mama Welles"] = "Shard — Mama Welles",
-  -- retrieval.lua:189
+  -- retrieval.lua:212
   ["So. My Jackie is alive, and I am the last to hear of it. You wait until you are a mother, V, and someone keeps a thing like this from you — then we will talk about forgiveness."] = "So. My Jackie is alive, and I am the last to hear of it. You wait until you are a mother, V, and someone keeps a thing like this from you — then we will talk about forgiveness.",
-  -- retrieval.lua:190
+  -- retrieval.lua:213
   ["I lit a candle for that boy every single day. I cooked for a ghost. And all the while he is out in the dust, breathin', lettin' me grieve. Dios mío."] = "I lit a candle for that boy every single day. I cooked for a ghost. And all the while he is out in the dust, breathin', lettin' me grieve. Dios mío.",
-  -- retrieval.lua:191
+  -- retrieval.lua:214
   ["And yet — he is ALIVE. My boy is alive. I have not stopped thankin' the Virgin since I heard. My knees are sore from it."] = "And yet — he is ALIVE. My boy is alive. I have not stopped thankin' the Virgin since I heard. My knees are sore from it.",
-  -- retrieval.lua:192
+  -- retrieval.lua:215
   ["But hear me once, V: if he ever takes a gig like that heist again — risks his life for eddies and glory one more time — I will not wait for this city to take him. I will kill him myself."] = "But hear me once, V: if he ever takes a gig like that heist again — risks his life for eddies and glory one more time — I will not wait for this city to take him. I will kill him myself.",
-  -- retrieval.lua:193
+  -- retrieval.lua:216
   ["Bring him to my table. There is a plate waitin'. There has always been a plate waitin'. — Mama Welles"] = "Bring him to my table. There is a plate waitin'. There has always been a plate waitin'. — Mama Welles",
-  -- init.lua:1680
+  -- init.lua:1683
   ["Talk"] = "Talk",
-  -- init.lua:1885
+  -- init.lua:1888
   ["Talk to Jackie   [ "] = "Talk to Jackie   [ ",
-  -- init.lua:2344
+  -- init.lua:2347
   ["Jackie"] = "Jackie",
-  -- init.lua:3210, init.lua:3217
+  -- init.lua:3136, init.lua:3143
   ["Calling Jackie..."] = "Calling Jackie...",
-  -- init.lua:3245
+  -- init.lua:3171
   ["No answer."] = "No answer.",
 }
