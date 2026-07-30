@@ -1,9 +1,20 @@
-# deploy.ps1 - copy the JackieLives CET mod into the game's mods folder.
+# deploy.ps1 - PULL the latest JackieLives from GitHub, then copy it into the game.
+#
+# NOTE: THIS FILE LIVES AT THE REPO ROOT (next to mod\, staging\, tools\) - NOT inside mod\.
+#
+# One command does everything: fetch the newest code from GitHub, copy the CET mod into
+# the game's mods folder, and copy the Audioware voice bank into r6\audioware.
 # Overwrites files IN PLACE (no folder delete) so it can run while the game is open.
-# Usage:
-#   .\deploy.ps1                      # auto-detect Steam install
+#
+# Usage (run from the repo root, in PowerShell):
+#   .\deploy.ps1                       # git pull, then deploy (auto-detect Steam install)
+#   .\deploy.ps1 -NoPull               # deploy what's already on disk; don't touch git
+#   .\deploy.ps1 -Force                # pull even with local edits (stashes + reapplies them)
 #   .\deploy.ps1 -GameDir "X:\...\Cyberpunk 2077"
-param([string]$GameDir = "")
+#
+# It NEVER throws your work away: if the repo has uncommitted changes it skips the pull and
+# says so, rather than clobbering them. -Force uses --autostash, which puts them back after.
+param([string]$GameDir = "", [switch]$NoPull, [switch]$Force)
 
 $ErrorActionPreference = "Stop"
 $modName = "JackieLives"
@@ -11,7 +22,73 @@ $src = Join-Path $PSScriptRoot ("mod\" + $modName)
 
 if (-not (Test-Path $src)) { Write-Host "ERROR: source mod not found at $src"; exit 1 }
 
-# Read the mod version from config.lua (Config.version = "x.y.z") so every deploy spells it out.
+# --- STEP 1: get the newest code from GitHub -------------------------------
+# Without this you had to remember to `git pull` by hand before deploying - and a deploy that
+# silently ships yesterday's code is the worst kind of test result, because nothing looks wrong.
+function Update-FromGitHub {
+  if ($NoPull) { Write-Host "Skipping the update (-NoPull)." -ForegroundColor DarkGray; return }
+
+  if (-not (Test-Path (Join-Path $PSScriptRoot ".git"))) {
+    Write-Host "This folder is not a git clone, so there's nothing to pull." -ForegroundColor Yellow
+    Write-Host "  To get one-command updates in future, clone the repo once:" -ForegroundColor Yellow
+    Write-Host "    git clone https://github.com/Schakka96/JackieLives.git" -ForegroundColor Yellow
+    Write-Host "  ...then run .\deploy.ps1 from inside it. Deploying what's on disk for now."
+    return
+  }
+  $git = Get-Command git -ErrorAction SilentlyContinue
+  if (-not $git) {
+    Write-Host "git isn't on PATH - install Git for Windows (https://git-scm.com/download/win)." -ForegroundColor Yellow
+    Write-Host "  Deploying what's on disk for now."
+    return
+  }
+
+  # git writes ordinary progress to STDERR. Under $ErrorActionPreference = "Stop" (and PowerShell 7's
+  # native-command error handling) that can abort the whole script over a perfectly normal fetch, so
+  # relax it for the duration and decide success from the EXIT CODE instead. Restored in `finally`.
+  $prevEAP = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+
+  Push-Location $PSScriptRoot
+  try {
+    $before = (& git rev-parse --short HEAD 2>$null)
+    $dirty  = (& git status --porcelain 2>$null)
+
+    if ($dirty -and -not $Force) {
+      Write-Host "Local changes present - SKIPPING the pull so nothing of yours is lost:" -ForegroundColor Yellow
+      $dirty | Select-Object -First 8 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+      Write-Host "  Commit them, or re-run as:  .\deploy.ps1 -Force   (stashes + reapplies)" -ForegroundColor Yellow
+    }
+    else {
+      Write-Host "Pulling the latest from GitHub..."
+      if ($Force) { & git pull --rebase --autostash 2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray } }
+      else        { & git pull --ff-only          2>&1 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray } }
+
+      if ($LASTEXITCODE -ne 0) {
+        # Diverged history, no network, whatever - never block the deploy over it.
+        Write-Host "Pull failed (see above). Deploying the code already on disk instead." -ForegroundColor Yellow
+      }
+      else {
+        $after = (& git rev-parse --short HEAD 2>$null)
+        if ($after -eq $before) { Write-Host "Already up to date ($after)." -ForegroundColor DarkGray }
+        else { Write-Host "Updated $before -> $after" -ForegroundColor Green }
+      }
+    }
+  }
+  catch {
+    # An update is a convenience, never a reason to fail a deploy. Say what happened and carry on.
+    Write-Host "Update step errored: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host "  Deploying the code already on disk instead."
+  }
+  finally {
+    Pop-Location
+    $ErrorActionPreference = $prevEAP
+  }
+}
+
+Update-FromGitHub
+
+# --- STEP 2: what are we about to deploy? ----------------------------------
+# Read the version AFTER the pull, so the banner reflects the code actually being copied.
 $version = "unknown"
 $cfgPath = Join-Path $src "config.lua"
 if (Test-Path $cfgPath) {
@@ -85,5 +162,14 @@ if (Test-Path $awSrc) {
   Write-Host "(no audioware\$modName folder - skipping sound bank)"
 }
 
+# --- what actually landed --------------------------------------------------
+# Spell out the exact files deployed. A CET mod fails silently when it's stale, so "which .lua
+# files are now in the game" is the single most useful thing to see before a test session.
+$luaCount = (Get-ChildItem -Path $dest -Filter *.lua -File -ErrorAction SilentlyContinue | Measure-Object).Count
+Write-Host ""
 Write-Host "Restart the game (or reload the mod) to load JackieLives v$version." -ForegroundColor Green
+Write-Host "  $luaCount .lua files in $dest" -ForegroundColor DarkGray
+if (Test-Path (Join-Path $dest "dialogui.lua")) {
+  Write-Host "  dialogui.lua present - the native dialogue picker (v1.63+) is installed." -ForegroundColor DarkGray
+}
 exit 0

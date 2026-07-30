@@ -46,6 +46,26 @@ selector). The default is **Quiet Life**; switching to **Blaze of Glory** is a d
   **work-in-progress / throwaway-save toy**; see [TODO.md](TODO.md) and
   [docs/DESIGN.md](docs/DESIGN.md) §11 for scope and status.
 
+## Updating & installing (Windows dev machine)
+
+**Double-click `deploy.bat` in the repo root.** That's the whole workflow — it pulls the newest
+code from GitHub and copies it into the game (CET mod → `bin\x64\plugins\cyber_engine_tweaks\mods\`,
+voice bank → `r6\audioware\`). Nothing to move by hand. Restart the game afterwards.
+
+Both files live at the **repo root**, next to `mod/` and `staging/` — not inside `mod/`.
+
+| I want to… | Run |
+|---|---|
+| Update from GitHub + install | `deploy.bat` (double-click) |
+| Install without pulling (offline, or testing local edits) | `deploy.bat -NoPull` |
+| Pull even though I have uncommitted local edits | `deploy.bat -Force` (stashes and reapplies them) |
+| Point at a non-Steam install | `deploy.bat -GameDir "X:\Games\Cyberpunk 2077"` |
+
+If the repo has uncommitted changes, the pull is **skipped** rather than clobbering them — the script
+says so and deploys what's on disk. `deploy.bat` is only a wrapper that runs `deploy.ps1` with
+`-ExecutionPolicy Bypass`, because Windows blocks `.ps1` files by default; you can call `deploy.ps1`
+directly from a PowerShell prompt instead.
+
 ## Layout
 
 | Path | What |
@@ -54,7 +74,8 @@ selector). The default is **Quiet Life**; switching to **Blaze of Glory** is a d
 | `audioware/JackieLives/` | Audioware voice-bank manifest (`.yml` + `index.json`). Audio files are gitignored. |
 | `tools/` | `scrape_jackie.py` (voice-line catalogue), `convert_audio.py` (build the bank), `voice-tagger/` (web app to audition/tag lines) |
 | `docs/` | Design, setup, captured positions, logbook |
-| `deploy.ps1` | One-command deploy of the mod to the CET mods folder (auto-detects Steam) |
+| `deploy.bat` | **Double-click to update from GitHub + install into the game.** Wrapper around `deploy.ps1` |
+| `deploy.ps1` | Pull from GitHub, then deploy the mod + voice bank into the game (auto-detects Steam) |
 
 ## Tech stack
 
