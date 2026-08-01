@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.64.1"
+Config.version = "1.65"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -176,6 +176,61 @@ Config.dialogue = {
   -- OFF by default because it's a real gameplay change the ImGui box never made — flip it on if a
   -- stray click during a chat ever ruins a moment.
   pickerNoCombat = false,
+  -- v1.65 HUB REFRESH — how long a sampled topic list sticks (see `pick` on a node, below).
+  -- The hub is re-entered after EVERY topic, so without this a player could sit in one conversation
+  -- reopening the menu until the whole pool had scrolled past. The list is meant to be "what's on his
+  -- mind right now", not a slot machine. A draw holds for a random hubRefreshMin..Max seconds, measured
+  -- from the last time the hub was SEEN — keep reopening and the topics stay put; walk away for a minute
+  -- and he has different things to talk about.
+  hubRefreshMin = 20.0,
+  hubRefreshMax = 45.0,
+}
+
+-- ===========================================================================
+-- FAMILIARITY (v1.65) — Jackie opens up over time
+-- ===========================================================================
+-- Runtime: familiarity.lua (global `Fam`). Content opts in with `minFam = <tier>` on a choice or on a
+-- jackiePool line. TUNING ONLY lives here: every number can change without touching a line of dialogue,
+-- because content is written against TIERS, never raw points.
+--
+-- ⚠️ THIS CURVE IS DELIBERATELY HARSHER THAN NCLIVES' (Antonia, 2026-08-01: "the progression should be
+-- slow though, you really have to know jackie and spend a lot of time with him... think the first
+-- proposal you made for Lucy, or even a bit harder").
+--
+-- NCLives landed on { 0, 5, 14, 28 } with a topic paying 1 point EACH — so one good conversation could
+-- be worth five, and you could reach the top in about six. Right for meeting Panam; wrong for Jackie:
+--   * he isn't a stranger. The distance the player is closing is not "do we know each other", it's
+--     "will you tell me the truth about what happened to you" — and that should cost real time;
+--   * the deep tiers ARE the mod's payoff, not an early-game convenience.
+-- So this takes the FIRST shape NCLives tried (one point per CONVERSATION, not per topic — walking six
+-- topics in one sitting is still one conversation) and then puts the bar substantially higher.
+--
+-- The intended shape, asserted in tools/test_familiarity.lua so it can't silently drift:
+--     Close   (10) — ~10 conversations, or 2 dinners and a couple of chats. A few evenings.
+--     Trusted (30) — ~7 dinners, or weeks of dropping in. He starts saying things he doesn't say.
+--     Family  (65) — ~16 dinners. Everything, including what he won't tell Mama. A long relationship.
+Config.familiarity = {
+  enabled = true,      -- false = every tier unlocked at once. Turning it OFF must never HIDE writing,
+                       -- so Fam.tier() returns the TOP tier when disabled (debug / accessibility).
+  -- Points needed for tier 0 / 1 / 2 / 3. Ascending, same length as `names`.
+  tiers = { 0, 10, 30, 65 },
+  -- Tier names are Jackie's own register, not a relationship meter: he'd never call anyone
+  -- "Professional". You start as a choom. You end as family — which for Jackie is the whole point.
+  names = { "Choom", "Close", "Trusted", "Family" },
+  award = {
+    -- ONE per CONVERSATION, however many topics get walked. Deliberately not per-topic: paying per row
+    -- makes "click every option before leaving" the optimal play, which is exactly the behaviour this
+    -- system exists to prevent — and at this curve, per-topic scoring would collapse it back to NCLives'
+    -- pace. Awarded when the conversation actually opens, not on the [F] prompt.
+    talk   = 1,
+    -- A completed dinner outing, awarded at the stand-up so an abandoned one doesn't count. The single
+    -- biggest thing V can do, because it's the one that costs real time: an evening at a table with him
+    -- beats ten doorstep exchanges, and that is the correct message to send about this character.
+    dinner = 4,
+    -- He came out when V called. Small: answering the phone is not intimacy.
+    call   = 1,
+  },
+  max   = 999,         -- sanity cap; nothing above the top tier is used
 }
 
 -- ---- character-based subtitle reading time (v0.94) -----------------------
@@ -1148,25 +1203,73 @@ Config.locationDialogue = {
   },
 
   -- EVERYWHERE (BACKUP: short 2-option exchange; DONE -> 60s grunt-only cooldown)
+  -- ==========================================================================
+  -- v1.65 — THE HUB. Jackie opens up over time (see Config.familiarity).
+  -- ==========================================================================
+  -- This is the tree V sees most: it's the backup used whenever he isn't at a named location, which
+  -- means it's every conversation with him as a companion. It used to be one greeting and a send-off.
+  --
+  -- HOW TO READ IT:
+  --   `minFam = N`   on a CHOICE — the topic doesn't exist until he's opened up to tier N.
+  --   `minFam = N`   on a jackiePool LINE — the SAME question, answered at more length once he has.
+  --                  Highest earned tier wins (pickPoolLine), so growth reads as growth, not randomness.
+  --   `pin = true`   — always shown, never sampled. The way OUT must be pinned.
+  --   `pick = {a,b}` — offer this many topics per draw, re-rolled every hubRefresh seconds.
+  --   `once = "k"`   — one visit per conversation, so the hub doesn't repeat itself in one sitting.
+  --   `fam = -N`     — V said the wrong thing.
+  --   `m = {...}`    — the Hermano (male-V) wording; base text is Husbando.
+  --
+  -- ⚠️ VOICE: `muteFallback = true` on the tree. Jackie's real clips only exist for his shipped game
+  -- lines, so those keep their `sfx` and play for real; everything written new here is SUBTITLE-ONLY and
+  -- must NOT drop a stray grunt under it. Do not add `sfx` to a line unless the id is really in the bank
+  -- (tools/rebuild_bank_yml.py) — a missing wav makes Audioware reject the WHOLE bank and he goes silent.
+  --
+  -- ⚠️ CHARACTER: he chose OUT (docs/DESIGN.md). Near-death scared him straight, the injury is real, and
+  -- Mama won't have it. He is not itching to get back on a gig, and he must never be written as pining.
+  -- The arc across tiers is NOT "does he like V" — it's "will he stop protecting V from how bad it was".
   everywhere = {
     start = "open",
-    cooldownSeconds = 60,   -- after finishing this once, F just grunts until 60s pass
+    muteFallback = true,    -- unvoiced lines are silent subtitles, not a grunt (see above)
+    -- No cooldownSeconds any more: the hub IS the conversation now, and the hub-refresh window
+    -- (Config.dialogue.hubRefreshMin/Max) is what stops a player farming it in one sitting.
     nodes = {
       open = {
-        -- v0.47: "Don't come here often..." is a FIXED-LOCATION greeting (proximity/meet-at-his-spot)
-        -- only — it makes no sense when he's your companion after a call, so it's dropped from here.
-        -- v0.48: "Anyway, what's goin' on?" moved to the dinner SEATED beat; a casual greeting sits here.
+        -- The greeting itself grows. Tier 0 is what he says to anyone; by Family he's just glad it's you.
         jackiePool = {
           { text = "Talk to me, choomba.",            sfx = "jl_2239163066690486272" },
           { text = "V, how you feel? You all right?", sfx = "jl_1802590928224841728" },
           { text = "¿Qué onda?",                      sfx = "jl_2015561179233951744" },
+          { minFam = 1, text = "There she is. Sit down, take a breath — you're always movin'.",
+            m = { text = "There he is. Sit down, take a breath — you're always movin'." } },
+          { minFam = 2, text = "Was hopin' you'd come by. Don't tell nobody I said that." },
+          { minFam = 3, text = "Hey. ...Nah, nothin'. Just good to see you standin' there, is all.",
+            chance = 0.25 },
+          { minFam = 3, text = "Mi hermana. C'mere." , m = { text = "Mi hermano. C'mere." } },
         },
-        -- v0.81: the sign-off shows a RANDOM line from its textPool (re-rolled every open, like the
-        -- jackiePool above), so it never sounds canned. v1.3: the "take care / checkin' in" branch was
-        -- dropped — as a companion send-off only the "let's move" lines read right, so just that pool
-        -- remains (leads to his "time we were on our way" reply, `bye`).
+        pick = { 3, 4 },     -- a handful of topics per draw, not a wall
         choices = {
-          { textPool = {
+          -- ---- TIER 0: what he'd say to anyone -------------------------------
+          { text = "How you been, Jackie?",     to = "howbeen", once = "howbeen" },
+          { text = "Keepin' busy?",             to = "busy",    once = "busy"    },
+          -- ---- TIER 1 (Close): the small personal cracks ----------------------
+          { text = "How's the quiet life really treatin' ya?", to = "quiet",  once = "quiet",  minFam = 1 },
+          { text = "How's Mama Welles?",                       to = "mama",   once = "mama",   minFam = 1 },
+          { text = "You like workin' the bar?",                to = "bar",    once = "bar",    minFam = 1 },
+          { text = "Heywood still feel like home?",             to = "heywood",once = "heywood",minFam = 1 },
+          -- ---- TIER 2 (Trusted): the things he doesn't volunteer --------------
+          { text = "You ever miss it? The life.",              to = "miss",   once = "miss",   minFam = 2 },
+          { text = "How's the body holdin' up? Honestly.",     to = "ribs",   once = "ribs",   minFam = 2 },
+          { text = "What do you remember about that night?",   to = "night",  once = "night",  minFam = 2 },
+          { text = "You ever go see Vik?",                     to = "vik",    once = "vik",    minFam = 2 },
+          -- ---- TIER 3 (Family): what he doesn't tell anyone -------------------
+          { text = "Were you scared?",                          to = "scared", once = "scared", minFam = 3 },
+          { text = "Do you blame me?",                          to = "blame",  once = "blame",  minFam = 3 },
+          { text = "What do you want now, Jackie?",             to = "want",   once = "want",   minFam = 3 },
+          -- The rare one. 5% per draw even at Family, so it stays a moment and not a menu item.
+          { text = "...Say it. Whatever it is you keep not sayin'.",
+            to = "unsaid", once = "unsaid", minFam = 3, chance = 0.05 },
+          -- ---- always available ----------------------------------------------
+          { pin = true, textPool = {
               "We should get movin'.",
               "Let's get goin', hermano.",
               "Alright, I'm headin' out.",
@@ -1174,9 +1277,153 @@ Config.locationDialogue = {
             }, to = "bye"  },
         },
       },
+
+      -- ---- TIER 0 ---------------------------------------------------------
+      -- Same question, four different depths. This is the mechanic that matters most: not that new rows
+      -- appear, but that the row V has been clicking since day one finally gets a real answer.
+      howbeen = {
+        jackiePool = {
+          { text = "Does not get any higher, choom.", sfx = "jl_1660221856871665664" },
+          { minFam = 1, text = "Good. Slow. Slow's an adjustment, but it's good." },
+          { minFam = 2, text = "Some days good. Some days I sit down in the middle of the afternoon 'cause my body says so and I don't argue with it no more." },
+          { minFam = 3, text = "Honest? I don't sleep right. I get to about four and I'm awake, and I lie there listenin' to the building. ...But I'm here to not sleep. That's the trade, and I'd take it again." },
+        },
+        choices = { { text = "(back)", to = "open" } },
+      },
+      busy = {
+        jackiePool = {
+          { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
+          { minFam = 1, text = "Bar, mostly. And people keep findin' me with problems. Small ones. I like the small ones." },
+          { minFam = 2, text = "Kid down the block needed his brother found. Took me two days and a lotta talkin' and nobody got shot. Best work I ever did, and it don't pay nothin'." },
+        },
+        choices = { { text = "(back)", to = "open" } },
+      },
+
+      -- ---- TIER 1 — Close --------------------------------------------------
+      quiet = {
+        jackiePool = {
+          { minFam = 1, text = "Ah, it's... quiet. Heh. That's the joke, right? Turns out quiet's a skill. I wasn't good at it at first." },
+          { minFam = 2, text = "I keep catchin' myself listenin' for somethin' to go wrong. Standin' in the bar at two in the afternoon with a rag in my hand, waitin' on a firefight that ain't comin'. It's gettin' better." },
+        },
+        choices = {
+          { text = "You'll get the hang of it.", to = "open" },
+          { text = "Beats the alternative.",     to = "open" },
+          -- He is not looking for permission to go back. Offering it is the wrong thing to say.
+          { text = "You could always come back to the life.", to = "quiet_no", fam = -2 },
+        },
+      },
+      quiet_no = {
+        jackie = { text = "...No. No, V. I got carried out of that place. Mama got a call in the night. I ain't doin' that to her twice, and I ain't doin' it to you neither. Don't ask me that again." },
+        choices = { { text = "I'm sorry. You're right.", to = "open" } },
+      },
+      mama = {
+        jackiePool = {
+          { minFam = 1, text = "Fussin'. Feedin' me. Actin' like she ain't scared, which is how I know she's scared." },
+          { minFam = 2, text = "She lights a candle for me. For ME. I'm sittin' right there at her table and she's still lightin' it. Says it's for the version of me that didn't make it out." },
+          { minFam = 3, text = "She don't know the half of what happened that night and she never will. That's a thing I carry so she don't have to. You understand that, right?" },
+        },
+        choices = {
+          { text = "She'd carry it with you if you let her.", to = "open" },
+          { text = "I understand.",                           to = "open" },
+        },
+      },
+      bar = {
+        jackiePool = {
+          { minFam = 1, text = "It's honest. Nobody's ever pulled a gun on me over a bad pour." },
+          { minFam = 2, text = "I know everybody's drink and half their troubles. Turns out that's a kind of power too. Just the slow kind." },
+        },
+        choices = { { text = "(back)", to = "open" } },
+      },
+      heywood = {
+        jackiePool = {
+          { minFam = 1, text = "Always did. Same corners, same abuelas yellin' out the same windows." },
+          { minFam = 2, text = "I walk it different now, though. Used to walk it like I was gonna own it one day. Now I just... walk it." },
+        },
+        choices = { { text = "(back)", to = "open" } },
+      },
+
+      -- ---- TIER 2 — Trusted ------------------------------------------------
+      miss = {
+        jackiePool = {
+          { minFam = 2, text = "...Yeah. Yeah, I miss it. Not the shootin'. The *us*. Comin' up with somethin' stupid at two in the mornin' and doin' it by four." },
+          { minFam = 3, text = "I miss bein' the guy who could fix it by walkin' in the door. That's the part that don't heal, chica — not the ribs. The ribs healed.",
+            m = { text = "I miss bein' the guy who could fix it by walkin' in the door. That's the part that don't heal, hermano — not the ribs. The ribs healed." } },
+        },
+        choices = {
+          { text = "We're still us.",           to = "open" },
+          { text = "You were never just that.", to = "open" },
+        },
+      },
+      ribs = {
+        jackiePool = {
+          { minFam = 2, text = "Honestly? Stiff. Cold mornings are the worst of it. Vik says that's permanent and I should make friends with it." },
+          { minFam = 3, text = "There's a plate in me, V. I can feel where it ends. Some nights I lie there with my hand on it just checkin' it's still doin' its job. That's what I got instead of a scar you could brag about." },
+        },
+        choices = {
+          { text = "You don't have to make it a joke.", to = "open" },
+          { text = "You're still standin'.",            to = "open" },
+        },
+      },
+      night = {
+        jackiePool = {
+          { minFam = 2, text = "Pieces. The car. You yellin' somethin' I couldn't hear. Dex's voice on the line and the whole thing already goin' sideways." },
+          { minFam = 3, text = "I remember bein' cold and thinkin' that was strange, 'cause it was a warm night. And I remember decidin' I wasn't gonna say anything about it 'cause you had enough on you already. ...That was dumb. I shoulda said somethin'." },
+        },
+        choices = {
+          { text = "You should've said somethin'.", to = "open" },
+          { text = "You were tryin' to protect me.", to = "open" },
+          { text = "Let's not do this.",             to = "open" },
+        },
+      },
+      vik = {
+        jackiePool = {
+          { minFam = 2, text = "Once a month. He don't charge me, which drives me crazy, so I bring him somethin' from Mama's kitchen and we call it square." },
+          { minFam = 3, text = "That man kept his mouth shut for a long time so I could stay dead. You know what that costs a guy like Vik? He carried it alone. I owe him more than the ribs." },
+        },
+        choices = { { text = "(back)", to = "open" } },
+      },
+
+      -- ---- TIER 3 — Family -------------------------------------------------
+      scared = {
+        jackie = { text = "...Yeah. Not at the time — at the time it's just loud and then it's quiet. After. Wakin' up in a room I didn't know, not able to move, not knowin' if you got out. That's the scared that stuck. Took me a long time to say that out loud." },
+        choices = {
+          { text = "I'm glad you said it.", to = "open" },
+          { text = "I was scared too.",     to = "open" },
+        },
+      },
+      blame = {
+        jackie = { text = "For what? For the job? V, I *wanted* that job. I talked YOU into half of it. You been carryin' that around this whole time thinkin' I'd hold it against you? ...Nah. No. Never once. Not for a second." },
+        choices = {
+          { text = "I needed to hear that.", to = "open" },
+          { text = "I still carry it.",      to = "blame_carry" },
+        },
+      },
+      blame_carry = {
+        jackie = { text = "Then put it down. Right here, right now — you don't gotta haul that around no more. I'm standin' in front of you. Look at me. I'm standin' right here." },
+        choices = { { text = "...Okay.", to = "open" } },
+      },
+      want = {
+        jackie = { text = "Somethin' small, I think. The bar. Sunday at Mama's. Maybe a place with a window that ain't got bars on it. Used to be I wanted my name on somethin'. Now I want to be around long enough to get bored. That sound pathetic?" },
+        choices = {
+          { text = "That sounds like a life.",  to = "open" },
+          { text = "Nothing pathetic about it.", to = "open" },
+        },
+      },
+      unsaid = {
+        jackie = { text = "...First thing I asked Vik. Before my own name, before what happened to me. I asked him if you got out. He said yeah, and I went back under for two days. Whatever else that night took, it didn't take that. That's the thing I keep not sayin'." },
+        choices = {
+          { text = "Jackie...",         to = "open" },
+          { text = "I asked about you too, every day.", to = "open" },
+        },
+      },
+
       bye = {
-        jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
+        jackiePool = {
+          { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
+          { minFam = 2, text = "Go on. I'm not goin' anywhere — that's the whole point of me now." },
+          { minFam = 3, text = "Hey. Come back, huh? Don't make it a month." },
+        },
+        -- no choices: last line, the box auto-closes
       },
     },
   },

@@ -60,6 +60,7 @@ pcall(function() package.loaded["lang"] = nil; package.loaded["translations"] = 
 Lang      = require("lang")        -- v1.60 GLOBAL (200-cap): localization; Lang.t(s) at the text chokepoints (see lang.lua + translations.lua)
 pcall(function() package.loaded["dialogui"] = nil end)   -- re-read on CET soft-reload, like blaze/lang
 DialogUI  = require("dialogui")    -- v1.63 GLOBAL (200-cap): V's choices in the GAME's own dialogue widget (see dialogui.lua)
+Fam       = require("familiarity") -- v1.65 GLOBAL (200-cap): Jackie opens up over time (see familiarity.lua)
 -- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
 -- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
 -- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
@@ -2598,7 +2599,7 @@ local function withDateChoices(node, choices)
   return out
 end
 
-local function openChoiceMenu(choices, title)
+local function openChoiceMenu(choices, title, node)
   -- Per-choice options, resolved once each time the menu opens:
   --  • v0.83 `chance` (0..1): the choice only APPEARS with that probability (re-rolled per open) — used
   --    for the random "get it off your chest" dinner topics. A choice with no `chance` always shows.
@@ -2611,11 +2612,20 @@ local function openChoiceMenu(choices, title)
   --  • v1.54 `cond = function() return <bool> end`: the choice only appears when the predicate holds —
   --    e.g. the face-to-face bike beats, which depend on what V decided about the Arch on the call. A
   --    predicate that ERRORS is treated as false, so a bad cond hides its choice instead of crashing.
-  local shown = {}
+  local shown, srcOf = {}, {}
   for _, c in ipairs(choices or {}) do
     local appear = true
     if c.chance then local r = 1.0; pcall(function() r = math.random() end); appear = (r < c.chance) end
     if c.once and bstate.taken and bstate.taken[c.once] then appear = false end   -- v1.54: already walked this branch
+    -- v1.65 FAMILIARITY GATE. `minFam = <tier 0..3>`: the topic only appears once Jackie has opened up
+    -- that far (familiarity.lua). No minFam = always eligible, so every tree written before this is
+    -- untouched. Checked BEFORE `cond`, and mirrored in the empty-menu fallback below, so a topic he
+    -- hasn't earned can never be resurrected by the safety net — that would leak the whole character.
+    if appear and c.minFam ~= nil then
+      local ok = true
+      pcall(function() ok = Fam.allows(c.minFam) end)
+      appear = ok and true or false
+    end
     if appear and c.cond then
       local ok, res = pcall(c.cond)
       appear = (ok and res == true)
@@ -2634,13 +2644,82 @@ local function openChoiceMenu(choices, title)
         sc.text = src.text
       end
       shown[#shown + 1] = sc
+      srcOf[#shown]     = c              -- the ORIGINAL choice, for the hub-refresh cache below
+    end
+  end
+  -- =========================================================================
+  -- v1.65 RANDOM SUBSET (`pick` on the NODE) + HUB REFRESH
+  -- =========================================================================
+  -- Once Jackie has three tiers of topics unlocked, showing all of them at once is a wall of text that
+  -- makes him feel like a menu. With `pick` set, only some eligible topics are offered per draw:
+  --   • `pin = true` on a choice exempts it — it ALWAYS shows and never counts. The way OUT of the hub
+  --     must be pinned, or a sampled menu can strand the player with no exit.
+  --   • authored ORDER is preserved: rows are dropped, never reordered, so `last = true` and the
+  --     engine-injected dinner rows keep their positions.
+  --   • `pick` may be a RANGE `{min, max}` — the row COUNT is re-rolled too, so the menu changes shape
+  --     as well as contents. A fixed number reads as a form to fill in.
+  --   • nothing happens unless the node asks for it, so every existing tree is untouched.
+  -- The draw is NOT re-rolled on every open: the hub is re-entered after every topic, so re-rolling
+  -- would let a player reopen the menu until the whole pool had scrolled past. A draw STICKS for
+  -- Config.dialogue.hubRefreshMin..Max seconds, measured from when the hub was last SEEN. Cached on JL
+  -- (not bstate) precisely because it must OUTLIVE the conversation. Choices that stopped being eligible
+  -- meanwhile are dropped from the cached set rather than resurrected.
+  if node and node.pick and #shown > 0 then
+    local want
+    if type(node.pick) == "table" then
+      local lo = math.floor(tonumber(node.pick[1]) or 1)
+      local hi = math.floor(tonumber(node.pick[2]) or lo)
+      if hi < lo then lo, hi = hi, lo end
+      want = lo
+      pcall(function() want = math.random(lo, hi) end)
+    else
+      want = tonumber(node.pick) and math.floor(tonumber(node.pick)) or nil
+    end
+    want = want and math.max(1, want)
+    JL.hubDraw = JL.hubDraw or {}
+    local hd, now = JL.hubDraw[node], (JL.clock or 0)
+    if want and hd and hd.set and now < (hd.until_ or 0) then
+      local out = {}
+      for i, c in ipairs(shown) do
+        if c.pin or hd.set[srcOf[i]] then out[#out + 1] = c end
+      end
+      local nonPinned = 0
+      for _, c in ipairs(out) do if not c.pin then nonPinned = nonPinned + 1 end end
+      if nonPinned > 0 then                       -- only honour a cache that still leaves something to say
+        shown, want = out, nil
+        hd.until_ = now + (hd.hold or 20.0)       -- reopening keeps the topics put; walking away refreshes
+      end
+    end
+    if want then
+      local free = {}                             -- indices of the samplable (unpinned) rows
+      for i, c in ipairs(shown) do if not c.pin then free[#free + 1] = i end end
+      if #free > want then
+        for i = #free, 2, -1 do                   -- Fisher-Yates over the INDEX list, then re-sort
+          local j = 1; pcall(function() j = math.random(1, i) end)
+          free[i], free[j] = free[j], free[i]
+        end
+        local keep = {}
+        for i = 1, want do keep[free[i]] = true end
+        local out, set = {}, {}
+        for i, c in ipairs(shown) do
+          if c.pin or keep[i] then out[#out + 1] = c; if not c.pin then set[srcOf[i]] = true end end
+        end
+        local D = Config.dialogue or {}
+        local lo, hi = D.hubRefreshMin or 20.0, D.hubRefreshMax or 45.0
+        local hold = lo
+        pcall(function() hold = lo + math.random() * math.max(0, hi - lo) end)
+        JL.hubDraw[node] = { set = set, until_ = (JL.clock or 0) + hold, hold = hold }
+        shown = out
+      end
     end
   end
   -- safety: never open an empty menu. Fall back only to choices that are still LEGAL (a spent `once`
   -- branch must stay spent — resurrecting it would let the player replay a hub topic).
   if #shown == 0 then
     for _, c in ipairs(choices or {}) do
-      if not (c.once and bstate.taken and bstate.taken[c.once]) then shown[#shown + 1] = c end
+      local locked = false                                  -- v1.65: ...and a topic behind minFam stays behind it
+      if c.minFam ~= nil then pcall(function() locked = not Fam.allows(c.minFam) end) end
+      if not locked and not (c.once and bstate.taken and bstate.taken[c.once]) then shown[#shown + 1] = c end
     end
     if #shown == 0 then shown = choices end   -- everything was spent -> last resort, show the raw list
   end
@@ -2706,9 +2785,35 @@ end
 -- for that RARE line (e.g. chance=0.01 -> ~1% of the time). If no chance-gated line hits, pick
 -- uniformly among the normal (non-chance) lines. So common lines stay common and a flagged line
 -- only slips in occasionally. (v0.34b)
+-- v1.65: entries may ALSO carry `minFam = <tier>` — the SAME question, answered at more length once
+-- Jackie has opened up. This is the half of the familiarity system that matters most: not "new topics
+-- appear" (that's a menu growing) but "the thing you already asked gets a real answer" (that's a person
+-- letting you in). An entry above V's tier is simply not eligible, so a pool that mixes tiers degrades
+-- to its shortest answer for a player he barely knows.
+--   ⚠️ Highest EARNED tier wins, and ties are random. Without the "highest wins" rule a tier-0 filler
+--   line would keep coming up alongside the tier-3 confession and the growth would read as randomness.
 local function pickPoolLine(pool)
-  local normal = {}
+  -- 1) rare chance-gated lines still get first refusal, but only if V has earned them
+  local eligible = {}
+  local best = -1
   for _, e in ipairs(pool) do
+    local ok = true
+    if e.minFam ~= nil then pcall(function() ok = Fam.allows(e.minFam) end) end
+    if ok then
+      eligible[#eligible + 1] = e
+      local t = tonumber(e.minFam) or 0
+      if t > best then best = t end
+    end
+  end
+  if #eligible == 0 then eligible, best = pool, -1 end     -- safety: nothing earned yet -> old behaviour
+  -- 2) among the eligible, keep only the HIGHEST tier V has reached (see the note above)
+  local top = {}
+  for _, e in ipairs(eligible) do
+    if (tonumber(e.minFam) or 0) == math.max(best, 0) then top[#top + 1] = e end
+  end
+  if #top == 0 then top = eligible end
+  local normal = {}
+  for _, e in ipairs(top) do
     if e.chance then
       local r = 1.0; pcall(function() r = math.random() end)
       if r < e.chance then return e end
@@ -2716,7 +2821,7 @@ local function pickPoolLine(pool)
       normal[#normal + 1] = e
     end
   end
-  if #normal == 0 then normal = pool end                  -- safety: every entry was chance-gated
+  if #normal == 0 then normal = top end                    -- safety: every entry was chance-gated
   local i = 1; pcall(function() i = math.random(1, #normal) end)
   return normal[i]
 end
@@ -2768,6 +2873,10 @@ Branch.confirm = function(idx)
   -- routes onward (`to = "hub"`) can't fire an `action` — actions only run on a terminal choice — so this
   -- is how a mid-conversation decision (V keeps the Arch / gives it back) survives to be read later.
   if c.fact and c.fact.name then jlSetFactNum(c.fact.name, c.fact.value or 1) end
+  -- v1.65 `fam = <n>`: this specific reply moves the needle. Almost always NEGATIVE — V saying the wrong
+  -- thing, not a bonus for saying the right one, because the base award already covers "you talked to
+  -- him". Floors at 0 in Fam.add: you can cool Jackie off, you can never make him a stranger again.
+  if c.fam then pcall(function() Fam.add("choice", c.fam) end) end
   hideSubtitle()
   -- v0.94: on the reunion beats, scale V's chosen line to its length too (so long picks aren't cut off).
   local hold = (isReunionBeat() and readingSecs(c.text))
@@ -2841,6 +2950,12 @@ Branch.kick = function()
     --  workspot or fight the walk-in; jlLookAtTick's head-tracking already covers those cases.)
     pcall(jlFaceV)
   end
+  -- v1.65 FAMILIARITY: ONE point per CONVERSATION, awarded here — the moment a talk tree actually
+  -- opens, not on the [F] prompt (which fires whenever V looks at him). Deliberately not per topic:
+  -- paying per row would make "click every option before leaving" the optimal play, and at this curve
+  -- that would collapse months of intended progression into an afternoon. Walking six topics in one
+  -- sitting is still one conversation, because it is.
+  pcall(function() Fam.add("talk") end)
   Branch.start(nil, tree)   -- the chosen talk tree, never a leftover call tree
   return true
 end
@@ -3009,6 +3124,10 @@ local function runCallAction(name)
     -- dinnerTick's `seated` phase owns the stand-up (it has the workspot/collision helpers). We just flag
     -- it; the flag also tells it NOT to re-speak getUpText (the seatedTree already said his parting line).
     JL.dinner.leaveNow = true
+    -- v1.65: the dinner PAYS OFF here, at the stand-up — so an outing V abandons halfway (walks away,
+    -- reloads, gets shot at) doesn't count. It's the biggest single award in the system on purpose:
+    -- it's the one thing that costs real time, and time is what this whole curve is measuring.
+    pcall(function() Fam.add("dinner") end)
     return
   end
   -- (v0.94b: the "return_bike" action handler was removed with the retired firstCallTree — the Arch is
@@ -3061,6 +3180,9 @@ local function runCallAction(name)
   if name ~= "summon_arrival" then return end
   if isMainQuestActive() then jlDeclineMainQuest(); return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
+  -- v1.65: he dropped what he was doing and came out. Small — answering the phone isn't intimacy — and
+  -- awarded only past the two refusals above, so a declined call pays nothing.
+  pcall(function() Fam.add("call") end)
   -- v0.50: two modes only — both run through vehicleArrivalTick (foot = bikeless, bike = useBike).
   -- v0.51: player Esc-menu "Disable vehicle arrivals" (JL.disableVehicleArrivals) forces FOOT,
   -- regardless of Config.call.arrivalMethod — the bike arrival is buggy and players can opt out.
@@ -5678,7 +5800,7 @@ local function branchTick()
   if bstate.openAt and (JL.clock or 0) >= bstate.openAt then
     bstate.openAt = nil
     if bstate.node and bstate.node.choices then
-      openChoiceMenu(withCompanionExtras(withDateChoices(bstate.node, bstate.node.choices)), "Jackie")
+      openChoiceMenu(withCompanionExtras(withDateChoices(bstate.node, bstate.node.choices)), "Jackie", bstate.node)
     elseif bstate.node then
       -- v0.34c: terminal node with NO choices -> after Jackie's line, auto-end the convo and run
       -- its node-level `action` (e.g. gig accept -> summon). No redundant "Let's do it" V click.
@@ -7569,6 +7691,19 @@ registerForEvent("onInit", function()
   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
   -- + v1.54 showObjective -> the native banner (with its UI sound), so the quest's steps actually
   -- tell the player what to do next ("Find Jackie...", "Call Jackie", "Wait for Jackie").
+  -- v1.65: familiarity. `config` is a CLOSURE, not the table — config.lua is re-required from disk on
+  -- every reload, so handing over the table itself would pin a stale copy and the player's tuning would
+  -- stop taking effect (the config-reload-wipes-it trap, same one the seat/walk tuners hit).
+  pcall(function()
+    Fam.bind{
+      log      = log,
+      factGet  = jlFactNum,
+      factSet  = jlSetFactNum,
+      config   = function() return Config.familiarity end,
+    }
+    log("Familiarity: " .. Fam.status())
+  end)
+
   pcall(function()
     Retrieval.bind{
       log = log, isHermano = jlHermano, showObjective = showOnscreenMsg,

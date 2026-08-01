@@ -11,6 +11,80 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🆕 v1.65 (2026-08-01) — FAMILIARITY: Jackie opens up over time
+
+**Mac-side (all four test suites green). Awaiting Windows in-game test.**
+
+The mod shipped Jackie's whole conversation on day one: press F once, ever, and he'd tell you what
+nearly dying felt like. Ported NCLives' familiarity system across, with a **deliberately much slower
+curve** (Antonia: *"you really have to know jackie and spend a lot of time with him... think the first
+proposal you made for Lucy, or even a bit harder"*).
+
+### The curve — and why it's harsher than NCLives'
+NCLives landed on `{ 0, 5, 14, 28 }` with a topic paying 1 point **each**, so one good conversation was
+worth ~5 and the top tier arrived in about six. Right for meeting Panam; wrong for Jackie, because
+he isn't a stranger — the distance being closed is not *"do we know each other"* but *"will you tell me
+the truth about what happened to you"*, and the deep tiers are the mod's payoff, not an early
+convenience. So this uses the **first** shape NCLives tried (one point per **conversation**, not per
+topic) and raises the bar on top of it:
+
+| tier | name | points | roughly |
+|---|---|---|---|
+| 0 | **Choom** | 0 | what he'd say to anyone |
+| 1 | **Close** | 10 | ~10 conversations, or 2 dinners and a few chats |
+| 2 | **Trusted** | 30 | ~7 dinners. He starts saying things he doesn't say |
+| 3 | **Family** | 65 | ~16 dinners. Including what he won't tell Mama |
+
+`talk = 1` per conversation · `dinner = 4` (at the stand-up, so an abandoned outing doesn't count) ·
+`call = 1`. Roughly **4× slower to the top than an NCLives persona** — asserted in the tests so it
+can't drift, which it did twice over there.
+
+### What's new
+- **`mod/JackieLives/familiarity.lua`** — global `Fam`, dependency-injected like `retrieval.lua`. One
+  per-save fact (`jackielives_familiarity`). Its own file, so it costs **no** top-level local (init.lua
+  is at 181 of 200).
+- **Engine** (`init.lua`): `minFam` gate in the choice filter *and* in the empty-menu fallback (a locked
+  topic must never be resurrected by the safety net); the `pick`/`pin` sampler + hub-refresh cache
+  ported from NCLives; `pickPoolLine` now picks the **highest earned tier** (ties random, so growth
+  reads as growth and not randomness); awards at the three moments; per-choice `fam = -N`.
+- **Content**: the `everywhere` tree — the one V sees most, since it's every conversation with him as a
+  companion — is now a **hub of 15 topics across 4 tiers**, 3–4 offered per draw. Tier 0 is his shipped
+  voiced lines; tiers 1–3 are new and cover the quiet life, Mama, the bar, Heywood, what he misses, the
+  ribs, that night, Vik, whether he was scared, whether he blames V, what he wants now, and one 5% line
+  that pays off the retrieval reveal. Several nodes answer the **same question** at four depths.
+- **`tools/test_familiarity.lua`** — 32 checks: the curve, the slower-than-NCLives invariant, gating,
+  the zero floor, disabled-shows-everything, and the content (every tier populated, links resolve, exit
+  pinned, no tier-gated line claims a voice clip).
+
+### ⚠️ Two things to know
+- **New dialogue is subtitle-only.** Jackie's clips only exist for his shipped game lines. The tree
+  carries `muteFallback = true` so unvoiced lines are silent rather than dropping a grunt under every
+  sentence. Never add an `sfx` unless the id is really in the bank — a missing wav makes Audioware
+  reject the **whole** bank and he goes completely silent.
+- **Localization**: the new strings aren't in `translations.lua` yet. `Lang.t` falls back to English, so
+  nothing breaks; run `tools/lang_extract.py` when the writing settles.
+
+### Still open
+- The **location trees** (noodle/coyote/afterlife/misty) are untouched — they're short by design, but
+  they could each grow a tier-2/3 topic that only makes sense in that place.
+
+### 🔎 AUDIT (2026-08-01): follower movement has DRIFTED — NCLives is ahead on 3 features
+Asked whether the two mods move the same. They don't. `Config.follow`, `Config.catchUp`, `Config.lookAt`
+and `Config.wander` are **identical** key-for-key; the drift is entirely in `abreast` and `loiter`, and
+it is one-directional — everything JackieLives has, NCLives has. Three NCLives-native improvements were
+never brought back:
+
+| missing here | what it does | where |
+|---|---|---|
+| **`loiter.faceDelay`** (1.5 s) | V stops → after a beat Jackie **turns and looks at her**. Without it he freezes facing wherever he happened to be pointed. The delay is the point: an instant turn reads as scripted. | `nclLookAtSubject` |
+| **`loiter.slowRelease`** (0.8) | a second way out of the halt — NCLives' fix for a **stranding** bug where `goSpeed` alone could leave the companion planted. | the loiter tick |
+| **`abreast.headingFromMovement`** + `headingMinSpeed` / `headingSmoothSeconds` / `headingHoldSeconds` / `paceScale` | anchors the walk-abreast slot on V's **travel direction** instead of her facing, and **holds** the heading briefly after she stops — so swinging the camera at a kerb no longer makes him swap sides. | `nclVHeading` / `abreastTick` |
+
+⚠️ The `faceDelay` one is the visible one: **in JackieLives today, Jackie does not turn to look at you
+when you stop.** NCLives' `check_mod.lua` already asserts the heading behaviour ("walk-abreast anchors on
+V's travel direction, not her facing", "the travel heading is held briefly after V stops"), so the ported
+code arrives with its tests. Not done in v1.65 to keep this version's Windows test focused on dialogue.
+
 ## 🆕 v1.64.1 (2026-07-30) — 🔴 the native picker showed NOTHING: `_G[name]` can't resolve game types
 
 ✅ **CONFIRMED WORKING IN-GAME on Windows, 2026-07-30** (Antonia: *"it works for jackie now"*).
