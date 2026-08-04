@@ -85,6 +85,47 @@ when you stop.** NCLives' `check_mod.lua` already asserts the heading behaviour 
 V's travel direction, not her facing", "the travel heading is held briefly after V stops"), so the ported
 code arrives with its tests. Not done in v1.65 to keep this version's Windows test focused on dialogue.
 
+---
+
+## 📋 SESSION CLOSE — 2026-08-04
+
+Everything below is **committed, tagged and pushed** in both repos; both working trees are clean and in
+sync with `origin/main`. Nothing is half-finished on disk.
+
+### Shipped this session
+
+| repo | version | what |
+|---|---|---|
+| JackieLives | **v1.64** | 🔴 the retrieval questline **never started for anyone** — the quest gate resolved V's post-heist state through five guessed `.journal` paths, none of them real, so `questGateState()` was `"unknown"` for every player on every save. That branch suppressed both Vik's reveal *and* the welcome card that advertised the manual-start button, so the mod shipped inert **and** self-concealing. Now gates on the `q101_done` fact (confirmed setter: `q101_cleanup.questphase`). |
+| JackieLives | **v1.65** | familiarity + the tiered conversation hub (this file, above). |
+| NCLives | **v1.1** | 🔴 NCLives **claimed JackieLives' Jackie** when both were installed — `record:find("jackie")` at six sites, so Panam's tree opened on Jackie's body (mute), and the purge sweep despawned him on every load screen. Fixed by persona-scoped ownership; namespaced 11 save facts, the entity tags and the god-mode CName. |
+| NCLives | **v1.2** | the de-Jackie-fication rename (`JL`→`NCS`, `jackie*`→`companion*`, tree schema `jackiePool`→`companionPool`). Surfaced two more collisions: both mods registered the **same Native Settings paths**, and subtitle speaker labels came from tree data so Panam's lines were captioned "Jackie". |
+| NCLives | **v1.44** | call-in arrival: 20 m, random 360° bearing, collision-off grace, walk not sprint. |
+| NCLives | **v1.45** | 🔴 Nexus report — the Talk key **couldn't be rebound** (the CET binding moved the *grunt*; the dialogue sat on the un-rebindable native F). Plus: every persona grunted in **Jackie's voice** (`Config.talkLines` was a hard-coded `ono_jackie_*` pool). |
+
+### Verified green at close
+JackieLives `test_familiarity` 32 · `test_dialogui` 35 · `test_walk_gates` + `test_blaze_calm` pass.
+NCLives `check_mod` 458 · `loadsim` 176. All four of this session's NCLives fixes re-verified as still
+present after the concurrent session's v1.6x work landed on top.
+
+### ⏳ Owed: Windows in-game testing
+**Nothing shipped this session has been run in the game.** In rough priority order:
+1. **v1.64** — the Vik reveal firing on a post-heist save (the bug that made the mod look dead).
+2. **v1.45** — Controls → turn F off, rebind, confirm both mods coexist; and that Judy's grunts are hers.
+3. **v1.65** — the tier walk-through (see the 8-point list handed over on 2026-08-01).
+4. **v1.44** — arrival bearing varies, they walk, a wall-spawn walks free.
+
+### Still open
+- **The movement backport** (§ AUDIT above) — three NCLives-native features JackieLives lacks; the
+  visible one is that Jackie doesn't turn to look at V when she stops. Well-scoped v1.66.
+- **Location trees** (noodle/coyote/afterlife/misty) haven't been given tier-2/3 topics.
+- **`lang_extract.py`** hasn't been run over v1.65's new dialogue — English fallback holds until it is.
+- **Carving up `init.lua`** into modules — the real fix for the 200-local ceiling (each file gets its
+  own budget; `require()` is already proven). `familiarity.lua` is the pattern to follow.
+- ⚠️ **NCLives version metadata disagrees with itself**: `Config.version = "1.61"` while the latest
+  commits say v1.64. Worth reconciling before the next Nexus upload — it's the number players report.
+- Untracked in NCLives: `banner.png` (not mine, left alone).
+
 ## 🆕 v1.64.1 (2026-07-30) — 🔴 the native picker showed NOTHING: `_G[name]` can't resolve game types
 
 ✅ **CONFIRMED WORKING IN-GAME on Windows, 2026-07-30** (Antonia: *"it works for jackie now"*).
