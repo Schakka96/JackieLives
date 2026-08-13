@@ -132,7 +132,9 @@ never convert one, never do arithmetic on one. It fails silently, in game only. 
 redscript refuses two definitions of one name, so a shared file would make installing both mods
 together a hard failure.
 
-Not yet heard in game — the Windows test is the outstanding item.
+✅ **CONFIRMED WORKING IN GAME on Windows, 2026-08-13** (Antonia: *"he summons and TALKS! With his
+VOICE!"*), on a build that was simultaneously AMM-free and using the native dialogue picker. Verified
+against `mode = "native"`, which locks Audioware out — so the audio could only have been the game's own.
 
 ## Files
 

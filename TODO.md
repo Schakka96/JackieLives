@@ -160,16 +160,26 @@ no dependency at all. That is a better floor than v1.65 had (silence, or Audiowa
 doubles and cannot hold one. `tonumber("1660220866564214792")` returns a *different* number. Ids are
 strings from config.lua to `StringToUint64` and must stay that way. Fails silently, in game only.
 
-- [ ] **WINDOWS: does he speak?** One line is the whole test. If yes, this replaces a year of audio work.
+- [x] ✅ **WINDOWS 2026-08-13 — HE SPEAKS.** Antonia: *"he summons and TALKS! With his VOICE! and
+      dialogue picker is marked as native!"* Summoned AMM-free (v1.68), speaking the game's own
+      recordings, choices in the native picker — all three at once, on one build.
+      `JLVO_Version()` returned `1`, the Voice panel read `NATIVE`, Audioware locked out by
+      `mode = "native"` — so what played could only have been the game's own audio.
+      **This replaces a year of audio work.**
 - [ ] **Watch his mouth.** This is the game's real dialogue path, so visemes may come free → retire
-      the `startFlap` hack and the AMM Expressions Overhaul requirement.
+      the `startFlap` hack and the AMM Expressions Overhaul requirement. Not reported either way yet.
 - [ ] **Listen to the mix.** If dialogue sounds over-processed or oddly ducked, try other
-      `Config.voice.context` integers — it's a one-number change, no rebuild.
+      `Config.voice.context` integers — it's a one-number change, no rebuild. Not reported yet.
 - [ ] Then delete the Audioware path: `convert_audio.py`, `rebuild_bank_yml.py`, the bank manifest,
-      `staging/r6/audioware/`, `Config.voice.mode = "audioware"`. Git history is the archive.
-- [ ] ⚠️ **Pre-existing blocker for any release:** `package_nexus.sh` refuses to build — 71 v1.65
-      dialogue strings are untranslated in all 9 languages (`lang_extract.py` was never run over the
-      familiarity content). Unrelated to v1.66, but it gates the zip.
+      `staging/r6/audioware/`, `Config.voice.mode = "audioware"`, and the `HOW_TO_ADD_JACKIE_VOICES`
+      card. Keep `mode = "audioware"` until at least one release has shipped with the native path, so
+      anyone who already built a bank has a way back if a game patch breaks the shim. Git history is
+      the archive.
+- [ ] **Update the Nexus page.** The requirements list still says Audioware + WolvenKit + a video
+      tutorial. It should now say: redscript, optional. That is the headline of the release.
+- [x] ✅ **Was a pre-existing blocker, now fixed:** `package_nexus.sh` refused to build — 71 v1.65
+      dialogue strings were untranslated in all 9 languages (`lang_extract.py` was never run over the
+      familiarity content). Translated 2026-08-13 — all 9 languages back to 346/346, gate passes.
 
 ## 🆕 v1.65 (2026-08-01) — FAMILIARITY: Jackie opens up over time
 
