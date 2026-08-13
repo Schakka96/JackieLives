@@ -43,7 +43,9 @@ function jlTakedownBusy() return TAKEDOWN end   -- v1.48: a running takedown own
 function log(_) end
 JL.summon.spawn.handle.GetWorldPosition = function(_) return JPOS end
 
-local src = io.open(arg[1], "r"):read("a")
+local SRC = arg[1] or "mod/JackieLives/init.lua"   -- default, like test_spawn_backend.lua
+local srcf = assert(io.open(SRC, "r"), "cannot read " .. SRC .. " — run this from the repo root")
+local src = srcf:read("a"); srcf:close()
 local function extract(name)
   local s = src:find("\nfunction " .. name .. "%(")
   assert(s, "could not find " .. name)

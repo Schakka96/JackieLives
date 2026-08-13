@@ -21,7 +21,7 @@
 --    done we DEGRADE: no uncrouch, V stays crouched, the finale runs normally. Never a crash, never a new
 --    dependency. The tests cover all four paths: mint · already-supplied · fall back · degrade.
 
-local SRC = assert(arg[1], "usage: lua tools/test_blaze_calm.lua mod/JackieLives/init.lua")
+local SRC = arg[1] or "mod/JackieLives/init.lua"   -- default, like test_spawn_backend.lua
 
 -- ---- stubs ----------------------------------------------------------------
 JL, Config, LOG = {}, {}, {}
