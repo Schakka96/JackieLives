@@ -6995,7 +6995,8 @@ local function nsTick()
       "Use this if Jackie's questline never started for you. Normally Vik tells you himself when you next " ..
       "visit his clinic — but only once the heist is behind you. If you're past the heist and nothing has " ..
       "happened at Vik's, press this to start the search by hand.",
-      "Start",
+      "Start",     -- button text
+      18,          -- font size (Native Settings' addButton takes textSize BEFORE the callback)
       function()
         local started = false
         pcall(function() started = Retrieval.startSearch() end)
