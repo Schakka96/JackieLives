@@ -158,6 +158,10 @@ ObserveAfter, Override = Observe, function() end
 local dialogCtrl
 dialogCtrl = {
   AreDialogsOpen = false, dialogIsScrollable = false,
+  -- Readable, because dialogui.lua's repair path reads them back every frame and silently disables
+  -- itself when it cannot ("active-hub field resolved: false"). Without these the 2026-08-14 highlight
+  -- fix is never exercised here at all.
+  m_activeHubID = -1, m_selectedIndex = 0,
   UpdateDialogsData    = function() end,
   OnInteractionsChanged = function() end,
   UpdateListBlackboard = function() end,
@@ -536,6 +540,67 @@ if events.onUpdate then
   JL_SETTINGS_FILE = realSettingsFile
 else
   check("the settings panel is reachable", false, "no onUpdate handler")
+end
+
+-- ---------------------------------------------------------------------------
+-- 6. Drive a whole phone call, from the hotkey to a choice the player picks
+-- ---------------------------------------------------------------------------
+-- The deepest path available without the game, and the one that matters most: it runs the CALL state
+-- machine, `Branch` (a file-local — reachable only through this flow), the voice ladder and the native
+-- picker together. Everything above proves a path doesn't throw on the way in; this proves the pieces
+-- still fit each other.
+--
+-- The gate is `Retrieval.isUnlocked()`, and Retrieval is one of the engine's globals — so the harness
+-- can unlock it honestly rather than reaching into private state. `isAwaitingCall` is forced false so
+-- we get the ordinary call tree and not the one-off reunion.
+--
+-- ⚠️ The stubs make every game call succeed, so this says nothing about whether the box is VISIBLE in
+-- game. It says the conversation assembled and the input routing agreed with it.
+print("\n6. a phone call runs from hotkey to picked choice")
+
+if hotkeyCb["jl_call"] and events.onUpdate and Retrieval and DialogUI then
+  local realUnlocked, realAwaiting = Retrieval.isUnlocked, Retrieval.isAwaitingCall
+  Retrieval.isUnlocked     = function() return true end
+  Retrieval.isAwaitingCall = function() return false end
+
+  _G.print = quiet
+  local ok, err = pcall(function()
+    hotkeyCb["jl_call"]()
+    for _ = 1, 600 do events.onUpdate(0.05) end   -- 30 s: ring -> connect -> his line -> the menu
+  end)
+  _G.print = realprint
+  check("the call runs without throwing", ok, err)
+  check("...and it ends at an open choice menu", DialogUI.isShown() == true,
+        "Branch never handed off to the picker — the player would be on a silent call")
+
+  local rows = DialogUI.isShown() and 0 or nil
+  if DialogUI.isShown() then
+    -- Navigation and confirm are the mod's own (the widget is draw-only), so they are worth exercising
+    -- against a REAL menu rather than the synthetic one in test_dialogui.lua.
+    local first = DialogUI.index()
+    DialogUI.move(1)
+    check("...arrows move the highlight", DialogUI.index() ~= first,
+          "index stuck at " .. tostring(first) .. " — the menu has fewer than 2 rows, or move() is dead")
+    _G.print = quiet
+    local okPick, errPick = pcall(function() DialogUI.confirm() end)
+    _G.print = realprint
+    check("...and confirming a choice doesn't throw", okPick, errPick)
+    check("...and the picker closed behind it", DialogUI.isShown() == false)
+  end
+
+  -- v1.69.2: the log must name the ROWS. A menu built wrong (a gated topic that leaked, a sign-off
+  -- sorted into the wrong place) is indistinguishable from a correct one in "menu open (5 choices)",
+  -- and the log is the only thing a bug report can carry.
+  local fh = io.open("jackie_debug.log", "r")
+  local logged = fh and fh:read("a") or ""
+  if fh then fh:close() end
+  check("the menu logged WHICH rows it opened, not just how many",
+        logged:find("menu open %(%d+ choices%) %[") ~= nil,
+        "openChoiceMenu logged only a count — a wrong menu reads identically to a right one")
+
+  Retrieval.isUnlocked, Retrieval.isAwaitingCall = realUnlocked, realAwaiting
+else
+  check("the call flow is reachable", false, "jl_call / onUpdate / Retrieval / DialogUI missing")
 end
 
 print(("\n%d checks, %d failed"):format(checks, fails))
