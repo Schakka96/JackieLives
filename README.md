@@ -62,12 +62,18 @@ Install the release zip with Vortex or MO2 — it carries a `fomod/` installer, 
 
 **The requirements list, first-run steps, and troubleshooting live in
 [`mod/JackieLives/README.md`](mod/JackieLives/README.md)**, which ships inside the zip. In short:
-RED4ext, CET 1.18.1+, AMM and Codeware are required; Audioware (his voice), AMM Expressions Overhaul
+RED4ext, CET 1.18.1+ and Codeware are required; **redscript** (his voice), AMM Expressions Overhaul
 (his mouth moving) and Native Settings UI (the in-game settings page) are optional but wanted.
 
-⚠️ **Jackie's voice is not shipped and cannot be** — CDPR's audio isn't redistributable. The mod ships
-the Audioware bank *manifest* and runs **subtitle-only** without the audio; you extract the lines
-yourself, following `r6\audioware\JackieLives\HOW_TO_ADD_JACKIE_VOICES.txt` in the zip.
+🔊 **Jackie speaks, and there is nothing for you to install to make that happen** (v1.66). His audio
+is not shipped and cannot be — CDPR's files aren't redistributable — so the mod doesn't ship any. It
+asks the game to play a line **Jackie actually recorded**, named by its String ID, out of the copy
+already on your disk. That needs **redscript** and nothing else: no Audioware, no WolvenKit, no
+940 MB export, no `HOW_TO_ADD_JACKIE_VOICES.txt`. Without redscript he falls back to subtitles plus
+his own wordless efforts, which need nothing at all.
+
+> The old Audioware bank still works if you already built one — `vo.lua` tries native → Audioware →
+> a vocal effort, in that order — but it is a legacy path now and no new install should need it.
 
 ## Updating & installing (Windows dev machine)
 
@@ -122,10 +128,23 @@ Reads the version from `Config.version`, refuses to build if `fomod/info.xml` di
 metadata, and then **verifies** the archive (no wrapper folder, `fomod/` at the root, `init.lua` at the
 CET path). Bump `Config.version` **and** `fomod/info.xml` together.
 
-## Build the voice bank (assets are not shipped)
+## Build the voice bank (LEGACY — v1.66 made this unnecessary)
 
-The lines are auditioned and tagged in `tools/voice-tagger/` (a small web app), transcribed with
-`whisper_transcribe.py`, then converted and manifested:
+⚠️ **You almost certainly don't want this section.** Since v1.66 Jackie speaks by asking the game for
+his own recording (see the note near the top), so there is no bank to build, no audio to extract, and
+no transcription step. What replaced the whole pipeline is one command in the sibling NCLives repo:
+
+```
+python3 ../NCLives/tools/build_line_library.py build --persona jackie
+```
+
+which reads the local install and writes every line Jackie ever recorded — CDPR's exact subtitle
+text, the String ID, the duration — in about a hundred seconds. Paste an id into a pack as
+`sfx = "jl_<id>"` and he says it.
+
+The rest of this section is kept for the Audioware path, which still works for anyone who already
+built a bank. The lines are auditioned and tagged in `tools/voice-tagger/` (a small web app),
+transcribed with `whisper_transcribe.py`, then converted and manifested:
 
 ```
 python tools/convert_audio.py      # tools/voice-tagger/audio/*.ogg (Opus) -> audioware/JackieLives/ (Vorbis) + the .yml
