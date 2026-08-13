@@ -413,5 +413,189 @@ do
   end
 end
 
+-- ---------------------------------------------------------------------------
+print("\n12. gendered lines — the subtitle must match the take the game plays (v1.69)")
+-- ---------------------------------------------------------------------------
+do
+  -- Antonia: "the subtitles now say chica (husbando mode) but his voice says mano often."
+  -- CDPR recorded some Jackie lines twice under ONE String ID and the game picks the take from
+  -- V's BODY GENDER. Our subtitle was hard-coded from the female take, so a male-bodied V read
+  -- one word and heard another. Nothing to fix in the audio; everything to fix on screen.
+  local VO, Config = reset{ shim = true }
+  local G = Config.voGender
+  check("vo_gender.lua is loaded by config.lua", type(G) == "table")
+
+  local n = 0
+  for id, e in pairs(G or {}) do
+    n = n + 1
+    check("id " .. id .. " is a STRING of digits (the precision rule)",
+          type(id) == "string" and id:match("^%d%d%d%d%d%d+$") ~= nil)
+    check("id " .. id .. " carries both takes",
+          type(e.f) == "string" and type(e.m) == "string" and e.f ~= e.m)
+  end
+  check("the table is not empty", n > 0, tostring(n) .. " entries")
+
+  -- The line she actually reported, end to end.
+  local SIGNATURE = "1777946122915868672"
+  check("the reported line is covered", G[SIGNATURE] ~= nil)
+  if G[SIGNATURE] then
+    check("...female V reads 'chica'", G[SIGNATURE].f:find("chica") ~= nil, G[SIGNATURE].f)
+    check("...male V reads 'mano'",    G[SIGNATURE].m:find("mano")  ~= nil, G[SIGNATURE].m)
+  end
+
+  -- Every key must be reachable: an id that no `sfx` in config.lua names would never be looked up.
+  local cfgsrc = io.open("mod/JackieLives/config.lua", "r"):read("*a")
+  local orphan = nil
+  for id in pairs(G or {}) do
+    if not cfgsrc:find("jl_" .. id, 1, true) then orphan = id end
+  end
+  check("every entry is a line config.lua actually speaks", orphan == nil, tostring(orphan))
+
+  local src = io.open("mod/JackieLives/init.lua", "r"):read("*a")
+  check("speakJackieLine resolves the subtitle through jlLineText",
+        src:match("local function speakJackieLine.-jlLineText%(text, sfx%)") ~= nil)
+  check("the swap keys off V's BODY, not the Husbando switch",
+        src:match("function jlLineText.-jlVBodyMale%(%)") ~= nil)
+  check("a failed gender read is never cached",
+        src:match("function jlVBodyMale.-if g == nil then return false end") ~= nil)
+
+  -- The regression that started it: an sfx-keyed override table rewrote voiced lines by the
+  -- relationship switch, and pointed them at wem stems the native path can't even speak.
+  check("Config.hermanoLines is gone", Config.hermanoLines == nil)
+  check("...and jlVar no longer consults it", src:match("Config%.hermanoLines\n") == nil)
+  local badstem = nil
+  for stem in cfgsrc:gmatch('sfx%s*=%s*"(jl_jackie[%w_]+)"') do
+    if VO.lineId(stem) == nil then badstem = stem end
+  end
+  check("no config sfx is a wem stem the native path would refuse", badstem == nil,
+        tostring(badstem) .. " is not a jl_<digits> String ID — it can never play natively")
+end
+
+-- ---------------------------------------------------------------------------
+print("\n13. the hub greets once per conversation (v1.69)")
+-- ---------------------------------------------------------------------------
+do
+  -- Antonia: "He throws an arrival line (time we were on our way for example) EVERY time V
+  -- returns to the main dialogue picker hub, not good." Every topic ends `to = "open"`, and
+  -- "open" opens with his ARRIVAL greeting pool — so one conversation played as six hellos.
+  local _, Config = reset{ shim = true }
+  local src = io.open("mod/JackieLives/init.lua", "r"):read("*a")
+
+  check("Branch.start honours greetOnce", src:match("node%.greetOnce") ~= nil)
+  check("a revisit skips the line entirely (no speak, no grunt roll)",
+        src:match("if revisit then.-bstate%.openAt.-return") ~= nil)
+  check("the ledger is dropped when the conversation ends",
+        src:match("bstate%.seen%s+= nil") ~= nil)
+  check("...and when the tree changes",
+        src:match("bstate%.taken, bstate%.seen = nil, nil") ~= nil)
+
+  -- The hubs themselves: a node is a hub if anything routes back INTO it.
+  local hub = Config.locationDialogue and Config.locationDialogue.everywhere
+  check("the main hub exists", hub ~= nil and hub.nodes ~= nil)
+  check("the main hub greets once", hub and hub.nodes.open.greetOnce == true)
+  check("the seated-dinner hub greets once",
+        Config.date and Config.date.seatedTree.nodes.open.greetOnce == true)
+
+  -- The flag belongs on the node a conversation keeps COMING BACK TO, and in a tree shaped like
+  -- these that is the START node — it is the one whose line is a greeting, and it is on a cycle
+  -- precisely because every topic routes home to it. (Topic nodes can technically be revisited too,
+  -- but replaying a topic's ANSWER when you ask again is correct; replaying hello is not.) So the
+  -- rule is narrow on purpose: a cyclic start node must greet once. Add a new looping tree and
+  -- forget the flag, and this fails instead of shipping the bug again.
+  local function onCycle(tree, start)
+    local seen, stack = {}, { start }
+    while #stack > 0 do
+      local key = table.remove(stack)
+      for _, c in ipairs((tree.nodes[key] or {}).choices or {}) do
+        if c.to and tree.nodes[c.to] then
+          if c.to == start then return true end
+          if not seen[c.to] then seen[c.to] = true; stack[#stack + 1] = c.to end
+        end
+      end
+    end
+    return false
+  end
+
+  -- Every talk tree in the mod, so a NEW one can't quietly reintroduce the bug.
+  local trees = { hub, Config.date and Config.date.seatedTree, Config.dialogueTree,
+                  Config.reunionCallTree, Config.reunionMeetTree, Config.blazeFinaleTree,
+                  Config.callTree, Config.date and Config.date.tree }
+  for key, t in pairs(Config.locationDialogue or {}) do trees[#trees + 1] = t end
+
+  local unflagged, loops = nil, 0
+  for _, tree in pairs(trees) do
+    local root = tree.nodes and tree.start
+    if root and tree.nodes[root] and onCycle(tree, root) then
+      loops = loops + 1
+      if not tree.nodes[root].greetOnce then unflagged = root end
+    end
+  end
+  check("the detector found the looping hubs", loops >= 2, tostring(loops) .. " found")
+  check("every hub a conversation returns to greets once", unflagged == nil,
+        tostring(unflagged) .. " is returned to mid-conversation but still replays its greeting")
+end
+
+-- ---------------------------------------------------------------------------
+print("\n14. the talk trees hold together (v1.69 small talk)")
+-- ---------------------------------------------------------------------------
+do
+  -- The hub roughly doubled in size, and the two ways a hand-written tree breaks are boring and
+  -- silent: a choice pointing at a node that isn't there (Branch.start logs "node missing" and the
+  -- conversation dead-ends), and a node nothing can reach (content that never ships). Neither shows
+  -- up until someone picks that exact row in game, so check it here instead.
+  local VO, Config = reset{ shim = true }
+  local D = require("vo_durations")
+
+  local trees = { { "everywhere", Config.locationDialogue.everywhere },
+                  { "seated", Config.date.seatedTree } }
+  for key, t in pairs(Config.locationDialogue or {}) do
+    if key ~= "everywhere" then trees[#trees + 1] = { key, t } end
+  end
+
+  local dangling, orphan, unvoiced = nil, nil, nil
+  for _, pair in ipairs(trees) do
+    local name, tree = pair[1], pair[2]
+    local reached = { [tree.start] = true }
+    local stack = { tree.start }
+    while #stack > 0 do
+      local k = table.remove(stack)
+      for _, c in ipairs((tree.nodes[k] or {}).choices or {}) do
+        if c.to then
+          if not tree.nodes[c.to] then dangling = name .. "." .. k .. " -> " .. c.to
+          elseif not reached[c.to] then reached[c.to] = true; stack[#stack + 1] = c.to end
+        end
+      end
+    end
+    for k in pairs(tree.nodes) do
+      if not reached[k] then orphan = name .. "." .. k end
+    end
+    -- Every voiced line must be a line the game actually knows, or he opens his mouth and nothing
+    -- comes out. vo_durations.lua is generated from the install, so "has a duration" == "is real".
+    for k, node in pairs(tree.nodes) do
+      for _, e in ipairs(node.jackiePool or { node.jackie }) do
+        local id = e and e.sfx and VO.lineId(e.sfx)
+        if e and e.sfx and (not id or not D[id]) then unvoiced = name .. "." .. k .. " " .. e.sfx end
+      end
+    end
+  end
+
+  check("no choice points at a node that doesn't exist", dangling == nil, tostring(dangling))
+  check("every node is reachable from the tree's start", orphan == nil, tostring(orphan))
+  check("every voiced line is a real line of the game's", unvoiced == nil,
+        tostring(unvoiced) .. " has no duration — the id isn't in the install")
+
+  -- The small talk itself: it only counts as small talk if he SAYS it.
+  local hub, voiced, topics = Config.locationDialogue.everywhere, 0, 0
+  for _, node in pairs(hub.nodes) do
+    topics = topics + 1
+    for _, e in ipairs(node.jackiePool or {}) do
+      if e.sfx then voiced = voiced + 1 end
+    end
+  end
+  check("the hub has real breadth", topics >= 20, tostring(topics) .. " nodes")
+  check("...and a lot of it is his actual voice, not subtitles",
+        voiced >= 25, tostring(voiced) .. " voiced lines in the hub")
+end
+
 print(("\n%d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)

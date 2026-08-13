@@ -146,16 +146,23 @@ end
 check("some questions grow their answer with familiarity", grew >= 3,
       "only " .. grew .. " nodes vary by tier — new topics alone read as a menu growing, not a person opening up")
 
--- ⚠️ Newly authored lines are subtitle-only. An `sfx` naming a clip that isn't in the bank makes
--- Audioware reject the WHOLE bank and Jackie goes completely silent (see tools/rebuild_bank_yml.py).
-local voiced = {}
+-- v1.69: this check used to be "no tier-gated line may claim a voice clip at all", because under
+-- Audioware ONE `sfx` naming a wav that wasn't in the bank made it reject the whole bank and Jackie
+-- went completely silent. That failure mode died with v1.66 — the native path names the game's own
+-- lines, and an id the game doesn't know is one silent line, not a dead mod. So the rule inverts:
+-- a tier-gated line MAY be voiced (the v1.69 small talk deliberately is, so his first answer to a
+-- new question is his real voice), as long as every id is a line that actually exists. Reality is
+-- proven by vo_durations.lua, which is generated from the install — if it's in there, it's real.
+local DUR = require("vo_durations")
+local unreal = {}
 for key, node in pairs(tree.nodes) do
   for _, e in ipairs(node.jackiePool or {}) do
-    if e.sfx and (e.minFam or 0) > 0 then voiced[#voiced + 1] = key .. ": " .. e.sfx end
+    local id = e.sfx and e.sfx:match("^jl_(%d%d%d%d%d%d+)$")
+    if e.sfx and not (id and DUR[id]) then unreal[#unreal + 1] = key .. ": " .. e.sfx end
   end
 end
-check("no tier-gated line claims a voice clip", #voiced == 0,
-      "these are newly written and have no recording: " .. table.concat(voiced, ", "))
+check("every voiced line in the hub is a real line of the game's", #unreal == 0,
+      "no such id in the install: " .. table.concat(unreal, ", "))
 
 -- V can say the wrong thing, and it should cost something.
 local penalties = 0

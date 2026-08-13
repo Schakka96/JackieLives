@@ -2290,18 +2290,56 @@ end
 function jlHermano() return JL.husbando == false end   -- true while the male-V (Hermano) track is active
 
 -- Mode-appropriate variant of a Jackie line / pool-entry table {text=, sfx=, m={text=,sfx=}}.
--- In Hermano mode, resolution order:
---   1) an inline `m = {...}` on the entry (used for text-only lines + one-offs), else
---   2) a central sfx-keyed override in Config.hermanoLines (rewrites EVERY recurrence of a
---      voiced female-coded line at once — e.g. the "...chica" greeting appears in 5+ trees).
--- No match -> the shared (unisex) entry is returned unchanged. nil-safe.
+-- In Hermano mode an inline `m = {...}` on the entry replaces it. No `m` -> the entry is returned
+-- unchanged. nil-safe.
+--
+-- v1.69: the old second step — a central sfx-keyed `Config.hermanoLines` map — is GONE, and the
+-- reason is worth keeping. `m` is for lines WE wrote, which have no recording and are therefore
+-- ours to word. A line with an `sfx` is CDPR's recording, and where CDPR cut two takes of it the
+-- game picks between them from V's body gender before a mod gets a vote. Rewording that line by
+-- our relationship switch is how the subtitle ended up saying "chica" over audio saying "mano".
+-- Voiced lines are handled by jlLineText/vo_gender.lua instead. See config.lua's header there.
 function jlVar(entry)
-  if entry and jlHermano() then
-    if entry.m then return entry.m end
-    local map = Config.hermanoLines
-    if map and entry.sfx and map[entry.sfx] then return map[entry.sfx] end
-  end
+  if entry and jlHermano() and entry.m then return entry.m end
   return entry
+end
+
+-- ---------------------------------------------------------------------------
+-- v1.69: is V's BODY male? Not the Husbando/Hermano switch — the actual character in the save,
+-- which is what the audio engine reads when it chooses between the two takes of a gendered line.
+-- Cached after the first successful read (the body can't change mid-session) and NEVER cached on
+-- a failed one: on a slow load Game.GetPlayer() isn't up yet, and locking in a wrong answer there
+-- would mis-subtitle every line for the rest of the session. Global — the 200-local cap.
+-- ---------------------------------------------------------------------------
+function jlVBodyMale()
+  if JL.vBodyMale ~= nil then return JL.vBodyMale end
+  local pl = Game.GetPlayer(); if not pl then return false end
+  local g
+  pcall(function() g = pl:GetResolvedGenderName() end)
+  if g == nil then return false end
+  JL.vBodyMale = (g ~= CName.new("Female"))
+  log("V's body reads as " .. (JL.vBodyMale and "MALE" or "FEMALE")
+      .. " — gendered lines will be subtitled to match the take the game plays.")
+  return JL.vBodyMale
+end
+
+-- The words to PUT ON SCREEN for a line about to be spoken. Almost always the authored text; the
+-- exception is the handful of lines CDPR recorded twice under one String ID, where the game plays
+-- the take matching V's body and config.lua's text was written from the FEMALE one. For a male V
+-- we swap in CDPR's own wording of the take he's actually about to hear, so the subtitle can't
+-- contradict the audio. Unvoiced lines never reach the table — they have no take to match.
+--
+-- ⚠️ FEMALE V IS LEFT ALONE ON PURPOSE, even though the table holds her wording too. The authored
+-- text already IS the female take (give or take a "Heheh"), and it is what translations.lua is
+-- keyed on — swapping in CDPR's punctuation instead would silently drop nine languages back to
+-- English to fix nothing. `e.f` stays in the generated file as the reference that shows WHY each
+-- entry is there; only `e.m` is ever substituted.
+function jlLineText(text, sfx)
+  local map = Config.voGender
+  if not map or not sfx or not jlVBodyMale() then return text end
+  local id = VO.lineId(sfx)
+  local e  = id and map[id]
+  return (e and e.m) or text
 end
 
 -- v1.54: HERMANO IS THE DEFAULT FOR EVERY V. The old v1.2/v1.3 behaviour auto-read V's body gender on
@@ -2416,6 +2454,11 @@ end
 -- it reads as broken rather than intentional. A tree can now set `muteFallback = true` (Branch.start passes
 -- it through) to be GENUINELY silent except for the lines that carry a real `sfx`.
 local function speakJackieLine(text, sfx, mute)
+  -- v1.69: for the handful of lines CDPR recorded twice under one String ID, the subtitle follows
+  -- the take the game is about to play (V's body gender) rather than the one this file was
+  -- written from. Everything else passes straight through. This is the ONE place it happens, so
+  -- every caller — hub, barks, calls, arrival greetings — is covered by the same rule.
+  text = jlLineText(text, sfx)
   -- v1.66: the line comes out of HIS body now, not out of a 2D bank, so the speaker has to
   -- be resolved before the audio rather than only for the subtitle. Jackie if he's spawned,
   -- else the player — on a phone call he isn't in the world yet, and a null speaker makes
@@ -2860,6 +2903,7 @@ Branch.finish = function(reason)
   bstate.pending, bstate.pendingAt, bstate.pendingAction = nil, nil, nil
   bstate.tree, bstate.talkCooldownKey = nil, nil
   bstate.taken = nil                -- v1.54: drop the one-time-choice ledger with the conversation
+  bstate.seen  = nil                -- v1.69: ...and the greetOnce ledger, so the NEXT talk opens with a hello
   bstate.pickerTries = nil          -- v1.63: reset the native-picker retry counter with it
   hideSubtitle()                    -- wipe the bottom band NOW (watchdog would catch it too)
   if reason then JL.ui.status = reason end
@@ -2919,7 +2963,7 @@ Branch.start = function(nodeKey, tree)
   -- v1.54: entering a DIFFERENT tree = a brand-new conversation, so wipe the one-time-choice ledger
   -- (bstate.taken). Within one tree it persists, which is what makes a HUB node work: a branch the
   -- player already walked (`once = "<key>"`) stays hidden when they come back to the hub.
-  if bstate.tree ~= tree then bstate.taken = nil end
+  if bstate.tree ~= tree then bstate.taken, bstate.seen = nil, nil end
   bstate.tree = tree
   nodeKey = nodeKey or tree.start
   local node = tree.nodes[nodeKey]
@@ -2929,6 +2973,25 @@ Branch.start = function(nodeKey, tree)
   closeChoiceMenu()
   pcall(hideJackieChoiceBox)        -- clear the native "[F] Talk" prompt while we talk
   bstate.node = node
+  -- v1.69 GREET ONCE PER CONVERSATION. Every topic in the hub ends in `to = "open"`, so re-entering
+  -- the hub used to replay its greeting pool — and that pool is his ARRIVAL lines ("Talk to me,
+  -- choomba", "¿Qué onda?"). Antonia: he "throws an arrival line EVERY time V returns to the main
+  -- dialogue picker hub, not good". Right: you say hello once, then you're talking. A node marked
+  -- `greetOnce = true` speaks its line the first time it is entered in a conversation and goes
+  -- straight to the choices every time after, so the hub feels like ONE conversation with topics
+  -- rather than a loop of re-introductions. Cleared with `taken` when the tree changes.
+  local revisit = node.greetOnce and bstate.seen and bstate.seen[nodeKey]
+  if node.greetOnce then
+    bstate.seen = bstate.seen or {}
+    bstate.seen[nodeKey] = true
+  end
+  if revisit then
+    -- No line, no lip flap, no grunt roll — just re-open the picker. The short beat keeps the
+    -- box from snapping back in the same frame V confirmed a choice.
+    bstate.openAt = (JL.clock or 0) + 0.25
+    log("Branch: re-entered '" .. tostring(nodeKey) .. "' (greetOnce) — straight to the choices.")
+    return
+  end
   -- a node may give a single `jackie` line OR a `jackiePool` (array) we pick from (rarity-aware)
   local jline = node.jackie
   if node.jackiePool and #node.jackiePool > 0 then
@@ -4121,7 +4184,11 @@ startLeaving = function(opts)
   -- the single partingText/partingSfx. An explicit opts.text (e.g. mainQuestExit) still overrides the pool.
   -- These are function-local (NOT main-chunk locals) so they don't count toward init.lua's 200-local cap.
   local pText, pSfx = D.partingText, D.partingSfx
-  local ppool = (jlHermano() and D.partingPoolM) or D.partingPool   -- v1.2: Hermano parting pool if present
+  -- v1.69: one pool for both Vs. The old `partingPoolM` was a male duplicate whose "male clips" were
+  -- wem stems the native path can't speak — so Hermano, the DEFAULT track, was the one that walked
+  -- off in silence. These lines say "V", not a pet name, and the two that are gendered are gendered
+  -- by the engine (vo_gender.lua subtitles them). See Config.dismiss.
+  local ppool = D.partingPool
   if ppool and #ppool > 0 then
     local pick = ppool[math.random(#ppool)]
     if pick then pText, pSfx = pick.text, pick.sfx end
@@ -8369,8 +8436,8 @@ end
 -- v0.52: no-repeat picker for arrival GREETING LINES (real jl_ clips + subtitle, NOT WWise grunt events).
 -- Avoids the last-used line + any used within greetRepeatCooldown (5 min). State on JL.arrivalGreet (keyed by sfx).
 local function pickArrivalGreetLine(now)
-  local pool = (jlHermano() and Config.call and Config.call.arrivalGreetingsM)   -- v1.2: Hermano arrival greetings
-               or (Config.call and Config.call.arrivalGreetings) or {}
+  -- v1.69: one pool (the male duplicate is gone — see Config.call.arrivalGreetings).
+  local pool = (Config.call and Config.call.arrivalGreetings) or {}
   if #pool == 0 then return nil end
   JL.arrivalGreet = JL.arrivalGreet or { used = {}, last = nil }
   local st = JL.arrivalGreet
@@ -8392,11 +8459,13 @@ local function pickArrivalGreetLine(now)
 end
 
 -- v1.41: pick the spoken VENUE HELLO line (real jl_ clip + subtitle) for the first approach of the
--- in-game day. Gender-aware pool, same no-immediate-repeat rule as the arrival greeting so two
--- consecutive days don't open with the same line. GLOBAL -> costs no top-level local (200-cap).
+-- in-game day. Same no-immediate-repeat rule as the arrival greeting so two consecutive days don't
+-- open with the same line. GLOBAL -> costs no top-level local (200-cap).
+-- v1.69: no longer picks a pool by relationship mode — where a line has two takes the ENGINE picks,
+-- and vo_gender.lua matches the subtitle. See Config.venueGreet.
 function pickVenueHelloLine()
   local G = Config.venueGreet or {}
-  local pool = (jlHermano() and G.greetingsM) or G.greetings or {}
+  local pool = G.greetings or {}
   if #pool == 0 then return nil end
   JL.venueHello = JL.venueHello or { last = nil }
   local fresh = {}

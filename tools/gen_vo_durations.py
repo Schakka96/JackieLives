@@ -215,6 +215,27 @@ def main():
         for a in archives:
             a.close()
 
+    # v1.69 FALLBACK. SoundDB doesn't place every line in a scene — the voice-set lines ("Make
+    # moves, chica.", "You with me, chica?") aren't in one at all, so the scan above returns
+    # nothing for them and the mod paces those subtitles by READING TIME, which for a one-second
+    # line means it hangs around for two and a half. NCLives' line library already read a duration
+    # for every line straight out of the game, so use it for whatever the scan missed. Optional:
+    # no library (a checkout without the game) just leaves those ids as they were.
+    lib = os.path.join(os.path.dirname(__file__), "..", "..",
+                       "NCLives", "vo_library", "jackie.json")
+    still = ids - set(found)
+    if still and os.path.exists(lib):
+        with open(lib, encoding="utf-8") as fh:
+            secs = {l["id"]: l.get("seconds") or 0 for l in json.load(fh)["lines"]}
+        rescued = 0
+        for sid in sorted(still):
+            v = secs.get(sid, 0)
+            if MIN_SEC <= v <= MAX_SEC:
+                found[sid] = v
+                rescued += 1
+        if rescued:
+            print(f"  +{rescued} duration(s) from the line library (not placed in any scene)")
+
     bad = {s: v for s, v in found.items() if not (MIN_SEC <= v <= MAX_SEC)}
     if bad:
         sys.exit(f"durations outside the sane range {MIN_SEC}-{MAX_SEC}s — units wrong? {bad}")

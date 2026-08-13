@@ -309,10 +309,11 @@ def build(config_src, retrieval_src):
              str_value(dismiss.get("partingSfx"))),
         ]))
 
-    add(pool_from(CONFIG, "hermanoLines", "Hermano line map (male-V overrides)",
-                  "Keyed by the clip id of the Husbando line it replaces. "
-                  "One edit here fixes that line in EVERY tree that uses the clip.",
-                  [("Hermano replacement", c("Config.hermanoLines"))]))
+    # v1.69: Config.hermanoLines is GONE and must not come back. It rewrote VOICED lines by the
+    # mod's Husbando/Hermano switch, but where CDPR cut a male and a female take of a line the
+    # game picks between them from V's BODY GENDER — so the switch could only ever put the wrong
+    # subtitle over the right audio. mod/JackieLives/vo_gender.lua (generated) replaces it, and it
+    # is not editable prose: it is CDPR's own wording of a take we don't choose. See config.lua.
 
     if isinstance(date, Table):
         rows = [

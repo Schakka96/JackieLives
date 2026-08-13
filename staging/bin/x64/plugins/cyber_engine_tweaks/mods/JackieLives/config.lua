@@ -96,13 +96,21 @@ Config.voice = {
   -- "off"       subtitles only
   mode = "auto",
 
-  -- locVoiceoverContext as a NUMBER, or -1 for the default (Vo_Context_Combat, the value
-  -- proven to work in a shipped mod). It selects the audio context the line plays in — mix
-  -- and processing, not which line. If dialogue ever sounds wrong (over-processed, ducked
-  -- oddly, wrong bus), this is the knob: try other small integers and listen. It is a number
-  -- rather than a name on purpose — naming an enum member that doesn't exist is a redscript
-  -- COMPILE error, and that breaks every redscript mod the player has, not just ours.
-  context = -1,
+  -- Confirmed in game 2026-08-13 (CET "Voice lab"): with the line queued on JACKIE'S entity the
+  -- voice comes out of HIS mouth, positioned in the world. Variants 1/2/3 all placed it correctly,
+  -- so the entity is what matters and these two are free to be the semantically right ones.
+  --
+  -- context    0=Quest  1=Community  2=Combat  3=MinorActivity  5=Default   (-1 = the shim's own
+  --            default, which is Combat). Ours is CONVERSATION, so Quest. V Voice Framework used
+  --            Combat because its lines are combat barks.
+  -- expression 0=Spoken  1=Phone  2=InnerDialog  3/4/5=Loudspeaker  6=Radio  11=Helmet.
+  --            Phone and InnerDialog are deliberately NOT positioned — they play in V's head. If a
+  --            line ever comes out of V instead of Jackie, this is the first thing to check.
+  --
+  -- Both are NUMBERS, not names: naming an enum member that doesn't exist is a redscript COMPILE
+  -- error, and that breaks every redscript mod the player has, not just ours.
+  context    = 0,
+  expression = 0,
 
   -- Borrow a different character's voice bank for the duration of the line. Jackie doesn't
   -- need this (he is a real Jackie, and already sounds like himself), so it is off. It is
@@ -297,25 +305,35 @@ Config.dismiss = {
   choiceText      = "Head home, Jackie. I got this from here.",  -- silent V line in the choice box
   partingSfx      = "jl_1155727714874494976",   -- Jackie VO: "Time we were on our way, mamita."
   partingText     = "Time we were on our way, mamita.",
-  -- v0.94 (Antonia 2026-07-06): Jackie's parting line is now a POOL — startLeaving() picks one at random
-  -- each dismiss (partingText/partingSfx above stay as the safe fallback if the pool is empty). Antonia's
-  -- signature walk-away line "Ahí luego, V." goes here; she says at least 3 CLEAN in-game instances exist.
-  -- ⚠️ TODO(Windows/Audioware): scrape those 3 clips → add to audioware/JackieLives/JackieLives.yml → put
-  -- the clip's jl_ id in `sfx` below. Until then sfx=nil = text+grunt fallback (does NOT break the bank;
-  -- never invent a jl_ id — a missing .wav makes Audioware reject the WHOLE bank). Same line is the
-  -- designated goodbye for the #3b story-NPC gate (see docs/story_npc_gate.md).
+  -- v0.94 (Antonia 2026-07-06): Jackie's parting line is a POOL — startLeaving() picks one at random each
+  -- dismiss (partingText/partingSfx above stay as the safe fallback if the pool is empty). Antonia's
+  -- signature walk-away line "Ahí luego, V." lives here.
+  --
+  -- v1.69 — IT FINALLY SPEAKS. Antonia, 2026-08-13: *"jackie has ahi luego V lines but they don't play
+  -- with vo after dismissing - why?"* Because it sat here as `sfx = nil` behind a TODO that asked for a
+  -- WolvenKit scrape into the Audioware bank — a job v1.66 made unnecessary and nobody came back to
+  -- delete. There was never anything to scrape: the line is in the game, and naming its String ID is
+  -- all it ever needed. There are FOUR clean takes of it (plus "Hasta luego."), so the send-off now
+  -- varies in delivery, not just in words — the picker avoids the last-used `sfx`, so consecutive
+  -- dismissals sound different even when he says the same thing.
+  --
+  -- All six are addressed to "V", not to a pet name, so they are the same for either V. That is why
+  -- there is no male duplicate of this pool any more (see below).
   partingPool     = {
-    { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" }, -- voiced (existing)
-    { text = "Ahí luego, V.",                    sfx = nil }, -- TODO sfx: 3 clean instances exist (scrape → bank)
+    { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },  -- male V: "...carnal."
+    { text = "Ahí luego, V.",                    sfx = "jl_1697051347046326288" },
+    { text = "Ahí luego, V.",                    sfx = "jl_1698516624514703372" },
+    { text = "Ahí luego, V.",                    sfx = "jl_1790892452886372352" },
+    { text = "Ahí luego, V.",                    sfx = "jl_1790930025243500544" },
+    { text = "Hasta luego.",                     sfx = "jl_1784859163293052928" },
+    { text = "Make moves, chica.",               sfx = "jl_2238739839238447112" },  -- male V: "...mano."
   },
-  -- v1.2: HERMANO (male-V) parting pool — used by startLeaving when the male-V track is active
-  -- (jlHermano()). Text-only entries play the fallback grunt + subtitle (mute), like other Hermano
-  -- lines with no clean clip. ⚠️ VERIFY any sfx by ear on Windows before trusting the subtitle.
-  partingPoolM    = {
-    { text = "Time we were on our way, mano." },
-    { text = "Ahí luego, mano.",  sfx = nil },
-    { text = "Make moves, mano.", sfx = "jl_jackie_vs_vset_jackie_m_1f119a05be52a008" }, -- ⚠️ VERIFY audio by ear
-  },
+  -- v1.69: `partingPoolM` is GONE. It was a male-V duplicate of the pool above, and the duplication
+  -- was built on a mistake — its "male mirror clips" turned out to be the SAME String IDs as the
+  -- lines above, which the game already speaks in the right take for V's body. What the duplicate
+  -- actually did was point at WEM STEMS (`jl_jackie_..._m_...`) instead of ids, and vo.lua can only
+  -- play `jl_<digits>`, so the male track was the one track that never had a voice. One pool now,
+  -- gendered by the engine, subtitled by vo_gender.lua. See the header above Config.voGender.
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
@@ -926,6 +944,8 @@ Config.date = {
     start = "open",
     nodes = {
       open = {
+        -- v1.69: greet once, then it's one meal-long conversation (see Branch.start).
+        greetOnce = true,
         jackiePool = {
           { text = "Man, this hits the spot. No gigs, no gunfire — just you an' me." },
           { text = "Could get used to this quiet-life thing, y'know?" },
@@ -1002,33 +1022,45 @@ Config.date = {
 }
 
 -- ============================================================================
--- HERMANO (male-V) LINE MAP — the male/female/unisex categorization, made executable.
+-- GENDERED VOICED LINES — v1.69. THE MAP THAT USED TO LIVE HERE WAS THE WRONG AXIS.
 -- ============================================================================
--- Jackie's VOICE is the same clip in both modes; a line only needs a male variant when its
--- CONTENT is female-coded — the pet-names (chica/mamita) or a flirty beat. This table maps
--- each such base (Husbando) line, BY ITS sfx KEY, to the Hermano replacement, and init.lua's
--- jlVar() swaps it in EVERYWHERE that clip plays at once — so the "...chica" greeting is fixed
--- here once, not in all five trees that reuse it. Lines NOT listed are UNISEX (content-neutral)
--- and reused as-is in both modes. (Individual nodes/choices can still carry an inline `m = {...}`
--- for one-off overrides — see the reunion/seated trees; that inline `m` wins over this map.)
---   • entry WITH `sfx` = real MALE-V audio from the 68-clip male pool. ⚠️ Whisper mis-hears
---        Jackie's Spanish (cabrón/mano/hermano), so each subtitle is a cleaned best-guess —
---        VERIFY BY EAR on Windows (tagger) and fix the text if the clip actually differs.
---   • entry TEXT-ONLY = no clean male clip yet -> subtitle + the neutral fallback grunt (mute),
---        exactly like the existing text-only reunion beats. Add an `sfx` later if a clip turns up.
-Config.hermanoLines = {
-  -- signature greeting  "...chica."  ->  "...cabrón."  (real male-V mirror clip)
-  ["jl_1661700260668284928"] = { text = "Don't come here often, do ya? Good to see you, cabrón.",
-                                 sfx  = "jl_jackie_q000_m_170f8b95404ea000" },   -- ⚠️ VERIFY audio by ear
-  -- "Straight to biz, eh, chica?"  ->  "...mano?"  (real male-V mirror clip)
-  ["jl_1777946122915868672"] = { text = "Straight to biz, eh, mano?",
-                                 sfx  = "jl_jackie_q003_m_18ac88942e2ef000" },   -- ⚠️ VERIFY audio by ear
-  -- parting  "Time we were on our way, mamita."  ->  a VOICED male-V parting (never "mamita" to a
-  -- male V). Uses the real male clip "Make moves, mano." (same clip as partingPoolM below).
-  ["jl_1155727714874494976"] = { text = "Make moves, mano.", sfx = "jl_jackie_vs_vset_jackie_m_1f119a05be52a008" },  -- ⚠️ VERIFY audio by ear
-  -- gig/dinner accept  "Right on, chica."  ->  "Right on, mano."  (text-only)
-  ["jl_1721407637774192672"] = { text = "Right on, mano." },
-}
+-- Antonia, 2026-08-13: *"he does not apply the correct male/female V versions, the subtitles now
+-- say chica (husbando mode) but his voice says mano often."* She was hearing a real bug, and the
+-- cause was this table.
+--
+-- WHAT WE HAD WRONG. `Config.hermanoLines` mapped a handful of female-coded clips to male
+-- replacements and swapped them in when the mod's HERMANO switch was on. Two things are wrong
+-- with that, and they compound:
+--
+--   1. THE SWITCH IS NOT THE AXIS. Some Jackie lines were recorded TWICE under ONE String ID —
+--      one take addressed to a female V ("chica"), one to a male V ("mano") — and the game picks
+--      the take from V's BODY GENDER, on its own, before we get a say (docs/research/
+--      native_vo_dialogline.md, Q6). Husbando/Hermano is a RELATIONSHIP track the player chooses;
+--      it has never had any influence on which recording plays. So a male-bodied V in Husbando
+--      mode got the male AUDIO with the female SUBTITLE — exactly what Antonia heard — and no
+--      amount of editing the replacement text here could have fixed it.
+--
+--   2. THE `sfx` OVERRIDES COULD NOT PLAY AT ALL. They pointed at `jackie_*_m_*` WEM STEMS, and a
+--      stem is not a String ID: vo.lua's `lineId` only accepts `jl_<digits>`, so the native path
+--      refused them and the male "mirror" lines were the only lines in the whole mod that never
+--      spoke. They fell through to a grunt.
+--
+-- WHAT REPLACES IT. `vo_gender.lua` — generated by `tools/gen_vo_gender.py` straight out of the
+-- game's own subtitle table — holds, per String ID, the exact words of BOTH takes. speakJackieLine
+-- reads V's body gender and shows the matching one. The audio is left alone, because the game was
+-- already getting it right. Same id, matching subtitle, nothing to verify by ear.
+--
+--   ⚠️ Do not reintroduce an sfx-keyed override table. Keying on a clip means keying on a VOICED
+--   line, and a voiced line is precisely the case where the game, not the mod, chooses the words.
+--   Inline `m = {...}` is still correct and still supported — for TEXT-ONLY lines, which have no
+--   recording and so are genuinely ours to word. That is the whole rule: if it has an `sfx`, the
+--   game owns the words; if it doesn't, we do.
+--
+-- Regenerate after adding voiced lines:  python3 tools/gen_vo_gender.py
+-- pcall'd exactly like vo.lua loads vo_durations: a missing generated file must degrade to
+-- "show the authored subtitle", never to a mod that won't load.
+Config.voGender = nil
+pcall(function() Config.voGender = require("vo_gender") end)
 
 -- ---- branching dialogue tree (v0.23) -------------------------------------
 -- A small node graph. Each node: Jackie speaks `jackie` (real voice + subtitle), then a
@@ -1284,6 +1316,11 @@ Config.locationDialogue = {
     -- (Config.dialogue.hubRefreshMin/Max) is what stops a player farming it in one sitting.
     nodes = {
       open = {
+        -- v1.69 ⚠️ GREET ONCE. Every topic below ends `to = "open"`, so without this he re-greets V
+        -- each time the topic list comes back — and the greeting pool is his ARRIVAL lines, which made
+        -- one conversation sound like six separate hellos. Now: hello on the way in, then the list
+        -- just reappears, the way the game's own dialogue hub behaves. See Branch.start.
+        greetOnce = true,
         -- The greeting itself grows. Tier 0 is what he says to anyone; by Family he's just glad it's you.
         jackiePool = {
           { text = "Talk to me, choomba.",            sfx = "jl_2239163066690486272" },
@@ -1296,25 +1333,36 @@ Config.locationDialogue = {
             chance = 0.25 },
           { minFam = 3, text = "Mi hermana. C'mere." , m = { text = "Mi hermano. C'mere." } },
         },
-        pick = { 3, 4 },     -- a handful of topics per draw, not a wall
+        -- v1.69: 4–5, up from 3–4. The topic list roughly doubled (see SMALL TALK below) and a
+        -- three-row draw out of twenty-odd topics started to feel arbitrary rather than curated.
+        pick = { 4, 5 },     -- a handful of topics per draw, not a wall
         choices = {
           -- ---- TIER 0: what he'd say to anyone -------------------------------
           { text = "How you been, Jackie?",     to = "howbeen", once = "howbeen" },
           { text = "Keepin' busy?",             to = "busy",    once = "busy"    },
+          { text = "What're you pourin'?",      to = "drink",   once = "drink"   },
+          { text = "How's Night City treatin' ya?", to = "city", once = "city"   },
           -- ---- TIER 1 (Close): the small personal cracks ----------------------
           { text = "How's the quiet life really treatin' ya?", to = "quiet",  once = "quiet",  minFam = 1 },
           { text = "How's Mama Welles?",                       to = "mama",   once = "mama",   minFam = 1 },
           { text = "You like workin' the bar?",                to = "bar",    once = "bar",    minFam = 1 },
           { text = "Heywood still feel like home?",             to = "heywood",once = "heywood",minFam = 1 },
+          { text = "How're things with Misty?",                to = "misty2", once = "misty2", minFam = 1 },
+          { text = "What've you been watchin'?",               to = "iguana", once = "iguana", minFam = 1 },
+          { text = "Anybody come to you with a problem lately?", to = "fixer", once = "fixer", minFam = 1 },
           -- ---- TIER 2 (Trusted): the things he doesn't volunteer --------------
           { text = "You ever miss it? The life.",              to = "miss",   once = "miss",   minFam = 2 },
           { text = "How's the body holdin' up? Honestly.",     to = "ribs",   once = "ribs",   minFam = 2 },
           { text = "What do you remember about that night?",   to = "night",  once = "night",  minFam = 2 },
           { text = "You ever go see Vik?",                     to = "vik",    once = "vik",    minFam = 2 },
+          { text = "Tell me about your old man.",              to = "padre",  once = "padre",  minFam = 2 },
+          { text = "Where'd you get your code, Jackie?",       to = "code",   once = "code",   minFam = 2 },
+          { text = "You still believe in all that? God, the saints?", to = "faith", once = "faith", minFam = 2 },
           -- ---- TIER 3 (Family): what he doesn't tell anyone -------------------
           { text = "Were you scared?",                          to = "scared", once = "scared", minFam = 3 },
           { text = "Do you blame me?",                          to = "blame",  once = "blame",  minFam = 3 },
           { text = "What do you want now, Jackie?",             to = "want",   once = "want",   minFam = 3 },
+          { text = "You think about dyin'?",                    to = "death",  once = "death",  minFam = 3 },
           -- The rare one. 5% per draw even at Family, so it stays a moment and not a menu item.
           { text = "...Say it. Whatever it is you keep not sayin'.",
             to = "unsaid", once = "unsaid", minFam = 3, chance = 0.05 },
@@ -1467,9 +1515,151 @@ Config.locationDialogue = {
         },
       },
 
+      -- ======================================================================
+      -- SMALL TALK (v1.69) — eleven topics, and most of them Jackie SPEAKS.
+      -- ======================================================================
+      -- Antonia: *"there's not much small talk rn, can you author something from the existing
+      -- library?"* — and "from the library" is the important half. Everything above this line is
+      -- written text, which is honest but silent (`muteFallback`), so a long chat with him was a
+      -- long chat with subtitles. Every `sfx` below is a real CDPR recording, found in the local
+      -- install with NCLives' tools/build_line_library.py and quoted VERBATIM, so the subtitle is
+      -- the audio. That is the rule for a voiced line: we choose WHICH line he says, never the
+      -- words. Where a topic needs depth we still write it — but written lines sit at the higher
+      -- tiers, so the first answer to a new question is nearly always his real voice.
+      --
+      -- HOW TO ADD MORE. Build the library once (~100 s, no game running, Mac is fine):
+      --     python3 ../NCLives/tools/build_line_library.py build --persona jackie
+      -- then open vo_library/jackie.html and search it. Take the `id` as `sfx = "jl_<id>"` and
+      -- the text exactly as shown. Afterwards run BOTH generators, or he'll speak with the wrong
+      -- pacing and the wrong subtitle for a male V:
+      --     python3 tools/gen_vo_durations.py && python3 tools/gen_vo_gender.py
+      --
+      -- ⚠️ CASTING, not writing. A line has to work with NO scene around it, and it has to be the
+      -- Jackie of DESIGN.md — the one who chose OUT. Half the good-sounding lines in the library
+      -- are him pitching a gig in 2077, and putting those in his mouth here would quietly rewrite
+      -- the character back into the man who died. Rejected on those grounds, for the record:
+      -- "We got a new job lined up", "Gonna be up to our necks in juicy contracts", "Then maybe
+      -- we'll make some heavy money". Anything that reads as itching to get back in is wrong.
+
+      -- ---- TIER 0 — he'd tell anyone ---------------------------------------
+      -- He works a bar now. Asking what he's pouring is the single most in-character question in
+      -- the hub, and CDPR recorded him reciting drinks — so it's also the best-voiced answer here.
+      drink = {
+        jackiePool = {
+          { text = "A Tequila Old Fashioned with a splash of cerveza and a chili garnish.", sfx = "jl_1721408614996692992" },
+          { text = "Shot of vodka on the rocks, lime juice, ginger beer and, most importantly... a splash of love.", sfx = "jl_2008352407992332288" },
+          { text = "Double tequila with grenadine and lime. Nothin' better for drownin' nerves.", sfx = "jl_1802558615088721920" },
+          { minFam = 2, text = "Oh, and by the way, name's Jackie Welles. You wanna write down my recipe?", sfx = "jl_1682413700577546240" },
+        },
+        choices = {
+          { text = "Pour me one.",            to = "open" },
+          { text = "You've got a whole bit.", to = "open" },
+        },
+      },
+      city = {
+        jackiePool = {
+          { text = "Ahhhh, I love this town. The city of endless opportunity. And brotherly hate.", sfx = "jl_1782362689678274560" },
+          { text = "'S important to have people you can turn to. Y'know, like, uh, family. Maybe you'll find your own down in Night City.", sfx = "jl_2308345229633306624" },
+          { minFam = 2, text = "You can kick the rat outta the corp, but you'll never kick the corp outta the rat.", sfx = "jl_1677623386734120960" },
+          { minFam = 3, text = "Y'know... butterfly effect or whatever.", sfx = "jl_1729989454324494336" },
+        },
+        choices = {
+          { text = "Brotherly hate. Heh.",       to = "open" },
+          { text = "I found mine.",              to = "open" },
+        },
+      },
+
+      -- ---- TIER 1 — Close --------------------------------------------------
+      -- `misty2`: the location trees already own the key `misty`; this is the hub's version.
+      misty2 = {
+        jackiePool = {
+          { minFam = 1, text = "I'm loyal, stable in my affections…", sfx = "jl_1976447475181056000" },
+          { minFam = 2, text = "Misty knew... Misty always knows...", sfx = "jl_2024290835469197312" },
+          { minFam = 3, text = "Now I go back, find Misty and we do somethin' to make me feel alive again.", sfx = "jl_1677043911795367936" },
+        },
+        choices = {
+          { text = "She's good for you.",  to = "open" },
+          { text = "She waited, y'know.",  to = "open" },
+        },
+      },
+      -- The joke topic, and the hub needs one. Three real clips of him losing his mind over a
+      -- lizard — the whole point is that not every conversation with him has to cost something.
+      iguana = {
+        jackiePool = {
+          { minFam = 1, text = "¡No mames! A real iguana! A, uh, Lesser Antillean, I think.", sfx = "jl_1660740835823603712" },
+          { minFam = 1, text = "Yeah! Watched a thing on TV about 'em. Went extinct like thirty years ago. They're from the Lesser Antilles.", sfx = "jl_1660743425755992072" },
+          { minFam = 2, text = "You come a long way, my scaly friend.", sfx = "jl_1732872998780596224" },
+          { minFam = 2, text = "Down for some target practice in VR?", sfx = "jl_2177742396207419392", chance = 0.25 },
+        },
+        choices = {
+          { text = "You're a nature-doc guy now.", to = "open" },
+          { text = "...An iguana.",                to = "open" },
+        },
+      },
+      -- The Quiet Life's actual job description (DESIGN.md: low-level community fixer in Heywood).
+      fixer = {
+        jackiePool = {
+          { minFam = 1, text = "El cabrón's gotta learn... he don't do people in Heywood dirty.", sfx = "jl_1834512730798616576" },
+          { minFam = 2, text = "Kid two doors down owed the wrong guy. Didn't need a gun for it — needed somebody who'd sit in a room and be the biggest thing in it. Turns out that's still me." },
+          { minFam = 3, text = "Nobody writes it down. No fixer, no cut, no name on a board. Just a lady knockin' on the bar door at eleven at night 'cause she's got nowhere else. ...Best work I've ever done and I'd be embarrassed to call it work." },
+        },
+        choices = {
+          { text = "That's still fixin', Jackie.", to = "open" },
+          { text = "Heywood's lucky to have ya.",  to = "open" },
+        },
+      },
+
+      -- ---- TIER 2 — Trusted ------------------------------------------------
+      padre = {
+        jackiePool = {
+          { minFam = 2, text = "Sure as shit better'n bein' the son of Raúl Welles.", sfx = "jl_1982274302655668224" },
+          { minFam = 3, text = "He left. That's the whole story, and it took me thirty years to get it that short. Mama never bad-mouthed him once, not one time — she just quietly went and became both of 'em." },
+        },
+        choices = {
+          { text = "You're nothin' like him.", to = "open" },
+          { text = "She did a hell of a job.", to = "open" },
+        },
+      },
+      code = {
+        jackiePool = {
+          { minFam = 2, text = "Take the Valentinos. They follow God and the Santa Madre. Honor means something to 'em.", sfx = "jl_1755949900726464512" },
+          { minFam = 2, text = "Gang world ain't too complicated. Might's right, the strong survive.", sfx = "jl_1163306048202412032" },
+          { minFam = 3, text = "Today, they got you to zero somebody. Tomorrow, they'll get somebody else to zero you.", sfx = "jl_1693848106580242432" },
+        },
+        choices = {
+          { text = "You still live by it?",                to = "open" },
+          { text = "That's why you got out, isn't it?",    to = "open" },
+        },
+      },
+      faith = {
+        jackiePool = {
+          { minFam = 2, text = "Mi madre always said patience pays off, so…", sfx = "jl_1732002465803100160" },
+          { minFam = 2, text = "En el nombre del Padre, del Hijo y del Espíritu Santo, amén.", sfx = "jl_1764807613462867980" },
+          { minFam = 3, text = "I died, V. However you wanna say it — my heart quit and somebody's hands started it again. So do I believe? I believe SOMETHIN' held the door for a second. I don't need to know whose hand it was." },
+        },
+        choices = {
+          { text = "Somethin' held the door.", to = "open" },
+          { text = "Mama'd be glad to hear it.", to = "open" },
+        },
+      },
+
+      -- ---- TIER 3 — Family -------------------------------------------------
+      death = {
+        jackiePool = {
+          { minFam = 3, text = "Death... s'nothin' but the final flourish.", sfx = "jl_1966162820528414720" },
+          { minFam = 3, text = "Used to say that like it was clever. Said it in a bar once with a drink in my hand — everyone's gotta go sometime, why not in style. Then I went, V. Turns out there's no style in it. There's just a room and somebody else doin' the work of keepin' you." },
+        },
+        choices = {
+          { text = "You're here now.",           to = "open" },
+          { text = "Don't go again, hermano.",   to = "open" },
+        },
+      },
+
       bye = {
         jackiePool = {
           { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
+          { text = "Ahí luego, V.",                    sfx = "jl_1698516624514703372" },
+          { text = "Hasta luego.",                     sfx = "jl_1784859163293052928" },
           { minFam = 2, text = "Go on. I'm not goin' anywhere — that's the whole point of me now." },
           { minFam = 3, text = "Hey. Come back, huh? Don't make it a month." },
         },
@@ -1527,24 +1717,22 @@ Config.call = {
   -- v0.52: on arrival (once he closes to arrivalGruntDistance) Jackie speaks a real GREETING LINE — a jl_
   -- clip + subtitle, NOT a WWise grunt event. The picker avoids the last-used line + any used in the last
   -- 5 min (JL.bark.greetRepeatCooldown). Add/trim entries freely; any jl_<id> from the bank works.
+  --
+  -- v1.69: ONE pool for both genders, and two lines RESCUED into it. `arrivalGreetingsM` used to sit
+  -- below with a male-V duplicate of this list; its "male-only clips" were WEM STEMS, which vo.lua
+  -- can't play (`jl_<digits>` only), so the male track arrived in silence. Converting each stem's
+  -- trailing hex to decimal gave the real String ID — and the ids turned out to be the SAME lines,
+  -- recorded twice, with the game already choosing the take. The two that weren't already here are
+  -- now here, for everyone. ⚠️ Text is the female take (what translations.lua is keyed on);
+  -- vo_gender.lua supplies the male wording on screen. Never paste a stem into `sfx`.
   arrivalGreetings = {
     { text = "Talk to me, choomba.",        sfx = "jl_2239163066690486272" },
     { text = "¿Qué onda?",                  sfx = "jl_2015561179233951744" },
     { text = "Got me right behind you.",    sfx = "jl_1679806464288055296" },
     { text = "So? You ready?",              sfx = "jl_1902765821582520320" },
     { text = "V, hey! ¿Cómo te sientes?",   sfx = "jl_1867549271199477760" },
-  },
-
-  -- v1.2: HERMANO (male-V) arrival greetings — pickArrivalGreetLine uses this pool when the male-V
-  -- track is active. Mixes real male-V clips with a couple of unisex ones reused from above.
-  -- ⚠️ VERIFY the male clips by ear on Windows (Whisper mis-hears the address terms) and fix text.
-  arrivalGreetingsM = {
-    { text = "Man of the hour! Took you long enough — worked up an appetite just waitin'.", sfx = "jl_jackie_q001_m_15c159da7a325000" }, -- ⚠️ VERIFY
-    { text = "Straight to biz, eh, mano?",  sfx = "jl_jackie_q003_m_18ac88942e2ef000" },          -- ⚠️ VERIFY
-    { text = "Hey, you with me, mano?",     sfx = "jl_jackie_vs_vset_jackie_m_1b4957a4724e2004" }, -- ⚠️ VERIFY
-    { text = "Make moves, mano.",           sfx = "jl_jackie_vs_vset_jackie_m_1f119a05be52a008" }, -- ⚠️ VERIFY
-    { text = "Talk to me, choomba.",        sfx = "jl_2239163066690486272" },  -- unisex clip, reused
-    { text = "So? You ready?",              sfx = "jl_1902765821582520320" },  -- unisex clip, reused
+    { text = "Straight to biz, eh, chica?", sfx = "jl_1777946122915868672" },  -- male V: "...eh, mano?"
+    { text = "You with me, chica?",         sfx = "jl_1966199076127907844" },  -- male V: "...mano?"
   },
 }
 
@@ -1563,21 +1751,16 @@ Config.venueGreet = {
   enabled = true,
   range   = 5.0,   -- m: he calls out once V is this close (bark grunt range stays 6 m)
 
-  -- Female-V / default track. `jl_1661700260668284928` is the f-side of the same source line as the
-  -- m-side clip below, so the pair reads identically across genders.
+  -- ONE pool, both genders (v1.69). The first and third lines were recorded twice — a male V hears
+  -- "...cabrón" and "Hermano! Finally!" — but that is ONE String ID each and the game picks the take
+  -- from V's body, so there is nothing here to duplicate. vo_gender.lua keeps the subtitle honest.
+  -- (`greetingsM` used to sit below with the same four lines keyed by WEM STEM. Stems aren't String
+  -- IDs, so the native path refused them: the male track was the only one that couldn't speak.)
   greetings = {
     { text = "Don't come here often, do ya? Heheh. It's good to see you, chica.", sfx = "jl_1661700260668284928" },
     { text = "Hey, V – you alive? How's things in the viper pit?",                sfx = "jl_1691260805748551680" },
     { text = "Chica! Finally!",                                                   sfx = "jl_2008322358689853440" },
     { text = "¿Qué onda?",                                                        sfx = "jl_2015561179233951744" },
-  },
-
-  -- v1.2 HERMANO (male-V) track — real male clips where they exist, unisex clips reused otherwise.
-  greetingsM = {
-    { text = "Don't come here often, do ya? Heheh. It's good to see you, cabrón.", sfx = "jl_jackie_q000_m_170f8b95404ea000" },
-    { text = "Hermano, finally!",                                                  sfx = "jl_jackie_q113_m_1bdefe8b702ef000" },
-    { text = "Hey, V – you alive? How's things in the viper pit?",                 sfx = "jl_1691260805748551680" },  -- unisex clip, reused
-    { text = "¿Qué onda?",                                                         sfx = "jl_2015561179233951744" },  -- unisex clip, reused
   },
 }
 
@@ -2076,7 +2259,8 @@ Config.reunionMeetTree = {
   muteFallback = true,
   nodes = {
     -- THE ONE VOICED LINE HERE. A real clip, and it's a greeting — exactly where a voice belongs.
-    -- (It also has a real male mirror clip via Config.hermanoLines, so both tracks are voiced.)
+    -- (CDPR cut a male take of it too, under the SAME String ID, so a male V hears "...cabrón" and
+    -- v1.69's vo_gender.lua puts that word in the subtitle. Both tracks voiced, one line id.)
     seeya = {
       jackiePool = {
         { text = "Don't come here often, do ya? Heheh. It's good to see you, chica.", sfx = "jl_1661700260668284928" },
