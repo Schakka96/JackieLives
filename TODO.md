@@ -169,6 +169,57 @@ game. Fix with `tools/lang_extract.py` before the next release.
 
 ---
 
+## 🔴 FIXED — "the choices show, but nothing says which one I'm on" (JackieLives, bug report 2026-08-14)
+
+**Symptom:** the dialogue box opens with the right rows, but **no selection highlight** — roughly
+three opens in four. The rows were never wrong; only the highlight went missing.
+
+**Where it lives.** The game decides "is this hub the selected one" in exactly one place
+(`dialogUI.script:87`):
+
+```
+currentItem.SetData( hubData, hubData.id == m_activeHubID, m_selectedIndex, ... )
+```
+
+`isSelected` false makes **every** row paint unselected (`dialogUI.script:328`), which is the reported
+symptom exactly: our text, no highlight. So the whole bug is one integer, `m_activeHubID`, drifting
+off our hub id (7732).
+
+**Why it drifted.** Three pieces of controller state have to stay ours while the box is up, and they
+were defended very unevenly:
+
+| state | what defended it |
+|---|---|
+| `m_data` (the rows) | two Overrides **and** both push routes |
+| `m_selectedIndex` | an Override **and** a blackboard write every frame |
+| `m_activeHubID` | one Override, and a single direct call at open — **nothing else** |
+
+`UIInteractions.ActiveChoiceHubID` is a real blackboard field written **natively** (no game script
+writes it — verified by grepping the decomp), so it moves whenever the world's interactions change: a
+car, a door, a vendor, our own "[F] Talk" prompt going away. Blocking the callback keeps the
+controller clean but leaves the *blackboard* holding a foreign id, and the base controller re-seeds
+itself from there on every re-initialise (`interactionUIBase.script:34`).
+
+**Fixed three ways, deliberately** (`dialogui.lua` v1.64.2):
+1. the Override that was already there;
+2. **own the blackboard field** — write our id on open and every frame, hand it back on close (but
+   never steal it from a real conversation);
+3. **read `m_activeHubID` back off the controller every frame and repair it when it is wrong**, with
+   a loud log line when that happens.
+
+**⚠️ Honesty about (3), because it is the interesting part.** Writing the regression test disproved
+the tidy story: `tools/test_dialogui.lua` shows the scripted re-seed is *already* stopped by the
+Override, so the route that actually reached the player is one no Override can see — native code, or
+a window where `S.shown` was briefly false. (3) exists because it fixes the drift **whatever** causes
+it, and because its log line will finally name the route if this ever recurs. Do not delete any of
+the three on the grounds that the other two look sufficient.
+
+**Tests:** `lua tools/test_dialogui.lua` — 48 checks (was 35). The new section models the drift and
+the repair, and was confirmed to FAIL (4 checks red) with the repair removed.
+
+**Same file ships in all three mods, so it was fixed in all three** — JackieLives, NCLives, NCLucy.
+
+
 ## ✅ v1.67 — THE FOLLOWER ROLE IS OURS NOW, NOT AMM'S (2026-08-13)
 
 Ported from NCLives v1.65, where it was written to fix "AMM-free companions spawn but stay planted".

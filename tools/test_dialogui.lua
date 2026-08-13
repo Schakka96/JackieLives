@@ -63,14 +63,20 @@ StatusEffectHelper = { ApplyStatusEffect = function() end, RemoveStatusEffect = 
 PlayerGameplayRestrictions = { PushForceRefreshInputHintsEventToPSM = function() end }
 
 -- ---------------------------------------------------------------- blackboard
-local BB = { SelectedIndex = -1 }
-local DEFS = { UIInteractions = { SelectedIndex = "SelectedIndex" } }
+-- ActiveChoiceHubID is modelled as a REAL field here, not decoration: it is written natively by the
+-- interaction system (no game script writes it) and the controller re-seeds itself from it, which is
+-- the whole of the v1.3.1 highlight bug. GetInt has to work or unpublishHub() can't be tested.
+local BB = { SelectedIndex = -1, ActiveChoiceHubID = -1 }
+local DEFS = { UIInteractions = { SelectedIndex = "SelectedIndex", ActiveChoiceHubID = "ActiveChoiceHubID" } }
 function GetAllBlackboardDefs() return DEFS end
 Game = {
   GetPlayer = function() return { alive = true } end,
   GetAllBlackboardDefs = GetAllBlackboardDefs,
   GetBlackboardSystem = function()
-    return { Get = function() return { SetInt = function(_, k, v) BB[k] = v end } end }
+    return { Get = function() return {
+      SetInt = function(_, k, v) BB[k] = v end,
+      GetInt = function(_, k) return BB[k] or 0 end,
+    } end }
   end,
 }
 
@@ -205,6 +211,69 @@ C:OnDialogsData(ToVariant({ choiceHubs = { { id = 99, title = "Panam", choices =
 ok(preempted, "onPreempt fired")
 ok(DialogUI.isShown() == false, "we stood down")
 ok(C.screen ~= nil and C.screen.title == "Panam", "the game's dialogue rendered instead of ours")
+
+-- ---------------------------------------------------------------------------
+-- THE HIGHLIGHT BUG (bug report, 2026-08-14; fixed in v1.3.1)
+--
+-- "the choices are displayed, but no indication of which I'm choosing, ~75% of the time." Only the
+-- highlight was lost, never the rows — which narrows it to one expression, `hubData.id ==
+-- m_activeHubID` going false (dialogUI.script:87). Everything below is about that one integer.
+--
+-- ⚠️ Read the order of these checks. The obvious culprit — the controller re-seeding m_activeHubID
+-- from the blackboard on re-initialise (interactionUIBase.script:34) — turns out to be BLOCKED
+-- already by guard 3, and this test says so out loud rather than quietly assuming otherwise. So the
+-- route that actually reached the player is one no Override can see. That is why the fix both owns
+-- the blackboard field AND reads the controller back every frame: the second half is what closes a
+-- route we cannot name, and the log line it emits is what will name it if it happens again.
+--
+-- `reseed()` is interactionUIBase.script:33-35 and `nativeWrite()` is the interaction system parking
+-- its own id in the field (a car, a door, our own "[F] Talk" prompt going away). Neither is invented
+-- for the test.
+-- ---------------------------------------------------------------------------
+print("\n== the highlight survives a blackboard re-seed ==")
+local function nativeWrite(id) BB.ActiveChoiceHubID = id end
+local function reseed() C:OnDialogsActivateHub(BB.ActiveChoiceHubID) end
+
+DialogUI.show("Jackie", { { text = "row one" }, { text = "row two" } }, function() end)
+ok(BB.ActiveChoiceHubID == 7732, "show() takes the blackboard field, not just the controller")
+ok(C.screen and C.screen.rows[1].sel == true, "...and row 1 is highlighted")
+
+-- A scripted re-seed is already stopped by guard 3, and that is worth pinning: it is the reason
+-- the blackboard write alone would NOT have fixed this, and the reason the repair below exists.
+nativeWrite(4211)
+reseed()
+ok(C.m_activeHubID == 7732, "guard 3 blocks a scripted re-seed outright")
+ok(BB.ActiveChoiceHubID == 4211, "...but the BLACKBOARD is left holding the foreign id")
+DialogUI.tick(20)
+ok(BB.ActiveChoiceHubID == 7732, "tick() takes the field back, so a later re-seed reads OURS")
+
+-- Now the case no Override can see: the id lands on the controller by a route we never observe
+-- (native code, or a moment when S.shown was false). This is what the player was actually hitting —
+-- the highlight goes, the rows stay — and it is why the fix has to read the field back, not just
+-- guard the ways in.
+C.m_activeHubID = 4211
+C:OnInteractionsChanged()
+ok(C.screen and C.screen.rows[1].sel == false, "an UNGUARDED drift does kill the highlight (the bug)")
+ok(C.screen and #C.screen.rows == 2, "...while the rows themselves stay — the reported symptom exactly")
+
+DialogUI.tick(21)                     -- one frame of the mod running
+ok(C.m_activeHubID == 7732, "tick() detects the drift and repairs it")
+ok(C.screen and C.screen.rows[1].sel == true, "...and the highlight is back")
+ok(logs[#logs]:match("drifted"), "...and it said so in the log: " .. tostring(logs[#logs]))
+
+DialogUI.move(1)
+C.m_activeHubID = 4211; C:OnInteractionsChanged(); DialogUI.tick(22)
+ok(C.screen and C.screen.rows[2].sel == true, "the CURRENT row is restored, not row 1")
+
+DialogUI.hide()
+ok(BB.ActiveChoiceHubID == -1, "hide() hands the field back")
+
+-- ...but never steals it back from a real conversation. The preempt path closes us in the same
+-- breath as the game opens its own hub, and writing -1 there would break the base game's highlight.
+DialogUI.show("Jackie", { { text = "ours" } }, function() end)
+nativeWrite(99)                       -- the game's own dialogue has claimed the field
+DialogUI.hide(true)
+ok(BB.ActiveChoiceHubID == 99, "hide() leaves someone else's hub id alone")
 
 print("\n== world torn down ==")
 DialogUI.show("Jackie", { { text = "x" } }, function() end)
