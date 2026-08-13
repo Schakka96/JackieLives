@@ -21,9 +21,12 @@ dialogue and companion logic.
 - Codeware
 
 **For Jackie's real voice (optional, but it's the whole point):**
-- **Audioware** — plays his voice lines. Without it the mod runs **subtitle-only** (no crash). CDPR's
-  audio can't be redistributed, so you extract it yourself and drop it in — see
-  `r6\audioware\JackieLives\HOW_TO_ADD_JACKIE_VOICES.txt`.
+- **redscript** — and that's it. Jackie speaks in his actual voice, using the recordings already in
+  your own copy of the game. Nothing to download, extract, convert or rename.
+
+  *(New in v1.66. Previous versions needed Audioware plus a ~940 MB manual extraction with WolvenKit.
+  If you did that, it still works and nothing is lost — the mod just doesn't need it any more.
+  Without redscript he falls back to subtitles and his own vocal efforts; nothing crashes.)*
 
 **For his mouth to move while he talks:**
 - **AMM Expressions Overhaul** ([Nexus mod 20108](https://www.nexusmods.com/cyberpunk2077/mods/20108)) —
@@ -54,10 +57,11 @@ that:
 
 ```
 bin\x64\plugins\cyber_engine_tweaks\mods\JackieLives\   <- the mod
-r6\audioware\JackieLives\                               <- the voice-bank manifest + the HOW_TO
+r6\scripts\JackieLives\JackieLivesVO.reds               <- his voice (do not skip this folder)
+r6\audioware\JackieLives\                               <- the old voice system; harmless, ignorable
 ```
 
-Restart the game after installing. The CET console should print `[JackieLives] Loaded v1.64.1`.
+Restart the game after installing. The CET console should print `[JackieLives] Loaded v1.66`.
 
 Updating over an older version is safe — it picks up your existing save. Your settings live in
 `jl_settings.txt` next to the mod and survive updates.
@@ -158,9 +162,9 @@ window names the common failures:
 | `Jackie record not found` | AMM's character database didn't load properly |
 | `…not found after retries` | The `nativeSettings` folder is missing or misnamed (see Requirements) |
 
-- **He's silent.** Expected without Audioware plus his audio files — the mod is subtitle-only then. If you
-  *did* add the audio and he's still mute, Audioware rejects the **whole bank** when the manifest names a
-  file that isn't there; re-check the HOW_TO steps.
+- **He's silent.** Check that `r6\scripts\JackieLives\JackieLivesVO.reds` is in your game folder — if
+  the `r6` folder didn't get extracted, that's the cause. Then check redscript is installed. The console
+  log has a `[VO]` line naming which voice path it's using, so you don't have to guess.
 - **His lips don't move.** Install AMM Expressions Overhaul.
 - **He's lost or stuck.** The settings page has **"Go Home Jackie"**, which despawns and resets him.
 - **Nothing happens at all.** Check you're on a post-Heist save, and look for `[JackieLives] Loaded` in

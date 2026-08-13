@@ -1,51 +1,52 @@
-Jackie Lives — Jackie's real voice (OPTIONAL)
-=============================================
+Jackie Lives — Jackie's voice
+=============================
 
-By default this mod runs with SUBTITLES ONLY. Jackie's actual voice lines are
-CD PROJEKT RED audio and cannot be redistributed, so they are NOT included in
-this download. If you own Cyberpunk 2077 you can extract them yourself and drop
-them in here to give Jackie his real voice. Nothing crashes if you skip this —
-you just read his lines instead of hearing them.
+YOU DON'T HAVE TO DO ANYTHING. (New in v1.66.)
+
+Jackie speaks in his real voice out of the box. Not a copy, not an
+imitation — the actual recordings that are already sitting in your
+Cyberpunk 2077 installation, played by the game itself, on cue.
+
+If you followed the old instructions in this file, thank you for your
+patience, and sorry: you no longer need any of it. There is nothing to
+extract, nothing to convert, nothing to rename, and no 940 MB of audio
+to manage.
+
 
 WHAT YOU NEED
 -------------
-  - RED4ext, Cyber Engine Tweaks, Codeware, AppearanceMenuMod  (the mod's normal requirements)
-  - Audioware        <- this is what actually PLAYS the voice files
-  - WolvenKit        <- to extract Jackie's voice-over from your own game files
-  (AMM Expressions Overhaul is what makes his mouth move while he talks.)
+  - Cyber Engine Tweaks, Codeware   (the mod's normal requirements)
+  - redscript                        <- this is what plays his voice
 
-WHAT THIS FOLDER IS
--------------------
-  r6\audioware\JackieLives\
-    JackieLives.yml              <- the Audioware sound bank (maps every line to a file)
-    HOW_TO_ADD_JACKIE_VOICES.txt <- this file
-    rebuild_bank_yml.py          <- helper (see "IF NOTHING PLAYS" below)
-    (audio files)                <- YOU add these
+That's the whole list. redscript is a standard Cyberpunk modding
+requirement that most modded games already have.
 
-HOW TO ADD THE VOICES  (no renaming!)
--------------------------------------
-Follow the video tutorial on the mod's Nexus page for the WolvenKit steps. In short:
+You do NOT need: Audioware. WolvenKit. ffmpeg. Python. A tutorial.
 
-  1. Install Audioware (and the other requirements above).
-  2. In WolvenKit, extract Jackie's voice-over .wem files and convert them to WAV.
-  3. Drop the converted .Wav files straight into THIS folder — KEEP their original
-     names (e.g. jackie_q000_f_170a4a14f8405008.Wav). The bank already refers to
-     the game's own filenames, so you do NOT rename anything.
-  4. Launch the game. Audioware loads the bank and Jackie speaks his lines.
 
-IF NOTHING PLAYS
-----------------
-Audioware ignores the whole bank if the manifest points at a filename you don't
-have. If your WolvenKit export produced slightly different names (or you only
-grabbed some lines), regenerate the manifest from the files you ACTUALLY have:
+WHAT IF HE'S SILENT?
+--------------------
+1. Check that this file exists in your game folder:
+       ...\Cyberpunk 2077\r6\scripts\JackieLives\JackieLivesVO.reds
+   If it's missing, the mod was installed incompletely — re-extract the
+   zip and make sure the "r6" folder went in alongside "bin".
 
-  - Make sure Python is installed (python.org, or the Microsoft Store), then in a
-    PowerShell window opened in THIS folder run:
-        python rebuild_bank_yml.py
-    It rewrites JackieLives.yml to match your files exactly (old one saved as
-    JackieLives.yml.bak). Relaunch and he should speak.
+2. Check that redscript is installed. If other redscript mods work, it is.
 
-  - Quick check in the CET console (a real line should show a positive number):
-        Game.GetAudioSystemExt():Duration(CName.new("jl_fallback"))
+3. Open the CET console and look for the line starting "[JackieLives] [VO]"
+   in the log. It says which of the three it's using:
+       "using the game's OWN voice-over"   <- correct
+       "using the Audioware bank"          <- the old path; the shim didn't load
+       "no voice backend"                  <- redscript or the .reds is missing
 
-That's it — no filename math, no renaming.
+He is never *broken* when silent — subtitles always work, and he still
+makes his own vocal efforts. It just isn't the good version.
+
+
+ABOUT THIS FOLDER (r6\audioware\JackieLives)
+--------------------------------------------
+This is the old voice system. It still works, so nobody who built a bank
+loses it — the mod prefers the new path and falls back to this one. If you
+never built a bank, this folder does nothing at all and you can ignore it.
+
+It will be removed in a future version.

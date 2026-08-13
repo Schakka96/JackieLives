@@ -78,13 +78,37 @@ talking-face flap, if the game's own dialogue path drives visemes — unverified
 1.6e18–2.25e18 — the wem stem's trailing hex in decimal). 777 catalogued lines port with no
 re-cataloguing. Durations must be computed once from the scraped `.ogg` and committed.
 
-- [ ] **Windows spike, ~20 lines in the CET console** — one line on Jackie, no subtitle. Settles at
-      once: is it reachable from Lua, does it work on an NPC, do we need `entInjectVoiceTagEvent`.
-- [ ] Duration table (`ffprobe` over `tools/voice-tagger/audio/`, Mac-side).
-- [ ] Wire `speakJackieLine` to prefer the native path; keep Audioware as fallback initially.
-- [ ] Check his mouth for visemes → retire the flap if free.
-- [ ] Then decide what gets deleted (`convert_audio.py`, `rebuild_bank_yml.py`, the bank manifest,
-      the staging `r6/audioware/` tree). Git history is the archive — lean toward deleting.
+### ✅ BUILT — v1.66 (2026-08-13). Mac-side complete, all suites green. Awaiting Windows.
+
+| file | what |
+|---|---|
+| `reds/JackieLivesVO.reds` | the shim. ~130 lines, mostly comment. `JLVO_PlayLine(idDec, ctx)`, `JLVO_PlayLineAs(...)` for a voice-tag swap, `JLVO_Version()` as the presence probe. |
+| `mod/JackieLives/vo.lua` | global `VO`. Backend ladder **native → Audioware → vocal effort**, dependency-injected, backend named once in the log. |
+| `mod/JackieLives/vo_durations.lua` | GENERATED. 53 exact line lengths. |
+| `tools/gen_vo_durations.py` | SoundDB (metadata only) → which scene → read the local install with `redlib` → `scnDialogLineEvent.duration`. |
+| `tools/test_vo.lua` | **53 checks**, incl. the precision rule and the init.lua wiring. |
+
+**Zero content changes.** `sfx = "jl_<digits>"` already carried the String ID, so all 55 voiced lines
+route natively with nothing rewritten. `speakJackieLine` resolves the speaker *before* the audio now
+(the line comes out of his body, not a 2D bank).
+
+**redscript is OPTIONAL, and stays optional** — no shim → subtitles + his own ono grunts, which need
+no dependency at all. That is a better floor than v1.65 had (silence, or Audioware).
+
+⚠️ **The precision trap, for whoever touches this next.** A String ID is ~2e18; Lua numbers are
+doubles and cannot hold one. `tonumber("1660220866564214792")` returns a *different* number. Ids are
+strings from config.lua to `StringToUint64` and must stay that way. Fails silently, in game only.
+
+- [ ] **WINDOWS: does he speak?** One line is the whole test. If yes, this replaces a year of audio work.
+- [ ] **Watch his mouth.** This is the game's real dialogue path, so visemes may come free → retire
+      the `startFlap` hack and the AMM Expressions Overhaul requirement.
+- [ ] **Listen to the mix.** If dialogue sounds over-processed or oddly ducked, try other
+      `Config.voice.context` integers — it's a one-number change, no rebuild.
+- [ ] Then delete the Audioware path: `convert_audio.py`, `rebuild_bank_yml.py`, the bank manifest,
+      `staging/r6/audioware/`, `Config.voice.mode = "audioware"`. Git history is the archive.
+- [ ] ⚠️ **Pre-existing blocker for any release:** `package_nexus.sh` refuses to build — 71 v1.65
+      dialogue strings are untranslated in all 9 languages (`lang_extract.py` was never run over the
+      familiarity content). Unrelated to v1.66, but it gates the zip.
 
 ## 🆕 v1.65 (2026-08-01) — FAMILIARITY: Jackie opens up over time
 

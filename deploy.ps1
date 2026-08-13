@@ -149,6 +149,28 @@ if ($rc -ge 8) {
 }
 Write-Host "Deployed '$modName' to $dest"
 
+# --- redscript VO shim (v1.66) -> <game>\r6\scripts\JackieLives --------------
+# This is what lets Jackie speak the game's OWN voice-over: reds\JackieLivesVO.reds adds
+# the methods vo.lua calls. Without it the mod still runs and Jackie still talks, but he
+# falls back to an Audioware bank (if you built one) or to vocal efforts + subtitles.
+# ⚠️ redscript compiles every .reds at game start; a compile error there takes down ALL
+# redscript mods, not just ours. If the game launches with no scripts working, check
+# <game>\r6\logs\redscript_rCURRENT.log first and pull this file if it names it.
+$redsSrc = Join-Path $PSScriptRoot "reds"
+if (Test-Path $redsSrc) {
+  $redsDest = Join-Path $game ("r6\scripts\" + $modName)
+  robocopy $redsSrc $redsDest /E /PURGE /NFL /NDL /NJH /NJS /NP /R:2 /W:1 | Out-Null
+  $rrc = $LASTEXITCODE
+  if ($rrc -ge 8) {
+    Write-Host "redscript deploy FAILED (robocopy code $rrc): a file is locked by the running game."
+    Write-Host "Close Cyberpunk 2077, then run .\deploy.ps1 again."
+    exit 1
+  }
+  Write-Host "Deployed redscript VO shim to $redsDest"
+} else {
+  Write-Host "(no reds\ folder - skipping the native voice shim)"
+}
+
 # --- Audioware sound bank (v0.20) -> <game>\r6\audioware\JackieLives ---------
 # Manifest + .ogg files; Audioware (red4ext plugin) scans r6\audioware for these.
 $awSrc = Join-Path $PSScriptRoot ("audioware\" + $modName)

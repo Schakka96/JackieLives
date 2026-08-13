@@ -109,6 +109,22 @@ else
   echo "   ❌ init.lua is not at the expected path"; fail=1
 fi
 
+echo "5. The redscript voice shim is aboard (v1.66 — this is what gives Jackie his voice):"
+if printf '%s\n' "$PATHS" | grep -qx 'r6/scripts/JackieLives/JackieLivesVO.reds'; then
+  echo "   ✅ r6/scripts/JackieLives/JackieLivesVO.reds"
+else
+  echo "   ❌ JackieLivesVO.reds is MISSING — every player would get a silent Jackie."; fail=1
+fi
+
+echo "6. No CDPR audio leaked in (the one mistake that gets a page taken down):"
+if printf '%s\n' "$PATHS" | grep -qiE '\.(ogg|wav|wem|opuspak|opusinfo)$'; then
+  echo "   ❌ audio files are in the archive — CDPR assets are NOT redistributable"
+  printf '%s\n' "$PATHS" | grep -iE '\.(ogg|wav|wem|opuspak|opusinfo)$' | sed 's/^/      /'
+  fail=1
+else
+  echo "   ✅ no audio of any kind — nothing to redistribute, nothing to get wrong"
+fi
+
 echo
 if [ "$fail" -ne 0 ]; then
   echo "❌ VERIFICATION FAILED — do NOT upload this zip."
