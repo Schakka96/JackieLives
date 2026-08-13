@@ -11,6 +11,49 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## ✅ v1.67 — THE FOLLOWER ROLE IS OURS NOW, NOT AMM'S (2026-08-13)
+
+Ported from NCLives v1.65, where it was written to fix "AMM-free companions spawn but stay planted".
+Jackie had the same bug **latent**: he becomes a follower via `amm.Spawn:SetNPCAsCompanion`, so the
+one thing this mod cannot do without belonged to another mod. `mod/JackieLives/native.lua` (global
+`Native`) does that job against the base game's own API instead.
+
+**Why it is not a one-line swap.** Assigning an `AIFollowerRole` is not the same as being a follower,
+and the call reports success either way. From the decompiled scripts:
+
+| | |
+|---|---|
+| `aiComponent.script:520` | `IsPlayerCompanion()` needs **both** the `Follower` role **and** a live `FriendlyTarget` behaviour argument. |
+| `aiRole.script:209` | `AIFollowerRole.OnRoleSet` is the only thing that sets `FriendlyTarget` (plus the Follower sense preset, the squads, the tracking preset, the FollowerDamage effect). |
+| `aiComponent.script:468` | `OnRoleSet` is reached off `SetAIRole` / `OnAttach` — **not** off a queued `AIAssignRoleCommand`. |
+| `aiComponent.script:486` | `AIHumanComponent.SetCurrentRole` is the engine's own entry point and does the whole set. |
+| `NPCPuppet.script:303` | `IsPlayerCompanion` is cached **ten seconds**; without the reset a fresh companion reads as "not one" long after the role is on. |
+
+Order tried: engine `SetCurrentRole` → AMM's `SetAIRole` + `OnAttach` (plus sense type + cache reset
+by hand) → the command form. Any pre-existing role is cleared first, and he is dropped out of combat
+state first (`OnRoleSet` only requests the Follower sense preset when not in Combat).
+
+**Nothing trusts a return value.** `Native.followerVerdict` asks the ENGINE (`GetAIRole`,
+`IsPlayerCompanion`), and `jlFollowerWatchTick` re-applies until the engine agrees — because
+`OnRoleSet` **returns silently** when the puppet isn't ready yet (`aiRole.script:222`), and we assign
+the role the frame the body appears, not the frame it finishes attaching. A one-shot that lands in
+that window leaves a healthy-looking Jackie standing still with nothing in the log. Bounded to 5
+tries at 2 s; `Config.follow.roleWatch` turns it off.
+
+Call sites changed: `promoteToCompanion` and the onUpdate promote block — both were
+`amm.Spawn:SetNPCAsCompanion`. **AMM is still required for the SPAWN** (that port is NCLives v1.64's
+`Native.spawn` and has not been brought over); this is the follower role only.
+
+`tools/test_follower.lua` — 16 checks, and they assert **the sequence** against a recording puppet,
+not `setCompanion(stub) == true`. That old shape of check is exactly what let the broken version pass
+in NCLives for eleven versions: a permissive stub answers every call cheerfully. Same lesson as the
+`_G[name]` sandbox test in `test_dialogui.lua`.
+
+**Not yet verified in game.** Watch for the new log line — "the ENGINE agrees Jackie is a companion"
+— and for the watchdog staying quiet rather than retrying.
+
+---
+
 ## 🔓 2026-08-13 — THE AUDIO PROBLEM IS SOLVED (and the old verdict was WRONG)
 
 **Full write-up: `docs/research/native_vo_dialogline.md`. Read it before any voice work.**
