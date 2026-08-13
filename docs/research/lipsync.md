@@ -82,3 +82,66 @@ Replaced/removed two scratch probes: `JackieFacialTest` and `JackieWorkspotTest`
 - `mod/JackieLipsync/init.lua` — standalone test bench.
 - `docs/route_b_workspot_plan.md` — abandoned workspot route (kept for reference).
 - Memory: `jackie-facial-rig-runtime` — the recipe + values, condensed.
+
+---
+
+## 🔬 OPEN RESEARCH PROJECT (2026-08-13) — real visemes, now that the VO is native
+
+Everything above was written when our audio came from **Audioware**, which carries no facial data.
+That premise is gone: since v1.66 the game plays its **own** recording of a chosen line
+(`docs/research/native_vo_dialogline.md`). This section is the standing brief for whoever picks
+lipsync up next. It is a **research project, not a bug** — the AMM Expressions Overhaul flap looks
+good in game, so there is no pressure, only an upside.
+
+**In-game status (2026-08-13):** the flap works; the Voice-lab probes played with **no** mouth
+movement at all — expected, because `VO.probe` deliberately bypasses `speakJackieLine` and therefore
+never calls `startFlap`. Normal dialogue is unaffected. Do not read the probes as a lipsync
+regression.
+
+### What is already solved: the NAME is free
+
+The lipsync animation name is **pure arithmetic from the String ID** — no WolvenKit run, no
+extraction, no table to ship:
+
+```
+femaleLipsyncAnimationName == "f_" + uppercase hex of the String ID
+maleLipsyncAnimationName   == "m_" + uppercase hex of the String ID
+
+jl_1954795386774245380  ->  f_1B20D40C1D405004
+```
+
+Verified across every line of `q005_14_after_escape.scene`: **138 of 138 match, zero exceptions.**
+(Measured with `redlib` against the local install — the same trick that gave us durations.) So for
+any line we can already play, we can already name its exact viseme track.
+
+### What blocks it: nothing binds that animation to the body
+
+- The anims live in an `animAnimSet` that the **scene** binds to the actor —
+  `scnActorDef.lipsyncAnimSet`, a `CResourceReference<animAnimSet>`. Outside a scene, nothing binds
+  it. This is structurally the same problem as NCLives' workspot carrier `.ent`.
+- **No lipsync API exists in the decompiled scripts** — zero hits. Native-only, exactly as
+  `DialogLineEvent` was, which is precisely why this is worth a real look rather than a shrug.
+- **No public mod does it.** `gh search code` across every CP2077 repo finds the field defined in
+  WolvenKit's types and Codeware's imports, and *nobody calling it*. If it were easy it would exist.
+
+### The ladder to try, in order
+
+1. **Resolve the anim set.** Follow `scnActorDef.lipsyncAnimSet` through the scene's
+   `resouresReferences` table to a real depot path, and confirm it exists locally
+   (`tools/archive_paths.py`). Mac-only work; costs nothing.
+2. **Can that anim set reach a spawned NPC?** Either attached at runtime, or riding an `.ent`/`.app`
+   we ship. This is the make-or-break step and it is the same class of question as the workspot
+   carrier — read `../NCLives/docs/DEPENDENCIES.md` "The pose port" before re-deriving it.
+3. **Trigger the named anim on the face rig.** `entAnimationControllerComponent` push-events were
+   tried in 2026-06 and did nothing (Route A above). The mechanism that *does* work in this codebase
+   is the workspot pair `PlayInDeviceSimple` + `SendJumpToAnimEnt` — try that against the facial rig.
+
+### The strongest lead
+
+`gameObject::PlayVoiceOver(npc, context)` gives **free lipsync** (recorded in
+`cp2077-no-runtime-vo-by-string-id`). So the engine demonstrably *can* drive visemes for a voice-over
+without a scene — we just can't choose the line that way. **Understanding what that path sets up is
+probably the shortest route to step 3**: if `PlayVoiceOver` binds the anim set as a side effect, then
+firing it once to prime the body and then playing our chosen line may be all it takes.
+
+That experiment is cheap and needs no new code beyond a CET-console spike.

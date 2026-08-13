@@ -166,10 +166,18 @@ strings from config.lua to `StringToUint64` and must stay that way. Fails silent
       `JLVO_Version()` returned `1`, the Voice panel read `NATIVE`, Audioware locked out by
       `mode = "native"` — so what played could only have been the game's own audio.
       **This replaces a year of audio work.**
-- [ ] **Watch his mouth.** This is the game's real dialogue path, so visemes may come free → retire
-      the `startFlap` hack and the AMM Expressions Overhaul requirement. Not reported either way yet.
-- [ ] **Listen to the mix.** If dialogue sounds over-processed or oddly ducked, try other
-      `Config.voice.context` integers — it's a one-number change, no rebuild. Not reported yet.
+- [x] ✅ **Mix: perfect** (2026-08-13, unprompted). No context tuning needed.
+- [x] ✅ **Positional audio SOLVED** (2026-08-13). The line came out of V because of the parameters,
+      not the plumbing: the Voice lab showed variants 1/2/3 — all queued on JACKIE'S entity — place
+      the voice in his mouth correctly. Shipped defaults are now that verified combination:
+      `context = 0` (Quest — our dialogue IS conversation) and `expression = 0` (Spoken). Ported to
+      NCLives identically. The voice-tag variant (2) showed no audible difference, as expected: he
+      already carries his own tag, so injecting it is a no-op. We ship no tag.
+- [ ] 🔬 **Lipsync — real visemes.** OPEN RESEARCH PROJECT, briefed in `docs/research/lipsync.md`.
+      The anim NAME is free (pure arithmetic from the String ID, 138/138 verified); binding it to a
+      spawned body is the unsolved part, and nobody public has solved it. The flap looks good in
+      game, so this is upside, not debt. Strongest lead: `PlayVoiceOver` gives free lipsync, so
+      whatever it primes may be all we need.
 - [ ] Then delete the Audioware path: `convert_audio.py`, `rebuild_bank_yml.py`, the bank manifest,
       `staging/r6/audioware/`, `Config.voice.mode = "audioware"`, and the `HOW_TO_ADD_JACKIE_VOICES`
       card. Keep `mode = "audioware"` until at least one release has shipped with the native path, so
