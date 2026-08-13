@@ -50,6 +50,111 @@ function Native.bind(fns)
 end
 
 -- ---------------------------------------------------------------------------
+-- 1. SPAWN + AMM DETECTION  (ported from NCLives v1.64, JackieLives v1.68)
+-- ---------------------------------------------------------------------------
+-- Until v1.68 JackieLives could not spawn Jackie at all without AMM — summoning without it failed
+-- with "AMM Spawn module not available". AMM's `Spawn:SpawnNPC` (Modules/spawn.lua:582) is itself
+-- just `DynamicEntitySystem:CreateEntity` at a point 1 m in front of V, so this is the same spawn
+-- minus the dependency. The appearance rides on the spec (`spec.appearanceName`) instead of being
+-- applied afterwards through AMM's ChangeAppearanceTo — a better order, and the thing that killed
+-- NCLives' v1.43 outfit bug: there is no window where the body exists in the wrong clothes.
+
+-- ---------------------------------------------------------------------------
+-- Is AMM installed? (Soft check — AMM is OPTIONAL from v1.64 on.)
+-- ---------------------------------------------------------------------------
+-- Cached because GetMod() is a cross-mod lookup and several ticks ask. `false` (not nil) means
+-- "we looked and it isn't there", so we only pay the lookup once per session.
+local ammCache = nil
+function Native.amm()
+  if ammCache == nil then
+    local m; pcall(function() m = GetMod("AppearanceMenuMod") end)
+    ammCache = m or false
+    log(ammCache and "Native: AMM detected — optional features available."
+                  or "Native: AMM not installed — running on the native backend (this is fine).")
+  end
+  return ammCache or nil
+end
+
+-- For the diagnostics dump + the CET window's dependency panel.
+function Native.ammPresent() return Native.amm() ~= nil end
+
+-- Forget the cached answer. Only for the reload path: CET can reload mods in any order, so a mod
+-- that was absent at our onInit may exist a second later.
+function Native.forget() ammCache = nil end
+
+-- ---------------------------------------------------------------------------
+-- 1. SPAWN
+-- ---------------------------------------------------------------------------
+-- A point `dist` metres in front of V, and the yaw that makes a body placed there FACE V.
+-- (AMM's Util:GetPosition(1, 0) / Util:GetOrientation(-180), inlined so we own it.)
+function Native.inFrontOfPlayer(dist)
+  local pos, yaw
+  pcall(function()
+    local pl = Game.GetPlayer(); if not pl then return end
+    local p = pl:GetWorldPosition()
+    local f = pl:GetWorldForward()
+    local d = dist or 1.0
+    pos = Vector4.new(p.x + (f.x * d), p.y + (f.y * d), p.z, p.w)
+    -- Face back down V's forward vector.
+    yaw = math.deg(math.atan(f.y, f.x)) - 90.0 + 180.0
+  end)
+  return pos, yaw
+end
+
+-- Spawn any record through the DynamicEntitySystem.
+--
+-- Returns a SPAWN RECORD in the shape the rest of the engine already understands:
+--     { id = <EntityID>, handle = nil, native = true }
+-- `resolveCompanionHandle()` in init.lua resolves that shape via Game.FindEntityByID a frame or two
+-- later — the same way it already resolves the vehicle-arrival companion, which has always been a
+-- DES spawn. Nothing downstream needed changing for this.
+--
+-- ⚠️ `appearance` MUST be a string. Handing a table to `spec.appearanceName` no-ops silently and the
+-- body comes out in the record default — the exact shape of the v1.43 outfit bug, one layer down.
+function Native.spawn(record, pos, yaw, tag, appearance)
+  if not record then return nil, "no record" end
+  if not pos then
+    pos, yaw = Native.inFrontOfPlayer(1.0)
+    if not pos then return nil, "no player position" end
+  end
+  if appearance ~= nil and type(appearance) ~= "string" then
+    log("Native.spawn: appearance was a " .. type(appearance) .. ", not a string — ignoring it.")
+    appearance = nil
+  end
+  local id
+  local ok, err = pcall(function()
+    local spec = DynamicEntitySpec.new()
+    spec.recordID       = record
+    spec.appearanceName = (appearance and appearance ~= "") and appearance or "default"
+    spec.position       = pos
+    pcall(function() spec.orientation = EulerAngles.new(0.0, 0.0, yaw or 0.0):ToQuat() end)
+    spec.persistState   = false
+    spec.persistSpawn   = false
+    spec.alwaysSpawned  = false
+    spec.spawnInView    = true
+    spec.tags           = { CName.new(tag or "JackieLives_jackie") }
+    id = Game.GetDynamicEntitySystem():CreateEntity(spec)
+  end)
+  if not ok or not id then
+    log("Native.spawn: CreateEntity FAILED ('" .. tostring(record) .. "'): " .. tostring(err))
+    return nil, "CreateEntity failed"
+  end
+  return { id = id, handle = nil, native = true }
+end
+
+-- Remove a body we spawned. Takes either shape (native `{id=EntityID}` or AMM's spawn object), so
+-- the dismiss paths don't have to care which backend produced it.
+function Native.despawn(spawn)
+  if not spawn then return end
+  pcall(function()
+    local des = Game.GetDynamicEntitySystem(); if not des then return end
+    if spawn.id and type(spawn.id) ~= "string" then des:DeleteEntity(spawn.id) end
+    local h = spawn.handle
+    if h and h.GetEntityID then des:DeleteEntity(h:GetEntityID()) end
+  end)
+end
+
+-- ---------------------------------------------------------------------------
 -- 2. FOLLOWER ROLE  (rewritten v1.65 — "they spawned but stayed planted")
 -- ---------------------------------------------------------------------------
 -- v1.64 assigned an AIFollowerRole through `AIAssignRoleCommand` and called it done. In game the

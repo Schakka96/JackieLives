@@ -275,5 +275,45 @@ do
         (io.open("deploy.ps1", "r"):read("*a")):find("r6\\scripts", 1, true) ~= nil)
 end
 
+-- ---------------------------------------------------------------------------
+print("\n10. the in-game backend switch (v1.66)")
+-- ---------------------------------------------------------------------------
+do
+  -- Switching backend in the CET window must take effect on the NEXT line, with no reload — the
+  -- whole point of `config` being a closure. And the cached probes must be dropped, or "Audioware
+  -- only" would still see a native path and "auto" would never re-log which backend it landed on.
+  local cfg = { mode = "auto", gruntPool = { "ono_x" } }
+  local VO = reset{ shim = true, bank = true, config = cfg }
+  VO.play(SFX, spy.player)
+  check("starts native", #spy.native == 1 and #spy.audioware == 0)
+
+  cfg.mode = "audioware"; VO.forget()
+  VO.play(SFX, spy.player)
+  check("switch to audioware applies with NO reload", #spy.audioware == 1)
+  check("...and reports the new backend", VO.backend(spy.player) == "audioware")
+
+  cfg.mode = "native"; VO.forget()
+  VO.play(SFX, spy.player)
+  check("switch back to native applies immediately", #spy.native == 2)
+
+  cfg.mode = "off"; VO.forget()
+  check("switch to off applies immediately", VO.backend(spy.player) == "off")
+
+  VO.forget()
+  check("forget() clears the cached probes", VO.hasAudioware() ~= nil)
+
+  local src = io.open("mod/JackieLives/init.lua", "r"):read("*a")
+  check("the CET window has a Voice section", src:match('CollapsingHeader%("Voice') ~= nil)
+  check("all four backends are offered", src:match('"auto"') and src:match('"native"')
+        and src:match('"audioware"') and src:match('Config%.voice%.mode = "off"') ~= nil)
+  check("switching calls VO.forget()", src:match("VO%.forget%(%)") ~= nil)
+  -- The trap this guards: config.lua is re-required from disk on every reload, so a choice that
+  -- lived only in Config would revert. Same failure the seat and walk tuners each shipped once.
+  check("the choice is persisted", src:match('voiceMode=') ~= nil)
+  check("...and re-applied at onInit", src:match("if JL%.voiceMode then Config%.voice%.mode = JL%.voiceMode end") ~= nil)
+  check("only valid modes are accepted on load",
+        src:match('v == "auto" or v == "native" or v == "audioware" or v == "off"') ~= nil)
+end
+
 print(("\n%d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)

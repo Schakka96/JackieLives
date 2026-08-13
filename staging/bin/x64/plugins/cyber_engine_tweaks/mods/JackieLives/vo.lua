@@ -229,6 +229,19 @@ function M.play(sfx, target, mute)
 end
 
 -- ---------------------------------------------------------------------------
+-- Drop every cached probe and re-arm the "which backend am I on" log line.
+--
+-- Called when the player switches backend in the CET window. Without this, two
+-- things would go stale in a way that reads as a bug: `logged` means the log
+-- never names the NEW backend, and a cached positive `native` means "Audioware
+-- only" would still look like it had a native path available. Cheap to call —
+-- the probes are one method call each.
+-- ---------------------------------------------------------------------------
+function M.forget()
+  state.native, state.audioware, state.logged = nil, nil, false
+end
+
+-- ---------------------------------------------------------------------------
 -- One-line health report for the CET window / Diagnostics.
 -- ---------------------------------------------------------------------------
 function M.status(target)

@@ -900,6 +900,48 @@ function diagnostics()   -- global (not local): 200-local cap; see note at top
 end
 
 -- ---------------------------------------------------------------------------
+-- v1.68 WHICH BACKEND? — and why AMM is still here
+-- ---------------------------------------------------------------------------
+-- AMM stopped being REQUIRED in v1.68 (before it, summoning without it failed outright with "AMM
+-- Spawn module not available"). It is deliberately still SUPPORTED: a player already running AMM,
+-- with a Jackie who behaves the way they expect, should not be moved onto a different code path by
+-- an update they didn't ask for. Esc -> Settings -> JackieLives -> Compatibility.
+--
+-- Answers false unless the player asked for AMM *and* AMM is actually there — so the toggle can never
+-- strand someone who turns it on and then uninstalls AMM. It says so once when that happens.
+-- GLOBAL, not a top-level local: init.lua is at Lua's 200-local cap.
+function jlUseAMM()
+  if not JL.useAMM then return false end
+  local amm = getAMM()
+  if amm and amm.Spawn and amm.Spawn.NewSpawn then return true end
+  if not JL.ammMissingWarned then
+    JL.ammMissingWarned = true
+    log("Spawn backend: AMM is selected but not installed — using the native backend instead. " ..
+        "(Turn the switch off in Esc -> Settings -> JackieLives to stop seeing this.)")
+  end
+  return false
+end
+
+-- Make a resolved body a real companion, on whichever backend the player chose. The follower role is
+-- the thing that makes enemies ignore him and the minimap symbol appear — see native.lua's header.
+-- Either way jlFollowerWatchTick VERIFIES the result against the engine, so a backend that quietly
+-- fails to apply the role is caught rather than shipped.
+function jlMakeCompanion(h)
+  if not h then return false end
+  if jlUseAMM() then
+    local amm, ok = getAMM(), false
+    pcall(function()
+      if amm and amm.Spawn and amm.Spawn.SetNPCAsCompanion then
+        amm.Spawn:SetNPCAsCompanion(h); ok = true
+      end
+    end)
+    if ok then return true end
+    log("Spawn backend: AMM's SetNPCAsCompanion was unavailable — falling back to the native role.")
+  end
+  return Native.setCompanion(h)
+end
+
+-- ---------------------------------------------------------------------------
 -- Spawn helpers (delegate to AMM's proven spawn/companion path)
 -- ---------------------------------------------------------------------------
 -- companionFlag: 1 = follow + fight as ally, 0 = passive idle NPC
@@ -916,31 +958,62 @@ end
 -- Net effect: NO appearance we ever asked for was applied — not the heist suit, not the venue outfits.
 -- Three of his seven venues use `jackie_welles_default` anyway, which is why it went unnoticed for so long.
 local function ammSpawn(companionFlag, appearance)
-  local amm = getAMM()
-  if not amm or not amm.Spawn or not amm.Spawn.NewSpawn then return nil, "AMM Spawn module not available" end
   if not resolveJackieRecord() then return nil, "Jackie record not found" end
   local recStr = tostring(JL.jackie.record)
   -- Fall back to a REAL appearance name, never "random": an unknown name is a silent no-op (leaving him in
   -- whatever he had), and AMM's random-cycle path would put him in a different outfit every spawn.
   local app = (appearance and appearance ~= "") and appearance or (Config.defaultAppearance or "jackie_welles_default")
-  -- Force AMM's companion toggle to MATCH the flag. It was only ever set TRUE (for companion
-  -- spawns) and never reset, so a "passive" arrival spawn following any companion summon still
-  -- came out as a companion -> follower role -> catch-up TELEPORT to V's face. Resetting it to
-  -- false makes companionFlag 0 truly passive (no follower role, no teleport).
-  pcall(function() if amm.userSettings then amm.userSettings.spawnAsCompanion = (companionFlag == 1) end end)
-  local spawn
-  Session.mark("AMM NewSpawn " .. tostring(app))
-  local ok = pcall(function()
-    -- arg 3 = the appearance NAME AS A STRING (see the note above). arg 5 (`path`) is the record that
-    -- actually spawns; arg 2 (`id`) is only AMM's bookkeeping key, so the record string is harmless there.
-    spawn = amm.Spawn:NewSpawn(JL.jackie.name or "Jackie", recStr, app, companionFlag, recStr)
-  end)
+  -- v1.68 — TWO BACKENDS, AND THE PLAYER PICKS. The old path was `amm.Spawn:NewSpawn` +
+  -- `amm.Spawn:SpawnNPC`, and without AMM installed it failed right here with "AMM Spawn module not
+  -- available" — Jackie simply could not be summoned. AMM's SpawnNPC is itself just
+  -- `DynamicEntitySystem:CreateEntity` 1 m in front of V (Modules/spawn.lua:582), so the native path
+  -- is the same spawn minus the dependency.
+  --
+  -- The AMM path is KEPT, not replaced: someone who already runs AMM and is happy with how Jackie
+  -- behaves shouldn't be moved onto new code by an update. Esc -> Settings -> JackieLives -> "Use AMM
+  -- for spawning". Default OFF (native), because that is the one that works for everybody.
+  if jlUseAMM() then
+    local amm = getAMM()
+    -- Force AMM's companion toggle to MATCH the flag. It was only ever set TRUE (for companion
+    -- spawns) and never reset, so a "passive" arrival spawn following any companion summon still
+    -- came out as a companion -> follower role -> catch-up TELEPORT to V's face.
+    pcall(function() if amm.userSettings then amm.userSettings.spawnAsCompanion = (companionFlag == 1) end end)
+    local spawn
+    Session.mark("AMM NewSpawn " .. tostring(app))
+    local ok = pcall(function()
+      -- arg 3 = the appearance NAME AS A STRING (see the note above). arg 5 (`path`) is the record that
+      -- actually spawns; arg 2 (`id`) is only AMM's bookkeeping key, so the record string is harmless there.
+      spawn = amm.Spawn:NewSpawn(JL.jackie.name or "Jackie", recStr, app, companionFlag, recStr)
+    end)
+    Session.clear()
+    if not ok or not spawn then return nil, "NewSpawn failed" end
+    Session.mark("AMM SpawnNPC")
+    local ok2 = pcall(function() amm.Spawn:SpawnNPC(spawn) end)
+    Session.clear()
+    if not ok2 then return nil, "SpawnNPC failed" end
+    spawn.companionFlag = companionFlag
+    Session.stamp(spawn)
+    if companionFlag == 1 then JL.summon.appearance = app end
+    return spawn
+  end
+
+  -- NATIVE (default). Appearance rides on the spec instead of being applied afterwards through AMM's
+  -- ChangeAppearanceTo — a better order: there is no window where the body wears the wrong clothes.
+  --
+  -- The returned shape is `{ id = <EntityID>, handle = nil }`. resolveJackieHandle() already resolves
+  -- that shape (the vehicle-arrival Jackie has always been a DES spawn), so nothing downstream
+  -- changed — EXCEPT the promote path, which used to wait for a `.handle` only AMM ever wrote. See
+  -- the note there; missing it is what cost NCLives a release (their v1.64 respawn loop).
+  --
+  -- companionFlag is no longer a spawn parameter: there is no AMM user setting to flip. The follower
+  -- role is applied AFTER the body resolves, by promoteToCompanion / the promote block. That is an
+  -- improvement, not just a port — the old code set `amm.userSettings.spawnAsCompanion` and hoped,
+  -- which is how a "passive" arrival spawn came out as a follower and teleported to V's face.
+  Session.mark("Native spawn " .. tostring(app))
+  local spawn, serr = Native.spawn(recStr, nil, nil, "JackieLives_jackie", app)
   Session.clear()
-  if not ok or not spawn then return nil, "NewSpawn failed" end
-  Session.mark("AMM SpawnNPC")
-  local ok2 = pcall(function() amm.Spawn:SpawnNPC(spawn) end)
-  Session.clear()
-  if not ok2 then return nil, "SpawnNPC failed" end
+  if not spawn then return nil, serr or "native spawn failed" end
+  spawn.companionFlag = companionFlag
   -- v1.52: stamp the record with the session that created it. Session.stale() reads this to know the
   -- handle is a dead pointer after a load, so callers drop it instead of dereferencing it.
   Session.stamp(spawn)
@@ -4229,7 +4302,7 @@ local function promoteToCompanion()
   -- only reason Jackie has ever followed anyone. Native.setCompanion is the same job done against the
   -- base game's own API — and, unlike the AMM call, it VERIFIES the result instead of returning
   -- success either way. Mechanism and the script citations: native.lua's header.
-  Native.setCompanion(h)
+  jlMakeCompanion(h)
   setFriendly(h)
   setVisible(h, true)   -- never leave him invisible
   setNpcCollision(h, true)   -- v0.44: a FOLLOWER must always collide (defensive: clears any idle/dinner
@@ -4629,16 +4702,31 @@ end
 -- not-yet-streamed world), the handle stayed nil, the Blaze finale's `place` phase silently timed out, and
 -- Jackie was left standing wherever AMM dropped him. AMM sets `entityID` synchronously inside SpawnNPC, so
 -- prefer it: we can resolve the body ourselves without waiting on AMM at all.
+-- v1.68 — THIS IS ALSO WHERE THE FOLLOWER ROLE GETS APPLIED, and it has to be.
+-- AMM used to make the body a follower AT SPAWN (`userSettings.spawnAsCompanion`), so the respawn
+-- paths below — vehicleArrivalFootFallback's two fallbacks in particular — just set
+-- `companionSet = (spawn ~= nil)` and never called promoteToCompanion(). The native backend can't do
+-- that: a DES spawn has no handle for a frame or two, and you cannot assign an AI role to a body that
+-- doesn't exist yet. So the flag rides on the spawn record (`companionFlag`, set by ammSpawn) and is
+-- cashed in HERE, the one chokepoint every path goes through to first get a handle. One-shot, latched
+-- on `sp.roleSet`. Miss this and those paths silently produce a Jackie who stands still.
 local function resolveJackieHandle()
   local sp = JL.summon.spawn
   if not sp then return nil end
-  if sp.handle then return sp.handle end
-  if sp.entityID then                                     -- AMM shape: set synchronously by SpawnNPC
-    local h; pcall(function() h = Game.FindEntityByID(sp.entityID) end)
-    if h then sp.handle = h; return h end
+  local h = sp.handle
+  if not h and sp.entityID then                           -- AMM shape: set synchronously by SpawnNPC
+    pcall(function() h = Game.FindEntityByID(sp.entityID) end)
+    if h then sp.handle = h end
   end
-  if sp.id then local h; pcall(function() h = Game.FindEntityByID(sp.id) end); if h then sp.handle = h end; return h end
-  return nil
+  if not h and sp.id then
+    pcall(function() h = Game.FindEntityByID(sp.id) end)
+    if h then sp.handle = h end
+  end
+  if h and sp.companionFlag == 1 and not sp.roleSet then
+    sp.roleSet = true                                     -- latch FIRST: a failed call must not retry every frame
+    jlMakeCompanion(h)
+  end
+  return h
 end
 
 -- v0.38 FRESH-RESPAWN FALLBACK: the bike ride broke / stalled. Throw it all out — despawn the bike
@@ -6687,6 +6775,30 @@ local function nsTick()
       end
     )
 
+    -- v1.68 COMPATIBILITY. AMM used to be REQUIRED; it is optional now, and this is where a player who
+    -- already runs it can keep the old behaviour rather than being moved onto a new code path by an
+    -- update. Default OFF = the native backend, which is the one that works with or without AMM.
+    ns.addSubcategory("/jackielives/compat", "Compatibility")
+    ns.addSwitch(
+      "/jackielives/compat",
+      "Use AMM for spawning",
+      "OFF (default) = JackieLives spawns Jackie itself, using the base game. AppearanceMenuMod is " ..
+      "NOT needed. ON = use AppearanceMenuMod's spawn system instead, the way JackieLives worked " ..
+      "before v1.68 — for players who already run AMM and would rather not change what works. " ..
+      "If AMM isn't installed this switch does nothing and the mod says so in its log. " ..
+      "AMM is still what provides the sit/lean poses at venues, whichever way this is set.",
+      JL.useAMM,   -- current state (persisted in jl_settings.txt)
+      false,       -- default: native
+      function(state)
+        JL.useAMM = state
+        JL.ammMissingWarned = nil          -- re-arm the "you asked for AMM but it isn't there" notice
+        pcall(jlSaveSettings)
+        JL.ui.status = "Spawn backend: " .. (state and "AMM" or "native (no AMM needed)")
+        log("Spawn backend -> " .. (state and "AMM (player choice)" or "native") ..
+            ". Takes effect on the next summon; re-summon Jackie to switch a body that's already out.")
+      end
+    )
+
     ns.addSubcategory("/jackielives/arrivals", "Arrivals")
     ns.addSwitch(
       "/jackielives/arrivals",
@@ -6811,7 +6923,7 @@ end
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
+JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
 
 -- v1.55: NUMERIC settings. The file used to serialize booleans only (plus the one `mode` string), which is
 -- precisely why a slider could never be added — its value didn't survive a reload. These keys round-trip as
@@ -6826,6 +6938,10 @@ function jlSaveSettings()
     if type(JL[k]) == "number" then f:write(k .. "=" .. string.format("%.3f", JL[k]) .. "\n") end
   end
   f:write("mode=" .. tostring(JL.mode or "quietlife") .. "\n")  -- v0.95 string setting (not a boolean)
+  -- v1.66 voice backend: "auto" | "native" | "audioware" | "off". Persisted for the same reason every
+  -- other tuner here is — config.lua is re-required from disk on reload, so an in-game choice that
+  -- lived only in Config would be silently reverted by the next reload (see the seat/walk tuners).
+  f:write("voiceMode=" .. tostring(JL.voiceMode or "auto") .. "\n")
   -- v1.60 language: "auto" = follow the game's own language setting, else a code from Lang.LANGUAGES.
   f:write("lang=" .. tostring(JL.langChoice or "auto") .. "\n")
   f:close()
@@ -6841,6 +6957,9 @@ function jlLoadSettings()
     if k then
       if k == "mode" and (v == "quietlife" or v == "blaze") then JL.mode = v end  -- v0.95
       if k == "lang" then JL.langChoice = v end                                   -- v1.60
+      if k == "voiceMode" and (v == "auto" or v == "native" or v == "audioware" or v == "off") then
+        JL.voiceMode = v                                                         -- v1.66
+      end
       for _, want in ipairs(JL_SETTINGS_KEYS) do
         if k == want then JL[k] = (v == "true") end
       end
@@ -7643,7 +7762,7 @@ function jlFollowerWatchTick()
   jlFollowerWatch.tries = (jlFollowerWatch.tries or 0) + 1
   log(("Follower role NOT active (role=%s companion=%s) -> re-applying, attempt %d/%d.")
       :format(tostring(role), tostring(companion), jlFollowerWatch.tries, (F.roleWatchTries or 5)))
-  Native.setCompanion(h)
+  jlMakeCompanion(h)
   if jlFollowerWatch.tries >= (F.roleWatchTries or 5) then
     log("Follower role: gave up after " .. tostring(jlFollowerWatch.tries) .. " attempts. He will " ..
         "still walk (our own follow trail is separate), but he is not a true ally — no enemy " ..
@@ -7714,8 +7833,11 @@ function companionPersistTick()
   -- After a load AMM re-inits a beat later than us; calling its Spawn path before it's ready was the other
   -- half of the load crash. Bail (and reset the gap timer) until both are live, then spawn is the same
   -- proven path the confirmed catch-up respawn (bug 2f) already uses safely.
-  local amm = getAMM()
-  if not (amm and amm.Spawn and amm.Spawn.NewSpawn) then JL.persist.gapSince = nil; return end
+  -- ⚠️ v1.68 — this used to ALSO require `amm.Spawn.NewSpawn`, from when the respawn went through AMM.
+  -- The respawn is Native.spawn now and touches no AMM at all, so on a machine without AMM that gate
+  -- returned every tick and a Jackie whose body was culled or lost to a fast travel was NEVER brought
+  -- back. resolveJackieRecord() below is the real readiness signal.
+
   if not resolveJackieRecord() then JL.persist.gapSince = nil; return end
 
   -- Require the gap to persist a beat (rides out a momentary stream/handle hiccup), then respawn
@@ -7786,6 +7908,10 @@ registerForEvent("onInit", function()
       readingSecs = readingSecs,
       playEvent   = function(target, event) return playEventOn(target, event, "") end,
     }
+    -- Re-apply the persisted backend choice BEFORE the first line: config.lua came fresh off disk
+    -- with its shipped default, so without this a player who picked "Native only" would silently be
+    -- back on "auto" after every reload.
+    if JL.voiceMode then Config.voice.mode = JL.voiceMode end
     log("Voice: " .. VO.status())
   end)
 
@@ -8590,11 +8716,20 @@ registerForEvent("onUpdate", function(dt)
     log("[SESSION] promote: dropping stale spawn record from a previous session (not dereferenced).")
     JL.summon.spawn, JL.summon.active, JL.summon.companionSet = nil, false, false
   end
-  if JL.summon.spawn and JL.summon.spawn.handle and not JL.summon.companionSet and not JL.summon.walkIn then
+  -- ⚠️ v1.68 — THE ONE THAT COST NCLIVES A RELEASE. This block used to read `JL.summon.spawn.handle`
+  -- DIRECTLY, which worked only because AMM populated that field from its own Cron a few frames after
+  -- SpawnNPC. Now that ammSpawn goes through Native.spawn, the record is `{ id = <EntityID>, handle =
+  -- nil }` and the only thing that fills the field is resolveJackieHandle() — which the arrival tick
+  -- and the Blaze finale call, but a plain summon does not. Left as it was, the handle stays nil, this
+  -- block never fires, `companionSet` stays false, and companionPersistTick reads that as "he isn't
+  -- here" and respawns him every few seconds, forever. That is exactly what shipped as NCLives v1.64.
+  -- RESOLVE the handle here rather than waiting for someone else to.
+  local promoteH = resolveJackieHandle()
+  if promoteH and not JL.summon.companionSet and not JL.summon.walkIn then
     Session.mark("promote to companion")
-    Native.setCompanion(JL.summon.spawn.handle)   -- v1.67: was amm.Spawn:SetNPCAsCompanion
+    jlMakeCompanion(promoteH)   -- v1.67: was amm.Spawn:SetNPCAsCompanion; v1.68: backend-aware
     pcall(function()
-      local pl, h = Game.GetPlayer(), JL.summon.spawn.handle
+      local pl, h = Game.GetPlayer(), promoteH
       if pl and h and h.GetAttitudeAgent then
         h:GetAttitudeAgent():SetAttitudeTowards(pl:GetAttitudeAgent(), EAIAttitude.AIA_Friendly)
       end
@@ -8893,6 +9028,52 @@ registerForEvent("onDraw", function()
       .. "GAME is set to -- so forcing e.g. Japanese while the game runs in English shows blanks. "
       .. "V's choice box + this menu are drawn by CET, whose font is Latin-only until you point it at "
       .. "a CJK/Cyrillic font (see docs/localization.md).")
+  end
+  ImGui.Separator()
+
+  -- v1.66 VOICE BACKEND selector. Every local here is function-scoped (inside onDraw), so the main
+  -- chunk's 200-local budget is untouched.
+  --
+  -- ⚠️ WHY THIS EXISTS AT ALL. With mode="auto" the mod tries the native path and, if the redscript
+  -- shim didn't load, SILENTLY falls back to an Audioware bank. For a player that is exactly right.
+  -- For testing it is a trap: Jackie still speaks, out of the old bank, and you conclude the new path
+  -- works when it doesn't. "Native only" removes the ambiguity — he either speaks, or he only grunts.
+  if ImGui.CollapsingHeader("Voice — " .. string.upper(tostring(VO.backend(dialogueTarget())))) then
+    ImGui.Text(VO.status(dialogueTarget()))
+    ImGui.Separator()
+
+    if ImGui.Button("Auto (recommended)") then
+      Config.voice.mode = "auto"; JL.voiceMode = "auto"; VO.forget(); jlSaveSettings()
+      JL.ui.status = "Voice: auto — the game's own VO, falling back to Audioware if present."
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Native only") then
+      Config.voice.mode = "native"; JL.voiceMode = "native"; VO.forget(); jlSaveSettings()
+      JL.ui.status = "Voice: NATIVE only — Audioware is locked out. Silence now means the shim isn't loaded."
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Audioware only") then
+      Config.voice.mode = "audioware"; JL.voiceMode = "audioware"; VO.forget(); jlSaveSettings()
+      JL.ui.status = "Voice: AUDIOWARE only — the pre-v1.66 path, for comparing the two by ear."
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Off") then
+      Config.voice.mode = "off"; JL.voiceMode = "off"; VO.forget(); jlSaveSettings()
+      JL.ui.status = "Voice: OFF — subtitles only."
+    end
+
+    ImGui.TextWrapped("Takes effect on the NEXT line he speaks — no reload needed, because vo.lua reads "
+      .. "this setting live. The choice is saved to jl_settings.txt, so it also survives a reload. "
+      .. "(You only need 'Reload all mods' if you edited config.lua on disk by hand.)")
+    ImGui.Separator()
+    ImGui.TextWrapped("native = the GAME's own recording of the line. Nothing shipped, nothing extracted. "
+      .. "Needs redscript + r6\\scripts\\JackieLives\\JackieLivesVO.reds.\n"
+      .. "audioware = the old path: a bank YOU built from your own game files.\n"
+      .. "If neither is available he falls back to his own vocal efforts, which need nothing at all.")
+    if VO.backend(dialogueTarget()) == "grunt" then
+      ImGui.TextColored(1, 0.4, 0.4, 1, "No voice backend. Check that redscript is installed and that "
+        .. "r6\\scripts\\JackieLives\\JackieLivesVO.reds is in your game folder.")
+    end
   end
   ImGui.Separator()
 
