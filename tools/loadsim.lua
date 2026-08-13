@@ -360,6 +360,48 @@ checks = checks + 1
 if nsBad > 0 then fails = fails + 1 else print("  ok   every addButton passes textSize before its callback") end
 
 -- ---------------------------------------------------------------------------
+-- 3c. Headroom against Lua's 200-local cap
+-- ---------------------------------------------------------------------------
+-- A Lua chunk may declare at most 200 locals. init.lua is a single chunk and lives near that
+-- ceiling, which is WHY the engine's modules are globals (Retrieval / Blaze / Session / Lang /
+-- DialogUI / VO / Native) rather than the locals they would obviously otherwise be.
+--
+-- Exceeding it is a COMPILE error, so it cannot ship silently — `check("init.lua loads")` above would
+-- go red. The problem is what it does to the person who hits it: the message names a line at the END
+-- of the file that is perfectly innocent, and the fix ("make it a global") is unguessable if you do
+-- not already know the rule. Worse, the tempting workaround under local pressure — "it is only used
+-- here, make it a local" — is exactly what creates the forward-reference bug §3 exists to catch.
+--
+-- ⚠️ MEASURED, NOT COUNTED. Counting `^local ` lines with a pattern gets this wrong: a `do ... end`
+-- block frees its slots again, one line can declare several names, and `local function` is one. That
+-- estimate said 221/200 for a file that compiles fine. So ask the compiler instead — append N throwaway
+-- top-level locals and find the largest N that still parses. That is Lua's own accounting, exactly.
+print("\n3c. headroom under Lua's 200-local cap")
+
+do
+  local fh = io.open(ROOT .. "init.lua", "r")
+  local src = fh and fh:read("a") or ""
+  if fh then fh:close() end
+
+  local function fits(k)
+    local pad = {}
+    for i = 1, k do pad[i] = ("local _pad%d = 1"):format(i) end
+    return load(src .. "\n" .. table.concat(pad, "\n"), "headroom") ~= nil
+  end
+
+  local lo, hi = 0, 256                     -- binary search: ~8 parses, not 256
+  while lo < hi do
+    local mid = math.floor((lo + hi + 1) / 2)
+    if fits(mid) then lo = mid else hi = mid - 1 end
+  end
+
+  local HEADROOM = 5
+  check(("%d spare top-level local slots"):format(lo), lo >= HEADROOM,
+        "fewer than " .. HEADROOM .. " left. Do NOT add another top-level local: make it a GLOBAL, or " ..
+        "move it into a module like the seven the engine already holds globally.")
+end
+
+-- ---------------------------------------------------------------------------
 -- 4. The developer panel actually draws
 -- ---------------------------------------------------------------------------
 -- onDraw is the one handler a hotkey press never reaches, and it is a long function full of
