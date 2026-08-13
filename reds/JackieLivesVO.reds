@@ -55,7 +55,68 @@ public class JLVOTagRestore extends DelayCallback {
 // -----------------------------------------------------------------------------
 @addMethod(GameObject)
 public final func JLVO_Version() -> Int32 {
-  return 1;
+  return 2;
+}
+
+// -----------------------------------------------------------------------------
+//  v2 — the one entry point. Supersedes JLVO_PlayLine / JLVO_PlayLineAs, which
+//  are kept below so a stale .reds next to a new .lua still speaks.
+//
+//  Adds `expr` (locVoiceoverExpression), which v1 never set and which decides
+//  HOW the line is placed in the world rather than which line plays:
+//
+//      0  Vo_Expression_Spoken        <- an NPC talking in front of you
+//      1  Vo_Expression_Phone            a call: deliberately in your head
+//      2  Vo_Expression_InnerDialog      Johnny-style, no world position
+//      3  Vo_Expression_Loudspeaker_Room
+//      6  Vo_Expression_Radio
+//     11  Vo_Expression_Helmet
+//
+//  and `ctx` (locVoiceoverContext), verified numbers:
+//      0  Vo_Context_Quest           <- conversation. What our dialogue IS.
+//      1  Vo_Context_Community
+//      2  Vo_Context_Combat             what V Voice Framework used, because its
+//                                       lines are combat barks
+//      3  Vo_Context_Minor_Activity
+//      5  Default_Vo_Context
+//
+//  Both are Int32 rather than enum members ON PURPOSE — naming a member that
+//  doesn't exist is a compile error, and that breaks every redscript mod the
+//  player has. Only Vo_Context_Combat is named anywhere in this file.
+// -----------------------------------------------------------------------------
+@addMethod(GameObject)
+public final func JLVO_Speak(idDec: String, ctx: Int32, expr: Int32,
+                             voiceTag: CName, restoreTag: CName, dur: Float) -> Bool {
+  let ruid: Uint64 = StringToUint64(idDec, 0ul);
+  if Equals(ruid, 0ul) { return false; }
+
+  if NotEquals(voiceTag, n"") {
+    let inj = new entInjectVoiceTagEvent();
+    inj.voiceTagName = voiceTag;
+    this.QueueEvent(inj);
+  }
+
+  let ctxEnum: locVoiceoverContext = locVoiceoverContext.Vo_Context_Combat;
+  if ctx >= 0 { ctxEnum = IntEnum<locVoiceoverContext>(ctx); }
+
+  let data: audioDialogLineEventData;
+  data.stringId   = HashToCRUID(ruid);
+  data.isPlayer   = false;
+  data.isHolocall = false;
+  data.context    = ctxEnum;
+  if expr >= 0 { data.expression = IntEnum<locVoiceoverExpression>(expr); }
+
+  let evt = new DialogLineEvent();
+  evt.data = data;
+  this.QueueEvent(evt);
+
+  if NotEquals(voiceTag, n"") && NotEquals(restoreTag, n"") {
+    let after: Float = dur;
+    if after < 0.5 { after = 0.5; }
+    GameInstance.GetDelaySystem(this.GetGame())
+      .DelayCallback(JLVOTagRestore.Create(this, restoreTag), after + 0.4, true);
+  }
+  return true;
 }
 
 // -----------------------------------------------------------------------------

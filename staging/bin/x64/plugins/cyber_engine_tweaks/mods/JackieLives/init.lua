@@ -6922,6 +6922,11 @@ end
 -- recovery button had been silently no-op'ing. Brought back verbatim, but as GLOBALS
 -- (no `local`) so they don't re-consume the 200-local headroom v0.69 just cleared.
 -- ===========================================================================
+-- v1.69: the Voice-lab test line. 9.3 s of Jackie ("'Ey, let Dex know we got his toy for him...")
+-- chosen because it is the LONGEST clip in vo_durations.lua — you need time to turn your head and
+-- work out where the sound is actually coming from. A global, not a local: the 200-local cap.
+JL_VO_TESTLINE = "1790891785270616064"
+
 JL_SETTINGS_FILE = "jl_settings.txt"
 JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
 
@@ -9073,6 +9078,48 @@ registerForEvent("onDraw", function()
     if VO.backend(dialogueTarget()) == "grunt" then
       ImGui.TextColored(1, 0.4, 0.4, 1, "No voice backend. Check that redscript is installed and that "
         .. "r6\\scripts\\JackieLives\\JackieLivesVO.reds is in your game folder.")
+    end
+
+    -- v1.69 VOICE LAB. The dialogue event carries NO position field (verified against the RTTI
+    -- dump), so if a line comes out of the wrong place the only variables are the ENTITY it was
+    -- queued on and the context/expression it carried. These buttons fire the same line through
+    -- each variant so you can hear which one puts Jackie's voice in Jackie's mouth. Summon him
+    -- first — with nobody spawned every variant falls back to V and they all sound identical.
+    ImGui.Separator()
+    if ImGui.CollapsingHeader("Voice lab (positional audio A/B)") then
+      local jackie = dialogueTarget()
+      if not jackie then
+        ImGui.TextColored(1, 0.8, 0.3, 1, "Summon Jackie first — with nobody spawned every test "
+          .. "below plays on V and they all sound the same.")
+      end
+      ImGui.TextWrapped("Same line, four ways. Walk a few steps away from him before clicking, so "
+        .. "'from his mouth' and 'from your head' are easy to tell apart. Each click also writes "
+        .. "the receiving entity to the console.")
+
+      -- A long line, so there is time to turn your head and locate it while it plays.
+      if ImGui.Button("1. On Jackie (what ships)") then
+        local ok, who = VO.probe(JL_VO_TESTLINE, jackie, 0, 0, "")
+        JL.ui.status = "Lab 1 -> " .. tostring(who) .. " ok=" .. tostring(ok)
+      end
+      ImGui.SameLine()
+      if ImGui.Button("2. On Jackie + his voice tag") then
+        local ok, who = VO.probe(JL_VO_TESTLINE, jackie, 0, 0, "jackie")
+        JL.ui.status = "Lab 2 -> " .. tostring(who) .. " ok=" .. tostring(ok)
+      end
+      if ImGui.Button("3. On Jackie, context Combat") then
+        local ok, who = VO.probe(JL_VO_TESTLINE, jackie, 2, 0, "")
+        JL.ui.status = "Lab 3 -> " .. tostring(who) .. " ok=" .. tostring(ok)
+      end
+      ImGui.SameLine()
+      if ImGui.Button("4. On V (the control)") then
+        local ok, who = VO.probe(JL_VO_TESTLINE, Game.GetPlayer(), 0, 0, "")
+        JL.ui.status = "Lab 4 -> " .. tostring(who) .. " ok=" .. tostring(ok)
+      end
+      ImGui.TextWrapped("4 is the CONTROL: that is what 'coming from V' sounds like. If 1 sounds "
+        .. "the same as 4, the entity isn't placing the voice and 2 is the next thing to try. "
+        .. "Tell me which number sounded right and I'll make it the default.")
+      ImGui.Text("context 0=Quest 1=Community 2=Combat 3=MinorActivity 5=Default")
+      ImGui.Text("expression 0=Spoken 1=Phone 2=InnerDialog 6=Radio 11=Helmet")
     end
   end
   ImGui.Separator()

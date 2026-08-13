@@ -83,7 +83,7 @@ end
 -- at the moment the first line is spoken there may not be a usable one yet.
 -- Caching "no" there would have permanently disabled voice on a slow load.
 -- ---------------------------------------------------------------------------
-local state = { native = nil, audioware = nil, logged = false }
+local state = { native = nil, audioware = nil, logged = false, version = nil }
 
 -- Any GameObject will do — the shim is added to GameObject itself. Prefer the
 -- player because it always exists.
@@ -101,10 +101,46 @@ function M.hasNative(target)
   local ver
   pcall(function() ver = t:JLVO_Version() end)
   if type(ver) == "number" and ver >= 1 then
-    state.native = true
+    state.native  = true
+    state.version = ver
     return true
   end
   return false
+end
+
+-- ---------------------------------------------------------------------------
+-- Speak ONE line through an explicit set of knobs, ignoring Config. This is the
+-- A/B rig behind the CET window's "Voice lab": the event carries no position
+-- field, so when a line comes out of the wrong place in the world the only
+-- variables are which ENTITY it was queued on and which context/expression it
+-- carried. Guessing across those from a Mac is hopeless; hearing four variants
+-- back to back settles it in a minute.
+-- Returns ok, plus the name of the entity that actually received it.
+-- ---------------------------------------------------------------------------
+function M.probe(id, target, ctx, expr, tag)
+  local speaker = probeTarget(target)
+  if not speaker then return false, "no entity" end
+  if not M.hasNative(speaker) then return false, "shim not loaded" end
+
+  local who = "?"
+  pcall(function()
+    local rec = speaker:GetRecordID()
+    who = tostring(rec and rec.value or rec)
+  end)
+  pcall(function()
+    if speaker == Game.GetPlayer() then who = who .. " (V — THE PLAYER)" end
+  end)
+
+  local ok, played = pcall(function()
+    if state.version and state.version >= 2 then
+      return speaker:JLVO_Speak(id, ctx or -1, expr or -1,
+                                CName.new(tag or ""), CName.new("v"), 3.0)
+    end
+    return speaker:JLVO_PlayLine(id, ctx or -1)
+  end)
+  log(("probe: id=%s ctx=%s expr=%s tag=%s -> entity %s  ok=%s")
+      :format(tostring(id), tostring(ctx), tostring(expr), tostring(tag or ""), who, tostring(ok and played)))
+  return (ok and played) or false, who
 end
 
 function M.hasAudioware()
@@ -194,9 +230,20 @@ function M.play(sfx, target, mute)
   if id and c.mode ~= "audioware" then
     local speaker = probeTarget(target)
     if speaker and M.hasNative(speaker) then
+      -- ⚠️ WHICH ENTITY THIS IS QUEUED ON IS THE WHOLE BALL GAME. The event carries no
+      -- position field (verified against the RTTI dump: stringId, context, expression,
+      -- isPlayer, isRewind, isHolocall, customVoEvent, seekTime, playbackSpeedParameter —
+      -- and nothing else), so the ONLY thing that can place the voice in the world is the
+      -- entity it is queued on. Queue it on the player and Jackie's voice comes out of V.
+      -- That is why `target` is threaded through every caller rather than defaulted.
       local ok, played = pcall(function()
         local tag  = c.voiceTag or ""
         local rest = c.restoreVoiceTag or ""
+        if state.version and state.version >= 2 then
+          return speaker:JLVO_Speak(id, c.context or -1, c.expression or -1,
+                                    CName.new(tag), CName.new(rest), M.duration(sfx) or 3.0)
+        end
+        -- a stale .reds next to a new .lua: still speak, just without `expression`
         if tag ~= "" then
           return speaker:JLVO_PlayLineAs(id, c.context or -1, CName.new(tag),
                                          CName.new(rest), M.duration(sfx) or 3.0)
@@ -218,7 +265,21 @@ function M.play(sfx, target, mute)
   -- Nothing voiced. A vocal effort keeps him from reading as broken, and unlike
   -- everything above it needs no dependency whatsoever — these are WWise events
   -- that ship with the game and play on his own body.
+  --
+  -- ⚠️ v1.69 — RARE, NOT EVERY LINE. Most of the hub small talk is written text (there is no
+  -- CDPR recording of "how's Mama Welles"), so before this the grunt fired on EVERY unvoiced
+  -- line: pick a topic, hear a grunt; go back, hear a grunt. It stopped reading as "he made a
+  -- sound" and started reading as "the mod is broken". `gruntChance` makes it an occasional
+  -- punctuation instead — the effect Antonia liked, at the frequency that keeps it likeable.
+  -- 1.0 restores the old always-grunt behaviour; 0 disables it without touching gruntPool.
   if mute then return false end
+  local chance = c.gruntChance
+  if chance == nil then chance = 0.15 end
+  if chance < 1.0 then
+    local r = 1.0
+    pcall(function() r = math.random() end)
+    if r >= chance then return false end
+  end
   local pool = c.gruntPool
   if pool and #pool > 0 and deps.playEvent and target then
     local ev = pool[math.random(1, #pool)]
@@ -238,7 +299,7 @@ end
 -- the probes are one method call each.
 -- ---------------------------------------------------------------------------
 function M.forget()
-  state.native, state.audioware, state.logged = nil, nil, false
+  state.native, state.audioware, state.logged, state.version = nil, nil, false, nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -251,6 +312,7 @@ function M.status(target)
   return "backend=" .. b
       .. " native=" .. tostring(M.hasNative(target))
       .. " audioware=" .. tostring(M.hasAudioware())
+      .. " shim=v" .. tostring(state.version or "?")
       .. " durations=" .. tostring(n)
 end
 

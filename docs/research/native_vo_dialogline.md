@@ -163,6 +163,93 @@ because they added voiceset entries.
 **The RUID technique needs no archive at all.** They extracted Johnny's RUIDs from `vset_johnny.scene`
 read-only, at authoring time. So: ignore the archive, ignore `VFV_PlayVoice`, port `JVF_PlayLine`.
 
+---
+
+# Follow-ups from the first in-game session (2026-08-13)
+
+## A. Positional audio — the voice came out of V, not Jackie
+
+**The event carries no position.** Its full field list, from the RTTI dump
+(`Cyber-MP/CyberMP-Types`, `audioDialogLineEventData.json`):
+
+```
+stringId · context · expression · isPlayer · isRewind · isHolocall
+customVoEvent · seekTime · playbackSpeedParameter
+```
+
+There is no emitter, no position, no speaker reference. So **the only thing that can place the voice
+in the world is the entity the event is queued on** — which is why `target` is now threaded through
+every caller instead of defaulting to the player.
+
+We *were* already queueing on Jackie (`dialogueTarget()` returns his handle when he's spawned), so
+one of these is true, and only the game can say which:
+
+1. the handler ignores the receiving entity and routes dialogue to a global/2D emitter;
+2. it uses the entity, but a **dynamically spawned** companion has no dialogue emitter set up, and it
+   falls back to the player;
+3. the binding is the **voice tag** — `entInjectVoiceTagEvent` — which we deliberately do not send,
+   because Jackie already sounds like Jackie. It may be doing double duty as the audio routing.
+
+Note that V Voice Framework would never have hit this: it plays *Johnny* out of *V's body*, where
+"the voice is in your head" is correct.
+
+Verified enum values, so nobody has to guess again (naming a member that doesn't exist is a compile
+error — pass integers):
+
+| `locVoiceoverContext` | | `locVoiceoverExpression` | |
+|---|---|---|---|
+| 0 | Vo_Context_Quest ← what our dialogue *is* | 0 | Vo_Expression_Spoken ← an NPC in front of you |
+| 1 | Vo_Context_Community | 1 | Vo_Expression_Phone (deliberately in your head) |
+| 2 | Vo_Context_Combat ← what VVF used, for barks | 2 | Vo_Expression_InnerDialog |
+| 3 | Vo_Context_Minor_Activity | 3/4/5 | Loudspeaker Room/Street/City |
+| 5 | Default_Vo_Context | 6 · 7 · 9 · 11 | Radio · GlobalTV · Cyberspace · Helmet |
+
+`expression` defaults to 0 (Spoken), so it is probably not the cause — but v1 of the shim never set
+it at all, and v2 does.
+
+**Resolved by experiment, not by reasoning:** the CET window's **Voice lab** fires the same line four
+ways (on Jackie / on Jackie + voice tag / on Jackie with a different context / on V as the control)
+and logs which entity received it. Whichever sounds right becomes the default.
+
+## B. Lipsync — the name is free, the playback is not
+
+**The animation name is pure arithmetic from the String ID.** Verified across every line of a scene:
+
+```
+femaleLipsyncAnimationName == "f_" + uppercase hex of the String ID
+maleLipsyncAnimationName   == "m_" + uppercase hex of the String ID
+```
+
+138 of 138 lines in `q005_14_after_escape.scene` match, zero exceptions. So `jl_1954795386774245380`
+→ `f_1B20D40C1D405004`. **No WolvenKit run, no extraction, no table to ship** — the same shape as the
+`.wem`-stem discovery, and for the same reason: these are all views of one number.
+
+**What blocks it is playback.** The anims live in an `animAnimSet` resource that the SCENE binds to
+the actor (`scnActorDef.lipsyncAnimSet`, a `CResourceReference<animAnimSet>`). Outside a scene,
+nothing binds it to the body. Also:
+
+- there is **no lipsync API in the decompiled scripts** — zero hits, so it is native-only, exactly
+  like `DialogLineEvent` was;
+- **no public mod does this.** `gh search code` over every CP2077 repo finds the field named in
+  WolvenKit's type definitions and in Codeware's imports, and *nobody calling it*. If it were easy,
+  someone would have.
+
+That makes it a real research task, not a follow-up fix. The honest comparison: the AMM Expressions
+Overhaul flap already looks good ("well enough" in game), and this would buy exact visemes at the
+cost of solving a problem no one has solved publicly.
+
+**If we do take it on, the ladder is:**
+1. Find which `animAnimSet` holds `f_<HEX>` for Jackie — resolve `scnActorDef.lipsyncAnimSet` through
+   the scene's `resouresReferences` table (readable on the Mac with `redlib`).
+2. Find out whether that anim set can be attached to a spawned NPC at runtime, or whether it has to
+   ride an `.ent`/`.app` — this is the same class of problem as NCLives' workspot carrier.
+3. Only then, how to trigger a named facial anim. `entAnimationControllerComponent` push-events were
+   tried years ago in this repo and did nothing; the workspot path (`PlayInDeviceSimple` +
+   `SendJumpToAnimEnt`) is the mechanism that *does* work here and is worth trying on the face rig.
+
+Note that `PlayVoiceOver(context)` gives free lipsync — so the engine clearly *can* drive visemes for
+VO. Understanding what that path sets up is probably the shortest route to step 3.
+
 ## Suggested order of work
 
 1. **CET-console spike on Windows** — one line, on Jackie, no subtitle. Question 1, 2, 3 at once.

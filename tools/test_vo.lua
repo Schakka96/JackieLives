@@ -36,16 +36,27 @@ local function reset(opts)
   CName = { new = function(s) return { name = s } end }
 
   local shim = {
-    JLVO_Version = function() if not spy.shimPresent then error("no shim") end return 1 end,
-    JLVO_PlayLine = function(_, idDec, ctx)
+    JLVO_Version = function() if not spy.shimPresent then error("no shim") end
+      return opts.v2 and 2 or 1 end,
+    JLVO_PlayLine = function(self, idDec, ctx)
       if not spy.shimPresent then error("no shim") end
-      spy.native[#spy.native + 1] = { id = idDec, ctx = ctx, type = type(idDec) }
+      spy.native[#spy.native + 1] = { id = idDec, ctx = ctx, type = type(idDec), on = self }
       return true
     end,
-    JLVO_PlayLineAs = function(_, idDec, ctx, tag, restore, dur)
+    JLVO_PlayLineAs = function(self, idDec, ctx, tag, restore, dur)
       if not spy.shimPresent then error("no shim") end
       spy.native[#spy.native + 1] =
-        { id = idDec, ctx = ctx, type = type(idDec), tag = tag.name, restore = restore.name, dur = dur }
+        { id = idDec, ctx = ctx, type = type(idDec), tag = tag.name, restore = restore.name,
+          dur = dur, on = self }
+      return true
+    end,
+    -- v2: one entry point, and it carries `expression` — the field v1 never set.
+    JLVO_Speak = function(self, idDec, ctx, expr, tag, restore, dur)
+      if not spy.shimPresent then error("no shim") end
+      if not opts.v2 then error("no JLVO_Speak on a v1 shim") end
+      spy.native[#spy.native + 1] =
+        { id = idDec, ctx = ctx, expr = expr, type = type(idDec),
+          tag = (tag.name ~= "" and tag.name or nil), restore = restore.name, dur = dur, on = self }
       return true
     end,
   }
@@ -78,6 +89,11 @@ end
 -- The real id shape used throughout the content. 19 digits: not representable as a double.
 local ID   = "1660220866564214792"
 local SFX  = "jl_" .. ID
+
+-- v1.69: the vocal-effort fallback is now a 15% roll (Config.voice.gruntChance), so any check
+-- that asserts "a grunt happened" has to pin the roll or it is a coin flip in CI.
+local ALWAYS_GRUNT = { mode = "auto", gruntChance = 1.0,
+                       gruntPool = { "ono_jackie_greet", "ono_jackie_curious" } }
 
 -- ---------------------------------------------------------------------------
 print("1. id extraction — the precision rule")
@@ -117,7 +133,9 @@ do
   check("the line plays through the bank", VO.play(SFX, spy.player) == true and spy.audioware[1] == SFX)
   check("nothing went to the shim", #spy.native == 0)
 
-  VO = reset{ shim = false, bank = false }
+  -- gruntChance = 1 here on purpose: the SHIPPED value is 0.15 (v1.69), so without pinning it
+  -- these two checks would fail 85% of runs. The chance gate itself is section 4b.
+  VO = reset{ shim = false, bank = false, config = ALWAYS_GRUNT }
   check("neither -> grunt", VO.backend() == "grunt")
   check("an unvoiced line still makes a sound", VO.play(SFX, spy.player) == true and #spy.grunts == 1)
   check("the grunt is a real WWise ono event", spy.grunts[1]:match("^ono_") ~= nil, spy.grunts[1])
@@ -150,12 +168,39 @@ end
 print("\n4. mute — a genuinely silent line (v1.56 muteFallback)")
 -- ---------------------------------------------------------------------------
 do
-  local VO = reset{ shim = false, bank = false }
+  local VO = reset{ shim = false, bank = false, config = ALWAYS_GRUNT }
   check("mute suppresses the vocal effort", VO.play(nil, spy.player, true) == false and #spy.grunts == 0)
-  VO = reset{ shim = false, bank = false }
+  VO = reset{ shim = false, bank = false, config = ALWAYS_GRUNT }
   check("without mute, an unvoiced line grunts", VO.play(nil, spy.player, false) == true and #spy.grunts == 1)
   VO = reset{ shim = true, bank = false }
   check("mute never suppresses a REAL voiced line", VO.play(SFX, spy.player, true) == true and #spy.native == 1)
+end
+
+-- ---------------------------------------------------------------------------
+print("\n4b. gruntChance — the vocal effort is RARE now (v1.69)")
+-- ---------------------------------------------------------------------------
+do
+  -- Antonia: "he grunts EVERY time V hits a dialogue selection ... a small chance (15%) is ok."
+  -- Most hub small talk is written text with no CDPR recording, so "unvoiced" is the COMMON
+  -- case and an always-on fallback turned every menu pick into a grunt.
+  local VO = reset{ shim = false, bank = false, config = { mode = "auto", gruntChance = 0,
+                                                           gruntPool = { "ono_x" } } }
+  check("chance 0 -> never grunts", VO.play(nil, spy.player) == false and #spy.grunts == 0)
+
+  VO = reset{ shim = false, bank = false, config = ALWAYS_GRUNT }
+  check("chance 1 -> always grunts", VO.play(nil, spy.player) == true and #spy.grunts == 1)
+
+  -- Statistical, so make it wide enough never to flake: 2000 rolls at p=0.15 lands in
+  -- [200, 400] with overwhelming probability (sd ~16, so these are ~+-6 sd).
+  VO = reset{ shim = false, bank = false, config = { mode = "auto", gruntChance = 0.15,
+                                                     gruntPool = { "ono_x" } } }
+  for _ = 1, 2000 do VO.play(nil, spy.player) end
+  check("chance 0.15 -> roughly one line in seven",
+        #spy.grunts > 200 and #spy.grunts < 400, "got " .. #spy.grunts .. " grunts in 2000 lines")
+
+  local _, Config = reset{ shim = false, bank = false }
+  check("the shipped config actually carries the knob", Config.voice.gruntChance == 0.15,
+        tostring(Config.voice.gruntChance))
 end
 
 -- ---------------------------------------------------------------------------
@@ -313,6 +358,59 @@ do
   check("...and re-applied at onInit", src:match("if JL%.voiceMode then Config%.voice%.mode = JL%.voiceMode end") ~= nil)
   check("only valid modes are accepted on load",
         src:match('v == "auto" or v == "native" or v == "audioware" or v == "off"') ~= nil)
+end
+
+-- ---------------------------------------------------------------------------
+print("\n11. positional audio — the v2 shim and the Voice lab")
+-- ---------------------------------------------------------------------------
+do
+  -- The event carries no position field, so the entity it is queued on is the ONLY thing that can
+  -- place the voice in the world. Every path must therefore preserve the caller's target rather
+  -- than quietly defaulting to the player — which is exactly how a line ends up coming out of V.
+  -- ⚠️ `jackie` must be rebuilt after EVERY reset(): each reset installs a fresh stub whose
+  -- closures capture that reset's `spy`, so a companion carried over from a previous scenario
+  -- silently reports into the OLD spy and the current one looks empty.
+  local function companion() return setmetatable({}, getmetatable(spy.player)) end
+
+  local VO = reset{ shim = true, v2 = true }
+  local jackie = companion()
+  VO.play(SFX, jackie)
+  check("v2 shim is used when present", #spy.native == 1 and spy.native[1].expr ~= nil)
+  check("the line is queued on the TARGET, not the player", spy.native[1].on == jackie)
+
+  VO = reset{ shim = true, v2 = true }
+  VO.play(SFX, nil)
+  check("no target -> falls back to the player (and only then)", spy.native[1].on == spy.player)
+
+  VO = reset{ shim = true, v2 = true, config = { mode = "auto", context = 0, expression = 0 } }
+  jackie = companion()
+  VO.play(SFX, jackie)
+  check("context and expression are passed through", spy.native[1].ctx == 0 and spy.native[1].expr == 0)
+
+  VO = reset{ shim = true, v2 = false }
+  jackie = companion()
+  VO.play(SFX, jackie)
+  check("a STALE v1 .reds still speaks (no expression)", #spy.native == 1 and spy.native[1].expr == nil)
+
+  VO = reset{ shim = true, v2 = true }
+  jackie = companion()
+  local ok, who = VO.probe(ID, jackie, 0, 0, "")
+  check("probe() plays on the entity it was given", ok == true and spy.native[1].on == jackie)
+  check("probe() reports who received it", type(who) == "string")
+  local _, who2 = VO.probe(ID, spy.player, 0, 0, "")
+  check("probe() names the player as the player", who2:find("PLAYER") ~= nil, who2)
+
+  local src = io.open("mod/JackieLives/init.lua", "r"):read("*a")
+  check("the CET window has a Voice lab", src:match("Voice lab") ~= nil)
+  check("the lab has a control that plays on V", src:match("On V %(the control%)") ~= nil)
+  check("the lab uses a real, long test line",
+        src:match('JL_VO_TESTLINE = "(%d+)"') ~= nil)
+  do
+    local id = src:match('JL_VO_TESTLINE = "(%d+)"')
+    local D = require("vo_durations")
+    check("...and that line has a duration long enough to locate by ear",
+          D[id] and D[id] > 5, tostring(id) .. " = " .. tostring(D[id]))
+  end
 end
 
 print(("\n%d checks, %d failed"):format(checks, fails))

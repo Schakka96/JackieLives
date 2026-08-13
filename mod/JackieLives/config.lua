@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.68"
+Config.version = "1.69"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -114,6 +114,13 @@ Config.voice = {
   -- silent. These are the game's own WWise events on his own body, so unlike everything
   -- above they need NO dependency of any kind. A tree with `muteFallback = true` skips them.
   gruntPool = { "ono_jackie_greet", "ono_jackie_curious", "ono_jackie_additional" },
+
+  -- v1.69 HOW OFTEN an unvoiced line gets that vocal effort. It used to be EVERY time, which
+  -- is fine when unvoiced lines are rare and awful once the hub is mostly written text: every
+  -- topic V picked answered with a grunt, and a sound that was meant to say "he's alive" ended
+  -- up saying "the mod's broken". Antonia liked the effect, so it stays — just rarely.
+  -- 1.0 = the old always-grunt behaviour · 0 = never, without emptying gruntPool.
+  gruntChance = 0.15,
 }
 
 -- ---- catch-his-eye smile (v0.53) -----------------------------------------
