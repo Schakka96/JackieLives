@@ -98,6 +98,27 @@ Rules for future sessions:
 - Keep `staging/` in lockstep with `mod/JackieLives/` — the source of truth is `mod/`, staging is the
   packaged copy.
 
+## Reference mods — `../reference_mods/` (read them; never republish them)
+
+Third-party mods downloaded to study live in **`Mods/reference_mods/`** (sibling of this repo), one
+folder per mod, Nexus download name intact. Currently: AMM, Night City Allies, the Panam and Rita
+message mods, **V Voice Framework**. Read them before writing anything custom (ground rule 3) — and
+cite them as `reference_mods/<mod>/<file>:<line>` in code comments.
+
+⚠️ **Never commit or redistribute them.** They are other authors' work and their `.archive` files
+contain CDPR assets. The folder is outside every git repo; `.gitignore` also lists `reference_mods/`
+defensively. We ship nothing from it — the player installs any dependency themselves.
+Full policy: `../GROUND_RULES.md`.
+
+## Voice: the Audioware route is being replaced (2026-08-13)
+
+**Read `docs/research/native_vo_dialogline.md` before touching anything voice-related.** V Voice
+Framework showed that the game will play a *chosen* line by String ID at runtime via a
+`DialogLineEvent` carrying `audioDialogLineEventData.stringId` — which means **no shipped audio, no
+extraction, no Audioware**, and our existing 777 String IDs are already the right numbers. This
+reverses the "impossible" verdict in `TODO.md` (~4412–4455). Untested as of this writing; the doc
+lists the spike that settles it.
+
 ## Files
 
 - `CLAUDE.md` — this file (ground rules + project summary).

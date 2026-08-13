@@ -11,6 +11,38 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## 🔓 2026-08-13 — THE AUDIO PROBLEM IS SOLVED (and the old verdict was WRONG)
+
+**Full write-up: `docs/research/native_vo_dialogline.md`. Read it before any voice work.**
+
+*V Voice Framework* (Nexus 30646, now in `../reference_mods/`) plays a **chosen** voice line by String
+ID at runtime — the thing this file records as impossible at ~4412–4455. The door is in the
+**dialogue** layer, not the audio layer: queue a `DialogLineEvent` whose
+`audioDialogLineEventData.stringId` is the line's CRUID. All the old research probed audio classes
+(`AudioEvent`, `AudioSystem:Play`, `scnVoicesetComponent`) and was right that none of them work; it
+never found `DialogLineEvent` because that class is **native-only** and appears nowhere in the
+redscript dump (re-verified 2026-08-13, zero hits).
+
+**What it kills:** the Audioware dependency · the 940 MB extraction · WolvenKit-for-players ·
+`HOW_TO_ADD_JACKIE_VOICES.txt` · the whole-bank-dies-from-one-missing-wav failure mode · and the
+**audio provisioner** (`GROUND_RULES.md` rule 3b) before it was ever built. Possibly also the
+talking-face flap, if the game's own dialogue path drives visemes — unverified, high value.
+
+**What it costs:** possibly a **redscript** dependency, if CET Lua can't build the nested
+`audioDialogLineEventData` struct. Test that first; it's the whole risk.
+
+**We already have the inputs.** `audioware/JackieLives/index.json` keys ARE the RUIDs (same namespace,
+1.6e18–2.25e18 — the wem stem's trailing hex in decimal). 777 catalogued lines port with no
+re-cataloguing. Durations must be computed once from the scraped `.ogg` and committed.
+
+- [ ] **Windows spike, ~20 lines in the CET console** — one line on Jackie, no subtitle. Settles at
+      once: is it reachable from Lua, does it work on an NPC, do we need `entInjectVoiceTagEvent`.
+- [ ] Duration table (`ffprobe` over `tools/voice-tagger/audio/`, Mac-side).
+- [ ] Wire `speakJackieLine` to prefer the native path; keep Audioware as fallback initially.
+- [ ] Check his mouth for visemes → retire the flap if free.
+- [ ] Then decide what gets deleted (`convert_audio.py`, `rebuild_bank_yml.py`, the bank manifest,
+      the staging `r6/audioware/` tree). Git history is the archive — lean toward deleting.
+
 ## 🆕 v1.65 (2026-08-01) — FAMILIARITY: Jackie opens up over time
 
 **Mac-side (all four test suites green). Awaiting Windows in-game test.**
@@ -4383,6 +4415,10 @@ exact action CName) -> add it to `INTERACT_ACTIONS` in init.lua. These are the n
       system) → **defer**. Achievable now: a focus+interact trigger — same idea as the "Responsive NPCs"
       / "Talk to Me" mods (reference/reuse), scoped to Jackie + our line pool.
     - **Linchpin = playing his VO on demand.** Two routes:
+      > ⚠️ **2026-08-13: Route A was abandoned as impossible, and that was WRONG.** It works — via
+      > `DialogLineEvent`, in the dialogue layer, not the audio layer. Everything below (and every
+      > later "VO by String ID is impossible" note in this file) is superseded by
+      > `docs/research/native_vo_dialogline.md`. We shipped Route B for a year unnecessarily.
         - Route A (light): trigger his *existing* in-game VO by id natively — no audio extraction. Prove first.
         - Route B (reliable): play extracted `.wem` clips via **Audioware** (new dependency) — needs the
           sounddb → WolvenKit extract → convert pipeline.

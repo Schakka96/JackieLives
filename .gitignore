@@ -61,6 +61,12 @@ Jackies_noodles.jpg
 WolvenKit-*/
 WolvenKit*.zip
 
+# --- Other people's mods, kept locally ONLY to read ------------------
+# They live at ../reference_mods/ (outside every repo) — this line is a defensive
+# net in case a copy is ever moved inside. NEVER commit or republish them: they are
+# other authors' work, and their .archive files contain CDPR assets. See ../GROUND_RULES.md.
+reference_mods/
+
 # --- Built game archives (binary assets; keep repo source-only) ------
 *.archive
 
