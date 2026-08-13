@@ -637,5 +637,55 @@ do
         src:match("if c%.pin or hd%.set%[srcOf%[i%]%] then") ~= nil)
 end
 
+-- ---------------------------------------------------------------------------
+-- 9. THE REDSCRIPT SYMBOLS ARE OURS ALONE.
+--
+-- redscript has ONE global symbol table shared by every installed mod. NCLives
+-- and JackieLives ship the same shim under NCLVO_ / JLVO_, so if this file's
+-- symbols carry either of those prefixes, a player with both mods installed
+-- gets "symbol with this name is already defined" and EVERY redscript mod they
+-- own stops working — not just ours. That shipped once, against NCLucy (2026-08-13): the split
+-- renamed the FILE to NCLucyVO.reds and left the NCLVO_ symbols inside it.
+-- Only the symbol names matter. This test reads the real .reds.
+-- ---------------------------------------------------------------------------
+print("\n9. the redscript shim's symbols are unique to this mod")
+do
+  local f = io.open("reds/JackieLivesVO.reds", "r")
+  check("reds/JackieLivesVO.reds is readable", f ~= nil)
+  if f then
+    local src = f:read("a"); f:close()
+
+    -- Strip comments — the header legitimately NAMES the other mods' prefixes.
+    local code = src:gsub("//[^\n]*", "")
+
+    local bad = {}
+    for name in code:gmatch("class%s+([%w_]+)") do bad[#bad + 1] = name end
+    for name in code:gmatch("func%s+([%w_]+)") do bad[#bad + 1] = name end
+
+    local foreign, unprefixed = nil, nil
+    for _, name in ipairs(bad) do
+      if name:match("^NCLVO") or name:match("^LUCYVO") then foreign = name end
+      -- Method names inside the class body (Create/Call) are scoped to the
+      -- class, so only TOP-LEVEL names need the prefix; the class itself and
+      -- every @addMethod global do.
+      if name:match("^%u%u") and not name:match("^JLVO") and name ~= "Create" and name ~= "Call" then
+        unprefixed = name
+      end
+    end
+
+    check("no symbol uses NCLives' or NCLucy's prefix", foreign == nil,
+          tostring(foreign) .. " collides with another mod of ours — rename it JLVO_*.")
+    check("every global symbol is prefixed JLVO", unprefixed == nil, tostring(unprefixed))
+    check("the shim still defines its entry points",
+          code:find("JLVO_Version") ~= nil and code:find("JLVO_Speak") ~= nil)
+
+    -- The Lua side must call the same names the .reds defines.
+    local vf = io.open("mod/JackieLives/vo.lua", "r")
+    local vsrc = vf and vf:read("a") or ""
+    if vf then vf:close() end
+    check("vo.lua calls no other mod's VO_* name", vsrc:find("NCLVO") == nil and vsrc:find("LUCYVO") == nil)
+  end
+end
+
 print(("\n%d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)
