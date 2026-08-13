@@ -61,6 +61,9 @@ Lang      = require("lang")        -- v1.60 GLOBAL (200-cap): localization; Lang
 pcall(function() package.loaded["dialogui"] = nil end)   -- re-read on CET soft-reload, like blaze/lang
 DialogUI  = require("dialogui")    -- v1.63 GLOBAL (200-cap): V's choices in the GAME's own dialogue widget (see dialogui.lua)
 Fam       = require("familiarity") -- v1.65 GLOBAL (200-cap): Jackie opens up over time (see familiarity.lua)
+pcall(function() package.loaded["vo"] = nil; package.loaded["vo_durations"] = nil end)  -- re-read on CET soft-reload, like blaze/lang
+VO        = require("vo")          -- v1.66 GLOBAL (200-cap): the game's OWN voice-over, no shipped audio (see vo.lua)
+Native    = require("native")      -- v1.67 GLOBAL (200-cap): the follower role done the engine's way (see native.lua)
 -- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
 -- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
 -- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
@@ -2112,19 +2115,23 @@ local function ambientGruntTick()
   log("Ambient: '" .. tostring(ev) .. "' (feel-alive grunt).")
 end
 
--- Audioware: play a registered voice clip (his real .ogg) by event name. 2D for the
--- MVP (no positional emitter setup needed); upgrade to PlayOnEmitter later if wanted.
-local function playVoice(name)
+-- v1.66: both of these now go through vo.lua, which prefers the GAME'S OWN voice-over
+-- (no shipped audio, no Audioware) and falls back to an Audioware bank for anyone who
+-- already built one. The signatures are unchanged so the ~20 call sites below didn't
+-- have to move; `name` is still an Audioware-style event name, and "jl_<digits>" is
+-- recognised as a real line id. See vo.lua.
+local function playVoice(name, target, mute)
   if not name or name == "" then return false end
-  local ok = pcall(function() Game.GetAudioSystemExt():Play(CName.new(name)) end)
-  return ok
+  local ok, spoke = pcall(function() return VO.play(name, target, mute) end)
+  return (ok and spoke) or false
 end
 
--- Audioware: real clip length (seconds) so subtitle timing matches the audio. nil if unknown.
-local function voiceDuration(name)
+-- Line length in seconds, for subtitle + flap pacing. Exact where the game told us
+-- (vo_durations.lua), Audioware's own answer when that's the backend, else nil.
+local function voiceDuration(name, text)
   if not name or name == "" then return nil end
   local d
-  pcall(function() d = Game.GetAudioSystemExt():Duration(CName.new(name)) end)
+  pcall(function() d = VO.duration(name, text) end)
   if type(d) == "number" and d > 0 then return d end
   return nil
 end
@@ -2336,16 +2343,20 @@ end
 -- it reads as broken rather than intentional. A tree can now set `muteFallback = true` (Branch.start passes
 -- it through) to be GENUINELY silent except for the lines that carry a real `sfx`.
 local function speakJackieLine(text, sfx, mute)
+  -- v1.66: the line comes out of HIS body now, not out of a 2D bank, so the speaker has to
+  -- be resolved before the audio rather than only for the subtitle. Jackie if he's spawned,
+  -- else the player — on a phone call he isn't in the world yet, and a null speaker makes
+  -- the subtitle band skip the line entirely.
+  local speaker = dialogueTarget() or Game.GetPlayer()
+  -- One call: the game's own VO if we have the line, Audioware if someone has a bank, and a
+  -- vocal effort if neither — VO.play walks that ladder itself, honouring `mute`.
   local spoke = false
-  if sfx then spoke = playVoice(sfx) end
-  if not spoke and not mute then spoke = playVoice("jl_fallback") end
-  -- pace by the real clip length when readable; on the mute build, scale to text length for the
-  -- reunion beats (v0.94), else the old flat 3 s.
-  local secs = voiceDuration(sfx) or (isReunionBeat() and readingSecs(text)) or 3.0
+  pcall(function() spoke = VO.play(sfx, speaker, mute) end)
+  -- pace by the real line length when we know it; on an unvoiced line, scale to text length
+  -- for the reunion beats (v0.94), else the old flat 3 s.
+  local secs = voiceDuration(sfx, text) or (isReunionBeat() and readingSecs(text)) or 3.0
   hideSubtitle()
-  -- carrier entity for the subtitle band: Jackie if spawned, else the player (on a phone
-  -- call Jackie isn't in the world yet, and a null speaker can make the band skip the line).
-  showDialogueText("Jackie", text or "", secs + 0.6, dialogueTarget() or Game.GetPlayer())
+  showDialogueText("Jackie", text or "", secs + 0.6, speaker)
   startFlap(secs)   -- lip-movement: flap his mouth for the line's duration
   log("Branch: Jackie '" .. tostring(text) .. "' sfx=" .. tostring(sfx) .. " spoke=" .. tostring(spoke))
   return secs
@@ -4214,10 +4225,11 @@ local function promoteToCompanion()
     log("promoteToCompanion: Jackie still mounted -> safety dismount.")
     pcall(function() unmountDriver(h, JL.varrival and JL.varrival.bikeHandle) end)
   end
-  local amm = getAMM()
-  pcall(function()
-    if amm and amm.Spawn and amm.Spawn.SetNPCAsCompanion then amm.Spawn:SetNPCAsCompanion(h) end
-  end)
+  -- v1.67: was `amm.Spawn:SetNPCAsCompanion(h)`. That call is AMM's, and AMM's version of it is the
+  -- only reason Jackie has ever followed anyone. Native.setCompanion is the same job done against the
+  -- base game's own API — and, unlike the AMM call, it VERIFIES the result instead of returning
+  -- success either way. Mechanism and the script citations: native.lua's header.
+  Native.setCompanion(h)
   setFriendly(h)
   setVisible(h, true)   -- never leave him invisible
   setNpcCollision(h, true)   -- v0.44: a FOLLOWER must always collide (defensive: clears any idle/dinner
@@ -7550,6 +7562,9 @@ end
 -- rebuilds its own spawn table on load, so its bodies are its problem, not ours — there is nothing for
 -- us to clean up, only references for us to forget.
 function jlResetSessionState(id, why)
+  -- v1.67: the follower-role watchdog counts attempts against ONE body. A new session means a new
+  -- body, so a session that ended mid-retry must not start the next one already out of tries.
+  jlFollowerWatch = { at = -999, tries = 0, ok = false }
   JL.summon   = { spawn = nil, active = false, companionSet = false, walkIn = false }
   JL.idle     = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
                   spawnedAt = 0, dwellUntil = 0, arriveBy = 0, lastReissue = 0,
@@ -7579,6 +7594,63 @@ end
 -- Per-frame guard: keep the saved companion fact in sync with reality, and if the save says Jackie
 -- should be with V but his body is gone (fresh load wiped Lua state, or a load-screen fast-travel
 -- culled him), bring him back. Reuses JL.clock for all timing (no dt needed).
+-- ---------------------------------------------------------------------------
+-- v1.67 FOLLOWER-ROLE WATCHDOG — "he spawns but stands there"
+-- ---------------------------------------------------------------------------
+-- Two independent things make Jackie move: our own AIFollowTargetCommand trail (followTick ->
+-- sendWalkToPlayer) and the ENGINE's follower role. Only the second makes him a real ally — it is
+-- what enemies read to ignore him, what the minimap symbol follows from, and what the follow
+-- behaviour tree needs a FriendlyTarget for. Mechanism + script citations: native.lua's header.
+--
+-- Why a watchdog and not just a better one-shot: AIFollowerRole.OnRoleSet RETURNS SILENTLY if the
+-- puppet can't answer for its attitude agent or if `#player` doesn't resolve yet (aiRole.script:222,
+-- :234). The role is applied the moment we first get a handle — which is the frame the body appeared,
+-- not necessarily the frame it finished attaching. A one-shot that lands in that window leaves a
+-- perfectly healthy-looking Jackie standing still, with nothing in the log.
+--
+-- So: ask the ENGINE whether it agrees, and re-apply until it does. Bounded, and it says so either
+-- way. GLOBAL, not a top-level local: init.lua is at Lua's 200-local cap.
+jlFollowerWatch = { at = -999, tries = 0, ok = false }
+
+function jlFollowerWatchTick()
+  local F = Config.follow or {}
+  if F.roleWatch == false then return end
+  if not (JL.summon.active and JL.summon.companionSet) then
+    jlFollowerWatch.tries, jlFollowerWatch.ok = 0, false
+    return
+  end
+  if JL.varrival and JL.varrival.phase then return end
+  if JL.dinner and JL.dinner.phase then return end
+  if JL.leaving and JL.leaving.phase then return end
+
+  local now = JL.clock or 0
+  if (now - (jlFollowerWatch.at or -999)) < (F.roleWatchInterval or 2.0) then return end
+  jlFollowerWatch.at = now
+
+  local h = resolveJackieHandle(); if not h then return end
+  local role, companion = Native.followerVerdict(h)
+
+  if role and companion then
+    if not jlFollowerWatch.ok then
+      jlFollowerWatch.ok = true
+      log("Follower role: the ENGINE agrees Jackie is a companion (IsPlayerCompanion=true).")
+    end
+    jlFollowerWatch.tries = 0
+    return
+  end
+
+  if (jlFollowerWatch.tries or 0) >= (F.roleWatchTries or 5) then return end
+  jlFollowerWatch.tries = (jlFollowerWatch.tries or 0) + 1
+  log(("Follower role NOT active (role=%s companion=%s) -> re-applying, attempt %d/%d.")
+      :format(tostring(role), tostring(companion), jlFollowerWatch.tries, (F.roleWatchTries or 5)))
+  Native.setCompanion(h)
+  if jlFollowerWatch.tries >= (F.roleWatchTries or 5) then
+    log("Follower role: gave up after " .. tostring(jlFollowerWatch.tries) .. " attempts. He will " ..
+        "still walk (our own follow trail is separate), but he is not a true ally — no enemy " ..
+        "immunity, no minimap symbol. Report this log.")
+  end
+end
+
 function companionPersistTick()
   local P = Config.persist or {}
   if P.enabled == false then return end
@@ -7660,6 +7732,7 @@ registerForEvent("onInit", function()
   -- crashed, on the very next launch — i.e. exactly when you went looking for it. The crashing run now
   -- survives as jackie_debug.log.prev; read its tail for the last [MARK] before the process died.
   Session.bind{ log = log, onNewSession = jlResetSessionState }
+  Native.bind{ log = log }   -- v1.67: the follower-role module logs through us
   Session.rotateLog()
   Session.header(JL.mode)
   pcall(function() math.randomseed((os.time and os.time() or 0)) end)  -- v0.36: random day-bag shuffle
@@ -7702,6 +7775,18 @@ registerForEvent("onInit", function()
       config   = function() return Config.familiarity end,
     }
     log("Familiarity: " .. Fam.status())
+  end)
+
+  -- v1.66 VOICE: same closure rule as above — Config.voice is read live, so mode/context
+  -- changes take effect on reload instead of pinning whatever was loaded first.
+  pcall(function()
+    VO.bind{
+      log         = log,
+      config      = function() return Config.voice end,
+      readingSecs = readingSecs,
+      playEvent   = function(target, event) return playEventOn(target, event, "") end,
+    }
+    log("Voice: " .. VO.status())
   end)
 
   pcall(function()
@@ -8506,12 +8591,9 @@ registerForEvent("onUpdate", function(dt)
     JL.summon.spawn, JL.summon.active, JL.summon.companionSet = nil, false, false
   end
   if JL.summon.spawn and JL.summon.spawn.handle and not JL.summon.companionSet and not JL.summon.walkIn then
-    local amm = getAMM()
-    Session.mark("AMM SetNPCAsCompanion (promote)")
+    Session.mark("promote to companion")
+    Native.setCompanion(JL.summon.spawn.handle)   -- v1.67: was amm.Spawn:SetNPCAsCompanion
     pcall(function()
-      if amm and amm.Spawn and amm.Spawn.SetNPCAsCompanion then
-        amm.Spawn:SetNPCAsCompanion(JL.summon.spawn.handle)
-      end
       local pl, h = Game.GetPlayer(), JL.summon.spawn.handle
       if pl and h and h.GetAttitudeAgent then
         h:GetAttitudeAgent():SetAttitudeTowards(pl:GetAttitudeAgent(), EAIAttitude.AIA_Friendly)
@@ -8580,6 +8662,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(blazeCalmHoldTick) -- v1.51: re-assert holster/uncrouch after the async finale teleport, and verify
   pcall(jlWeaponMirrorTick) -- v1.61: Jackie holsters when V does (after combat he lingered armed too long)
   pcall(catchUpTick)      -- v0.66: settled companion fell behind (fast-travel/ran off) -> snap to V's side
+  pcall(jlFollowerWatchTick)   -- v1.67: the engine must AGREE he's a companion, or he stands still
   pcall(companionPersistTick)  -- v0.72: saved "is companion" but his body is gone (reload / culling FT) -> respawn at V
   pcall(settleTick)       -- v0.82: hide + no-collision for a beat after a respawn-at-V so he doesn't pop/clip in
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)

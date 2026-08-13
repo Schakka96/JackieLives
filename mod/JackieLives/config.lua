@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.65"
+Config.version = "1.67"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -82,6 +82,38 @@ Config.talk = {
 Config.talkLines = {
   common = { "ono_jackie_greet", "ono_jackie_curious", "ono_jackie_phone" },
   rare   = { "ono_jackie_bump", "ono_jackie_additional", "ono_jackie_laughs_soft" },
+}
+
+-- ---- VOICE (v1.66) -------------------------------------------------------
+-- Jackie now speaks with the GAME'S OWN voice-over. Nothing is shipped, nothing is
+-- extracted: `sfx = "jl_<id>"` names a line the player already has on disk, and
+-- r6/scripts/JackieLives/JackieLivesVO.reds hands it to the game's dialogue system.
+-- See vo.lua and docs/research/native_vo_dialogline.md.
+Config.voice = {
+  -- "auto"      prefer the native path, fall back to Audioware if someone has a bank  <- normal
+  -- "native"    native only; never touch Audioware (useful for testing the new path)
+  -- "audioware" the pre-v1.66 behaviour, for comparing the two by ear
+  -- "off"       subtitles only
+  mode = "auto",
+
+  -- locVoiceoverContext as a NUMBER, or -1 for the default (Vo_Context_Combat, the value
+  -- proven to work in a shipped mod). It selects the audio context the line plays in — mix
+  -- and processing, not which line. If dialogue ever sounds wrong (over-processed, ducked
+  -- oddly, wrong bus), this is the knob: try other small integers and listen. It is a number
+  -- rather than a name on purpose — naming an enum member that doesn't exist is a redscript
+  -- COMPILE error, and that breaks every redscript mod the player has, not just ours.
+  context = -1,
+
+  -- Borrow a different character's voice bank for the duration of the line. Jackie doesn't
+  -- need this (he is a real Jackie, and already sounds like himself), so it is off. It is
+  -- how you make ANY body speak ANY character's lines — the mechanism NCLives uses.
+  voiceTag        = "",
+  restoreVoiceTag = "",
+
+  -- When a line has no voiced clip at all, Jackie makes a vocal effort instead of being
+  -- silent. These are the game's own WWise events on his own body, so unlike everything
+  -- above they need NO dependency of any kind. A tree with `muteFallback = true` skips them.
+  gruntPool = { "ono_jackie_greet", "ono_jackie_curious", "ono_jackie_additional" },
 }
 
 -- ---- catch-his-eye smile (v0.53) -----------------------------------------
@@ -700,6 +732,17 @@ Config.weaponMirror = {
 -- raise it or set enabled=false if he ever looks jittery). Only runs while he's a settled companion.
 Config.follow = {
   enabled  = true,
+
+  -- ---- v1.67 FOLLOWER-ROLE WATCHDOG ---------------------------------------------------------------
+  -- Two things make Jackie move and they fail independently: our own AIFollowTargetCommand trail
+  -- (sendWalkToPlayer / followTick) and the ENGINE's follower role (Native.setCompanion). A role
+  -- assigned on the wrong frame fails SILENTLY — AIFollowerRole.OnRoleSet bails without comment if the
+  -- puppet isn't ready to answer for its attitude agent yet (aiRole.script:222). So we don't assign
+  -- once and hope: this re-asks the ENGINE ("do you consider him a companion?") and re-applies until
+  -- it says yes, a bounded number of times. See native.lua's header for the full mechanism.
+  roleWatch         = true,   -- false = assign once at promote, the pre-v1.67 behaviour
+  roleWatchInterval = 2.0,    -- seconds between checks (cheap: two reflection reads)
+  roleWatchTries    = 5,      -- re-applies before we stop and say so in the log
   -- v1.55: this is now only the FALLBACK. The live trail distance comes from jlFollowDistance() — the
   -- "Jackie's follow distance" slider in Esc -> Settings, which drives BOTH this trail and the walk-abreast
   -- radius from one number (Antonia: "the default distance for sprint follow and abreast follow can be the
