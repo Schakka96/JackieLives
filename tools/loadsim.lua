@@ -130,7 +130,15 @@ Vector4      = setmetatable({ new = function(x, y, z, w) return { x = x, y = y, 
                             { __index = function() return stub end })
 -- Native Settings UI is an OPTIONAL dependency, so the DEFAULT install does not have it. Answering
 -- nil here is what exercises the no-Native-Settings path, where flag defaults must still be applied.
-GetMod = function(name) return (tostring(name) == "nativeSettings") and nil or stub end
+-- ⚠️ NOT `(name == "nativeSettings") and nil or stub`. In Lua `a and nil or b` can NEVER yield nil —
+-- the `and` produces nil, and `nil or b` then hands back b. That one-liner (inherited from NCLives,
+-- fixed in both on 2026-08-14) returned a LIVE stub for nativeSettings, so the mod always believed
+-- Native Settings was installed: the no-Native-Settings path this comment claims to exercise was
+-- never once executed, and nsTick latched `done` against a stub that recorded nothing.
+GetMod = function(name)
+  if tostring(name) == "nativeSettings" then return nil end   -- the DEFAULT install: NS is optional
+  return stub
+end
 GetSingleton = function() return stub end
 ModArchiveExists      = function() return false end
 GameDump              = function() return "" end
@@ -384,6 +392,108 @@ if events.onDraw then
   end
 else
   check("an onDraw handler is registered", false, "the developer panel would never appear")
+end
+
+-- ---------------------------------------------------------------------------
+-- 5. The Esc-menu panel, registered through a real Native Settings stub
+-- ---------------------------------------------------------------------------
+-- §3b reads the SOURCE for the addButton arity mistake. This runs the registration for real against
+-- a stub that enforces Native Settings' actual arities, and then PRESSES every control — which is the
+-- half source-reading cannot do.
+--
+-- The stub is deliberately STRICTER than the game: real Native Settings accepts the bad addButton
+-- happily (it stores textSize = <function>, callback = nil) and only dies later, at DRAW time, taking
+-- that subcategory off the menu. Here it throws at registration instead, so the failure lands on the
+-- line that caused it rather than three layers away in a UI we cannot run.
+--
+-- ⚠️ This section is why the dead "Start the search for Jackie" button was found (2026-08-14). It had
+-- been shipping unreachable — the one escape hatch for a player whose questline never started, named
+-- on the welcome card, absent from the menu. Keep the arity asserts fatal.
+print("\n5. the Esc-menu panel registers, completely")
+
+-- `JL` is a file-LOCAL of init.lua, so unlike NCLives (which exposes NCS through NCL.env) there is no
+-- handle on the engine state from out here. We don't need one: nsTick polls every frame and only
+-- latches `done` once it has actually registered or given up after 1200 attempts, so swapping GetMod
+-- and ticking once more is enough to make it register now.
+if events.onUpdate then
+  local reg = { tabs = {}, subs = {}, switches = {}, buttons = {}, floats = {} }
+  local realGetMod = GetMod
+  GetMod = function(name)
+    if tostring(name) ~= "nativeSettings" then return realGetMod(name) end
+    return {
+      pathExists     = function() return false end,
+      addTab         = function(p, l) reg.tabs[#reg.tabs + 1] = { path = p, label = l } end,
+      addSubcategory = function(p, l) reg.subs[#reg.subs + 1] = { path = p, label = l } end,
+      addSwitch = function(p, label, desc, cur, def, cb)
+        assert(type(cb) == "function", "addSwitch without a callback: " .. tostring(label))
+        reg.switches[#reg.switches + 1] = { path = p, label = label, desc = desc, cur = cur, def = def, cb = cb }
+      end,
+      addButton = function(p, label, desc, btn, size, cb)
+        assert(type(size) == "number", "addButton textSize must come BEFORE the callback: " .. tostring(label))
+        assert(type(cb) == "function", "addButton without a callback: " .. tostring(label))
+        reg.buttons[#reg.buttons + 1] = { path = p, label = label, desc = desc, btn = btn, cb = cb }
+      end,
+      addRangeFloat = function(p, label, desc, lo, hi, step, fmt, cur, def, cb)
+        assert(type(cb) == "function", "addRangeFloat without a callback: " .. tostring(label))
+        reg.floats[#reg.floats + 1] = { path = p, label = label, cur = cur, def = def, cb = cb }
+      end,
+    }
+  end
+
+  -- Flipping a switch calls jlSaveSettings, which writes JL_SETTINGS_FILE relative to the CWD — i.e.
+  -- straight into the repo root. Point it at a temp file: a build gate must not leave droppings in
+  -- the working tree, and it must never overwrite the tester's own tuning.
+  local realSettingsFile = JL_SETTINGS_FILE
+  JL_SETTINGS_FILE = os.tmpname()
+
+  _G.print = quiet
+  local okReg, errReg = pcall(events.onUpdate, 0.016)
+  _G.print = realprint
+  GetMod = realGetMod
+
+  check("registration runs without throwing", okReg, errReg)
+  check("the panel registers its tab", #reg.tabs == 1 and reg.tabs[1].path == "/jackielives",
+        "nsTick registered " .. #reg.tabs .. " tabs — the whole panel would be missing")
+
+  local controls = #reg.switches + #reg.buttons + #reg.floats
+  check("...and every control on it survived registration", controls >= 6,
+        ("only %d controls registered — a throw part-way through takes the REST of the panel with it")
+          :format(controls))
+
+  local function findButton(needle)
+    for _, b in ipairs(reg.buttons) do if b.label:lower():find(needle, 1, true) then return b end end
+  end
+
+  -- THE REGRESSION. Both of these were written the same way and only one had its font size.
+  local search = findButton("start the search")
+  check("the 'start the search' button is on the menu", search ~= nil,
+        "this is the manual escape hatch for a questline that never started — it must be reachable")
+  local home = findButton("go home")
+  check("the 'Go Home Jackie' recovery button is on the menu", home ~= nil)
+
+  -- Every button's callback must survive a press. They are recovery actions: a player reaches for
+  -- them when something is already wrong, which is the worst moment for a second error.
+  for _, b in ipairs(reg.buttons) do
+    _G.print = quiet
+    local ok, err = pcall(b.cb)
+    _G.print = realprint
+    check("pressing '" .. b.label .. "' doesn't throw", ok, err)
+  end
+
+  -- ...and every switch must survive being flipped BOTH ways. The off branch is the one that tears
+  -- down whatever the on branch built, and it is the one nobody tries by hand.
+  for _, s in ipairs(reg.switches) do
+    _G.print = quiet
+    local okOn,  errOn  = pcall(s.cb, true)
+    local okOff, errOff = pcall(s.cb, false)
+    _G.print = realprint
+    check("flipping '" .. s.label .. "' both ways doesn't throw", okOn and okOff, errOn or errOff)
+  end
+
+  os.remove(JL_SETTINGS_FILE)
+  JL_SETTINGS_FILE = realSettingsFile
+else
+  check("the settings panel is reachable", false, "no onUpdate handler")
 end
 
 print(("\n%d checks, %d failed"):format(checks, fails))
