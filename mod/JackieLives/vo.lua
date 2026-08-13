@@ -284,7 +284,21 @@ function M.play(sfx, target, mute)
   if pool and #pool > 0 and deps.playEvent and target then
     local ev = pool[math.random(1, #pool)]
     local ok = pcall(function() deps.playEvent(target, ev) end)
-    if ok then return true end
+    -- ⚠️ v1.69.1 SAY IT OUT LOUD, EVERY TIME. "He still grunts on every selection" was impossible to
+    -- act on because a grunt leaves no trace: three different conditions land here and the log
+    -- couldn't tell them apart. Now one line names the cause, so the next report is one grep:
+    --   sfx=nil            -> the line was never given a clip. Look it up (see the SMALL TALK note
+    --                         in config.lua) — since v1.66 "we have no recording" is almost never true.
+    --   sfx=jl_... native  -> the id is real but the native path refused it or isn't installed. If
+    --                         `backend` says grunt, redscript/JackieLivesVO.reds is the problem and
+    --                         EVERY line is grunting, which is the "every time" symptom.
+    -- `chance` is echoed so a stale deploy is obvious: if it says 1.00, the running config.lua
+    -- predates the fix no matter what the repo says.
+    if ok then
+      log(("vocal effort '%s' — sfx=%s backend=%s chance=%.2f")
+          :format(tostring(ev), tostring(sfx), M.backend(target), chance))
+      return true
+    end
   end
   return false
 end
@@ -309,11 +323,16 @@ function M.status(target)
   local b = M.backend(target)
   local n = 0
   if DUR then for _ in pairs(DUR) do n = n + 1 end end
+  -- v1.69.1: gruntChance is in here because "he still grunts every time" is far more often a stale
+  -- deploy than a bug — the .lua files are copied by hand to the game folder, so the repo being
+  -- right says nothing about what's running. If this reads 1.00, the game is on an old config.lua.
+  local gc = cfg().gruntChance
   return "backend=" .. b
       .. " native=" .. tostring(M.hasNative(target))
       .. " audioware=" .. tostring(M.hasAudioware())
       .. " shim=v" .. tostring(state.version or "?")
       .. " durations=" .. tostring(n)
+      .. " gruntChance=" .. string.format("%.2f", gc == nil and 0.15 or gc)
 end
 
 return M

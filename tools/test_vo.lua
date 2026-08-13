@@ -597,5 +597,45 @@ do
         voiced >= 25, tostring(voiced) .. " voiced lines in the hub")
 end
 
+-- ---------------------------------------------------------------------------
+print("\n15. the way OUT of the hub can never be sampled away (v1.69.1)")
+-- ---------------------------------------------------------------------------
+do
+  -- Antonia: "there's now sometimes no dismiss option in the dialogue hub? it must always be the
+  -- bottom option of the hub pls." The hub offers 4–5 of ~20 rows, and the engine-injected
+  -- "Head home, Jackie" / dinner-invite rows were samplable like any topic — so they lost their
+  -- slot most draws. Worse, the CACHED draw dropped them EVERY time: the cache is keyed by table
+  -- identity and these rows are rebuilt on every open, so they could never match. `pin` fixes both.
+  local src = io.open("mod/JackieLives/init.lua", "r"):read("*a")
+  local extras = src:match("local function withCompanionExtras.-\nend")
+  check("withCompanionExtras was found", extras ~= nil)
+
+  -- anchored to the start of a line, so the `pin = true` inside the explanatory comment above the
+  -- function doesn't get counted as a third row
+  local pins = 0
+  for _ in (extras or ""):gmatch("\n%s*pin%s*=%s*true,") do pins = pins + 1 end
+  check("both injected rows are pinned", pins == 2, tostring(pins) .. " pins")
+  check("the dismiss row is pinned",
+        (extras or ""):match('action%s*=%s*"dismiss_walkaway",%s*\n%s*pin%s*=%s*true') ~= nil)
+  check("the dinner-invite row is pinned",
+        (extras or ""):match('action%s*=%s*"start_date",%s*\n%s*pin%s*=%s*true') ~= nil)
+
+  -- Bottom of the hub: the sampler only ever DROPS rows, so authored order decides. Dismiss is
+  -- appended after everything, including the invite, so it is the last row on screen.
+  local iInvite = (extras or ""):find('"start_date"', 1, true)
+  local iBye    = (extras or ""):find("dismiss_walkaway", 1, true)
+  check("dismiss is appended last, so it renders at the bottom",
+        iBye ~= nil and (iInvite == nil or iBye > iInvite))
+  check("the sampler drops rows but never reorders them",
+        src:match("for i, c in ipairs%(shown%) do\n%s*if c%.pin or keep%[i%] then") ~= nil)
+
+  -- And the sampler must genuinely exempt pinned rows from the count, or pinning them would just
+  -- steal slots from the small talk instead.
+  check("pinned rows are excluded from the sample pool",
+        src:match("for i, c in ipairs%(shown%) do if not c%.pin then free%[#free %+ 1%] = i end end") ~= nil)
+  check("...and are re-added on a cached draw",
+        src:match("if c%.pin or hd%.set%[srcOf%[i%]%] then") ~= nil)
+end
+
 print(("\n%d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)

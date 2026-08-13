@@ -2688,18 +2688,36 @@ local function withCompanionExtras(choices)
   if not (t and t.nodes and bstate.node == t.nodes[t.start]) then return choices end
   local out = {}
   for _, c in ipairs(choices or {}) do out[#out + 1] = c end
+  -- ⚠️ v1.69 `pin = true` ON BOTH INJECTED ROWS — Antonia: *"there's now sometimes no dismiss option
+  -- in the dialogue hub? it must always be the bottom option of the hub pls."* Two separate ways the
+  -- hub's `pick` sampler was eating them, and BOTH need the pin:
+  --
+  --   1. They were samplable. Unpinned rows go into the draw, and the hub offers 4–5 of ~20 — so
+  --      "Head home, Jackie" was competing with the small talk for a slot and usually losing. v1.69's
+  --      new topics didn't cause this, they just made the odds bad enough to notice.
+  --   2. The CACHED draw dropped them every single time. A held draw is replayed by looking each row
+  --      up in `hd.set`, which is keyed by TABLE IDENTITY — and these two tables are built fresh on
+  --      every openChoiceMenu call, so they could never match a set recorded on an earlier open. Any
+  --      engine-injected row is invisible to that cache by construction; `pin` is what exempts it.
+  --
+  -- Pinned rows also never count against `want`, so the small talk keeps its full 4–5 slots.
+  -- ORDER: these are appended LAST and the sampler only ever drops rows, never reorders them, so
+  -- dismiss stays the bottom row of the hub — which is what she asked for and where muscle memory
+  -- expects it.
   -- v0.39: dinner invite (gated by dateUnlocked; for now always shown). Starts the date tree.
   if Config.date and dateUnlocked() then
     out[#out + 1] = {
       text   = Config.date.inviteText or "Hey - you hungry?",
       to     = nil,
       action = "start_date",
+      pin    = true,
     }
   end
   out[#out + 1] = {
     text   = (Config.dismiss and Config.dismiss.choiceText) or "Head home, Jackie.",
     to     = nil,
     action = "dismiss_walkaway",
+    pin    = true,
   }
   return out
 end
