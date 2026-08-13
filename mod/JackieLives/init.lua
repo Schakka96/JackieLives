@@ -1489,6 +1489,29 @@ local function dist3(a, b)
   return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
 
+-- v1.72 HOW FAR AWAY IS HE? Returns metres + which body it measured ("summoned" / "idle"), or nil
+-- when nobody is out. This is the readout for the failure everyone eventually hits: the spawn
+-- SUCCEEDS, the log says so, and there is nobody there — because he landed under the map, on a roof,
+-- or back at the venue he was standing in. One number separates the cases at a glance: a few metres
+-- means he is here and something else is wrong; tens of metres means he spawned wrong and is walking
+-- in; hundreds means the spawn point was garbage. (Same readout as NCLives, same reason.)
+--
+-- GLOBAL (200-local cap) and side-effect free: it is called from onDraw, and drawing a panel must
+-- never change the game — so it reads the spawn records directly rather than going through any
+-- handle resolver that re-applies the follower role as a side effect of being asked.
+function jlDistanceToV()
+  local h, which = nil, nil
+  if JL.summon and JL.summon.spawn then h, which = JL.summon.spawn.handle, "summoned" end
+  if not h and JL.idle and JL.idle.spawn then h, which = JL.idle.spawn.handle, "idle" end
+  if not h then return nil end
+  local pp = playerPos(); if not pp then return nil end
+  local hp; pcall(function() hp = h:GetWorldPosition() end)   -- a despawned handle throws; that is "unknown"
+  if not hp then return nil end
+  local okD, d = pcall(dist3, pp, hp)
+  if not okD or type(d) ~= "number" then return nil end
+  return d, which
+end
+
 function capturePosition()   -- global (not local): 200-local cap; see note at top
   local p = Game.GetPlayer(); if not p then log("No player."); return end
   local pos = p:GetWorldPosition()
@@ -9073,6 +9096,20 @@ registerForEvent("onDraw", function()
   if ImGui.Button("Show test picker") then pcall(function() DialogUI.selfTest() end) end
   ImGui.SameLine()
   if ImGui.Button("Close test picker") then pcall(function() DialogUI.hide() end) end
+  -- v1.72 DISTANCE. Colour-coded, because the number needs a scale to be read fast: green is normal
+  -- following range, amber is "on his way / lost the trail", red is a spawn that went somewhere it
+  -- shouldn't have. "no body out" is not an error.
+  do
+    local dV, whichBody = jlDistanceToV()
+    if dV then
+      local r, g, b = 0.5, 0.9, 0.5
+      if dV > 60.0 then r, g, b = 1.0, 0.45, 0.45
+      elseif dV > 15.0 then r, g, b = 1.0, 0.85, 0.4 end
+      ImGui.TextColored(r, g, b, 1.0, ("Distance to V: %.1f m   (%s body)"):format(dV, whichBody))
+    else
+      ImGui.TextDisabled("Distance to V: no body out")
+    end
+  end
   local hhmm = hour and string.format("%02d:%02d", math.floor(hour) % 24, math.floor((hour % 1) * 60)) or "?"
   ImGui.Text("Game time: " .. hhmm ..
              "   Day-type: " .. tostring(JL.day.template or "?"))
