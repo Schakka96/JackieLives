@@ -52,6 +52,12 @@
     3. `ActiveChoiceHubID` == our hub id, or the hub renders with NO selection highlight
        (dialogUI.script:87 — `SetData(hubData, hubData.id == m_activeHubID, ...)`).
 
+  ⚠️ (3) is the one that bites, and it shipped as the intermittent "the choices are there but nothing
+  is highlighted" bug. Blocking the game's writes to it is NOT enough on its own: the id must also be
+  owned in the `UIInteractions.ActiveChoiceHubID` blackboard (the controller re-seeds from there when
+  it re-initialises — interactionUIBase.script:34) AND read back off the controller every frame, so a
+  drift by any route we can't see is repaired rather than merely stared at. publishHub()/repairHub().
+
   And because the game keeps pushing its own (usually empty) dialogue data during normal play,
   we must OVERRIDE the handlers to leave ours alone while it is up. That last part is the bit
   nobody guesses; without it the box appears for a frame or two and vanishes.
@@ -76,7 +82,7 @@
 --]]
 
 local DialogUI = {}
-DialogUI.VERSION = "1.64.1"
+DialogUI.VERSION = "1.64.2"
 
 -- deps injected from init.lua (DialogUI.bind{...})
 local deps = {}
@@ -100,6 +106,7 @@ local S = {
   choices   = nil,     -- the resolved choice list we were handed (for the confirm callback)
   fieldOpen = nil,     -- resolved property name for m_AreDialogsOpen (see resolveFields)
   fieldScroll = nil,   -- ...and for m_dialogIsScrollable
+  fieldHub  = nil,     -- ...and for m_activeHubID (nil = unresolved, false = unreadable)
   fieldsTried = false,
   selfPush  = false,   -- re-entrancy flag: our own OnDialogsData call must not be blocked by our override
   consumed  = false,   -- one input per frame
@@ -348,6 +355,116 @@ local function publishIndex(force)
 end
 
 -- ---------------------------------------------------------------------------
+-- Publish WHICH HUB IS ACTIVE. (v1.3.1 — the missing half of publishIndex.)
+--
+-- THE BUG THIS FIXES: "the choices are there, but nothing shows which one I'm on", intermittently,
+-- roughly three opens in four. Only the selection HIGHLIGHT is lost; the rows themselves are fine.
+-- (Reported against NCLucy on 2026-08-14; the same file ships in NCLives and JackieLives.)
+--
+-- The widget decides that per hub, in one expression (dialogUI.script:87):
+--     currentItem.SetData( hubData, hubData.id == m_activeHubID, m_selectedIndex, ... )
+-- `isSelected` false makes every row in the hub paint unselected (dialogUI.script:328 —
+-- `SetSelected( m_isSelected && m_selectedInd == i )`), which is EXACTLY the reported symptom: the
+-- text is ours, the highlight is gone. So the whole bug is `m_activeHubID` drifting off our id.
+--
+-- Three pieces of controller state have to stay ours while the box is up, and until now they were
+-- defended very unevenly:
+--     m_data          two Overrides (OnDialogsData + UpdateDialogsData) AND both push routes.
+--     m_selectedIndex an Override, PLUS this blackboard write every frame.
+--     m_activeHubID   an Override, and a single direct call at open. Nothing else.  <-- the leak
+--
+-- Why the Override alone is not enough. `UIInteractions.ActiveChoiceHubID` is a real blackboard
+-- field written NATIVELY by the interaction system — no script in the game writes it, so it moves
+-- whenever the world's interactions change: a car, a door, a vendor, an NPC walking past, or our own
+-- "[F] Talk" prompt going away as the conversation opens. Blocking the callback stops the controller
+-- being updated, but it leaves the BLACKBOARD holding a foreign id — and the base controller re-seeds
+-- itself straight from the blackboard on every re-initialise:
+--     interactionUIBase.script:34   OnDialogsActivateHub( bb.GetInt( ActiveChoiceHubID ) )
+-- The HUD re-initialises far more often than it looks (menu open/close, HUD rebuilds, scene and
+-- camera transitions), and each one reloads that field. Whether it happens during any given
+-- conversation is a coin toss, which fits an intermittent bug that never reproduced on a quiet test.
+--
+-- So: stop treating the blackboard as something to defend against and write it, exactly like
+-- SelectedIndex. `SetInt` only signals on a real change, so the steady state costs nothing and the
+-- widget's selection animation does NOT re-run every frame (the pulse that keeps the heartbeat
+-- re-push switched off).
+--
+-- ⚠️ HONESTY, because the next person will want to know how sure we were: this is the mechanism the
+-- evidence FITS, not one that was caught in the act. tools/test_dialogui.lua shows that the scripted
+-- re-seed is in fact already stopped by guard 3, which means some other, unobservable route reached
+-- the player — native code, or a window where `S.shown` was false. That is exactly why this write is
+-- paired with repairHub() below, which fixes the drift whatever caused it and LOGS it. If the
+-- highlight ever fails again, the log will finally name the route.
+-- ---------------------------------------------------------------------------
+local function publishHub()
+  pcall(function()
+    local defs = GetAllBlackboardDefs()
+    local bb   = Game.GetBlackboardSystem():Get(defs.UIInteractions)
+    if bb then bb:SetInt(defs.UIInteractions.ActiveChoiceHubID, S.hubId) end
+  end)
+end
+
+-- ---------------------------------------------------------------------------
+-- ...and the belt to that pair of braces: WATCH `m_activeHubID` AND REPAIR IT.
+--
+-- Owning the blackboard closes the re-seed route, and the Override closes the scripted route. What
+-- neither can close is a write we never see — native code, or a path that lands while `S.shown` is
+-- briefly false. Since the symptom is silent (a highlight that simply isn't there) and the state is
+-- one integer, the honest defence is to READ it back every frame and put it right when it is wrong.
+--
+-- Same trick as resolveFields(): CET's spelling of a protected/private field has moved between
+-- builds, so resolve it empirically — whichever name reads back a number is the real one — and if
+-- neither does, this whole check disables itself and we rely on the two guards above.
+--
+-- Repair is conditional, and that matters: re-activating the hub unconditionally would re-run
+-- DialogHubLogicController's selection animation every single frame (dialogUI.script:334
+-- `AnimateSelection()`), which is the visible pulse that keeps the heartbeat re-push switched off.
+-- Only a wrong value costs anything.
+-- ---------------------------------------------------------------------------
+local function readHubField(ctrl)
+  if S.fieldHub == false then return nil end
+  if S.fieldHub == nil then
+    S.fieldHub = false
+    for _, n in ipairs({ "m_activeHubID", "activeHubID" }) do
+      local ok, v = pcall(function() return ctrl[n] end)
+      if ok and type(v) == "number" then S.fieldHub = n; break end
+    end
+    log("active-hub field resolved: " .. tostring(S.fieldHub) ..
+        (S.fieldHub and "" or "  <- not readable; running on the guards alone"))
+  end
+  local ok, v = pcall(function() return ctrl[S.fieldHub] end)
+  return ok and type(v) == "number" and v or nil
+end
+
+local function repairHub()
+  local ctrl = S.ctrl
+  if not ctrl then return end
+  local live = readHubField(ctrl)
+  if live == nil or live == S.hubId then return end
+  -- Loud on purpose: this line is the proof of WHAT moves the id, which four days of reading the
+  -- decompiled scripts could not settle. If a bug report ever shows the highlight failing again,
+  -- the log now says whether the id drifted and to what.
+  log("active hub drifted to " .. tostring(live) .. " while our box was up — restoring " ..
+      tostring(S.hubId) .. ". (This is the highlight bug; please send the log.)")
+  publishHub()
+  pcall(function() ctrl:OnDialogsActivateHub(S.hubId) end)
+end
+
+-- Hand the field back when we close. Only if it is still OURS: on the preempt path a real
+-- conversation is opening in the same breath, and stomping its hub id with -1 would break the
+-- game's own highlight — the very bug we are fixing, aimed at the base game.
+local function unpublishHub()
+  pcall(function()
+    local defs = GetAllBlackboardDefs()
+    local bb   = Game.GetBlackboardSystem():Get(defs.UIInteractions)
+    if not bb then return end
+    if bb:GetInt(defs.UIInteractions.ActiveChoiceHubID) == S.hubId then
+      bb:SetInt(defs.UIInteractions.ActiveChoiceHubID, -1)
+    end
+  end)
+end
+
+-- ---------------------------------------------------------------------------
 -- CONTROLLER CAPTURE
 -- ---------------------------------------------------------------------------
 -- `InteractionUIBase` is ABSTRACT and has several subclasses (the interactions hub, the looting
@@ -409,7 +526,9 @@ function DialogUI.init()
   end) then overrides = overrides + 1 end
 
   -- 3) Keep OUR hub the active one — the active id is what gives the list its selection highlight
-  --    (dialogUI.script:87).
+  --    (dialogUI.script:87). NOTE this guard is necessary but NOT sufficient on its own: it stops
+  --    the controller being updated, but the blackboard behind it keeps the foreign id and re-seeds
+  --    the controller on the next re-initialise. publishHub() in tick() is the other half.
   if pcall(function()
     Override("dialogWidgetGameController", "OnDialogsActivateHub", function(this, id, wrapped)
       capture(this)
@@ -579,6 +698,21 @@ function DialogUI.show(title, choices, onConfirm)
 
   -- Order matters: select row 0 and activate OUR hub, then push the data. (Activating first means
   -- the very first paint already has the highlight, so the box never flashes up unselected.)
+  -- Both go out TWICE, by design: straight into the controller so this frame is already right, and
+  -- into the blackboard so the controller re-seeds from OUR values if it re-initialises later.
+  -- PROBE (v1.3.1): what the interaction system had parked in the field before we took it. A value
+  -- other than -1 is the highlight bug's fingerprint — that id would have come back on the next
+  -- re-seed and un-highlighted the box. Logged at every open so the fix can be confirmed from the
+  -- log rather than by squinting at the screen.
+  pcall(function()
+    local defs = GetAllBlackboardDefs()
+    local bb   = Game.GetBlackboardSystem():Get(defs.UIInteractions)
+    local was  = bb and bb:GetInt(defs.UIInteractions.ActiveChoiceHubID)
+    if was ~= nil and was ~= S.hubId then
+      log("hub id was " .. tostring(was) .. " (not ours) — taking it. Highlight would have been lost on a re-seed.")
+    end
+  end)
+  publishHub()
   pcall(function() S.ctrl:OnDialogsSelectIndex(0) end)
   pcall(function() S.ctrl:OnDialogsActivateHub(S.hubId) end)
 
@@ -608,6 +742,7 @@ function DialogUI.hide(keepGuards)
   S.shown = false                     -- drop the guards first, or our own empty push gets swallowed
   if not keepGuards then pushHubs({}) end
   pcall(function() if S.ctrl then S.ctrl:OnDialogsActivateHub(-1) end end)
+  unpublishHub()                      -- ...and in the blackboard too, unless someone else took it
   S.sel, S.count, S.choices, S.onConfirm = 0, 0, nil, nil
   if OPT.noCombat then
     pcall(function() StatusEffectHelper.RemoveStatusEffect(Game.GetPlayer(), "GameplayRestriction.NoCombat") end)
@@ -709,6 +844,8 @@ function DialogUI.tick(now)
   end
 
   publishIndex(false)
+  publishHub()          -- v1.3.1: re-take the hub id the moment the interaction system moves it
+  repairHub()           -- ...and put the controller right if something moved it anyway
 
   -- Safety net, active only when one of the four guards failed to register (see DialogUI.init).
   if S.reassert and OPT.reassert > 0 and (now or 0) - S.lastPush >= OPT.reassert then

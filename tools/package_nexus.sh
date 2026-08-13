@@ -56,6 +56,72 @@ else
   echo "⚠️  python3 not found — SKIPPING the translation drift check."
 fi
 
+# --- staging must match mod/JackieLives ----------------------------------------------------------
+# ⚠️ THE BUG THIS CLOSES (2026-08-14). This script had NO sync and NO drift check: it zipped whatever
+# happened to be sitting in staging/, and staging is a hand-maintained COPY of mod/JackieLives. So it
+# rots silently, and a zip built from rotted staging ships old code that passed every test you just
+# ran on mod/ — the tests read mod/, the zip carries staging/.
+#
+# Not hypothetical: v1.69.1 was cut and handed over as "the dialogue-highlight fix", and its
+# staging/dialogui.lua was 141 lines behind mod/. The zip did not contain the fix it was named after.
+# (NCLucy's script already had this guard, and its header says the same thing happened there at v1.3.)
+#
+# So staging is verified file by file, and `--sync` fixes it rather than just complaining. mod/ is the
+# source of truth; staging is only ever a copy of it.
+SYNC=0
+[ "${1:-}" = "--sync" ] && SYNC=1
+
+CET_DIR="$STAGING/bin/x64/plugins/cyber_engine_tweaks/mods/JackieLives"
+[ -f "$CET_DIR/init.lua" ] || { echo "❌ $CET_DIR/init.lua is missing."; exit 1; }
+
+echo "Checking staging/ against mod/JackieLives..."
+drift=0
+for src in mod/JackieLives/*.lua mod/JackieLives/README.md; do
+  [ -e "$src" ] || continue
+  f="$(basename "$src")"
+  if [ "$SYNC" -eq 1 ]; then cp "$src" "$CET_DIR/$f"; continue; fi
+  if [ ! -f "$CET_DIR/$f" ]; then echo "   ❌ staging is MISSING $f"; drift=1; continue; fi
+  diff -q "$src" "$CET_DIR/$f" >/dev/null 2>&1 || { echo "   ❌ staging's $f is out of date"; drift=1; }
+done
+# A .lua in staging with no counterpart in mod/ was deleted or renamed and left behind — CET would
+# still load it, so it fails the build rather than shipping as a ghost.
+for stale in "$CET_DIR"/*.lua; do
+  [ -e "$stale" ] || continue
+  f="$(basename "$stale")"
+  [ -f "mod/JackieLives/$f" ] || { echo "   ❌ staging has an ORPHAN $f (not in mod/JackieLives — delete it)"; drift=1; }
+done
+
+# ⚠️ NEVER SHIP A .txt FROM THE CET FOLDER. JackieLives writes the player's own state next to
+# init.lua (jl_settings.txt and friends). Shipping one would overwrite their tuning on update and look
+# exactly like "the update broke the mod". The sync loop only copies *.lua and README.md, so this can
+# only happen by hand or by running a tool from the wrong directory — which has happened before.
+for stray in "$CET_DIR"/*.txt "$CET_DIR"/*.log "$CET_DIR"/*.log.prev; do
+  [ -e "$stray" ] || continue
+  echo "   ❌ staging contains PLAYER STATE: $(basename "$stray") — shipping it would overwrite the"
+  echo "      player's own settings on update. Delete it from $CET_DIR and re-run."
+  drift=1
+done
+
+# The redscript shim is a source file too, and it drifts the same way.
+if [ -f "reds/JackieLivesVO.reds" ]; then
+  mkdir -p "$STAGING/r6/scripts/JackieLives"
+  if [ "$SYNC" -eq 1 ]; then
+    cp reds/*.reds "$STAGING/r6/scripts/JackieLives/"
+  elif ! diff -q reds/JackieLivesVO.reds "$STAGING/r6/scripts/JackieLives/JackieLivesVO.reds" >/dev/null 2>&1; then
+    echo "   ❌ staging's JackieLivesVO.reds is out of date"; drift=1
+  fi
+fi
+
+if [ "$SYNC" -eq 1 ]; then
+  echo "   ✅ staging synced from mod/JackieLives"
+elif [ "$drift" -ne 0 ]; then
+  echo
+  echo "   staging/ is out of sync. Re-run as:  ./tools/package_nexus.sh --sync"
+  exit 1
+else
+  echo "   ✅ staging matches the mod source"
+fi
+
 # --- the fomod version must match Config.version (Vortex shows this) ----------------------------
 FOMOD_VER="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$STAGING/fomod/info.xml" | head -1)"
 if [ "$FOMOD_VER" != "$VERSION" ]; then

@@ -169,6 +169,63 @@ game. Fix with `tools/lang_extract.py` before the next release.
 
 ---
 
+## 🧪 v1.69.2 — JACKIE GETS THE HARNESS THE OTHER TWO HAD (2026-08-14)
+
+Antonia asked what Jackie could learn from NCLives and NCLucy. The answer turned out to be one
+missing tool, and the tool immediately found a shipped bug.
+
+### 🔴 FIXED — the "Start the search for Jackie" button was never on the Esc menu
+
+`ns.addButton` takes `textSize` **before** the callback. That button didn't pass one, so Native
+Settings stored `textSize = <function>`, `callback = nil`, and died at DRAW time — taking the whole
+**"The search for Jackie"** subcategory off the menu with it. Nothing complains at registration; it
+looks perfectly fine in the source.
+
+That button is the v1.56 manual escape hatch for a player whose questline never started, and it is
+named on the welcome card. It has been unreachable. **The identical bug hit NCLives twice and was
+fixed there months ago — nobody carried it back.** That is the whole cost of three repos sharing an
+engine, in one line of code.
+
+### `tools/loadsim.lua`, ported from NCLives — 54 checks
+
+The only check that RUNS the engine. Everything else in `tools/` proves one subsystem in isolation;
+nothing loaded `init.lua`. Now: stub CET → load for real → `onInit` → press every hotkey **twice**
+(the second press takes the toggle-off branch) → 60 `onUpdate` ticks → overlay + shutdown → draw the
+dev panel with every header forced open → register the Esc menu against a strict Native Settings stub
+and press every control → **drive a whole phone call** to an open choice menu, move the highlight and
+confirm a row.
+
+Plus three static scans, each pinning a bug class that has already cost a release somewhere:
+
+| scan | catches |
+|---|---|
+| §3 forward references | a call to a file-`local` from above its declaration — a nil GLOBAL at runtime (NCLives' v0.9.2 total no-spawn) |
+| §3b `addButton` arity | the bug above |
+| §3c 200-local headroom | **19 slots spare.** Measured by asking the compiler, not by counting `^local` — that estimate said 221/200 for a file that compiles |
+
+### Two more things it found on the way
+
+- **The harness's own `GetMod` stub could never return nil.** `(name == "nativeSettings") and nil or
+  stub` always yields the stub, because `nil or b` is `b`. So the no-Native-Settings path all three
+  harnesses claim to exercise had never run once. Fixed in all three.
+- **The stub dialogue controller didn't expose `m_activeHubID`**, so the highlight repair shipped
+  earlier the same day was silently disabling itself in every offline run. Fixed in all three.
+
+### Carried back from NCLives v0.9.10
+
+`openChoiceMenu` now logs the **rows**, not just how many: `menu open (3 choices) [1.Got a gig. You
+in? | 2.Just checkin' in on you. | 3.Never mind.]`. A menu built wrong read identically to a correct
+one before, and the log is all a bug report can carry.
+
+### Not ported, deliberately
+- **NCLives' "the dead vehicle-arrivals switch is gone" check** — that switch is dead *there* because
+  NCLives forces `arrivalMethod = "foot"`. Here bike is the default and `JL.disableVehicleArrivals`
+  genuinely gates it. Live toggle; left alone.
+- **V's own voice.** Jackie's shim is v2 and has no `SpeakAsPlayer` at all, so V never speaks her
+  lines here. NCLives is on v4 with a gender switch. That is a feature port with content behind it,
+  not a hotfix — open.
+
+
 ## 🔴 FIXED — "the choices show, but nothing says which one I'm on" (JackieLives, bug report 2026-08-14)
 
 **Symptom:** the dialogue box opens with the right rows, but **no selection highlight** — roughly

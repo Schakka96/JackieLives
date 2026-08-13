@@ -2911,7 +2911,14 @@ local function openChoiceMenu(choices, title, node)
   end
   bstate.pickerTries = nil
   menu.shown, Branch.open = true, true
-  log("Branch: menu open (" .. tostring(#shown) .. " choices). Arrows/scroll=move, F=select.")
+  -- Log the ROWS, not just how many (ported from NCLives v0.9.10). "menu open (5 choices)" said
+  -- nothing about WHICH rows, so a menu that was built wrong — topics at the top level, a sign-off
+  -- sorted under the injected send-off, a gated choice that leaked — looked identical in the log to
+  -- a correct one. The rows are the part a bug report actually needs.
+  local rows = {}
+  for i, c in ipairs(shown) do rows[i] = i .. "." .. tostring(c.text) end
+  log("Branch: menu open (" .. tostring(#shown) .. " choices) [" .. table.concat(rows, " | ")
+      .. "]. Arrows/scroll=move, F=select.")
 end
 
 local function closeChoiceMenu()
@@ -6995,7 +7002,8 @@ local function nsTick()
       "Use this if Jackie's questline never started for you. Normally Vik tells you himself when you next " ..
       "visit his clinic — but only once the heist is behind you. If you're past the heist and nothing has " ..
       "happened at Vik's, press this to start the search by hand.",
-      "Start",
+      "Start",     -- button text
+      18,          -- font size (Native Settings' addButton takes textSize BEFORE the callback)
       function()
         local started = false
         pcall(function() started = Retrieval.startSearch() end)
