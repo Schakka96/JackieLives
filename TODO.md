@@ -11,6 +11,67 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## ✅ v1.68 — AMM IS OPTIONAL, AND STAYS SUPPORTED (2026-08-13)
+
+Reported: *"when I try to summon him I get an error, AMM spawn module not available"*. Correct — v1.67
+ported the follower ROLE but not the SPAWN, so without AMM Jackie could not be summoned at all.
+
+`Native.spawn` is ported from NCLives v1.64. AMM's own `Spawn:SpawnNPC` is just
+`DynamicEntitySystem:CreateEntity` 1 m in front of V (`Modules/spawn.lua:582`), so this is the same
+spawn minus the dependency — with the appearance on the spec rather than applied afterwards through
+`ChangeAppearanceTo`, which is the better order (no window where the body wears the wrong clothes).
+
+### AMM is kept, not replaced — Antonia's call, and the right one
+*"I want to keep the AMM alternative for the players, toggleable via an Esc mod menu toggle, so people
+can continue using the old version if they already have AMM installed."*
+
+**Esc → Settings → JackieLives → Compatibility → "Use AMM for spawning."** Default OFF (native).
+Someone already running AMM with a Jackie who behaves the way they expect should not be moved onto a
+different code path by an update they didn't ask for.
+
+* `jlUseAMM()` answers true only if the player asked for AMM **and** AMM is actually present, so the
+  switch can never strand someone who enables it and later uninstalls AMM. It says so once — not once
+  per frame.
+* `jlMakeCompanion()` routes the follower role the same way, and falls back to the native role if
+  AMM's `SetNPCAsCompanion` is missing (an AMM version bump would otherwise land as "he spawns but
+  stands still", the v1.67 bug arriving through a different door).
+* The watchdog verifies the result **on either backend** — so a backend that quietly fails to apply
+  the role is caught rather than shipped.
+* Persisted as `useAMM` in `jl_settings.txt`.
+
+### The traps NCLives already paid for, headed off here
+Porting the spawn changes the shape of the spawn record from AMM's object to `{ id = <EntityID>,
+handle = nil }`, and two things downstream assumed AMM would fill that handle in:
+
+1. **The promote block** read `JL.summon.spawn.handle` directly. Left alone, the handle stays nil, the
+   block never fires, `companionSet` stays false and `companionPersistTick` respawns him every few
+   seconds forever. **That is exactly what shipped as NCLives v1.64.** It now calls
+   `resolveJackieHandle()` itself.
+2. **The respawn paths** (`vehicleArrivalFootFallback`'s two fallbacks) set
+   `companionSet = (spawn ~= nil)` and never called `promoteToCompanion()`, because AMM applied the
+   role at spawn via `userSettings.spawnAsCompanion`. The flag now rides on the spawn record as
+   `companionFlag` and is cashed in at `resolveJackieHandle()`, the one chokepoint every path shares.
+3. `companionPersistTick`'s `amm.Spawn.NewSpawn` gate is gone — without AMM it returned every tick, so
+   a culled or fast-travel-lost Jackie was never brought back.
+
+### Tests
+* `tools/test_spawn_backend.lua` — 11 checks on the switch, extracted from the shipped init.lua
+  (like `test_walk_gates.lua`) so it can't drift. The cell that matters is **"player chose AMM, AMM is
+  gone"**: answer that wrong and the mod is unsummonable again, which is the bug this version fixes.
+* `tools/test_follower.lua` — now 21, covering `Native.spawn` including the TABLE-appearance rejection
+  (the v1.43 outfit bug one layer down: an unknown appearance name is a silent no-op).
+
+### Still to verify in game
+Summon with AMM uninstalled — he should arrive, follow and fight. Then flip the Compatibility switch
+ON with AMM installed and re-summon: same behaviour, AMM's spawn. Then a load-from-save with him out,
+watching for the respawn loop that this shape of change caused in NCLives.
+
+⚠️ `staging/` is still blocked by translation drift (9 languages, 71 strings each, from the v1.66 VO
+and familiarity text). That stops the **Nexus zip** only; `deploy.bat` copies `mod/` straight into the
+game. Fix with `tools/lang_extract.py` before the next release.
+
+---
+
 ## ✅ v1.67 — THE FOLLOWER ROLE IS OURS NOW, NOT AMM'S (2026-08-13)
 
 Ported from NCLives v1.65, where it was written to fix "AMM-free companions spawn but stay planted".

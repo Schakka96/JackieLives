@@ -9,16 +9,20 @@ Badlands, and a reunion brings him home. Only then does the rest unlock: a daily
 Heywood haunts, branching voiced dialogue on **[F]**, calling him onto **side jobs** (never the main
 plot), dinner outings, and a companion who walks at your side and rides along when you take a bike.
 
-Spawning and combat AI are delegated to **AppearanceMenuMod (AMM)**; this mod owns the story, schedule,
-dialogue and companion logic.
+Since v1.68 the mod spawns Jackie itself, using the base game — **AppearanceMenuMod is no longer
+required**. If you already run AMM and would rather keep the old behaviour, there is a switch for it:
+Esc → Settings → JackieLives → Compatibility → *Use AMM for spawning*.
 
 ## Requirements
 
 **Core (required — the mod won't run without these):**
 - **RED4ext** — native plugin loader that Codeware and Audioware sit on.
 - Cyber Engine Tweaks (**1.18.1+** — required by Native Settings UI)
-- AppearanceMenuMod (AMM)
 - Codeware
+
+**Optional:**
+- **AppearanceMenuMod (AMM)** — adds the sit/lean poses at venues, and lets you switch the spawn back
+  to AMM's own (Esc → Settings → JackieLives → Compatibility). Nothing breaks without it.
 
 **For Jackie's real voice (optional, but it's the whole point):**
 - **redscript** — and that's it. Jackie speaks in his actual voice, using the recordings already in
@@ -158,8 +162,9 @@ window names the common failures:
 
 | Message | Means |
 |---|---|
-| `AMM Spawn module not available` | AMM isn't installed or didn't load |
-| `Jackie record not found` | AMM's character database didn't load properly |
+| `Summon failed: Jackie record not found` | Jackie's character record didn't resolve — usually a mod-load-order problem, or TweakDB not ready yet. Wait for the game to settle and try again. |
+| `Spawn backend: AMM is selected but not installed` | The Compatibility switch is on but AMM isn't there. Harmless — the mod uses its own spawn instead. Turn the switch off to silence it. |
+| `Follower role NOT active … re-applying` | The engine hadn't finished attaching Jackie's body yet. It retries; if it gives up after 5 tries, that log line is what to report. |
 | `…not found after retries` | The `nativeSettings` folder is missing or misnamed (see Requirements) |
 
 - **He's silent.** Check that `r6\scripts\JackieLives\JackieLivesVO.reds` is in your game folder — if

@@ -145,6 +145,41 @@ local broken = { GetAIControllerComponent = function() return nil end }
 local okCall = pcall(Native.setCompanion, broken)
 check("a handle with no AI controller degrades instead of throwing", okCall)
 
+-- ---------------------------------------------------------------------------
+-- SPAWN (v1.68 — ported from NCLives v1.64)
+-- ---------------------------------------------------------------------------
+-- Before v1.68, summoning without AMM failed with "AMM Spawn module not available". AMM's own
+-- SpawnNPC is just DynamicEntitySystem:CreateEntity 1 m in front of V (Modules/spawn.lua:582), so
+-- this is the same spawn without the dependency.
+print("\nSPAWN")
+
+local created = nil
+DynamicEntitySpec = { new = function() return {} end }
+EulerAngles = { new = function() return { ToQuat = function() return "quat" end } end }
+CName = { new = function(n) return n end }
+Vector4 = { new = function(x, y, z, w) return { x = x, y = y, z = z, w = w } end }
+Game.GetDynamicEntitySystem = function()
+  return { CreateEntity = function(_, spec) created = spec; return "entity-id-1" end,
+           DeleteEntity = function() end }
+end
+
+local sp = Native.spawn("Character.Jackie", { x = 1, y = 2, z = 3, w = 1 }, 0.0,
+                        "JackieLives_jackie", "jackie_welles_default")
+check("Native.spawn returns a spawn record", type(sp) == "table" and sp.id ~= nil)
+check("...tagged `native`, so despawn and diagnostics can tell the backends apart", sp.native == true)
+check("...and the appearance rides on the SPEC, not applied afterwards",
+      created and created.appearanceName == "jackie_welles_default",
+      "appearanceName = " .. tostring(created and created.appearanceName))
+check("Native.spawn refuses a record-less call", Native.spawn(nil) == nil)
+
+-- The v1.43 outfit bug, one layer down: AMM silently no-opped on a TABLE appearance and Jackie came
+-- out in the record default. spec.appearanceName does exactly the same thing, so the type is checked.
+created = nil
+Native.spawn("Character.Jackie", { x = 0, y = 0, z = 0, w = 1 }, 0.0, "t", { app = "suit" })
+check("a TABLE appearance is rejected rather than passed to the spec",
+      created and created.appearanceName == "default",
+      "appearanceName = " .. tostring(created and created.appearanceName))
+
 print("")
 print(("%d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)
