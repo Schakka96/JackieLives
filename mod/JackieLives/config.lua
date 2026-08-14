@@ -483,7 +483,12 @@ Config.abreast = {
   angleRight     = 0.85,    -- near-front on V's RIGHT (Antonia's tuned value)
   angleLeft      = 11.25,   -- near-front on V's LEFT  (Antonia's tuned value)
   sideHysteresis = 0.6,     -- m the other side must be closer by before he switches sides (anti-flip-flop)
-  radius         = 3.5,     -- metres from V he holds — FALLBACK only; the live value is jlFollowDistance()
+  -- ⚠️ DEAD KNOB, KEPT ONLY AS THE DOCUMENTED NOMINAL. Nothing reads this: the live radius is
+  -- always jlFollowDistance(), which falls back to Config.followDistanceDefault, not to here.
+  -- It is set to match that default anyway, because a stale 3.5 sitting next to a 1.5 default is
+  -- a trap for whoever next restores a fallback path — they would silently reintroduce the
+  -- wall-clipping gap this was changed to fix (2026-08-14). Change both or neither.
+  radius         = 1.5,     -- m — nominal only; see above
   -- v1.55 FLEXIBLE DISTANCE BAND (Antonia: "the abreast follow should be more flexible on the distance:
   -- anything from 1.2m to 5m is ok"). The old model rebuilt his anchor at EXACTLY `radius` every re-issue,
   -- so any drift in or out was actively corrected — he was forever being tugged back onto one precise ring.
