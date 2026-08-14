@@ -45,6 +45,7 @@ local S = {
   talking   = false,     -- a conversation is running through THEIR ui right now
   node      = nil,
   tree      = nil,
+  key       = nil,       -- roster key of the persona THIS conversation is with
   taken     = nil,       -- `once` ledger for this conversation (mirrors Branch's bstate.taken)
   draw      = nil,       -- sticky hub draws, keyed by node (mirrors NCS.hubDraw)
 }
@@ -66,7 +67,10 @@ function M.bind(t)
     "talkTree",     -- function() -> the active persona's talk tree
     "personaName",  -- function() -> "Lucy"
     "activeKey",    -- function() -> "lucy"
-    "recordIsOurs", -- function(recordOrName) -> bool
+    "personaFor",   -- function(nameOrRecord) -> rosterKey | nil   ⚠️ ANY persona, not just the active one
+    "treeForKey",   -- function(rosterKey) -> that persona's talk tree
+    "nameForKey",   -- function(rosterKey) -> display name
+    "recordIsOurs", -- function(recordOrName) -> bool  (kept for the record-first probe path)
     "famAllows",    -- function(minFam) -> bool
     "famAdd",       -- function(award)
     "endHook",      -- function()  called when the conversation closes (clears prompts etc.)
@@ -185,11 +189,14 @@ function M.probe()
       local nm, mine = npc:GetName(), M.env.personaName and M.env.personaName()
       if nm and mine then byName = tostring(nm):lower():find(tostring(mine):lower(), 1, true) ~= nil end
     end)
-    add(("our condition: record=%s -> %s | name '%s' vs persona '%s' -> %s | VERDICT %s")
-        :format(tostring(rec or "unresolved"), tostring(byRec), npcName,
-                tostring((M.env.personaName and M.env.personaName()) or "?"), tostring(byName),
-                tostring(byRec or byName)))
-    add("(an unresolved record is normal - their npc id may not resolve to an entity; the name is the fallback)")
+    local byRecKey, byNameKey
+    pcall(function() if rec and M.env.personaFor then byRecKey = M.env.personaFor(rec) end end)
+    pcall(function() if M.env.personaFor then byNameKey = M.env.personaFor(npcName) end end)
+    add(("our condition: record=%s -> %s | name '%s' -> %s | VERDICT %s")
+        :format(tostring(rec or "unresolved"), tostring(byRecKey or "no match"),
+                npcName, tostring(byNameKey or "no match"),
+                tostring(byRecKey or byNameKey or "NOT ONE OF OURS")))
+    add("(matched against the WHOLE roster, not the active persona — NCA summons whoever it likes)")
   end
   add("----- END NCA PROBE -----")
   return out
@@ -198,34 +205,42 @@ end
 -- ---------------------------------------------------------------------------
 -- Is this NCA npc the character WE write for?
 -- ---------------------------------------------------------------------------
--- ⚠️ THIS GATE IS THE WHOLE SAFETY STORY. Our row must appear on our persona and on nobody else —
--- NCA users hire all sorts of people, and a "Talk" row that opened Lucy's tree on a random mercenary
--- would be worse than no integration at all. Two signals, strongest first:
---   1. the entity's RECORD, asked through nclRecordIsOurs (the same predicate the rest of the engine
---      uses, so it follows the active persona and the v1.1 TweakXL record automatically);
---   2. the DISPLAY NAME, as a fallback for when the entity can't be resolved from its id.
--- A failure to determine either answers NO. Silence is the safe default here.
-function M.isOurs(npc)
-  if not npc then return false end
-  local ok = false
+-- ⚠️ MATCH THE WHOLE ROSTER, NOT THE ACTIVE PERSONA. This is the design error the probe caught
+-- (2026-08-15): the row asked "is this npc the companion NCLives currently has selected?", so with
+-- Kerry active and Goro summoned through NCA the answer was no, and Talk was hidden on a character
+-- we have a full pack for. The log said it outright — `name 'Goro' vs persona 'Kerry' -> false`.
+--
+-- NCA summons whoever it likes, whenever it likes; it has no idea which persona we consider active
+-- and no reason to care. So the question has to be "is this ANY character we write for?" and the
+-- answer carries the roster KEY, which is then what the conversation runs on. Nothing is switched:
+-- we do NOT call setActive, because that would dismiss whoever the player actually has out.
+--
+-- Still answers NO on any failure — an NCA user hires all sorts of people, and a Talk row opening
+-- somebody else's pack on a random merc is worse than no integration at all.
+function M.personaFor(npc)
+  if not npc then return nil end
+  local key
 
+  -- 1. the entity's RECORD, when it resolves — the strong signal
   pcall(function()
     local id = npc:GetEntityID()
     local ent = id and Game.FindEntityByID(id)
     local rec = ent and ent:GetRecordID()
-    if rec and M.env.recordIsOurs then ok = M.env.recordIsOurs(tostring(rec.value or rec)) and true or false end
+    local str = rec and tostring(rec.value or rec)
+    if str and M.env.personaFor then key = M.env.personaFor(str) end
   end)
-  if ok then return true end
+  if key then return key end
 
+  -- 2. the DISPLAY NAME, as the fallback (their npc ids often do not resolve to an entity)
   pcall(function()
     local nm = npc:GetName()
-    local mine = M.env.personaName and M.env.personaName()
-    if nm and mine and nm ~= "" and mine ~= "" then
-      ok = (tostring(nm):lower():find(tostring(mine):lower(), 1, true) ~= nil)
-    end
+    if nm and nm ~= "" and M.env.personaFor then key = M.env.personaFor(tostring(nm)) end
   end)
-  return ok
+  return key
 end
+
+-- kept as the old name so nothing outside has to change
+function M.isOurs(npc) return M.personaFor(npc) ~= nil end
 
 -- ---------------------------------------------------------------------------
 -- Build the rows for one node of our tree, in THEIR row format.
@@ -255,7 +270,7 @@ local function rowsFor(node)
     local show = true
     if c.cond then local o, r = pcall(c.cond); show = (o and r ~= false) end
     if show and c.minFam and M.env.famAllows then
-      local o, r = pcall(M.env.famAllows, c.minFam); show = (o and r ~= false)
+      local o, r = pcall(M.env.famAllows, c.minFam, S.key); show = (o and r ~= false)
     end
     if show and c.chance then
       local r = 1.0; pcall(function() r = math.random() end); show = (r < c.chance)
@@ -361,7 +376,7 @@ local function renderNode(npc, ui, nodeKey)
       callback = function()
         local c = r.choice
         if c.once then S.taken = S.taken or {}; S.taken[c.once] = true end
-        if c.fam and M.env.famAdd then pcall(M.env.famAdd, c.fam) end
+        if c.fam and M.env.famAdd then pcall(M.env.famAdd, c.fam, S.key) end
         if M.env.sayPlayer and c.text then pcall(M.env.sayPlayer, tostring(c.text)) end
         if c.to then
           -- re-enter their renderer for the next node, exactly as their own 030_social.lua nests
@@ -373,13 +388,16 @@ local function renderNode(npc, ui, nodeKey)
     }
   end
 
-  local title = (M.env.personaName and M.env.personaName()) or "Talk"
+  local title = "Talk"
+  pcall(function()
+    if S.key and M.env.nameForKey then title = M.env.nameForKey(S.key) or title end
+  end)
   local ok = pcall(function() ui:choice(title, entries) end)
   if not ok then log("their ui:choice threw — ending and falling back"); M.stop() end
 end
 
 function M.stop()
-  S.talking, S.node, S.tree, S.taken = false, nil, nil, nil
+  S.talking, S.node, S.tree, S.taken, S.key = false, nil, nil, nil, nil
   if M.env.endHook then pcall(M.env.endHook) end
 end
 
@@ -390,13 +408,18 @@ function M.buildRow()
   return {
     label = "Talk",
     condition = function(npc)
-      local ok, r = pcall(M.isOurs, npc)
-      return ok and r or false
+      local ok, r = pcall(M.personaFor, npc)
+      return (ok and r ~= nil) or false
     end,
     callback = function(npc, ui)
-      local tree = M.env.talkTree and M.env.talkTree()
-      if not tree or not tree.nodes then log("no talk tree for the active persona"); return end
-      S.talking, S.tree, S.taken = true, tree, {}
+      -- the persona is resolved from the NPC, not from whoever we have active
+      local key = M.personaFor(npc)
+      local tree
+      pcall(function() tree = key and M.env.treeForKey and M.env.treeForKey(key) end)
+      if not tree or not tree.nodes then
+        log("no talk tree for '" .. tostring(key or "?") .. "'"); return
+      end
+      S.key, S.talking, S.tree, S.taken = key, true, tree, {}
       renderNode(npc, ui, tree.start)
     end,
   }

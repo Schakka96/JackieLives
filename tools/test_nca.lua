@@ -71,6 +71,15 @@ local TREE = {
   },
 }
 
+local OTHER_TREE = {
+  start = "open",
+  -- a gated row, so famAllows is genuinely exercised WITH the key. Without one, the check below
+  -- reads whatever key the previous conversation left behind and passes on a stale value.
+  nodes = { open = { silent = true, choices = { { text = "Goro topic", to = "g2" },
+                                                { text = "Goro deep",  to = "g2", minFam = 2 } } },
+            g2   = { companion = { text = "As you wish." }, choices = { { text = "Bye." } } } },
+}
+LAST_FAM_KEY = nil
 local famTier = 0
 Allies.bind{
   log          = function() end,
@@ -82,8 +91,20 @@ Allies.bind{
   personaName  = function() return "Jackie" end,
   activeKey    = function() return "jackie" end,
   recordIsOurs = function(r) return tostring(r):find("Jackie", 1, true) ~= nil end,
-  famAllows    = function(minFam) return (minFam or 0) <= famTier end,
-  famAdd       = function(a) famAwards[#famAwards + 1] = a end,
+  -- ⚠️ THE WHOLE ROSTER, not the active persona. This stub carries a SECOND character on purpose:
+  -- the bug the probe caught (2026-08-15) was that the row only appeared for whoever we had active,
+  -- so an NCA-summoned Goro was rejected while Kerry was selected. A one-persona stub could never
+  -- have caught it — it would have passed while testing nothing.
+  personaFor   = function(str)
+    local low = tostring(str or ""):lower()
+    if low:find("jackie") then return "jackie" end
+    if low:find("goro") or low:find("takemura") then return "takemura" end
+    return nil
+  end,
+  treeForKey   = function(key) return (key == "takemura") and OTHER_TREE or TREE end,
+  nameForKey   = function(key) return (key == "takemura") and "Goro" or "Jackie" end,
+  famAllows    = function(minFam, key) LAST_FAM_KEY = key; return (minFam or 0) <= famTier end,
+  famAdd       = function(a, key) famAwards[#famAwards + 1] = a; LAST_FAM_KEY = key end,
   endHook      = function() ended = ended + 1 end,
   now          = function() return CLOCK end,
   hubRefresh   = function() return 10.0, 30.0 end,
@@ -273,6 +294,27 @@ local st = Allies.status()
 check("status() reports the row as present", tostring(st):find("ourRowPresent=true", 1, true) ~= nil, st)
 check("status() reports how many times they rebuilt the list",
       tostring(st):find("reasserts=1", 1, true) ~= nil, st)
+
+print("\n6d. a persona we are NOT currently playing as (the bug the probe caught)")
+-- NCA summons whoever it likes. Ours must appear for ANY roster character and open THAT
+-- character's pack — without switching the active companion, which would dismiss whoever the
+-- player actually has out.
+check("the row shows on another roster persona", ours.condition(fakeNPC("Goro")) == true)
+check("...and still not on a stranger", ours.condition(fakeNPC("Delamain")) == false)
+ours.callback(fakeNPC("Goro"), ui)
+check("...the menu is titled with THAT persona, not the active one", ui.last.title == "Goro", ui.last.title)
+local gl = {}
+for _, r in ipairs(ui.last.rows) do gl[#gl + 1] = r.label end
+check("...and it opened THEIR tree, not ours",
+      table.concat(gl, "|"):find("Goro topic", 1, true) ~= nil, table.concat(gl, "|"))
+for _, r in ipairs(ui.last.rows) do if r.label == "Goro topic" then r.callback() end end
+check("...their line was spoken", spoken[#spoken] == "As you wish.", spoken[#spoken])
+famTier = 3
+ours.callback(fakeNPC("Goro"), ui)
+check("...and familiarity is keyed to THAT persona, not the active one",
+      LAST_FAM_KEY == "takemura", tostring(LAST_FAM_KEY))
+for _, r in ipairs(ui.last.rows) do if r.label == "Goro topic" then r.callback() end end
+famTier = 0
 
 print("\n7. failure modes — the part that actually matters")
 -- their renderer throws

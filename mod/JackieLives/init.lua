@@ -8371,6 +8371,18 @@ registerForEvent("onInit", function()
         local want = tostring(Config.jackieRecord or "Character.Jackie"):lower()
         return tostring(r or ""):lower():find(want, 1, true) ~= nil
       end,
+      -- One companion here, so the roster search is a single compare — but the SHAPE matches the
+      -- other two engines on purpose, so a fix in one ports to all three unchanged.
+      personaFor   = function(s)
+        if type(s) ~= "string" or s == "" then return nil end
+        local low  = s:lower()
+        local nm   = tostring(Config.jackieName or "Jackie"):lower()
+        local rec  = tostring(Config.jackieRecord or "Character.Jackie"):lower()
+        if low:find(nm, 1, true) or low:find(rec, 1, true) then return "jackie" end
+        return nil
+      end,
+      treeForKey   = function() return Config.dialogueTree end,
+      nameForKey   = function() return Config.jackieName or "Jackie" end,
       famAllows    = function(minFam) return Fam and Fam.allows(minFam) end,
       famAdd       = function(award) if Fam then Fam.add("choice", award) end end,
       endHook      = function() pcall(showJackieChoiceBox) end,
