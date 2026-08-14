@@ -48,6 +48,7 @@ end
 
 -- our side
 local spoken, playerSaid, famAwards, ended = {}, {}, {}, 0
+CLOCK = 0
 local TREE = {
   start = "open",
   nodes = {
@@ -59,6 +60,13 @@ local TREE = {
       { text = "Nothing.",                             },                -- no `to` -> ends
     } },
     how  = { companion = { text = "Working." }, choices = { { text = "Fair.", fam = 1 } } },
+    -- a sampled hub: 8 topics, `pick` a range, and an exit pinned via `last`
+    hub  = { silent = true, pick = { 2, 3 }, choices = {
+      { text = "t1", to = "how" }, { text = "t2", to = "how" }, { text = "t3", to = "how" },
+      { text = "t4", to = "how" }, { text = "t5", to = "how" }, { text = "t6", to = "how" },
+      { text = "t7", to = "how" }, { text = "t8", to = "how" },
+      { text = "Nothing.", last = true },
+    } },
     moon = { companion = { text = "It's clean up there." }, choices = { { text = "Yeah." } } },
   },
 }
@@ -77,6 +85,8 @@ Allies.bind{
   famAllows    = function(minFam) return (minFam or 0) <= famTier end,
   famAdd       = function(a) famAwards[#famAwards + 1] = a end,
   endHook      = function() ended = ended + 1 end,
+  now          = function() return CLOCK end,
+  hubRefresh   = function() return 10.0, 30.0 end,
 }
 
 -- ---------------------------------------------------------------------------
@@ -166,6 +176,48 @@ check("...and a NEW conversation offers it again (the ledger is per conversation
       labelSet()["Once only."] ~= nil)
 
 -- ---------------------------------------------------------------------------
+print("\n6b. the `pick` sampler — the thing that makes her feel different each time")
+-- ⚠️ This was shipped unhonoured in the first draft, on the theory that `pick` only existed because
+-- our own box is a fixed-height list and their renderer paginates. Wrong: sampling is CONTENT. A hub
+-- that always shows all thirty topics reads as a menu, and the character stops being surprising.
+TREE.nodes.open.choices = { { text = "Catch up", to = "hub" } }
+local function openHub()
+  ours.callback(fakeNPC("Jackie"), ui)
+  for _, r in ipairs(ui.last.rows) do if r.label == "Catch up" then r.callback() end end
+  local t = {}
+  for _, r in ipairs(ui.last.rows) do t[#t + 1] = r.label end
+  return t
+end
+
+CLOCK = 100
+local first = openHub()
+check("a sampled hub offers a SUBSET, not the wall", #first < 9, #first)
+check("...between 2 and 3 topics plus the pinned exit", #first >= 3 and #first <= 4, #first)
+check("...and the pinned exit is always among them",
+      table.concat(first, "|"):find("Nothing.", 1, true) ~= nil, table.concat(first, "|"))
+
+-- THE STICKY DRAW: reopening must not re-roll, or a player walks the whole pool in one sitting
+CLOCK = 101
+local again = openHub()
+check("reopening inside the cooldown keeps the SAME topics",
+      table.concat(again, "|") == table.concat(first, "|"),
+      table.concat(first, "|") .. "  vs  " .. table.concat(again, "|"))
+
+-- ...and after the cooldown it may move on
+CLOCK = 100000
+local rolls = {}
+for _ = 1, 12 do CLOCK = CLOCK + 1000; rolls[#rolls + 1] = table.concat(openHub(), "|") end
+local distinct = {}
+for _, r in ipairs(rolls) do distinct[r] = true end
+local n = 0; for _ in pairs(distinct) do n = n + 1 end
+check("...but a later visit draws afresh (the hub is not frozen forever)", n > 1, n .. " distinct draws")
+
+-- a node with no `pick` must still show everything
+TREE.nodes.hub.pick = nil
+local all = openHub()
+check("a hub with no `pick` still offers every eligible topic", #all == 9, #all)
+TREE.nodes.hub.pick = { 2, 3 }
+
 print("\n7. failure modes — the part that actually matters")
 -- their renderer throws
 local badUi = { choice = function() error("their UI changed") end }

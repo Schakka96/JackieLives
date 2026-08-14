@@ -46,6 +46,7 @@ local S = {
   node      = nil,
   tree      = nil,
   taken     = nil,       -- `once` ledger for this conversation (mirrors Branch's bstate.taken)
+  draw      = nil,       -- sticky hub draws, keyed by node (mirrors NCS.hubDraw)
 }
 
 M.env = {}
@@ -69,6 +70,8 @@ function M.bind(t)
     "famAllows",    -- function(minFam) -> bool
     "famAdd",       -- function(award)
     "endHook",      -- function()  called when the conversation closes (clears prompts etc.)
+    "now",          -- function() -> seconds (engine clock; drives the sticky hub draw)
+    "hubRefresh",   -- function() -> lo, hi   (Config.dialogue.hubRefreshMin/Max)
   }) do if t[k] ~= nil then M.env[k] = t[k] end end
 end
 
@@ -112,16 +115,27 @@ end
 -- ---------------------------------------------------------------------------
 -- Build the rows for one node of our tree, in THEIR row format.
 -- ---------------------------------------------------------------------------
--- Honours the gating a pack author expects: `cond`, `minFam`, `chance`, `once`, and `textPool`.
+-- Honours the gating a pack author expects: `cond`, `minFam`, `chance`, `once`, `textPool` — and the
+-- node-level `pick` sampler, including its sticky draw.
 --
--- ⚠️ DELIBERATELY NOT HONOURED: the node-level `pick = N` sampler. In our own box a hub shows only
--- 3-5 of its topics because the box is a fixed-height list; NCA's renderer PAGINATES (Application/
--- ui.lua MAX_CHOICES_PER_PAGE), so the reason for sampling doesn't exist there and sampling would
--- just hide writing behind a "next page" the player can already use. The familiarity GATES still
--- apply, so nothing arrives early — this only changes how much of what she's willing to say is
--- visible at once.
+-- ⚠️ `pick` IS CONTENT, NOT A UI CONSTRAINT — I got this wrong first time and shipped it unhonoured.
+-- It reads like a workaround for our box being a fixed-height list, and their renderer paginates, so
+-- it looks safe to drop. It isn't: sampling is what stops a hub of thirty topics reading as a menu,
+-- and what makes the same character feel different on a second visit. Dropping it doesn't reveal
+-- more writing, it flattens the encounter. (Antonia, 2026-08-14: "it also makes interactions with
+-- the character more interesting/surprising".)
+--
+-- Faithful to openChoiceMenu's sampler, because half of it would be worse than none:
+--   • `pin = true` rows ALWAYS show and never count against the quota — the way out of a hub is
+--     pinned, and a sample without it can strand the player in a menu with no exit.
+--   • `last = true` IMPLIES `pin`, same as the engine.
+--   • `pick` may be a RANGE `{lo, hi}`, re-rolled per open, so the menu's SHAPE varies too.
+--   • THE DRAW STICKS for a cooldown. Without this, backing out of a topic and re-entering the hub
+--     re-rolls, and a player can walk the whole pool in one conversation — which defeats both the
+--     sampling and the familiarity pacing it exists to protect. The window runs from the last time
+--     the hub was SEEN, so reopening holds the topics and walking away refreshes them.
 local function rowsFor(node)
-  local rows = {}
+  local elig = {}
   for _, c in ipairs((node and node.choices) or {}) do
     local show = true
     if c.cond then local o, r = pcall(c.cond); show = (o and r ~= false) end
@@ -138,10 +152,65 @@ local function rowsFor(node)
         local o, e = pcall(M.env.pickLine, c.textPool)
         if o and e and e.text then label = e.text end
       end
-      if label and label ~= "" then rows[#rows + 1] = { choice = c, label = tostring(label) } end
+      if label and label ~= "" then
+        elig[#elig + 1] = { choice = c, label = tostring(label), pin = (c.pin or c.last) and true or false }
+      end
     end
   end
-  return rows
+  if not (node and node.pick) or #elig == 0 then return elig end
+
+  -- how many unpinned rows to offer this time
+  local want
+  if type(node.pick) == "table" then
+    local lo = math.floor(tonumber(node.pick[1]) or 1)
+    local hi = math.floor(tonumber(node.pick[2]) or lo)
+    if hi < lo then lo, hi = hi, lo end
+    want = lo
+    pcall(function() want = math.random(lo, hi) end)
+  else
+    want = tonumber(node.pick) and math.floor(tonumber(node.pick)) or nil
+  end
+  want = want and math.max(1, want)
+
+  local now = (M.env.now and M.env.now()) or 0
+  S.draw = S.draw or {}
+  local hd = S.draw[node]
+
+  -- reuse a warm draw
+  if want and hd and hd.set and now < (hd.until_ or 0) then
+    local out, nonPinned = {}, 0
+    for _, e in ipairs(elig) do
+      if e.pin or hd.set[e.choice] then out[#out + 1] = e; if not e.pin then nonPinned = nonPinned + 1 end end
+    end
+    -- only honour it if there is still something to talk about (every cached topic may have been a
+    -- `once` the player has since spent)
+    if nonPinned > 0 then
+      hd.until_ = now + (hd.hold or 20.0)
+      return out
+    end
+  end
+
+  if not want then return elig end
+  local free = {}
+  for i, e in ipairs(elig) do if not e.pin then free[#free + 1] = i end end
+  if #free <= want then return elig end
+
+  for i = #free, 2, -1 do                        -- Fisher-Yates over the index list
+    local j = i; pcall(function() j = math.random(1, i) end)
+    free[i], free[j] = free[j], free[i]
+  end
+  local keep = {}
+  for i = 1, want do keep[free[i]] = true end
+  local out, set = {}, {}
+  for i, e in ipairs(elig) do
+    if e.pin or keep[i] then out[#out + 1] = e; if not e.pin then set[e.choice] = true end end
+  end
+  local lo, hi = 10.0, 30.0
+  if M.env.hubRefresh then pcall(function() lo, hi = M.env.hubRefresh() end) end
+  local hold = lo
+  pcall(function() hold = lo + math.random() * math.max(0, (hi or lo) - lo) end)
+  S.draw[node] = { set = set, until_ = now + hold, hold = hold }
+  return out
 end
 
 -- ---------------------------------------------------------------------------

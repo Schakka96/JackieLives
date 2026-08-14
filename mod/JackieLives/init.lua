@@ -8304,6 +8304,11 @@ registerForEvent("onInit", function()
       famAllows    = function(minFam) return Fam and Fam.allows(minFam) end,
       famAdd       = function(award) if Fam then Fam.add("choice", award) end end,
       endHook      = function() pcall(showJackieChoiceBox) end,
+      now          = function() return JL.clock or 0 end,
+      hubRefresh   = function()
+        local D = Config.dialogue or {}
+        return D.hubRefreshMin or 10.0, D.hubRefreshMax or 30.0
+      end,
     }
   end)
   pcall(jlLoadSeats)       -- v1.1: restore tuned sit coords into Config so they survive a reload (old-S4 fix)
