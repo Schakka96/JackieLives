@@ -2397,8 +2397,8 @@ JL_BIKE_KEPT     = 2   -- V told him she's keeping it -> it stays in her garage
 -- side anchor (while V strolls). Antonia: the two can share a default, ~3-5 m. Clamped to the slider's own
 -- range so a corrupt settings file can't park him 200 m away or inside V. Global (200-local cap).
 function jlFollowDistance()
-  local d = JL.followDistance
-  if type(d) ~= "number" then d = Config.followDistanceDefault or 3.5 end
+  local d = JL.followGap
+  if type(d) ~= "number" then d = Config.followDistanceDefault or 1.5 end
   local lo = Config.followDistanceMin or 1.2
   local hi = Config.followDistanceMax or 8.0
   if d < lo then d = lo elseif d > hi then d = hi end
@@ -2738,6 +2738,9 @@ local function withCompanionExtras(choices)
   end
   out[#out + 1] = {
     text   = (Config.dismiss and Config.dismiss.choiceText) or "Head home, Jackie.",
+    -- v1.70: the send-off is one of V's own recordings now (Config.dismiss.choiceSfx). It is
+    -- the row that ENDS a companion session, so it is heard as often as the greeting is.
+    sfx    = Config.dismiss and Config.dismiss.choiceSfx,
     to     = nil,
     action = "dismiss_walkaway",
     pin    = true,
@@ -2807,7 +2810,18 @@ local function openChoiceMenu(choices, title, node)
       local pool = src.textPool
       if pool and #pool > 0 then
         local i = 1; pcall(function() i = math.random(1, #pool) end)
-        sc.text = pool[i]
+        -- v1.70: a textPool entry may be a plain STRING (as it always was) or a
+        -- { text =, sfx = } row, so V's exit lines can carry one of her own recordings the
+        -- same way a normal choice row does. Both shapes coexist in one pool on purpose —
+        -- most written lines will never have a recording behind them, and a pool should not
+        -- have to be all-or-nothing to gain a voice.
+        local e = pool[i]
+        if type(e) == "table" then
+          sc.text = e.text
+          if e.sfx then sc.sfx = e.sfx end
+        else
+          sc.text = e
+        end
       elseif src.text then
         sc.text = src.text
       end
@@ -3053,6 +3067,67 @@ end
 
 -- act on a choice (idx optional -> highlighted). Shows the player's chosen line as a
 -- subtitle for ~1s, THEN advances to Jackie's reply / ends (handled in branchTick).
+-- ---------------------------------------------------------------------------
+-- v1.70 — V SPEAKS TOO. A choice row (or a callFarewells entry, or a textPool
+-- row) may carry `sfx = "jl_<String ID>"` naming one of **V's own** recordings.
+-- It plays out of V's body the moment the player picks it, under the subtitle we
+-- were already showing.
+--
+-- ⚠️ WHY THIS DOES NOT GO THROUGH VO.play. That path exists to make JACKIE speak,
+-- and it honours Config.voice.voiceTag — which would inject Jackie's voice tag
+-- into whatever entity it is handed. Hand it the player and V answers Jackie in
+-- Jackie's voice. V's body already carries V's own tag and the game picks the
+-- male or female take from it, so the correct call is the one with NO tag
+-- injection, which is exactly what JLVO_SpeakAsPlayer is and why it has no tag
+-- argument to get wrong.
+--
+-- ⚠️ A GLOBAL, not a `local`. init.lua sits on Lua's 200-local ceiling (see
+-- CLAUDE.md), and a global also resolves at CALL time, so Branch.confirm below
+-- may reference it regardless of where in the file it ends up.
+--
+-- Returns how long to hold the subtitle (the recording's real length), or nil if
+-- nothing played — no shim installed, no player, or not a line id. Every failure
+-- is silent by design: the subtitle is the content, the voice is the bonus.
+function jlSpeakPlayerLine(sfx, text)
+  local id
+  pcall(function() id = VO.lineId(sfx) end)
+  if not id then return nil end
+  if (Config.voice or {}).mode == "off" then return nil end
+  local p
+  pcall(function() p = Game.GetPlayer() end)
+  if not p then return nil end
+
+  local secs = 0
+  pcall(function() secs = VO.duration(sfx, text) or 0 end)
+  local ctx = (Config.voice or {}).context or -1
+  -- A call is in V's head; a conversation is in front of her. 1 = Vo_Expression_Phone,
+  -- 0 = Vo_Expression_Spoken. Passed as an Int32 for the same reason the context is:
+  -- naming an enum member that doesn't exist is a COMPILE error, and that takes down
+  -- every redscript mod the player has, not just this one.
+  local expr = (bstate.tree ~= nil
+                and (bstate.tree == Config.callTree or bstate.tree == Config.reunionCallTree)) and 1 or 0
+  local variant = (Config.voice or {}).playerVariant or 0
+
+  local played = false
+  pcall(function()
+    local ver = p:JLVO_Version()
+    ver = (type(ver) == "number") and ver or 0
+    if ver >= 3 then
+      played = p:JLVO_SpeakAsPlayer(id, ctx, expr, variant, secs)
+    elseif ver >= 2 then
+      -- Stale .reds next to a new .lua: still speak, just without the isPlayer flag.
+      -- Empty tags — V is V, and this is the one call that must never borrow a voice.
+      played = p:JLVO_Speak(id, ctx, expr, CName.new(""), CName.new(""), secs)
+    else
+      played = p:JLVO_PlayLine(id, ctx)
+    end
+  end)
+  if not played then return nil end
+  log(("Branch: V spoke '%s' sfx=%s secs=%.2f expr=%d variant=%d")
+      :format(tostring(text), tostring(sfx), secs, expr, variant))
+  return (secs > 0) and secs or nil
+end
+
 Branch.confirm = function(idx)
   if not Branch.open or not menu.choices then return end
   idx = idx or menu.sel
@@ -3073,10 +3148,23 @@ Branch.confirm = function(idx)
   -- him". Floors at 0 in Fam.add: you can cool Jackie off, you can never make him a stranger again.
   if c.fam then pcall(function() Fam.add("choice", c.fam) end) end
   hideSubtitle()
+  -- v1.70: if this row carries one of V's OWN recordings, play it — and let the recording
+  -- decide how long the subtitle stays. Reading time is a guess; the game told us the real
+  -- length (vo_durations.lua), and a subtitle that clears while V is still talking is the
+  -- single most obvious way a voiced line reads as broken. Falls through to the old
+  -- reading-time behaviour whenever nothing played, so an unvoiced row is untouched.
+  local spoke = nil
+  pcall(function() spoke = jlSpeakPlayerLine(c.sfx, c.text) end)
   -- v0.94: on the reunion beats, scale V's chosen line to its length too (so long picks aren't cut off).
-  local hold = (isReunionBeat() and readingSecs(c.text))
+  local hold = spoke
+               or (isReunionBeat() and readingSecs(c.text))
                or (Config.dialogue and Config.dialogue.choiceHold) or 2.5
-  showDialogueText("V", c.text or "", hold, Game.GetPlayer())  -- V's pick, shown before Jackie replies
+  -- v1.70: run V's own line through jlLineText too. Same reason it exists for Jackie — CDPR
+  -- recorded ~2,000 of V's lines TWICE under one String ID with different words, the engine
+  -- picks the take from V's body, and a subtitle written from the female take would contradict
+  -- the audio a male V hears. No V line currently in the trees is one of those, which is
+  -- exactly why the guard belongs here now rather than after somebody ships one.
+  showDialogueText("V", jlLineText(c.text or "", c.sfx), hold, Game.GetPlayer())  -- V's pick, shown before Jackie replies
   bstate.pending       = c.to or "__end__"
   bstate.pendingAction = c.action                              -- e.g. "summon_arrival" (fires at call end)
   bstate.pendingAt     = (JL.clock or 0) + hold                -- wait out V's line before Jackie replies
@@ -3256,13 +3344,18 @@ local function closeNativeCallWindow()
   JL.call.activeId = nil    -- v1.33: clear the alive-swap override so the next call starts clean
 end
 
--- A random V hang-up sign-off (text only; V has no voice).
+-- A random V hang-up sign-off. v1.70: V HAS a voice now — the entries may be
+-- { text =, sfx = } rows carrying one of her own recordings, or plain strings as before.
+-- Returns text, sfx (sfx nil for a written line), so the caller can speak it and hold the
+-- subtitle for the recording's real length instead of a flat 1.8 s.
 local function pickFarewell()
   local f = Config.callFarewells
-  if not f or #f == 0 then return "Later." end
+  if not f or #f == 0 then return "Later.", nil end
   local i = 1
   pcall(function() i = math.random(1, #f) end)
-  return f[i] or f[1]
+  local e = f[i] or f[1]
+  if type(e) == "table" then return e.text or "Later.", e.sfx end
+  return e, nil
 end
 
 -- Teleport a spawned NPC to `pos` (used to place a called-in Jackie at distance).
@@ -6044,9 +6137,16 @@ local function branchTick()
           JL.call.hangupAt = (JL.clock or 0) + 0.4
         else
           -- other call strands: V's random sign-off shows, THEN we hang up (callTick.hangupAt)
-          showDialogueText("V", pickFarewell(), 1.8, Game.GetPlayer())
+          -- v1.70: the sign-off is spoken now, and the hang-up waits for the RECORDING rather
+          -- than a flat 1.8 s. Cutting the line off mid-word is the whole reason the old
+          -- fixed hold could not stay.
+          local fText, fSfx = pickFarewell()
+          local fHold = nil
+          pcall(function() fHold = jlSpeakPlayerLine(fSfx, fText) end)
+          fHold = (fHold and (fHold + 0.4)) or 1.8
+          showDialogueText("V", jlLineText(fText, fSfx), fHold, Game.GetPlayer())
           JL.call.hangupAction = act
-          JL.call.hangupAt = (JL.clock or 0) + 1.8
+          JL.call.hangupAt = (JL.clock or 0) + fHold
         end
         JL.ui.status = "Call wrapping up..."
       else
@@ -6865,7 +6965,7 @@ local function nsTick()
   if JL.disableVehicleArrivals == nil then JL.disableVehicleArrivals = false end  -- v0.51 (false = bike allowed)
   if JL.allowMainGigs == nil then JL.allowMainGigs = false end                    -- v1.32 (false = Quiet Life: no main-mission summons)
   if JL.walkAbreast == nil then JL.walkAbreast = true end                         -- v1.61 (true = walk-abreast ON by default). RENAMED from customWalk (v1.57's opt-in flag) so every old `customWalk=...` line in jl_settings.txt simply stops being read — restoring default-ON for everyone, the same invalidate-by-rename trick v1.57 used to flip it OFF.
-  if type(JL.followDistance) ~= "number" then JL.followDistance = Config.followDistanceDefault or 3.5 end  -- v1.55 slider
+  if type(JL.followGap) ~= "number" then JL.followGap = Config.followDistanceDefault or 1.5 end  -- v1.55 slider
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
 
@@ -6982,9 +7082,9 @@ local function nsTick()
       0.1,                                      -- step
       "%.1f",                                   -- display format
       jlFollowDistance(),                       -- current (persisted)
-      Config.followDistanceDefault or 3.5,      -- 'reset to default'
+      Config.followDistanceDefault or 1.5,      -- 'reset to default'
       function(value)
-        JL.followDistance = value
+        JL.followGap = value
         pcall(jlSaveSettings)
         JL.ui.status = string.format("Jackie's follow distance: %.1f m", value)
         log(string.format("Follow distance -> %.1f m (trail + walk-abreast)", value))
@@ -7049,7 +7149,13 @@ JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSu
 -- v1.55: NUMERIC settings. The file used to serialize booleans only (plus the one `mode` string), which is
 -- precisely why a slider could never be added — its value didn't survive a reload. These keys round-trip as
 -- floats. Kept as a separate list so the boolean loop below stays untouched.
-JL_SETTINGS_NUMS = { "followDistance" }
+-- ⚠️ RENAMED followDistance -> followGap (2026-08-14) TO INVALIDATE THE OLD SAVED VALUE.
+-- This file is read back on every load, so a settings file written under the 3.5 m default
+-- would keep winning forever and the new 1.5 m default would reach nobody who had ever
+-- launched the mod. An unknown key is simply ignored on load, so the rename resets this one
+-- slider once, for everyone, and nothing else in the file is touched. Same trick as v1.61's
+-- customWalk -> walkAbreast; see the note on JL_SETTINGS_KEYS.
+JL_SETTINGS_NUMS = { "followGap" }
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.69.2"
+Config.version = "1.70"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -129,6 +129,32 @@ Config.voice = {
   -- up saying "the mod's broken". Antonia liked the effect, so it stays — just rarely.
   -- 1.0 = the old always-grunt behaviour · 0 = never, without emptying gruntPool.
   gruntChance = 0.15,
+
+  -- ---- V'S OWN VOICE, AND ITS GENDER (v1.70) -------------------------------
+  -- Everything above is about JACKIE. This is about V, who speaks now too: a choice
+  -- row carrying `sfx` plays one of V's own recordings out of V's body when the
+  -- player picks it (jlSpeakPlayerLine + JLVO_SpeakAsPlayer).
+  --
+  -- ⚠️ FIRST, THE THING IT IS NOT: this is never wired to Config.hermanoLines /
+  -- the Husbando-Hermano switch. That switch picks which authored set of JACKIE's
+  -- lines plays — a story preference, and the player's to make. V's voice follows
+  -- V's BODY, which is the save file's to report. Mixing the two is exactly how
+  -- v1.69 shipped male audio under a female subtitle; see vo_gender.lua.
+  --
+  -- Nor can it be fixed in content: a line's male and female takes share ONE String
+  -- ID (checked against the engine's own locVoiceoverMap — of 15,187 genuinely
+  -- gendered pairs, zero differ in the id). The ENGINE picks the take. All a mod
+  -- controls is the SHAPE of the event, which is what `playerVariant` selects:
+  --   0  isPlayer = true,  no voice tag     <- the default, and the evidenced one
+  --   1  isPlayer = false, inject V's tag      (how V Voice Framework speaks)
+  --   2  isPlayer = true,  inject V's tag
+  --
+  -- Default is 0 deliberately: it is the shape with in-game evidence behind it
+  -- (NCLives shipped it and it speaks), so the default is the known quantity and
+  -- the switch is the escape hatch, not the other way round. A player whose V
+  -- sounds like the wrong gender flips it — one setting, no redeploy.
+  playerVariant = 0,
+  femaleVariant = 1,   -- what an Esc-menu "female V" switch would write into the above
 }
 
 -- ---- catch-his-eye smile (v0.53) -----------------------------------------
@@ -302,7 +328,16 @@ Config.subtitleReading = {
 -- WALKS AWAY; once he is `despawnDistance` m from V (or `maxSeconds` pass) he despawns. This
 -- is the immersive opposite of the instant "Dismiss Jackie" hotkey.
 Config.dismiss = {
-  choiceText      = "Head home, Jackie. I got this from here.",  -- silent V line in the choice box
+  -- v1.70 — NOT SILENT ANY MORE. "Don't worry about me. I'll manage on my own." is V's own
+  -- line, spoken TO Jackie in the game, and it is precisely this beat: she is sending him off
+  -- because she can handle what's next. It replaces the written "Head home, Jackie. I got this
+  -- from here.", which was reaching for the same sentence without a recording behind it.
+  --
+  -- ⚠️ It has to keep working as a DISMISSAL and not just a goodbye — this row drops his
+  -- follower role and walks him away (init.lua `dismiss_walkaway`). "I'll manage on my own"
+  -- says that; a bare "Later." would leave the player watching him leave without having asked.
+  choiceText      = "Don't worry about me. I'll manage on my own.",
+  choiceSfx       = "jl_2036084339811217408",
   partingSfx      = "jl_1155727714874494976",   -- Jackie VO: "Time we were on our way, mamita."
   partingText     = "Time we were on our way, mamita.",
   -- v0.94 (Antonia 2026-07-06): Jackie's parting line is a POOL — startLeaving() picks one at random each
@@ -771,7 +806,7 @@ Config.follow = {
   -- v1.55: this is now only the FALLBACK. The live trail distance comes from jlFollowDistance() — the
   -- "Jackie's follow distance" slider in Esc -> Settings, which drives BOTH this trail and the walk-abreast
   -- radius from one number (Antonia: "the default distance for sprint follow and abreast follow can be the
-  -- same right? Like 3-5m?"). Default is Config.followDistanceDefault below (3.5 m), up from the old 1.5.
+  -- same right? Like 3-5m?"). Default is Config.followDistanceDefault below (1.5 m — back down from v1.55's 3.5; see the note there).
   distance = 3.5,    -- metres he keeps behind V — fallback if the slider value is somehow unreadable
   interval = 1.5,    -- seconds between follow re-asserts
   movement = "Run",  -- "Walk" | "Run" | "Sprint" — how he closes the gap when he drifts back
@@ -842,7 +877,14 @@ Config.mistyReplacementKey = "noodle"   -- what that slot becomes afterwards
 -- ONE number, set in Esc -> Settings -> Jackie Lives -> Gameplay, that drives how far away Jackie sits in
 -- BOTH follow modes: the trail (followKeepCloseTick, while V jogs/sprints) and walk-abreast (his side
 -- anchor while V strolls). Persisted as a float — see JL_SETTINGS_NUMS in init.lua.
-Config.followDistanceDefault = 3.5   -- m — the slider's default + reset value
+-- ⚠️ 1.5 m, DOWN FROM 3.5 (2026-08-14, Antonia in game: "3.5 m is way too far in abreast mode:
+-- they glitch into walls"). This reverses the v1.55 raise, which came from a question about the
+-- TRAIL ("3-5 m?") and was then applied to walk-abreast as well — where it means something quite
+-- different. Behind you, 3.5 m is a comfortable gap. BESIDE you it is most of a pavement, so the
+-- anchor lands inside whatever is to your left or right, and they clip geometry to reach it.
+-- The flexible band (Config.abreast.minRadius..maxRadius) still lets them drift; this only moves
+-- where they are pulled back to.
+Config.followDistanceDefault = 1.5   -- m — the slider's default + reset value
 Config.followDistanceMin     = 1.2   -- m — slider floor
 Config.followDistanceMax     = 8.0   -- m — slider ceiling
 
@@ -921,9 +963,12 @@ Config.date = {
       open = {
         jackie  = { text = "Yeah, had enough for one day, lemme tell you.", sfx = "jl_1697051347046326272" },
         restaurantPicker = true,   -- 4 random restaurant options are auto-injected here from `restaurants`
+        -- v1.70 voiced. "You order." is V's own line to Jackie over food in the game — it is
+        -- literally this beat, handing him the choice, and it replaces the written
+        -- "You pick, hermano." exactly.
         choices = {
-          { text = "You pick, hermano.",     to = nil, action = "dine:random" },
-          { text = "Actually... raincheck.", to = "decline" },
+          { text = "You order.",     to = nil, action = "dine:random", sfx = "jl_1721401856077123584" },
+          { text = "Maybe later.",   to = "decline", sfx = "jl_1812751456020328448" },
         },
       },
       decline = {
@@ -957,8 +1002,8 @@ Config.date = {
           { text = "You ever miss the merc life, Jackie?",        to = "merc",      chance = 0.6 },
           { text = "This city's been grindin' me down lately.",   to = "nightcity", chance = 0.6 },
           { text = "Think Arasaka ever pays for what they did?",  to = "arasaka",   chance = 0.5 },
-          { text = "How're things with you and Misty?",           to = "misty",     chance = 0.6 },
-          { text = "Enough chillin', let's get movin'.",          to = "leave" },
+          { text = "You been with Misty a while, huh?",           to = "misty",     chance = 0.6, sfx = "jl_2015652467958521856" },
+          { text = "OK, ready. Let's move.",          to = "leave", sfx = "jl_1650054817721577472" },
         },
       },
       merc = {
@@ -968,7 +1013,7 @@ Config.date = {
         },
         choices = {
           { text = "Yeah. We made it out, though.", to = "open"  },
-          { text = "Let's get movin'.",             to = "leave" },
+          { text = "Let's go.",             to = "leave", sfx = "jl_1624186312695238656" },
         },
       },
       nightcity = {
@@ -979,7 +1024,7 @@ Config.date = {
         },
         choices = {
           { text = "Guess that's enough.", to = "open"  },
-          { text = "Let's get movin'.",    to = "leave" },
+          { text = "Let's go.",    to = "leave", sfx = "jl_1624186312695238656" },
         },
       },
       arasaka = {
@@ -989,7 +1034,7 @@ Config.date = {
         },
         choices = {
           { text = "Livin' good. I'll drink to that.", to = "open"  },
-          { text = "Let's get movin'.",                to = "leave" },
+          { text = "Let's go.",                to = "leave", sfx = "jl_1624186312695238656" },
         },
       },
       misty = {
@@ -1004,7 +1049,7 @@ Config.date = {
         },
         choices = {
           { text = "She's good for you.",  to = "open"  },
-          { text = "Let's get movin'.",    to = "leave" },
+          { text = "Let's go.",    to = "leave", sfx = "jl_1624186312695238656" },
         },
       },
       leave = {
@@ -1073,23 +1118,27 @@ Config.dialogueTree = {
   nodes = {
     open = {
       jackie  = { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
+      -- v1.70: V is voiced here too. His `open` line IS a greeting ("Good to see you, chica"),
+      -- so V's reply can be the recorded ANSWER to a greeting — which is exactly what
+      -- "It's good to see you, too, Jack. How ya been?" is in the game. It reads as written
+      -- for this exchange because, structurally, it was.
       choices = {
-        { text = "How you been, Jackie?", to = "howbeen" },
-        { text = "Got a gig - you in?",   to = "gig"     },
-        { text = "Just passin' through.", to = "bye"     },
+        { text = "It's good to see you, too, Jack. How ya been?", to = "howbeen", sfx = "jl_1796848190049153024" },
+        { text = "Need your help, Jack. Got some biz.",           to = "gig",     sfx = "jl_1691217432383778816" },
+        { text = "Somethin' I gotta take care of first.",         to = "bye",     sfx = "jl_1866394191885381632" },
       },
     },
     howbeen = {
       jackie  = { text = "Does not get any higher, choom.", sfx = "jl_1660221856871665664" },
       choices = {
-        { text = "Good to hear. Let's roll.", to = "gig" },
-        { text = "Take it easy, hermano.",     to = "bye" },
+        { text = "Let's roll. No point in waitin'.", to = "gig", sfx = "jl_1866391453860507648" },
+        { text = "Take it easy, amigo.",             to = "bye", sfx = "jl_2008322412796375040" },
       },
     },
     gig = {
       jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
       choices = {
-        { text = "Let's go.", to = nil },   -- end (later: trigger the summon)
+        { text = "Let's go.", to = nil, sfx = "jl_1624186312695238656" },   -- end (later: trigger the summon)
       },
     },
     bye = {
@@ -1125,29 +1174,37 @@ Config.locationDialogue = {
           { text = "C'mon, let's go have some lunch.",                              sfx = "jl_1834500545020096512" },
           { text = "V, how you feel? You all right?",                              sfx = "jl_1802590928224841728" },
         },
+        -- v1.70 voiced. "What's good to eat?" is V's real noodle-stand line and it earns his
+        -- "Does not get any higher, choom." better than the old "What's good here?" did.
         choices = {
-          { text = "What's good here?",                to = "food"  },
-          { text = "How's the quiet life treatin' ya?", to = "quiet" },
-          { text = "Just grabbin' a bite. Later.",      to = "bye"   },
+          { text = "What's good to eat?",                to = "food"  , sfx = "jl_1752047456382693376" },
+          { text = "How ya been? 'Sides the biz, I mean.", to = "quiet", sfx = "jl_1712868380845678592" },
+          -- NOT "Feelin' kinda hungry." — `bye` is his departure line ("Time we were on our
+          -- way"), and answering a hunger cue with a send-off is exactly the kind of break the
+          -- swap is supposed to catch. This row has to be a leave.
+          { text = "Actually, gotta go.",                to = "bye"   , sfx = "jl_1709899043158642688" },
         },
       },
       food = {
         jackie  = { text = "Does not get any higher, choom.", sfx = "jl_1660221856871665664" },
         choices = {
-          { text = "Heh. Save me a stool.",             to = "bye" },
-          { text = "Got a little side gig, you up for it?", to = "gig" },
+          { text = "See you around.",                    to = "bye", sfx = "jl_1956232568377372672" },
+          { text = "Need your help, Jack. Got some biz.", to = "gig", sfx = "jl_1691217432383778816" },
         },
       },
       quiet = {
+        -- His answer deflects ("we ain't here to shoot the shit about me"), so neither row may
+        -- push. "Take it easy, amigo." accepts it; the gig row changes the subject, which is
+        -- what he just asked for.
         jackie  = { text = "Eh, you know how it is, can't complain. But we ain't here to shoot the shit about me.", sfx = "jl_1861666308579323904" },
         choices = {
-          { text = "Fair. Take it easy, hermano.", to = "bye" },
-          { text = "Could use you on a side job.", to = "gig" },
+          { text = "Take it easy, amigo.", to = "bye", sfx = "jl_2008322412796375040" },
+          { text = "Need your help.",      to = "gig", sfx = "jl_1754554834162835456" },
         },
       },
       gig = {
         jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
-        choices = { { text = "Let's roll.", to = nil, action = "recruit_here" } },
+        choices = { { text = "Let's roll. No point in waitin'.", to = nil, action = "recruit_here", sfx = "jl_1866391453860507648" } },
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
@@ -1166,29 +1223,35 @@ Config.locationDialogue = {
           { text = "Mama told me things come to those who wait, and some're even good!", sfx = "jl_2008342351712284672" },
           { text = "Talk to me, choomba.",                                           sfx = "jl_2239163066690486272" },
         },
+        -- v1.70 voiced. "What's new with Señora Welles?" is V's own line TO Jackie, and it sets
+        -- up his "She's my blood, all right" far better than the old "Mama Welles around?" —
+        -- which asked whether she was present and got answered with who she is.
         choices = {
-          { text = "Mama Welles around?", to = "mama"  },
-          { text = "Pour me one?",        to = "drink" },
-          { text = "Just passin' through.", to = "bye" },
+          { text = "What's new with Señora Welles?", to = "mama" , sfx = "jl_1624136028206714880" },
+          { text = "Could use a drink.",             to = "drink", sfx = "jl_1935648808663166980" },
+          { text = "Somethin' I gotta take care of first.", to = "bye", sfx = "jl_1866394191885381632" },
         },
       },
       mama = {
         jackie  = { text = "She's my blood, all right. Coyote's her dive.", sfx = "jl_1834417684413870080" },
         choices = {
-          { text = "Family's everything. Later, hermano.",  to = "bye" },
-          { text = "When you're done playin' barkeep, got a side gig.", to = "gig" },
+          { text = "Take care.",            to = "bye", sfx = "jl_1883551719941074944" },
+          { text = "Need your help, Jack. Got some biz.", to = "gig", sfx = "jl_1691217432383778816" },
         },
       },
       drink = {
         jackie  = { text = "Andale, let's drink.", sfx = "jl_2251854480654123008" },
+        -- "To this." is a real recorded TOAST, and a toast is the only correct answer to
+        -- "Andale, let's drink." The old "Heh. To the quiet life." was the right shape with no
+        -- recording behind it; this is the same beat, in V's actual voice.
         choices = {
-          { text = "Heh. To the quiet life.",         to = "bye" },
-          { text = "One drink, then I got work. You in?", to = "gig" },
+          { text = "To this.",         to = "bye", sfx = "jl_1661714128547258368" },
+          { text = "Need your help.",  to = "gig", sfx = "jl_1754554834162835456" },
         },
       },
       gig = {
         jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
-        choices = { { text = "Let's go.", to = nil, action = "recruit_here" } },
+        choices = { { text = "Let's go.", to = nil, action = "recruit_here", sfx = "jl_1624186312695238656" } },
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
@@ -1207,29 +1270,36 @@ Config.locationDialogue = {
           { text = "Legends are born here.",                            sfx = "jl_1904093608424787968" },
           { text = "Straight to biz, eh, chica?",                       sfx = "jl_1777946122915868672" },
         },
+        -- v1.70 voiced. ⚠️ "You miss it? The merc life?" had NO recording and could not get one
+        -- honestly — every V line about missing the life is welded to a scene. So it stays
+        -- WRITTEN, and that is the right call: a wrong-but-voiced line is worse than a
+        -- right-but-silent one. The other two rows had recordings that fit exactly.
         choices = {
           { text = "You miss it? The merc life?", to = "miss"  },
-          { text = "Drink to old times?",         to = "drink" },
-          { text = "Just soakin' it in. Later.",  to = "bye"   },
+          { text = "Won't say no to a free drink.", to = "drink", sfx = "jl_1933324908312539136" },
+          { text = "Somethin' I gotta take care of first.", to = "bye", sfx = "jl_1866394191885381632" },
         },
       },
       miss = {
         jackie  = { text = "It's the biz, V. Everyone's got blood on their hands. You deal with it, you move on.", sfx = "jl_1625819953367019520" },
         choices = {
-          { text = "You earned the quiet. Take it easy.", to = "bye" },
+          { text = "Take it easy, amigo.", to = "bye", sfx = "jl_2008322412796375040" },
           { text = "Then do one last easy one, side gig, with me.", to = "gig" },
         },
       },
       drink = {
         jackie  = { text = "Heheh, I'll drink to that!", sfx = "jl_1806735035231395840" },
+        -- He has just proposed the toast, so V's row completes it. "To hittin' the major
+        -- leagues!" is the Afterlife toast V actually recorded — and in this mod it lands as
+        -- a joke between two people who no longer want the major leagues, which is the room.
         choices = {
-          { text = "To Jackie Welles. Later, choom.", to = "bye" },
-          { text = "Now help me run a quick side job.", to = "gig" },
+          { text = "To hittin' the major leagues!", to = "bye", sfx = "jl_1806726536078319616" },
+          { text = "Need your help, Jack. Got some biz.", to = "gig", sfx = "jl_1691217432383778816" },
         },
       },
       gig = {
         jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
-        choices = { { text = "Let's go.", to = nil, action = "recruit_here" } },
+        choices = { { text = "Let's go.", to = nil, action = "recruit_here", sfx = "jl_1624186312695238656" } },
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
@@ -1250,17 +1320,25 @@ Config.locationDialogue = {
         -- v1.54: V's lines here were rewritten so each one actually SETS UP the real voiced reply that
         -- follows it (Miguel's clips are fixed — the question has to earn the answer). Misty stays very
         -- much in the picture: this is his girl's shop and he talks about her like it.
+        -- v1.70 voiced. "What're you up to?" is the recorded form of the old "what's the plan
+        -- for the rest of your day?" and flows into his "Now I go back, find Misty..." just as
+        -- cleanly. The cards question stays WRITTEN — it is a question only this mod can ask
+        -- (did Misty foresee him surviving), so no recording of it exists or could.
         choices = {
-          { text = "So what's the plan for the rest of your day?", to = "her"   },
-          { text = "Did Misty see it comin'? You makin' it out?",  to = "cards" },
-          { text = "I'll leave you to it.",                        to = "bye"   },
+          { text = "What're you up to?",                          to = "her"  , sfx = "jl_1867787343015092224" },
+          { text = "Did Misty see it comin'? You makin' it out?", to = "cards" },
+          { text = "Somethin' I gotta take care of first.",       to = "bye"  , sfx = "jl_1866394191885381632" },
         },
       },
       her = {
-        -- voiced: he's off to find Misty. V's question above ("what's the plan?") now flows straight in.
+        -- voiced: he's off to find Misty. V's question above ("what're you up to?") flows straight in.
         jackie  = { text = "Now I go back, find Misty and we do somethin' to make me feel alive again.", sfx = "jl_1677043911795367936" },
+        -- ⭐ The best swap in the file: V recorded 'Tell Misty I said "Hi."' **to Jackie**, in the
+        -- game, and it is the exact reply to him saying he is going to find her. The written
+        -- version of this row was already reaching for it; now it is his own scene partner's
+        -- real take.
         choices = {
-          { text = "Then go feel alive, hermano. Tell her I said hey.", to = "bye" },
+          { text = "Tell Misty I said \"Hi.\"",                     to = "bye", sfx = "jl_1866291699557494784" },
           { text = "Before you do — got a side gig, if you're up for it.", to = "gig" },
         },
       },
@@ -1268,14 +1346,22 @@ Config.locationDialogue = {
         -- voiced: "Misty knew... Misty always knows..." — reads as an answer now that V asked whether she
         -- foresaw him surviving, instead of the old "she read your cards yet?" non-sequitur.
         jackie  = { text = "Misty knew... Misty always knows...", sfx = "jl_2024290835469197312" },
+        -- ⚠️ NOT "Misty misses you... loads." (id 2008322408534962176 — written without the
+        -- jl_ prefix on purpose, so the duration generator doesn't adopt a line we rejected),
+        -- which is the obvious
+        -- pick and is wrong: V recorded it while Jackie was DEAD. In this mod he is alive, in
+        -- Heywood, and one node ago said he was on his way to find her — so the line contradicts
+        -- the fiction it would be sitting in. This is the failure mode the whole "check the reply
+        -- still makes sense" pass exists for, and the corpus will offer it to you again.
+        -- "Riiight…" is V's real to-Jackie take of exactly the beat the written "Spooky." wanted.
         choices = {
-          { text = "Spooky. Later, choom.",              to = "bye" },
+          { text = "Riiight…",                           to = "bye", sfx = "jl_1976447318699962368" },
           { text = "Cards say you'll help me on a job?", to = "gig" },
         },
       },
       gig = {
         jackie  = { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
-        choices = { { text = "Let's go.", to = nil, action = "recruit_here" } },
+        choices = { { text = "Let's go.", to = nil, action = "recruit_here", sfx = "jl_1624186312695238656" } },
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
@@ -1336,18 +1422,27 @@ Config.locationDialogue = {
         -- v1.69: 4–5, up from 3–4. The topic list roughly doubled (see SMALL TALK below) and a
         -- three-row draw out of twenty-odd topics started to feel arbitrary rather than curated.
         pick = { 4, 5 },     -- a handful of topics per draw, not a wall
+        -- v1.70 ⚠️ ONLY THE TIER-0/1 SMALL TALK IS VOICED, AND THAT IS ON PURPOSE.
+        -- The deeper a topic goes, the more it is a question only THIS MOD can ask — "What do
+        -- you remember about that night?", "Do you blame me?" — and V never recorded those,
+        -- because in the game he does not survive to be asked. So tiers 2 and 3 stay written.
+        -- The shallow rows are the opposite: "how's your mom", "what're you pouring", "what're
+        -- you up to" are things V says to Jackie in the actual game, so they get his real scene
+        -- partner's real voice. The result reads the right way round — the everyday exchanges
+        -- sound like the game, and the intimate ones sound like they had to be earned.
         choices = {
           -- ---- TIER 0: what he'd say to anyone -------------------------------
-          { text = "How you been, Jackie?",     to = "howbeen", once = "howbeen" },
-          { text = "Keepin' busy?",             to = "busy",    once = "busy"    },
-          { text = "What're you pourin'?",      to = "drink",   once = "drink"   },
+          { text = "How's things?",             to = "howbeen", once = "howbeen", sfx = "jl_1690640496288460800" },
+          { text = "What're you up to?",        to = "busy",    once = "busy",    sfx = "jl_1867787343015092224" },
+          { text = "Whatcha got in the way of drink?", to = "drink", once = "drink", sfx = "jl_1863266874029391876" },
           { text = "How's Night City treatin' ya?", to = "city", once = "city"   },
           -- ---- TIER 1 (Close): the small personal cracks ----------------------
           { text = "How's the quiet life really treatin' ya?", to = "quiet",  once = "quiet",  minFam = 1 },
-          { text = "How's Mama Welles?",                       to = "mama",   once = "mama",   minFam = 1 },
+          -- ⭐ V's own words, spoken to Jackie in the game. Nothing written could beat it.
+          { text = "How's your mom?",                          to = "mama",   once = "mama",   minFam = 1, sfx = "jl_2015663563352219656" },
           { text = "You like workin' the bar?",                to = "bar",    once = "bar",    minFam = 1 },
           { text = "Heywood still feel like home?",             to = "heywood",once = "heywood",minFam = 1 },
-          { text = "How're things with Misty?",                to = "misty2", once = "misty2", minFam = 1 },
+          { text = "You been with Misty a while, huh?",        to = "misty2", once = "misty2", minFam = 1, sfx = "jl_2015652467958521856" },
           { text = "What've you been watchin'?",               to = "iguana", once = "iguana", minFam = 1 },
           { text = "Anybody come to you with a problem lately?", to = "fixer", once = "fixer", minFam = 1 },
           -- ---- TIER 2 (Trusted): the things he doesn't volunteer --------------
@@ -1367,11 +1462,17 @@ Config.locationDialogue = {
           { text = "...Say it. Whatever it is you keep not sayin'.",
             to = "unsaid", once = "unsaid", minFam = 3, chance = 0.05 },
           -- ---- always available ----------------------------------------------
+          -- v1.70: the way OUT is the row V clicks more than any other in the mod, so it is the
+          -- one most worth giving her real voice to. All four are recordings now (a textPool
+          -- entry may be a string or a { text, sfx } row — see nodeChoices in init.lua).
+          -- "Let's roll. No point in waitin'." is her own line TO Jackie; the rest are her
+          -- general-purpose leaves, which is exactly what this row is.
           { pin = true, textPool = {
-              "We should get movin'.",
-              "Let's get goin', hermano.",
-              "Alright, I'm headin' out.",
-              "Time to hit the road, choom.",
+              { text = "Let's roll. No point in waitin'.", sfx = "jl_1866391453860507648" },
+              { text = "Actually, gotta go.",              sfx = "jl_1709899043158642688" },
+              { text = "Somethin' I gotta take care of first.", sfx = "jl_1866394191885381632" },
+              { text = "OK, ready. Let's move.",           sfx = "jl_1650054817721577472" },
+              { text = "Talk later.",                      sfx = "jl_1956127435714916352" },
             }, to = "bye"  },
         },
       },
@@ -1390,7 +1491,16 @@ Config.locationDialogue = {
       },
       busy = {
         jackiePool = {
-          { text = "So let's do our thing.", sfx = "jl_1762127358882361344" },
+          -- ⚠️ v1.70 — the tier-0 answer here USED to be "So let's do our thing."
+          -- (jl_1762127358882361344) and it was wrong twice over. It doesn't answer the
+          -- question — V asks what he's been doing and he replies as if she'd asked whether
+          -- he's ready — and it is exactly the casting mistake this file warns about a hundred
+          -- lines down: a 2077 gig line, which quietly rewrites the man who chose OUT back into
+          -- the man who died. It reads fine in a list and wrong in the conversation, which is
+          -- why it survived so long. Written and silent is the right trade here; the clip is
+          -- still used where it belongs, on the `gig` nodes.
+          { text = "Nothin' worth writin' down. Which is the point, chica.",
+            m = { text = "Nothin' worth writin' down. Which is the point, hermano." } },
           { minFam = 1, text = "Bar, mostly. And people keep findin' me with problems. Small ones. I like the small ones." },
           { minFam = 2, text = "Kid down the block needed his brother found. Took me two days and a lotta talkin' and nobody got shot. Best work I ever did, and it don't pay nothin'." },
         },
@@ -1552,7 +1662,7 @@ Config.locationDialogue = {
           { minFam = 2, text = "Oh, and by the way, name's Jackie Welles. You wanna write down my recipe?", sfx = "jl_1682413700577546240" },
         },
         choices = {
-          { text = "Pour me one.",            to = "open" },
+          { text = "I'll take a drink.",      to = "open", sfx = "jl_1979344829112885248" },
           { text = "You've got a whole bit.", to = "open" },
         },
       },
@@ -1591,7 +1701,16 @@ Config.locationDialogue = {
           { minFam = 2, text = "You come a long way, my scaly friend.", sfx = "jl_1732872998780596224" },
           { minFam = 2, text = "Down for some target practice in VR?", sfx = "jl_2177742396207419392", chance = 0.25 },
         },
+        -- ⭐ "Lesser Antil-what?" is V's REAL reply, in the game, to the exact line sitting in the
+        -- pool above it ("A, uh, Lesser Antillean, I think."). The two takes were recorded as one
+        -- exchange, so this is the rare case where the mod isn't casting a line — it is putting
+        -- a scene back together.
+        -- ⚠️ It only lands after the two "Lesser Antillean" pool lines, and the pool has four. The
+        -- other two rows are kept precisely so there is always a reaction that fits whatever he
+        -- just said — this node draws its line at random, and a VOICED row must never be the only
+        -- way out of a node whose setup can vary.
         choices = {
+          { text = "Lesser Antil-what?",           to = "open", sfx = "jl_1660743425755992064" },
           { text = "You're a nature-doc guy now.", to = "open" },
           { text = "...An iguana.",                to = "open" },
         },
@@ -1829,19 +1948,32 @@ Config.vehicle = {
 
 -- V's hang-up sign-offs. At the end of any call strand one of these is shown as V's last line
 -- (text only — V has no voice, so these are free to add) then the call hangs up. Add freely.
+-- v1.70 — VOICED. These were twelve written sign-offs; V has a large farewell bank of her own,
+-- so every one of them is now a real recording. An entry may still be a bare STRING (pickFarewell
+-- accepts both), which is what keeps this list easy to extend when no recording fits.
+--
+-- ⚠️ The hang-up is the LAST thing the player hears on a call, which makes it the single most
+-- noticeable line in the mod — a silent subtitle here read as the call being cut off. It is also
+-- the easiest bank to fill, because a sign-off is by definition standalone: it names nobody,
+-- points at nothing, and works on any day of the story. Rebuild it any time with
+--     python3 tools/v_index.py find --intent farewell --to jackie,- --standalone --max-secs 3
+--
+-- "See ya in the major leagues, Jack." and "G'bye, old friend." are the two spoken TO Jackie.
+-- The second is deliberately rare-feeling material — it is what V says to him at his worst
+-- moment — so it earns its place here precisely because in this mod it is no longer goodbye.
 Config.callFarewells = {
-  "Later, choom.",
-  "Catch you on the flip side.",
-  "Stay frosty, hermano.",
-  "See ya, Jackie.",
-  "Talk soon.",
-  "Keep your phone on, yeah?",
-  "Preem. Out.",
-  "Don't keep me waitin'.",
-  "Be safe out there.",
-  "Adios, choomba.",
-  "Catch you later.",
-  "Nova. Later, hermano.",
+  { text = "Later.",                             sfx = "jl_1949070128143765504" },
+  { text = "Talk later.",                        sfx = "jl_1956127435714916352" },
+  { text = "Take care.",                         sfx = "jl_1883551719941074944" },
+  { text = "Take care, man.",                    sfx = "jl_1844375093476904960" },
+  { text = "See you around.",                    sfx = "jl_1956232568377372672" },
+  { text = "Call ya back later.",                sfx = "jl_1842959381910835200" },
+  { text = "We'll talk later.",                  sfx = "jl_1954741097027530752" },
+  { text = "Yeah, see ya.",                      sfx = "jl_1662388613282107392" },
+  { text = "Gotta run.",                         sfx = "jl_1956145242598993920" },
+  { text = "Take it easy, amigo.",               sfx = "jl_2008322412796375040" },
+  { text = "See ya in the major leagues, Jack.", sfx = "jl_1927494175984263168" },
+  { text = "G'bye, old friend.",                 sfx = "jl_2024293183910338560" },
 }
 
 -- NATIVE phone call (v0.29 experiment). We drive the game's real holocall UI via
@@ -1925,10 +2057,25 @@ Config.callTree = {
         -- very rare, dark family humor (~1%):
         { text = "Checkin' to see if I'm not rotting in some dumpster, like most o' the Welles boys?", sfx = "jl_2008332149470457856", chance = 0.01 },
       },
+      -- v1.70 ⚠️ V SPEAKS ON THIS CALL. Every row below carries `sfx` — one of **V's own**
+      -- recordings, played out of V's body when the player picks it. The audio is the game's;
+      -- the WORDS therefore are too, which is why these rows read slightly differently from
+      -- the written ones they replaced. Bending the row to the recording is correct and normal
+      -- here; inventing a caption for a recording that says something else is not.
+      --
+      -- These three are phone-appropriate by MEANING, not by recording: only 164 of V's 12,996
+      -- lines are `Vo_Expression_Phone` takes and none of them fit these beats. The shim plays a
+      -- world take through the holocall expression anyway (see jlSpeakPlayerLine), so what
+      -- matters is that the line doesn't presume Jackie is standing in front of V. None does.
       choices = {
-        { text = "Got a gig. You in?",       to = "gig"     },
-        { text = "Just checkin' in on you.", to = "howbeen" },
-        { text = "Never mind.",              to = nil       },   -- -> random farewell -> hang up
+        -- "Need your help, Jack. Got some biz." — V's own words for exactly this ask, and it is
+        -- addressed to Jackie in the game too, which is what makes it sound authored rather than
+        -- borrowed. Replaces the written "Got a gig. You in?".
+        { text = "Need your help, Jack. Got some biz.", to = "gig",     sfx = "jl_1691217432383778816" },
+        -- The hesitation ("how, you know, you were holdin' up") is the line's whole value: V
+        -- ringing a man she buried to ask how he is should not be fluent.
+        { text = "Just wanted to know how, you know, you were holdin' up.", to = "howbeen", sfx = "jl_1924197469297504256" },
+        { text = "Never mind.",                          to = nil,      sfx = "jl_1842971269256237056" },   -- -> random farewell -> hang up
       },
     },
     howbeen = {
@@ -1936,9 +2083,12 @@ Config.callTree = {
         { text = "Does not get any higher, choom.", sfx = "jl_1660221856871665664" },
         { text = "Eh, you know how it is, can't complain. But we ain't here to shoot the shit about me.", sfx = "jl_1861666308579323904" },
       },
+      -- Both of his answers here deflect off himself ("we ain't here to shoot the shit about me"),
+      -- so both V rows have to accept the deflection. "Need your help." does; so does a plain
+      -- sign-off. Neither pushes, which is right — pushing is what the familiarity hub is for.
       choices = {
-        { text = "Good. Actually - got a gig.", to = "gig" },
-        { text = "Glad to hear it.",             to = nil  },   -- -> random farewell -> hang up
+        { text = "Need your help.",       to = "gig", sfx = "jl_1754554834162835456" },
+        { text = "Take it easy, amigo.",  to = nil,   sfx = "jl_2008322412796375040" },   -- -> random farewell -> hang up
       },
     },
     gig = {
