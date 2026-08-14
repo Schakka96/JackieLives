@@ -86,9 +86,16 @@ function M.status()
   local mod, list, rowIn, n = nil, nil, false, 0
   pcall(function() mod = GetMod("NightCityAllies") end)
   pcall(function() list = S.app and S.app.availableInteractions end)
+  -- ⚠️ CAPPED, for the same reason probe() is: this walks ANOTHER MOD'S table, and an unbounded
+  -- ipairs over a table we did not build can run forever. loadsim's GetMod stub does exactly that,
+  -- and status() is called every frame by the CET panel — so uncapped it hangs the offline suite AND
+  -- would hang the game's draw loop against a proxy-backed table.
   if type(list) == "table" then
-    n = #list
-    for _, e in ipairs(list) do if type(e) == "table" and e.__jackielives then rowIn = true end end
+    pcall(function() n = math.min(#list, 60) end)
+    for i = 1, n do
+      local e = list[i]
+      if type(e) == "table" and e.__jackielives then rowIn = true end
+    end
   end
   return ("NCA: installed=%s attached=%s theirVer=%s rows=%d ourRowPresent=%s reasserts=%d tries=%d")
          :format(tostring(mod ~= nil), tostring(S.attached), tostring(S.modVer or "?"),

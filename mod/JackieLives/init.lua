@@ -9833,6 +9833,8 @@ registerForEvent("onDraw", function()
 
   -- v0.50: TWO arrival modes only — toggle FOOT <-> BIKE, live. Pick one, then Call Jackie (or hit
   -- "Test arrival now"). Both spawn via DES out at distance and share the sprint -> walk -> companion tail.
+
+
   if ImGui.CollapsingHeader("Arrival & main-quest gate") then
     local cc = Config.call
     local bikeOn = (cc.arrivalMethod == "bike")
