@@ -8,7 +8,7 @@ as a low-level community fixer in Heywood. The player can summon him onto **side
 > ⚠️ Fan project, not affiliated with CD PROJEKT RED. **No game assets are distributed here** —
 > see [ASSETS_NOTICE.md](ASSETS_NOTICE.md). Requires a legally owned copy of Cyberpunk 2077.
 
-## Status — v1.64.1
+## Status — v1.70.1
 
 Playable and released. The mod is **gated behind a retrieval questline**: Vik reveals Jackie's alive,
 V finds his note in the Badlands and calls him, and a reunion brings him home — only then does
@@ -22,6 +22,20 @@ with location-specific trees, **send him off** (he walks away), and **take him t
 restaurant → map waypoint and objective → he takes his seat → seated small talk). He **walks abreast**
 of V on flat ground and falls into single file on stairs, and he **trails V on his Arch** when V rides
 a bike. A companion-duration clock sends him home on his own after a while.
+
+**V talks back (v1.70)** V now speaks her own dialogue choices in her own recorded voice — 178 of
+her 384 lines here carry a real String ID, and the rest stay subtitle-only until they're tagged.
+Nothing is shipped or extracted: the mod names a line the game already has and asks it to play.
+
+Which recording it reaches for is **Esc → Settings → Jackie Lives → Voice → "V's voice"**:
+
+| | |
+|---|---|
+| **Auto** (default) | follows V's **body** as the save reports it — the same thing the audio engine asks when it chooses between the two takes that share one line id. Right for almost everyone. |
+| **Male / Female** | force it, for the two cases Auto can't cover: a V whose *voice* was set differently from their body in the character creator, and any save where Auto guesses wrong. |
+
+Not sure? Open the mod's own CET window → Voice → **"Test V's voice (A/B)"**, which plays one line
+both ways so you can pick by ear. The choice is remembered between sessions.
 
 **Relationship modes:** two dialogue tracks — **Husbando** (slow-burn tension with V, more flirty,
 split with Misty) and **Hermano** (canon brother-in-arms, still with Misty). Hermano is the default
@@ -113,10 +127,20 @@ Stock Lua, no game needed. The two that take a path **extract the real functions
 and run them against stubs, so they can't drift from shipped code.
 
 ```
-lua tools/test_dialogui.lua                              # 35 checks: the native dialogue picker
-lua tools/test_walk_gates.lua  mod/JackieLives/init.lua  # 20 checks: abreast/trail handoff gates
-lua tools/test_blaze_calm.lua  mod/JackieLives/init.lua  # the Blaze finale "transport calm"
+lua tools/loadsim.lua           # 65 checks: THE ONLY ONE THAT RUNS THE ENGINE (see below)
+lua tools/test_dialogui.lua     # 48 checks: the native dialogue picker
+lua tools/test_vo.lua           # 132 checks: voice, ids, and the redscript symbol prefix
+lua tools/test_familiarity.lua  # 32   lua tools/test_follower.lua       # 21
+lua tools/test_spawn_backend.lua # 11  lua tools/test_walk_gates.lua     # abreast/trail gates
+lua tools/test_blaze_calm.lua   # the Blaze finale "transport calm"
 ```
+
+`loadsim.lua` stubs CET, **loads `init.lua` for real**, runs `onInit`, presses every hotkey twice,
+ticks `onUpdate`, draws the dev panel, registers the Esc menu and presses every control on it, and
+drives a whole phone call to an open choice menu. It also scans for the three mistakes that have each
+cost a release here: a call to a file-`local` from above its declaration (a nil global at runtime),
+an `addButton` missing its `textSize` (the whole subcategory silently vanishes from the Esc menu),
+and how much room is left under Lua's 200-local cap.
 
 ## Package a release
 
