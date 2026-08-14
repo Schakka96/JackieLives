@@ -80,10 +80,13 @@ local OTHER_TREE = {
             g2   = { companion = { text = "As you wish." }, choices = { { text = "Bye." } } } },
 }
 LAST_FAM_KEY = nil
+SPEAK_SECS   = 0
 local famTier = 0
 Allies.bind{
   log          = function() end,
-  speak        = function(t) spoken[#spoken + 1] = t; return 1.0 end,
+  -- returns 0 = "nothing to wait for", so the menu opens inline and the rest of these tests read
+  -- ui.last directly. The DELAY itself is exercised on its own in section 6e, with a real duration.
+  speak        = function(t) spoken[#spoken + 1] = t; return SPEAK_SECS or 0 end,
   sayPlayer    = function(t) playerSaid[#playerSaid + 1] = t end,
   pickLine     = function(pool) return pool and pool[1] end,
   var          = function(e) return e end,
@@ -315,6 +318,50 @@ check("...and familiarity is keyed to THAT persona, not the active one",
       LAST_FAM_KEY == "takemura", tostring(LAST_FAM_KEY))
 for _, r in ipairs(ui.last.rows) do if r.label == "Goro topic" then r.callback() end end
 famTier = 0
+
+print("\n6e. the menu waits for her to finish speaking")
+-- ⚠️ The first version of this bridge opened their hub the instant it rendered a node, and called
+-- that an acceptable compromise. In game it was not: V could pick the next topic straight over the
+-- top of her line, so the conversation had no pacing at all (Antonia, 2026-08-15). Our own runner
+-- has always armed bstate.openAt = clock + line length + 0.4; this does the same through their ui.
+-- ⚠️ section 6b replaced this tree's root with a single "Catch up" row to test the sampler. Put it
+-- back, or everything below is quietly reading a two-row tree and proving nothing.
+TREE.nodes.open.choices = {
+  { text = "How've you been?",        to = "how" },
+  { text = "Tell me about the moon.", to = "moon", minFam = 2 },
+  { text = "Once only.",              to = "how",  once = "k1" },
+  { text = "Nothing.",                             },
+}
+SPEAK_SECS = 3.0
+famTier = 0
+local hubsBefore = #ui.opened
+CLOCK = 900000
+ours.callback(fakeNPC("Jackie"), ui)
+for _, r in ipairs(ui.last.rows) do if r.label == "How\'ve you been?" then r.callback() end end
+check("her line is spoken immediately", spoken[#spoken] == "Working.", spoken[#spoken])
+local hubsAfterPick = #ui.opened
+CLOCK = 900001                                  -- 1 s into a 3 s line
+Allies.tick(CLOCK)
+check("...and the next menu has NOT opened yet", #ui.opened == hubsAfterPick, #ui.opened)
+CLOCK = 900004                                  -- past the line + the 0.4 s beat
+Allies.tick(CLOCK)
+check("...it opens once she has finished", #ui.opened == hubsAfterPick + 1, #ui.opened)
+SPEAK_SECS = 0
+
+print("\n6f. row colour: content blue, the way out yellow")
+-- Their UI defaults every row to QuestImportant, which the game paints YELLOW. Rendered through
+-- them, every topic looked like an irreversible decision. Blue is ordinary dialogue.
+_G.gameinteractionsChoiceType = { Blueline = "BLUE", QuestImportant = "YELLOW" }
+ours.callback(fakeNPC("Jackie"), ui)
+local blues, yellows = 0, 0
+for _, r in ipairs(ui.last.rows) do
+  if r.type == "BLUE" then blues = blues + 1 elseif r.type == "YELLOW" then yellows = yellows + 1 end
+end
+check("ordinary topics are blue", blues >= 2, blues)
+check("...and the row that ENDS the conversation is yellow", yellows >= 1, yellows)
+for _, r in ipairs(ui.last.rows) do
+  if r.label == "Nothing." then check("...specifically that one", r.type == "YELLOW", tostring(r.type)) end
+end
 
 print("\n7. failure modes — the part that actually matters")
 -- their renderer throws

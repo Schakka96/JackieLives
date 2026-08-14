@@ -5147,3 +5147,24 @@ exact action CName) -> add it to `INTERACT_ACTIONS` in init.lua. These are the n
       before the bike despawns) so he can't get stuck in the mounted pose; (4) **subtitle wipe** — the
       one-off parting line ("Time we were on our way, mamita") now hides after its duration + on
       despawn (it had no auto-hide and stuck forever). Deployed.
+
+## NCA bridge — lip sync on a body we did not spawn (open, 2026-08-15)
+
+Reported in game: through Night City Allies' hub, **the companion's lips don't move**. Colour and
+pacing were fixed the same day; this one is not a quick fix, so it is written down rather than
+guessed at.
+
+**Cause.** `speakCompanionLine` resolves who is talking with `dialogueTarget()`, which returns OUR
+spawned companion or, failing that, the player. An NCA-summoned body is neither — we never spawned
+it and hold no handle — so the lip flap (and the positional audio that rides with it) is applied to
+the wrong entity, or to none.
+
+**What a fix needs.** A speaker has to travel from the bridge into the speaking path:
+`nca.lua` already has the NPC (`npc:GetEntityID()` -> `Game.FindEntityByID`), so the work is
+threading an optional speaker through `M.env.speak` -> `speakCompanionLine` -> `VO.play` and the flap
+call, defaulting to today's behaviour when absent. It is invasive because `speakCompanionLine` is a
+file-local called from many places, and `dialogueTarget()` is used for more than the flap.
+
+⚠️ Do not "fix" this by making the bridge call `NCL.setActive()` on the NCA character first. That
+would dismiss whoever the player actually has out — the cure is worse than the symptom, and it is
+the same trap avoided when the row was made roster-wide.

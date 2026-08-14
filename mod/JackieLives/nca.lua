@@ -43,6 +43,8 @@ local S = {
   tries     = 0,
   nextTry   = 0,
   talking   = false,     -- a conversation is running through THEIR ui right now
+  pending   = nil,       -- a menu queued behind the line she is speaking
+  spokeSecs = nil,       -- how long that line runs
   node      = nil,
   tree      = nil,
   key       = nil,       -- roster key of the persona THIS conversation is with
@@ -363,16 +365,31 @@ local function renderNode(npc, ui, nodeKey)
     -- own runner does (Branch.start arms bstate.openAt). Their hub is opened by us from inside a
     -- callback, and there is no tick of theirs we could defer it to without leaving the player
     -- staring at nothing. The subtitle stays up underneath the menu, which reads fine.
-    pcall(M.env.speak, line.text, line.sfx, tree.muteFallback)
+    local ok, secs = pcall(M.env.speak, line.text, line.sfx, tree.muteFallback)
+    S.spokeSecs = (ok and type(secs) == "number" and secs > 0) and secs or nil
   end
 
   local rows = rowsFor(node)
   if #rows == 0 then M.stop(); return end
 
+  -- ⚠️ ROW COLOUR. Their UI:choice defaults every row to gameinteractionsChoiceType.QuestImportant,
+  -- which the game paints YELLOW — the "this matters / point of no return" colour. Rendered through
+  -- them, all of her topics came out yellow, which reads as nine irreversible decisions instead of a
+  -- conversation. Blue (Blueline) is the ordinary-dialogue colour and is what their own social menu
+  -- uses. Only the way OUT stays yellow: the pinned/last row, or any row that ends the conversation.
+  -- ⚠️ BARE GLOBAL, never _G[...] — CET resolves RTTI names through the mod sandbox's __index, so the
+  -- table lookup form is nil here. Same rule as dialogui.lua. pcall'd because it is still a game
+  -- global we are reading at file scope of a callback.
+  local BLUE, YELLOW
+  pcall(function() BLUE = gameinteractionsChoiceType.Blueline end)
+  pcall(function() YELLOW = gameinteractionsChoiceType.QuestImportant end)
+
   local entries = {}
   for _, r in ipairs(rows) do
+    local isExit = (r.pin or r.choice.last or r.choice.to == nil) and true or false
     entries[#entries + 1] = {
       label = r.label,
+      type  = isExit and YELLOW or BLUE,
       callback = function()
         local c = r.choice
         if c.once then S.taken = S.taken or {}; S.taken[c.once] = true end
@@ -392,12 +409,28 @@ local function renderNode(npc, ui, nodeKey)
   pcall(function()
     if S.key and M.env.nameForKey then title = M.env.nameForKey(S.key) or title end
   end)
+
+  -- ⚠️ LET HER FINISH. Our own runner arms bstate.openAt = clock + line length + 0.4 and opens the
+  -- menu only when she has stopped talking. The first version of this bridge opened their hub
+  -- immediately and called it an acceptable compromise; in game it is not one — V can pick the next
+  -- topic over the top of her, so the conversation has no pacing at all.
+  -- The menu is therefore QUEUED and fired from tick() once the line has played. `speak` returns the
+  -- line's real duration (the game's own VO length when it knows it, reading time otherwise).
+  local wait = 0
+  if S.spokeSecs and S.spokeSecs > 0 then wait = S.spokeSecs + 0.4 end
+  S.spokeSecs = nil
+  if wait > 0 then
+    local now = (M.env.now and M.env.now()) or 0
+    S.pending = { ui = ui, title = title, entries = entries, at = now + wait }
+    return
+  end
   local ok = pcall(function() ui:choice(title, entries) end)
   if not ok then log("their ui:choice threw — ending and falling back"); M.stop() end
 end
 
 function M.stop()
   S.talking, S.node, S.tree, S.taken, S.key = false, nil, nil, nil, nil
+  S.pending, S.spokeSecs = nil, nil
   if M.env.endHook then pcall(M.env.endHook) end
 end
 
@@ -534,6 +567,16 @@ M.reassertSeconds = 5.0
 
 function M.tick(now)
   now = now or 0
+  -- a menu waiting on her line to finish (see renderNode)
+  if S.pending then
+    if now >= (S.pending.at or 0) then
+      local p = S.pending
+      S.pending = nil
+      local ok = pcall(function() p.ui:choice(p.title, p.entries) end)
+      if not ok then log("their ui:choice threw on the delayed open — ending"); M.stop() end
+    end
+    return
+  end
   -- Already in: keep our row alive against their table being rebuilt (see M.ensure).
   if S.attached then
     if now < (S.nextEnsure or 0) then return end
