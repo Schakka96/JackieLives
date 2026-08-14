@@ -856,6 +856,11 @@ end
 -- ---------------------------------------------------------------------------
 function diagnostics()   -- global (not local): 200-local cap; see note at top
   log("----- DIAGNOSTICS -----")
+  -- Night City Allies bridge, one line. When the Talk row is missing from their menu this is
+  -- the line that says WHICH of the four things went wrong: not installed, never attached,
+  -- attached but our row got dropped by their loader, or attached and present (so the problem
+  -- is the per-npc condition instead).
+  pcall(function() log(Allies.status()) end)
   local amm = getAMM()
   log("AMM=" .. tostring(amm ~= nil) ..
       "  Spawn=" .. tostring(amm and amm.Spawn ~= nil) ..

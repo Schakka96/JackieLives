@@ -78,6 +78,22 @@ end
 local function log(m) if M.env.log then pcall(M.env.log, "[NCA] " .. tostring(m)) end end
 
 function M.present() return S.attached end
+
+-- One line for the Diagnostics hotkey. Answers, in order, the questions you actually have when the
+-- row is missing: are they installed, did we attach, is our row in their list RIGHT NOW, and how many
+-- times have they rebuilt the list under us.
+function M.status()
+  local mod, list, rowIn, n = nil, nil, false, 0
+  pcall(function() mod = GetMod("NightCityAllies") end)
+  pcall(function() list = S.app and S.app.availableInteractions end)
+  if type(list) == "table" then
+    n = #list
+    for _, e in ipairs(list) do if type(e) == "table" and e.__jackielives then rowIn = true end end
+  end
+  return ("NCA: installed=%s attached=%s theirVer=%s rows=%d ourRowPresent=%s reasserts=%d tries=%d")
+         :format(tostring(mod ~= nil), tostring(S.attached), tostring(S.modVer or "?"),
+                 n, tostring(rowIn), S.reasserts or 0, S.tries)
+end
 function M.talking() return S.talking end
 
 -- ---------------------------------------------------------------------------
@@ -318,10 +334,47 @@ function M.attach(mod)
 
   S.row, S.app, S.attached = row, app, true
   pcall(function() S.modVer = mod.version or mod.VERSION end)
+  -- Their own event bus, when present: a session start is exactly when LoadModules() runs and our row
+  -- disappears, so re-add immediately rather than waiting out the 5 s timer.
+  pcall(function()
+    if mod.On then mod:On("SessionStart", function() pcall(M.ensure) end) end
+  end)
   log(("attached to Night City Allies%s — 'Talk' added to their menu for %s")
       :format(S.modVer and (" v" .. tostring(S.modVer)) or "",
               (M.env.personaName and M.env.personaName()) or "the active companion"))
   return true
+end
+
+-- ---------------------------------------------------------------------------
+-- ⚠️ RE-ASSERT. THIS IS THE ONE THAT BIT.
+-- ---------------------------------------------------------------------------
+-- Their App:LoadModules() does
+--     self.availableInteractions = self.moduleLoader:LoadInteractions()
+-- i.e. it REPLACES the table rather than refilling it, and it runs at their init and again around a
+-- session start. So a row we inserted goes in perfectly, reports as attached, and is then thrown away
+-- wholesale with the table it was in — leaving us holding a reference to a list nothing renders.
+-- Reported in game 2026-08-14: "the conversation hub was not added to the NCA list".
+--
+-- So attaching is not a one-off. ensure() re-checks the CURRENT table (never a cached row reference)
+-- and puts our row back if it has gone. Cheap: an ipairs over ~8 rows on a 5 s timer.
+function M.ensure()
+  if not S.attached then return false end
+  local list
+  pcall(function() list = S.app and S.app.availableInteractions end)
+  if type(list) ~= "table" then return false end
+  for _, e in ipairs(list) do
+    if type(e) == "table" and e.__jackielives then S.row = e; return true end
+  end
+  local row = M.buildRow()
+  row.__jackielives = true
+  local ok = pcall(function() table.insert(list, row) end)
+  if ok then
+    S.row = row
+    S.reasserts = (S.reasserts or 0) + 1
+    log("their interaction list was rebuilt — re-added our Talk row (#" .. S.reasserts .. ")")
+    return true
+  end
+  return false
 end
 
 function M.detach()
@@ -348,9 +401,18 @@ end
 M.maxTries      = 20
 M.retrySeconds  = 3.0
 
+M.reassertSeconds = 5.0
+
 function M.tick(now)
-  if S.attached or S.tries >= M.maxTries then return end
   now = now or 0
+  -- Already in: keep our row alive against their table being rebuilt (see M.ensure).
+  if S.attached then
+    if now < (S.nextEnsure or 0) then return end
+    S.nextEnsure = now + M.reassertSeconds
+    M.ensure()
+    return
+  end
+  if S.tries >= M.maxTries then return end
   if now < S.nextTry then return end
   S.nextTry = now + M.retrySeconds
   S.tries = S.tries + 1

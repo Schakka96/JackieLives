@@ -218,6 +218,43 @@ local all = openHub()
 check("a hub with no `pick` still offers every eligible topic", #all == 9, #all)
 TREE.nodes.hub.pick = { 2, 3 }
 
+print("\n6c. their loader REPLACES the interaction table — we must survive it")
+-- ⚠️ THE BUG THAT SHIPPED. App:LoadModules() does
+--     self.availableInteractions = self.moduleLoader:LoadInteractions()
+-- so it hands back a BRAND NEW table rather than refilling the old one, and it runs at their init and
+-- again around a session start. Our row went in fine, we reported "attached", and then the whole
+-- table was thrown away with our row in it. In game: "the conversation hub was not added to the NCA
+-- list" — with no error anywhere, because nothing failed. It was simply discarded.
+local reload = function()          -- exactly what their LoadModules does to us
+  app.availableInteractions = {
+    { label = "Follow",    condition = function() return true end, callback = function() end },
+    { label = "Send away", condition = function() return true end, callback = function() end },
+  }
+end
+
+reload()
+local function ourRowIn()
+  for _, e in ipairs(app.availableInteractions) do if e.label == "Talk" then return e end end
+  return nil
+end
+check("their reload wipes our row (this is the real behaviour, not a straw man)", ourRowIn() == nil)
+
+Allies.tick(500000)                -- the next heartbeat after the reload
+local back = ourRowIn()
+check("...and the next tick puts it back", back ~= nil)
+check("...exactly once, not twice", #app.availableInteractions == 3, #app.availableInteractions)
+check("...and the restored row still works on our persona", back and back.condition(fakeNPC("Jackie")) == true)
+
+-- and it must not keep appending on every later tick
+Allies.tick(500000 + 60); Allies.tick(500000 + 120)
+check("a settled list is left alone", #app.availableInteractions == 3, #app.availableInteractions)
+
+-- status(): the line the Diagnostics hotkey prints
+local st = Allies.status()
+check("status() reports the row as present", tostring(st):find("ourRowPresent=true", 1, true) ~= nil, st)
+check("status() reports how many times they rebuilt the list",
+      tostring(st):find("reasserts=1", 1, true) ~= nil, st)
+
 print("\n7. failure modes — the part that actually matters")
 -- their renderer throws
 local badUi = { choice = function() error("their UI changed") end }
