@@ -97,6 +97,98 @@ end
 function M.talking() return S.talking end
 
 -- ---------------------------------------------------------------------------
+-- PROBE — the whole state of the integration, in the log, in one keypress.
+-- ---------------------------------------------------------------------------
+-- Written because I diagnosed this wrong twice from symptoms alone. It answers, in order, every
+-- question that "the Talk row isn't there" can actually mean:
+--   1. is their mod loaded, and did we reach app?
+--   2. is our row in their CURRENT list, at what index, out of how many?
+--   3. what is in that list IN ORDER, with each row's condition evaluated — including entries their
+--      menu never draws. That last part is why their "More ..." can appear with only six rows on
+--      screen: their pagination counter counts filtered-out entries too.
+--   4. for the npc their menu is on RIGHT NOW (app.ui.selectedNPC), does OUR condition say yes, and
+--      which signal decided it — record, display name, or neither.
+-- (4) is the one that matters when the row IS present and still invisible: it means their renderer
+-- dropped it on the condition, not on the page.
+function M.probe()
+  local out = {}
+  local function add(l) out[#out + 1] = l end
+  add("----- NCA PROBE -----")
+
+  local mod
+  pcall(function() mod = GetMod("NightCityAllies") end)
+  add(("installed=%s attached=%s theirVer=%s tries=%d reasserts=%d")
+      :format(tostring(mod ~= nil), tostring(S.attached), tostring(S.modVer or "?"),
+              S.tries, S.reasserts or 0))
+  if not mod then add("Night City Allies is not loaded — nothing else to check."); add("----- END -----"); return out end
+
+  local app
+  pcall(function() app = mod.app end)
+  add("mod.app reachable = " .. tostring(app ~= nil))
+  if not app then add("their layout changed: no .app — the bridge cannot attach."); add("----- END -----"); return out end
+
+  local list
+  pcall(function() list = app.availableInteractions end)
+  if type(list) ~= "table" then add("no app.availableInteractions table."); add("----- END -----"); return out end
+
+  -- ⚠️ CAP THE READ. This walks ANOTHER MOD'S table, and a table we did not build can be anything —
+  -- including a proxy with an __index that answers forever. loadsim's own GetMod stub is exactly that,
+  -- and the first version of this probe hung the offline test suite outright. A real interaction list
+  -- is ~10 rows; 60 is far past any sane menu and still terminates.
+  local MAX = 60
+  local n = 0
+  pcall(function() n = math.min(#list, MAX) end)
+  local ourIdx
+  for i = 1, n do
+    local e = list[i]
+    if type(e) == "table" and e.__jackielives then ourIdx = i end
+  end
+  add(("their list: %d entries (showing %d) | our row at index %s")
+      :format((function() local c = 0; pcall(function() c = #list end); return c end)(), n,
+              ourIdx and tostring(ourIdx) or "NOT PRESENT"))
+
+  local npc
+  pcall(function() npc = app.ui and app.ui.selectedNPC end)
+  local npcName = "(none - open their menu on a companion first, then press this)"
+  pcall(function() if npc and npc.GetName then npcName = tostring(npc:GetName()) end end)
+  add("their menu is currently on: " .. npcName)
+
+  for i = 1, n do
+    local e = list[i]
+    if type(e) ~= "table" then break end
+    local label, cond = "?", "n/a"
+    pcall(function() label = tostring(e.label or "?") end)
+    if e.condition and npc then
+      local ok, r = pcall(e.condition, npc)
+      cond = ok and tostring(r ~= false) or "ERROR"
+    end
+    add(("  %2d. %-22s cond=%-5s%s"):format(i, label, cond, e.__jackielives and "   <-- OURS" or ""))
+  end
+
+  if npc then
+    local rec, byRec, byName = nil, false, false
+    pcall(function()
+      local id = npc:GetEntityID()
+      local ent = id and Game.FindEntityByID(id)
+      local r = ent and ent:GetRecordID()
+      rec = r and tostring(r.value or r) or nil
+      if rec and M.env.recordIsOurs then byRec = M.env.recordIsOurs(rec) and true or false end
+    end)
+    pcall(function()
+      local nm, mine = npc:GetName(), M.env.personaName and M.env.personaName()
+      if nm and mine then byName = tostring(nm):lower():find(tostring(mine):lower(), 1, true) ~= nil end
+    end)
+    add(("our condition: record=%s -> %s | name '%s' vs persona '%s' -> %s | VERDICT %s")
+        :format(tostring(rec or "unresolved"), tostring(byRec), npcName,
+                tostring((M.env.personaName and M.env.personaName()) or "?"), tostring(byName),
+                tostring(byRec or byName)))
+    add("(an unresolved record is normal - their npc id may not resolve to an entity; the name is the fallback)")
+  end
+  add("----- END NCA PROBE -----")
+  return out
+end
+
+-- ---------------------------------------------------------------------------
 -- Is this NCA npc the character WE write for?
 -- ---------------------------------------------------------------------------
 -- ⚠️ THIS GATE IS THE WHOLE SAFETY STORY. Our row must appear on our persona and on nobody else —

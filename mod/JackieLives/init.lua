@@ -860,7 +860,12 @@ function diagnostics()   -- global (not local): 200-local cap; see note at top
   -- the line that says WHICH of the four things went wrong: not installed, never attached,
   -- attached but our row got dropped by their loader, or attached and present (so the problem
   -- is the per-npc condition instead).
-  pcall(function() log(Allies.status()) end)
+  -- Night City Allies bridge: the FULL probe, not a summary. When the Talk row is missing this
+  -- prints their whole interaction list with each row's condition evaluated against the npc
+  -- their menu is currently open on — which separates "we were never added" from "we were
+  -- added and their renderer rejected our condition". Open their menu on the companion first,
+  -- then press Diagnostics.
+  pcall(function() for _, l in ipairs(Allies.probe()) do log(l) end end)
   local amm = getAMM()
   log("AMM=" .. tostring(amm ~= nil) ..
       "  Spawn=" .. tostring(amm and amm.Spawn ~= nil) ..

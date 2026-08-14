@@ -20,7 +20,11 @@
 # file that only existed to point at mod\<something-else>, and it never learned to pull. Any
 # folder under mod\ is a valid value: JackieSceneProbe, JackieLipsync, JackieVehicleTest,
 # JLFactDump, JackieAnimTest.
-param([string]$GameDir = "", [switch]$NoPull, [switch]$Force, [string]$ModName = "JackieLives")
+# -LuaOnly: copy ONLY the CET Lua folder and stop. Everything else this script deploys — the
+# redscript shim, the Audioware bank, the .archive — is a file the GAME HOLDS OPEN while it
+# runs, so a normal deploy needs Cyberpunk closed. The Lua is not: CET re-reads it, so you can
+# alt-tab, run this, and hot-reload without restarting. Turns a 2-minute relaunch into 2 seconds.
+param([string]$GameDir = "", [switch]$NoPull, [switch]$Force, [string]$ModName = "JackieLives", [switch]$LuaOnly)
 
 $ErrorActionPreference = "Stop"
 $modName = $ModName
@@ -148,6 +152,14 @@ if ($rc -ge 8) {
   exit 1
 }
 Write-Host "Deployed '$modName' to $dest"
+
+if ($LuaOnly) {
+  Write-Host ""
+  Write-Host "-LuaOnly: stopping here. The redscript shim, Audioware bank and .archive were NOT" -ForegroundColor DarkGray
+  Write-Host "          touched - those need the game closed." -ForegroundColor DarkGray
+  Write-Host "In game: open the CET console and reload the mod, or reload a save." -ForegroundColor Green
+  exit 0
+}
 
 # --- redscript VO shim (v1.66) -> <game>\r6\scripts\JackieLives --------------
 # This is what lets Jackie speak the game's OWN voice-over: reds\JackieLivesVO.reds adds
