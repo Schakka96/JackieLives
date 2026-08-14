@@ -43,9 +43,13 @@ local S = {
   tries     = 0,
   nextTry   = 0,
   talking   = false,     -- a conversation is running through THEIR ui right now
+  pending   = nil,       -- a menu queued behind the line she is speaking
+  spokeSecs = nil,       -- how long that line runs
   node      = nil,
   tree      = nil,
+  key       = nil,       -- roster key of the persona THIS conversation is with
   taken     = nil,       -- `once` ledger for this conversation (mirrors Branch's bstate.taken)
+  draw      = nil,       -- sticky hub draws, keyed by node (mirrors NCS.hubDraw)
 }
 
 M.env = {}
@@ -65,68 +69,210 @@ function M.bind(t)
     "talkTree",     -- function() -> the active persona's talk tree
     "personaName",  -- function() -> "Lucy"
     "activeKey",    -- function() -> "lucy"
-    "recordIsOurs", -- function(recordOrName) -> bool
+    "personaFor",   -- function(nameOrRecord) -> rosterKey | nil   ⚠️ ANY persona, not just the active one
+    "treeForKey",   -- function(rosterKey) -> that persona's talk tree
+    "nameForKey",   -- function(rosterKey) -> display name
+    "recordIsOurs", -- function(recordOrName) -> bool  (kept for the record-first probe path)
     "famAllows",    -- function(minFam) -> bool
     "famAdd",       -- function(award)
     "endHook",      -- function()  called when the conversation closes (clears prompts etc.)
+    "now",          -- function() -> seconds (engine clock; drives the sticky hub draw)
+    "hubRefresh",   -- function() -> lo, hi   (Config.dialogue.hubRefreshMin/Max)
   }) do if t[k] ~= nil then M.env[k] = t[k] end end
 end
 
 local function log(m) if M.env.log then pcall(M.env.log, "[NCA] " .. tostring(m)) end end
 
 function M.present() return S.attached end
+
+-- One line for the Diagnostics hotkey. Answers, in order, the questions you actually have when the
+-- row is missing: are they installed, did we attach, is our row in their list RIGHT NOW, and how many
+-- times have they rebuilt the list under us.
+function M.status()
+  local mod, list, rowIn, n = nil, nil, false, 0
+  pcall(function() mod = GetMod("NightCityAllies") end)
+  pcall(function() list = S.app and S.app.availableInteractions end)
+  -- ⚠️ CAPPED, for the same reason probe() is: this walks ANOTHER MOD'S table, and an unbounded
+  -- ipairs over a table we did not build can run forever. loadsim's GetMod stub does exactly that,
+  -- and status() is called every frame by the CET panel — so uncapped it hangs the offline suite AND
+  -- would hang the game's draw loop against a proxy-backed table.
+  if type(list) == "table" then
+    pcall(function() n = math.min(#list, 60) end)
+    for i = 1, n do
+      local e = list[i]
+      if type(e) == "table" and e.__jackielives then rowIn = true end
+    end
+  end
+  return ("NCA: installed=%s attached=%s theirVer=%s rows=%d ourRowPresent=%s reasserts=%d tries=%d")
+         :format(tostring(mod ~= nil), tostring(S.attached), tostring(S.modVer or "?"),
+                 n, tostring(rowIn), S.reasserts or 0, S.tries)
+end
 function M.talking() return S.talking end
+
+-- ---------------------------------------------------------------------------
+-- PROBE — the whole state of the integration, in the log, in one keypress.
+-- ---------------------------------------------------------------------------
+-- Written because I diagnosed this wrong twice from symptoms alone. It answers, in order, every
+-- question that "the Talk row isn't there" can actually mean:
+--   1. is their mod loaded, and did we reach app?
+--   2. is our row in their CURRENT list, at what index, out of how many?
+--   3. what is in that list IN ORDER, with each row's condition evaluated — including entries their
+--      menu never draws. That last part is why their "More ..." can appear with only six rows on
+--      screen: their pagination counter counts filtered-out entries too.
+--   4. for the npc their menu is on RIGHT NOW (app.ui.selectedNPC), does OUR condition say yes, and
+--      which signal decided it — record, display name, or neither.
+-- (4) is the one that matters when the row IS present and still invisible: it means their renderer
+-- dropped it on the condition, not on the page.
+function M.probe()
+  local out = {}
+  local function add(l) out[#out + 1] = l end
+  add("----- NCA PROBE -----")
+
+  local mod
+  pcall(function() mod = GetMod("NightCityAllies") end)
+  add(("installed=%s attached=%s theirVer=%s tries=%d reasserts=%d")
+      :format(tostring(mod ~= nil), tostring(S.attached), tostring(S.modVer or "?"),
+              S.tries, S.reasserts or 0))
+  if not mod then add("Night City Allies is not loaded — nothing else to check."); add("----- END -----"); return out end
+
+  local app
+  pcall(function() app = mod.app end)
+  add("mod.app reachable = " .. tostring(app ~= nil))
+  if not app then add("their layout changed: no .app — the bridge cannot attach."); add("----- END -----"); return out end
+
+  local list
+  pcall(function() list = app.availableInteractions end)
+  if type(list) ~= "table" then add("no app.availableInteractions table."); add("----- END -----"); return out end
+
+  -- ⚠️ CAP THE READ. This walks ANOTHER MOD'S table, and a table we did not build can be anything —
+  -- including a proxy with an __index that answers forever. loadsim's own GetMod stub is exactly that,
+  -- and the first version of this probe hung the offline test suite outright. A real interaction list
+  -- is ~10 rows; 60 is far past any sane menu and still terminates.
+  local MAX = 60
+  local n = 0
+  pcall(function() n = math.min(#list, MAX) end)
+  local ourIdx
+  for i = 1, n do
+    local e = list[i]
+    if type(e) == "table" and e.__jackielives then ourIdx = i end
+  end
+  add(("their list: %d entries (showing %d) | our row at index %s")
+      :format((function() local c = 0; pcall(function() c = #list end); return c end)(), n,
+              ourIdx and tostring(ourIdx) or "NOT PRESENT"))
+
+  local npc
+  pcall(function() npc = app.ui and app.ui.selectedNPC end)
+  local npcName = "(none - open their menu on a companion first, then press this)"
+  pcall(function() if npc and npc.GetName then npcName = tostring(npc:GetName()) end end)
+  add("their menu is currently on: " .. npcName)
+
+  for i = 1, n do
+    local e = list[i]
+    if type(e) ~= "table" then break end
+    local label, cond = "?", "n/a"
+    pcall(function() label = tostring(e.label or "?") end)
+    if e.condition and npc then
+      local ok, r = pcall(e.condition, npc)
+      cond = ok and tostring(r ~= false) or "ERROR"
+    end
+    add(("  %2d. %-22s cond=%-5s%s"):format(i, label, cond, e.__jackielives and "   <-- OURS" or ""))
+  end
+
+  if npc then
+    local rec, byRec, byName = nil, false, false
+    pcall(function()
+      local id = npc:GetEntityID()
+      local ent = id and Game.FindEntityByID(id)
+      local r = ent and ent:GetRecordID()
+      rec = r and tostring(r.value or r) or nil
+      if rec and M.env.recordIsOurs then byRec = M.env.recordIsOurs(rec) and true or false end
+    end)
+    pcall(function()
+      local nm, mine = npc:GetName(), M.env.personaName and M.env.personaName()
+      if nm and mine then byName = tostring(nm):lower():find(tostring(mine):lower(), 1, true) ~= nil end
+    end)
+    local byRecKey, byNameKey
+    pcall(function() if rec and M.env.personaFor then byRecKey = M.env.personaFor(rec) end end)
+    pcall(function() if M.env.personaFor then byNameKey = M.env.personaFor(npcName) end end)
+    add(("our condition: record=%s -> %s | name '%s' -> %s | VERDICT %s")
+        :format(tostring(rec or "unresolved"), tostring(byRecKey or "no match"),
+                npcName, tostring(byNameKey or "no match"),
+                tostring(byRecKey or byNameKey or "NOT ONE OF OURS")))
+    add("(matched against the WHOLE roster, not the active persona — NCA summons whoever it likes)")
+  end
+  add("----- END NCA PROBE -----")
+  return out
+end
 
 -- ---------------------------------------------------------------------------
 -- Is this NCA npc the character WE write for?
 -- ---------------------------------------------------------------------------
--- ⚠️ THIS GATE IS THE WHOLE SAFETY STORY. Our row must appear on our persona and on nobody else —
--- NCA users hire all sorts of people, and a "Talk" row that opened Lucy's tree on a random mercenary
--- would be worse than no integration at all. Two signals, strongest first:
---   1. the entity's RECORD, asked through nclRecordIsOurs (the same predicate the rest of the engine
---      uses, so it follows the active persona and the v1.1 TweakXL record automatically);
---   2. the DISPLAY NAME, as a fallback for when the entity can't be resolved from its id.
--- A failure to determine either answers NO. Silence is the safe default here.
-function M.isOurs(npc)
-  if not npc then return false end
-  local ok = false
+-- ⚠️ MATCH THE WHOLE ROSTER, NOT THE ACTIVE PERSONA. This is the design error the probe caught
+-- (2026-08-15): the row asked "is this npc the companion NCLives currently has selected?", so with
+-- Kerry active and Goro summoned through NCA the answer was no, and Talk was hidden on a character
+-- we have a full pack for. The log said it outright — `name 'Goro' vs persona 'Kerry' -> false`.
+--
+-- NCA summons whoever it likes, whenever it likes; it has no idea which persona we consider active
+-- and no reason to care. So the question has to be "is this ANY character we write for?" and the
+-- answer carries the roster KEY, which is then what the conversation runs on. Nothing is switched:
+-- we do NOT call setActive, because that would dismiss whoever the player actually has out.
+--
+-- Still answers NO on any failure — an NCA user hires all sorts of people, and a Talk row opening
+-- somebody else's pack on a random merc is worse than no integration at all.
+function M.personaFor(npc)
+  if not npc then return nil end
+  local key
 
+  -- 1. the entity's RECORD, when it resolves — the strong signal
   pcall(function()
     local id = npc:GetEntityID()
     local ent = id and Game.FindEntityByID(id)
     local rec = ent and ent:GetRecordID()
-    if rec and M.env.recordIsOurs then ok = M.env.recordIsOurs(tostring(rec.value or rec)) and true or false end
+    local str = rec and tostring(rec.value or rec)
+    if str and M.env.personaFor then key = M.env.personaFor(str) end
   end)
-  if ok then return true end
+  if key then return key end
 
+  -- 2. the DISPLAY NAME, as the fallback (their npc ids often do not resolve to an entity)
   pcall(function()
     local nm = npc:GetName()
-    local mine = M.env.personaName and M.env.personaName()
-    if nm and mine and nm ~= "" and mine ~= "" then
-      ok = (tostring(nm):lower():find(tostring(mine):lower(), 1, true) ~= nil)
-    end
+    if nm and nm ~= "" and M.env.personaFor then key = M.env.personaFor(tostring(nm)) end
   end)
-  return ok
+  return key
 end
+
+-- kept as the old name so nothing outside has to change
+function M.isOurs(npc) return M.personaFor(npc) ~= nil end
 
 -- ---------------------------------------------------------------------------
 -- Build the rows for one node of our tree, in THEIR row format.
 -- ---------------------------------------------------------------------------
--- Honours the gating a pack author expects: `cond`, `minFam`, `chance`, `once`, and `textPool`.
+-- Honours the gating a pack author expects: `cond`, `minFam`, `chance`, `once`, `textPool` — and the
+-- node-level `pick` sampler, including its sticky draw.
 --
--- ⚠️ DELIBERATELY NOT HONOURED: the node-level `pick = N` sampler. In our own box a hub shows only
--- 3-5 of its topics because the box is a fixed-height list; NCA's renderer PAGINATES (Application/
--- ui.lua MAX_CHOICES_PER_PAGE), so the reason for sampling doesn't exist there and sampling would
--- just hide writing behind a "next page" the player can already use. The familiarity GATES still
--- apply, so nothing arrives early — this only changes how much of what she's willing to say is
--- visible at once.
+-- ⚠️ `pick` IS CONTENT, NOT A UI CONSTRAINT — I got this wrong first time and shipped it unhonoured.
+-- It reads like a workaround for our box being a fixed-height list, and their renderer paginates, so
+-- it looks safe to drop. It isn't: sampling is what stops a hub of thirty topics reading as a menu,
+-- and what makes the same character feel different on a second visit. Dropping it doesn't reveal
+-- more writing, it flattens the encounter. (Antonia, 2026-08-14: "it also makes interactions with
+-- the character more interesting/surprising".)
+--
+-- Faithful to openChoiceMenu's sampler, because half of it would be worse than none:
+--   • `pin = true` rows ALWAYS show and never count against the quota — the way out of a hub is
+--     pinned, and a sample without it can strand the player in a menu with no exit.
+--   • `last = true` IMPLIES `pin`, same as the engine.
+--   • `pick` may be a RANGE `{lo, hi}`, re-rolled per open, so the menu's SHAPE varies too.
+--   • THE DRAW STICKS for a cooldown. Without this, backing out of a topic and re-entering the hub
+--     re-rolls, and a player can walk the whole pool in one conversation — which defeats both the
+--     sampling and the familiarity pacing it exists to protect. The window runs from the last time
+--     the hub was SEEN, so reopening holds the topics and walking away refreshes them.
 local function rowsFor(node)
-  local rows = {}
+  local elig = {}
   for _, c in ipairs((node and node.choices) or {}) do
     local show = true
     if c.cond then local o, r = pcall(c.cond); show = (o and r ~= false) end
     if show and c.minFam and M.env.famAllows then
-      local o, r = pcall(M.env.famAllows, c.minFam); show = (o and r ~= false)
+      local o, r = pcall(M.env.famAllows, c.minFam, S.key); show = (o and r ~= false)
     end
     if show and c.chance then
       local r = 1.0; pcall(function() r = math.random() end); show = (r < c.chance)
@@ -138,10 +284,65 @@ local function rowsFor(node)
         local o, e = pcall(M.env.pickLine, c.textPool)
         if o and e and e.text then label = e.text end
       end
-      if label and label ~= "" then rows[#rows + 1] = { choice = c, label = tostring(label) } end
+      if label and label ~= "" then
+        elig[#elig + 1] = { choice = c, label = tostring(label), pin = (c.pin or c.last) and true or false }
+      end
     end
   end
-  return rows
+  if not (node and node.pick) or #elig == 0 then return elig end
+
+  -- how many unpinned rows to offer this time
+  local want
+  if type(node.pick) == "table" then
+    local lo = math.floor(tonumber(node.pick[1]) or 1)
+    local hi = math.floor(tonumber(node.pick[2]) or lo)
+    if hi < lo then lo, hi = hi, lo end
+    want = lo
+    pcall(function() want = math.random(lo, hi) end)
+  else
+    want = tonumber(node.pick) and math.floor(tonumber(node.pick)) or nil
+  end
+  want = want and math.max(1, want)
+
+  local now = (M.env.now and M.env.now()) or 0
+  S.draw = S.draw or {}
+  local hd = S.draw[node]
+
+  -- reuse a warm draw
+  if want and hd and hd.set and now < (hd.until_ or 0) then
+    local out, nonPinned = {}, 0
+    for _, e in ipairs(elig) do
+      if e.pin or hd.set[e.choice] then out[#out + 1] = e; if not e.pin then nonPinned = nonPinned + 1 end end
+    end
+    -- only honour it if there is still something to talk about (every cached topic may have been a
+    -- `once` the player has since spent)
+    if nonPinned > 0 then
+      hd.until_ = now + (hd.hold or 20.0)
+      return out
+    end
+  end
+
+  if not want then return elig end
+  local free = {}
+  for i, e in ipairs(elig) do if not e.pin then free[#free + 1] = i end end
+  if #free <= want then return elig end
+
+  for i = #free, 2, -1 do                        -- Fisher-Yates over the index list
+    local j = i; pcall(function() j = math.random(1, i) end)
+    free[i], free[j] = free[j], free[i]
+  end
+  local keep = {}
+  for i = 1, want do keep[free[i]] = true end
+  local out, set = {}, {}
+  for i, e in ipairs(elig) do
+    if e.pin or keep[i] then out[#out + 1] = e; if not e.pin then set[e.choice] = true end end
+  end
+  local lo, hi = 10.0, 30.0
+  if M.env.hubRefresh then pcall(function() lo, hi = M.env.hubRefresh() end) end
+  local hold = lo
+  pcall(function() hold = lo + math.random() * math.max(0, (hi or lo) - lo) end)
+  S.draw[node] = { set = set, until_ = now + hold, hold = hold }
+  return out
 end
 
 -- ---------------------------------------------------------------------------
@@ -164,20 +365,35 @@ local function renderNode(npc, ui, nodeKey)
     -- own runner does (Branch.start arms bstate.openAt). Their hub is opened by us from inside a
     -- callback, and there is no tick of theirs we could defer it to without leaving the player
     -- staring at nothing. The subtitle stays up underneath the menu, which reads fine.
-    pcall(M.env.speak, line.text, line.sfx, tree.muteFallback)
+    local ok, secs = pcall(M.env.speak, line.text, line.sfx, tree.muteFallback)
+    S.spokeSecs = (ok and type(secs) == "number" and secs > 0) and secs or nil
   end
 
   local rows = rowsFor(node)
   if #rows == 0 then M.stop(); return end
 
+  -- ⚠️ ROW COLOUR. Their UI:choice defaults every row to gameinteractionsChoiceType.QuestImportant,
+  -- which the game paints YELLOW — the "this matters / point of no return" colour. Rendered through
+  -- them, all of her topics came out yellow, which reads as nine irreversible decisions instead of a
+  -- conversation. Blue (Blueline) is the ordinary-dialogue colour and is what their own social menu
+  -- uses. Only the way OUT stays yellow: the pinned/last row, or any row that ends the conversation.
+  -- ⚠️ BARE GLOBAL, never _G[...] — CET resolves RTTI names through the mod sandbox's __index, so the
+  -- table lookup form is nil here. Same rule as dialogui.lua. pcall'd because it is still a game
+  -- global we are reading at file scope of a callback.
+  local BLUE, YELLOW
+  pcall(function() BLUE = gameinteractionsChoiceType.Blueline end)
+  pcall(function() YELLOW = gameinteractionsChoiceType.QuestImportant end)
+
   local entries = {}
   for _, r in ipairs(rows) do
+    local isExit = (r.pin or r.choice.last or r.choice.to == nil) and true or false
     entries[#entries + 1] = {
       label = r.label,
+      type  = isExit and YELLOW or BLUE,
       callback = function()
         local c = r.choice
         if c.once then S.taken = S.taken or {}; S.taken[c.once] = true end
-        if c.fam and M.env.famAdd then pcall(M.env.famAdd, c.fam) end
+        if c.fam and M.env.famAdd then pcall(M.env.famAdd, c.fam, S.key) end
         if M.env.sayPlayer and c.text then pcall(M.env.sayPlayer, tostring(c.text)) end
         if c.to then
           -- re-enter their renderer for the next node, exactly as their own 030_social.lua nests
@@ -189,13 +405,32 @@ local function renderNode(npc, ui, nodeKey)
     }
   end
 
-  local title = (M.env.personaName and M.env.personaName()) or "Talk"
+  local title = "Talk"
+  pcall(function()
+    if S.key and M.env.nameForKey then title = M.env.nameForKey(S.key) or title end
+  end)
+
+  -- ⚠️ LET HER FINISH. Our own runner arms bstate.openAt = clock + line length + 0.4 and opens the
+  -- menu only when she has stopped talking. The first version of this bridge opened their hub
+  -- immediately and called it an acceptable compromise; in game it is not one — V can pick the next
+  -- topic over the top of her, so the conversation has no pacing at all.
+  -- The menu is therefore QUEUED and fired from tick() once the line has played. `speak` returns the
+  -- line's real duration (the game's own VO length when it knows it, reading time otherwise).
+  local wait = 0
+  if S.spokeSecs and S.spokeSecs > 0 then wait = S.spokeSecs + 0.4 end
+  S.spokeSecs = nil
+  if wait > 0 then
+    local now = (M.env.now and M.env.now()) or 0
+    S.pending = { ui = ui, title = title, entries = entries, at = now + wait }
+    return
+  end
   local ok = pcall(function() ui:choice(title, entries) end)
   if not ok then log("their ui:choice threw — ending and falling back"); M.stop() end
 end
 
 function M.stop()
-  S.talking, S.node, S.tree, S.taken = false, nil, nil, nil
+  S.talking, S.node, S.tree, S.taken, S.key = false, nil, nil, nil, nil
+  S.pending, S.spokeSecs = nil, nil
   if M.env.endHook then pcall(M.env.endHook) end
 end
 
@@ -206,13 +441,18 @@ function M.buildRow()
   return {
     label = "Talk",
     condition = function(npc)
-      local ok, r = pcall(M.isOurs, npc)
-      return ok and r or false
+      local ok, r = pcall(M.personaFor, npc)
+      return (ok and r ~= nil) or false
     end,
     callback = function(npc, ui)
-      local tree = M.env.talkTree and M.env.talkTree()
-      if not tree or not tree.nodes then log("no talk tree for the active persona"); return end
-      S.talking, S.tree, S.taken = true, tree, {}
+      -- the persona is resolved from the NPC, not from whoever we have active
+      local key = M.personaFor(npc)
+      local tree
+      pcall(function() tree = key and M.env.treeForKey and M.env.treeForKey(key) end)
+      if not tree or not tree.nodes then
+        log("no talk tree for '" .. tostring(key or "?") .. "'"); return
+      end
+      S.key, S.talking, S.tree, S.taken = key, true, tree, {}
       renderNode(npc, ui, tree.start)
     end,
   }
@@ -244,15 +484,59 @@ function M.attach(mod)
 
   local row = M.buildRow()
   row.__jackielives = true                     -- our marker, so detach removes OURS and nothing else
-  local ok = pcall(function() table.insert(list, row) end)
+  -- ⚠️ FIRST, NOT LAST — and this is not a matter of taste.
+  -- Their UI:choice paginates at MAX_CHOICES_PER_PAGE = 12: rows 1..13 render, then a "More ..."
+  -- button, then the rest on page two. Appending put our row past that cut on a fully-kitted squad
+  -- member, so in game it was invisible — behind a "More ..." that their own styling
+  -- (gameinteractionsChoiceType.AlreadyRead) draws greyed out and that Antonia could not click
+  -- (2026-08-15). Inserting at the front keeps Talk on page one whatever else they add, and it is
+  -- also the right reading order: talk to her first, command her second.
+  local ok = pcall(function() table.insert(list, 1, row) end)
   if not ok then log("could not insert our row"); return false end
 
   S.row, S.app, S.attached = row, app, true
   pcall(function() S.modVer = mod.version or mod.VERSION end)
+  -- Their own event bus, when present: a session start is exactly when LoadModules() runs and our row
+  -- disappears, so re-add immediately rather than waiting out the 5 s timer.
+  pcall(function()
+    if mod.On then mod:On("SessionStart", function() pcall(M.ensure) end) end
+  end)
   log(("attached to Night City Allies%s — 'Talk' added to their menu for %s")
       :format(S.modVer and (" v" .. tostring(S.modVer)) or "",
               (M.env.personaName and M.env.personaName()) or "the active companion"))
   return true
+end
+
+-- ---------------------------------------------------------------------------
+-- ⚠️ RE-ASSERT. THIS IS THE ONE THAT BIT.
+-- ---------------------------------------------------------------------------
+-- Their App:LoadModules() does
+--     self.availableInteractions = self.moduleLoader:LoadInteractions()
+-- i.e. it REPLACES the table rather than refilling it, and it runs at their init and again around a
+-- session start. So a row we inserted goes in perfectly, reports as attached, and is then thrown away
+-- wholesale with the table it was in — leaving us holding a reference to a list nothing renders.
+-- Reported in game 2026-08-14: "the conversation hub was not added to the NCA list".
+--
+-- So attaching is not a one-off. ensure() re-checks the CURRENT table (never a cached row reference)
+-- and puts our row back if it has gone. Cheap: an ipairs over ~8 rows on a 5 s timer.
+function M.ensure()
+  if not S.attached then return false end
+  local list
+  pcall(function() list = S.app and S.app.availableInteractions end)
+  if type(list) ~= "table" then return false end
+  for _, e in ipairs(list) do
+    if type(e) == "table" and e.__jackielives then S.row = e; return true end
+  end
+  local row = M.buildRow()
+  row.__jackielives = true
+  local ok = pcall(function() table.insert(list, 1, row) end)   -- front: see the note in attach()
+  if ok then
+    S.row = row
+    S.reasserts = (S.reasserts or 0) + 1
+    log("their interaction list was rebuilt — re-added our Talk row (#" .. S.reasserts .. ")")
+    return true
+  end
+  return false
 end
 
 function M.detach()
@@ -279,9 +563,28 @@ end
 M.maxTries      = 20
 M.retrySeconds  = 3.0
 
+M.reassertSeconds = 5.0
+
 function M.tick(now)
-  if S.attached or S.tries >= M.maxTries then return end
   now = now or 0
+  -- a menu waiting on her line to finish (see renderNode)
+  if S.pending then
+    if now >= (S.pending.at or 0) then
+      local p = S.pending
+      S.pending = nil
+      local ok = pcall(function() p.ui:choice(p.title, p.entries) end)
+      if not ok then log("their ui:choice threw on the delayed open — ending"); M.stop() end
+    end
+    return
+  end
+  -- Already in: keep our row alive against their table being rebuilt (see M.ensure).
+  if S.attached then
+    if now < (S.nextEnsure or 0) then return end
+    S.nextEnsure = now + M.reassertSeconds
+    M.ensure()
+    return
+  end
+  if S.tries >= M.maxTries then return end
   if now < S.nextTry then return end
   S.nextTry = now + M.retrySeconds
   S.tries = S.tries + 1

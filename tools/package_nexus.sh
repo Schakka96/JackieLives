@@ -122,6 +122,50 @@ else
   echo "   ✅ staging matches the mod source"
 fi
 
+# --- the voice archive (v1.71) -------------------------------------------------------------------
+# What it is: 47 rows of our OWN String IDs pointing at the vanilla FEMALE .wem, merged into the
+# game's voiceover index by ArchiveXL. It is what makes a female V, and a Jackie talking TO one,
+# sound right — a line's two takes share one String ID and the ENGINE picks the male column
+# (../NCLives/docs/research/vo_gender.md). No audio in it: ids and depot paths only.
+#
+# It is built on WINDOWS (WolvenKit), so this machine can neither rebuild it nor easily look inside.
+# build_archive.py therefore leaves a .stamp of the sources it baked, and we compare — an archive
+# built before the last gen_vomap.py run would ship String IDs the Lua references and the archive
+# does not contain, i.e. SILENT lines, invisible until a player says so.
+ARCHIVE_SRC="archive/pc/mod"
+STAGING_ARCHIVE="$STAGING/archive/pc/mod"
+if [ -f "$ARCHIVE_SRC/JackieLives.archive" ] && [ -f "$ARCHIVE_SRC/JackieLives.archive.xl" ]; then
+  mkdir -p "$STAGING_ARCHIVE"
+  cp "$ARCHIVE_SRC/JackieLives.archive" "$ARCHIVE_SRC/JackieLives.archive.xl" "$STAGING_ARCHIVE/"
+  echo "   ✅ voice archive staged ($(du -h "$ARCHIVE_SRC/JackieLives.archive" | cut -f1))"
+  if command -v python3 >/dev/null 2>&1; then
+    # ONE implementation of the digest, in build_archive.py. A second copy here is exactly how
+    # NCLives' equivalent gate silently rotted: the copy stopped hashing a source and could never
+    # agree with the stamp again.
+    STAMP_NOW="$(python3 tools/build_archive.py --digest)"
+    STAMP_WAS="$(tr -d '\r\n' < "$ARCHIVE_SRC/JackieLives.archive.stamp" 2>/dev/null || echo none)"
+    [ -n "$STAMP_WAS" ] || STAMP_WAS=none
+    if [ "$STAMP_WAS" != "$STAMP_NOW" ]; then
+      echo
+      echo "❌ THE VOICE ARCHIVE IS STALE — it was built from different sources."
+      echo "   Shipping it would reference String IDs the archive doesn't carry: V's gendered lines"
+      echo "   would go SILENT instead of sounding female. Rebuild on the WINDOWS box:"
+      echo "       build_archive.bat, then commit archive/pc/mod/ (all three files)"
+      echo "   (stamp on disk: ${STAMP_WAS:0:12}...  sources now: ${STAMP_NOW:0:12}...)"
+      exit 1
+    fi
+    echo "   ✅ ...and it matches the current voice map"
+  fi
+else
+  # A stale copy must not ship either — a previous run may have left one in staging.
+  rm -rf "$STAGING/archive"
+  echo
+  echo "⚠️  NO VOICE ARCHIVE — this zip ships WITHOUT it, so a female V keeps the MALE takes."
+  echo "   That is the pre-v1.71 behaviour, not a crash: the mod detects the missing archive and"
+  echo "   falls back. To include it, build it on Windows (double-click build_archive.bat) and"
+  echo "   commit archive/pc/mod/."
+fi
+
 # --- the fomod version must match Config.version (Vortex shows this) ----------------------------
 FOMOD_VER="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$STAGING/fomod/info.xml" | head -1)"
 if [ "$FOMOD_VER" != "$VERSION" ]; then

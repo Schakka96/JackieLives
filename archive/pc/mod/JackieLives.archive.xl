@@ -1,0 +1,38 @@
+# ArchiveXL manifest for JackieLives (v1.71) — the ONLY thing this archive does is make a female V,
+# and a Jackie talking TO a female V, sound right.
+#
+# WHY AN ARCHIVE AT ALL, IN A MOD THAT HAS NEVER SHIPPED ONE
+# A line's male and female takes share ONE String ID. `locVoiceoverMap` holds a PAIR of paths and the
+# ENGINE picks the column, natively — `audioDialogLineEventData` has no gender field, `AudioSystem`
+# has no gender argument, and there is exactly one `v` voice tag. So no amount of Lua or redscript can
+# ask for a take. The only lever is to put the recording we want behind a String ID of our OWN.
+# Full investigation: ../NCLives/docs/research/vo_gender.md.
+#
+# `vomaps:` is undocumented — ArchiveXL's wiki lists only `onscreens` — but its source defines four
+# keys (onscreens, subtitles, lipmaps, vomaps) in src/App/Extensions/Localization/Config.cpp:6-10, and
+# OnLoadVoiceOvers (Extension.cpp:327) MERGES what we name here into the game's voiceover index:
+#
+#     entry.voMapChunks.PushBack(ref);
+#
+# Merged, not replaced. Our map holds 47 rows of our own synthetic ids — 41 of V's lines and 6 of
+# Jackie's "chica"/"mano" pairs — each pointing both columns at the vanilla FEMALE .wem. It contains
+# only String IDs and depot paths: no audio, no CDPR text, nothing of theirs redistributed. Patching
+# their map instead would have meant shipping 30,184 of their entries (4.19 MB) to change 47.
+#
+# `onscreens:` is ONE string, and it is not player-facing. It is a BEACON: JackieLives has no journal
+# to look for, so `jlArchiveLoaded()` asks the game for this key. Without a detector we could not tell
+# "archive missing" from "wrong gender", and speaking a synthetic id with no archive is SILENCE —
+# strictly worse than the male take. Do not delete it thinking it is dead content.
+#
+# ⚠️ en-us ONLY. The .wem paths under en-us\vo\ are the English recordings. A player on another
+# language keeps the male takes, which is exactly what they have today — vo.lua falls back whenever an
+# id isn't mapped, so this can never mute a line.
+#
+# ⚠️ Build with `python tools\build_archive.py` on WINDOWS (WolvenKit CLI). The generated sources come
+# from `python3 tools/gen_vomap.py` on the MAC, which reads the installed game.
+
+localization:
+  vomaps:
+    en-us: mod\jackielives\vomaps\en-us\jackielives_vomap.json
+  onscreens:
+    en-us: mod\jackielives\onscreens\en-us\jackielives_onscreens.json

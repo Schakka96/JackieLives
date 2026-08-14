@@ -1,0 +1,32 @@
+{
+  "Header": {
+    "WolvenKitVersion": "8.18.0",
+    "WKitJsonVersion": "0.0.9",
+    "GameVersion": 2310,
+    "DataType": "CR2W",
+    "ArchiveFileName": "jackielives_onscreens.json"
+  },
+  "Data": {
+    "Version": 195,
+    "BuildVersion": 0,
+    "RootChunk": {
+      "$type": "JsonResource",
+      "cookingPlatform": "PLATFORM_None",
+      "root": {
+        "HandleId": "0",
+        "Data": {
+          "$type": "localizationPersistenceOnScreenEntries",
+          "entries": [
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "jl-ok",
+              "maleVariant": "jl-ok",
+              "primaryKey": "5925865356862217147",
+              "secondaryKey": "jl_archive_beacon"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

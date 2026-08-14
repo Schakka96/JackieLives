@@ -1,0 +1,965 @@
+{
+  "Header": {
+    "WolvenKitVersion": "8.18.0",
+    "WKitJsonVersion": "0.0.9",
+    "GameVersion": 2310,
+    "DataType": "CR2W",
+    "ArchiveFileName": "jackielives_vomap.json"
+  },
+  "Data": {
+    "Version": 195,
+    "BuildVersion": 0,
+    "RootChunk": {
+      "$type": "JsonResource",
+      "cookingPlatform": "PLATFORM_None",
+      "root": {
+        "HandleId": "0",
+        "Data": {
+          "$type": "locVoiceoverMap",
+          "entries": [
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "5802188105055782140",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_q003_f_1009f83bbe2b1000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_q003_f_1009f83bbe2b1000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "5654422819513384111",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_168a171cd42cd000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_168a171cd42cd000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "7590853118621698658",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q110_f_168a44d899405000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q110_f_168a44d899405000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "8067696716528137605",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sts_bls_ina_05_f_16e62c1d46377000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sts_bls_ina_05_f_16e62c1d46377000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "45718992766129725",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_170c2558c3405000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_170c2558c3405000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "15543552425477836424",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_q000_f_170f8b95404ea000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_q000_f_170f8b95404ea000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "4223586340847611245",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_170f98321e4ea000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_170f98321e4ea000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "14616864042127665286",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sts_std_arr_12_f_1711fda2d5559000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sts_std_arr_12_f_1711fda2d5559000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "4091399350511396025",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q103_f_17765c92f029f000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q103_f_17765c92f029f000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "6773251840105852355",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_1778694b572ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_1778694b572ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "1467358998955516960",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q110_f_17bac81ecd405000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q110_f_17bac81ecd405000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "16312391841806518076",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_17c554b79b4e2000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_17c554b79b4e2000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "1447401900269582992",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_17e3a5de232cd000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_17e3a5de232cd000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "4370134226808638588",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_glen_f_185085e0fb513000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_glen_f_185085e0fb513000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "2712349391595138012",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q103_f_18596e535d386000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q103_f_18596e535d386000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "18126553725294437522",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_q003_f_18ac88942e2ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_q003_f_18ac88942e2ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "3014572330308018419",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_18efafe8a32ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_18efafe8a32ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "5679770295170378721",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_1912c8364d386000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_1912c8364d386000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "12500480921530421727",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sq017_f_19282fd84a29f000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sq017_f_19282fd84a29f000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "6408739743511313030",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq015_f_199381cb1e44d000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq015_f_199381cb1e44d000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "14715151526973228397",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq015_f_19938c9adb44d000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq015_f_19938c9adb44d000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "3701658981281983899",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq012_f_199889602744d000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq012_f_199889602744d000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "12914016708624961740",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_vista_del_rey_f_19dba75994464004.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_vista_del_rey_f_19dba75994464004.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "3629164571763361766",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q001_f_19e66669a7627000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q001_f_19e66669a7627000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "7774898669421609346",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_19e6c123832e3000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_19e6c123832e3000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "1788499852707301918",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_19e6c3a1022e3000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_19e6c3a1022e3000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "5280623884379470001",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq028_f_19ebb6b14862a000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq028_f_19ebb6b14862a000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "11068469944455176290",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q114_f_1a23b84f4f29f000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q114_f_1a23b84f4f29f000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "13120976537984202270",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sq018_f_1ab41f674b2ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sq018_f_1ab41f674b2ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "15870613086174488418",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_1abfd5bda22d2000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q005_f_1abfd5bda22d2000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "12026197175850889683",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq040_f_1ad48cc2cb623000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_mq040_f_1ad48cc2cb623000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "8868200064129648827",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_bls_ina_se1_foodshop_01_f_1adcce560246b004.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_bls_ina_se1_foodshop_01_f_1adcce560246b004.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "4767907640192187526",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sts_wat_kab_103_fixer_call_f_1b0c7cf476559000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sts_wat_kab_103_fixer_call_f_1b0c7cf476559000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "10246896334194559458",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_muamar_reyes_default_f_1b20a2abcc2ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_muamar_reyes_default_f_1b20a2abcc2ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "9093342935840200553",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_padre_default_f_1b258f89ed2ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_padre_default_f_1b258f89ed2ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "18231189125643584841",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_mr_hands_default_f_1b259fbbea2ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_mr_hands_default_f_1b259fbbea2ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "12003611051424319791",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_reggie_default_f_1b25ef28082ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_reggie_default_f_1b25ef28082ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "1924424182508413290",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo_holocall\\jackie_vs_vset_jackie_f_1b4957a4724e2004.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo_holocall\\jackie_vs_vset_jackie_f_1b4957a4724e2004.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "14198512371755477854",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q001_f_1b6dc05d5c627000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q001_f_1b6dc05d5c627000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "177093012189618127",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_northside_f_1b780ba29347a000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_northside_f_1b780ba29347a000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "12432465560344012002",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_q113_f_1bdefe8b702ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_q113_f_1bdefe8b702ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "14146378955152012971",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q113_f_1bdefe98092ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q113_f_1bdefe98092ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "6276363632391988283",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_jackie_default_f_1bf9093d7f4ea000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_jackie_default_f_1bf9093d7f4ea000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "9407430960143282626",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_jackie_default_f_1bf91354d84ea008.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_scene_jackie_default_f_1bf91354d84ea008.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "2418776183510531537",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q116_f_1c17bbecf4386000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q116_f_1c17bbecf4386000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "4337307806031948526",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_1c419feb5f2ef000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_q000_f_1c419feb5f2ef000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "3100098350000206694",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_vs_vset_jackie_f_1f119a05be52a008.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\jackie_vs_vset_jackie_f_1f119a05be52a008.wem"
+                },
+                "Flags": "Soft"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

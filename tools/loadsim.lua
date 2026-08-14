@@ -575,32 +575,82 @@ if events.onUpdate then
     check("...with Auto / Male / Female", #vSel.options == 3, tostring(#vSel.options) .. " options")
     check("...and defaults to Auto", vSel.def == 1)
 
-    -- `JL` is a file-LOCAL in init.lua, so the harness cannot reach into it to fake V's body.
-    -- jlVBodyMale is a global FUNCTION, though, and jlPlayerVariant looks it up as one at call
-    -- time — so swapping it is both possible and closer to what we mean anyway ("suppose the
-    -- game reported a female body"), with no private state touched.
-    local realBody = jlVBodyMale
+    -- v1.71 — WHAT THIS CONTROL DOES NOW. It used to pick a different SHAPE of the DialogLineEvent
+    -- and hope the engine chose the other take; it never did, because the shape carries no gender at
+    -- all (../NCLives/docs/research/vo_gender.md §6.5). jlPlayerVariant is therefore pinned to 0 and
+    -- the choice rides on jlTakePref -> VO.femaleTakeId, which substitutes a String ID of our own
+    -- whose voiceover-map row points at the female recording.
+    --
+    -- `JL` is a file-LOCAL in init.lua, so the harness cannot reach into it to fake V's body or the
+    -- archive. Both are global FUNCTIONS looked up at call time, though, so swapping them is both
+    -- possible and closer to what we mean ("suppose the game reported a female body").
+    local realBody, realArchive = jlVBodyMale, jlArchiveLoaded
     _G.print = quiet
-    -- Forcing the two explicit choices must pin the variant regardless of the body.
-    jlVBodyMale = function() return true end
-    pcall(vSel.cb, 3)                                    -- Female
-    local femaleOnMaleBody = jlPlayerVariant()
-    pcall(vSel.cb, 2)                                    -- Male
-    local maleForced = jlPlayerVariant()
-    -- Auto must follow the BODY, which is the whole claim the default rests on.
-    pcall(vSel.cb, 1)                                    -- Auto
-    local autoMale = jlPlayerVariant()
-    jlVBodyMale = function() return false end
-    local autoFemale = jlPlayerVariant()
-    _G.print = realprint
-    jlVBodyMale = realBody
+    jlVBodyMale     = function() return true end
+    jlArchiveLoaded = function() return true end
 
-    check("forcing Female wins over a male body", femaleOnMaleBody ~= 0,
-          "the switch is stored but jlPlayerVariant ignores it — the control would do nothing")
-    check("forcing Male pins variant 0", maleForced == 0)
-    check("Auto on a MALE body -> variant 0 (the evidenced shape)", autoMale == 0)
-    check("Auto on a FEMALE body -> a different shape", autoFemale ~= 0,
-          "Auto returns the male shape for a female V, which is the bug the default exists to avoid")
+    pcall(vSel.cb, 3); local prefFemale = jlTakePref()
+    pcall(vSel.cb, 2); local prefMale   = jlTakePref()
+    pcall(vSel.cb, 1); local prefAuto   = jlTakePref()
+    local variantPinned = jlPlayerVariant()
+
+    -- Now the real lever, through VO, on a line we know is gendered.
+    local FEM = require("vo_female_ids")
+    local realId, synthId
+    for k, v in pairs(FEM) do realId, synthId = k, v break end
+
+    pcall(vSel.cb, 1)                                    -- Auto, male body -> no substitution
+    local autoMale = VO.femaleTakeId(realId)
+    jlVBodyMale = function() return false end
+    local autoFemale = VO.femaleTakeId(realId)           -- Auto, female body -> substitute
+    pcall(vSel.cb, 2)
+    local forcedMale = VO.femaleTakeId(realId)           -- Male never substitutes
+    jlVBodyMale = function() return true end
+    pcall(vSel.cb, 3)
+    local forcedFemale = VO.femaleTakeId(realId)         -- Female wins over a male body
+    jlArchiveLoaded = function() return false end
+    local noArchive = VO.femaleTakeId(realId)            -- ...but never without the archive
+    _G.print = realprint
+    jlVBodyMale, jlArchiveLoaded = realBody, realArchive
+
+    check("the setting reaches jlTakePref", prefFemale == "female" and prefMale == "male"
+          and prefAuto == "auto",
+          ("female=%s male=%s auto=%s"):format(tostring(prefFemale), tostring(prefMale), tostring(prefAuto)))
+    check("...and the dead event variant stays pinned to 0", variantPinned == 0,
+          "leaving it varying would be harmless today and misleading forever")
+    check("vo_female_ids.lua is generated and non-empty", realId ~= nil and type(synthId) == "string")
+    check("Auto on a MALE body -> his own take", autoMale == nil)
+    check("Auto on a FEMALE body -> the female take", autoFemale == synthId, tostring(autoFemale))
+    check("forcing Male never substitutes", forcedMale == nil)
+    check("forcing Female wins over a male body (the creator-voice case)",
+          forcedFemale == synthId, tostring(forcedFemale))
+    check("...but no setting can override a missing archive", noArchive == nil,
+          "speaking an id the archive lacks is SILENCE, which is worse than the male take")
+
+    -- The subtitle must follow the AUDIO, not the body — that is the 2026-08-13 report
+    -- ("subtitles say chica, his voice says mano") and the reason jlLineText was rewritten.
+    -- `Config` is a file-local in init.lua, so read the generated table directly — it is the same
+    -- one config.lua exposes as Config.voGender.
+    local sub = nil
+    pcall(function() sub = require("vo_gender") end)
+    local gid = nil
+    for k in pairs(sub or {}) do if FEM[k] then gid = k break end end
+    if gid then
+      local realBody2, realArchive2 = jlVBodyMale, jlArchiveLoaded
+      jlVBodyMale     = function() return false end
+      jlArchiveLoaded = function() return true end
+      _G.print = quiet; pcall(vSel.cb, 1); _G.print = realprint
+      local femaleSub = jlLineText(sub[gid].f, "jl_" .. gid)
+      jlArchiveLoaded = function() return false end
+      local noArchSub = jlLineText(sub[gid].f, "jl_" .. gid)
+      jlVBodyMale, jlArchiveLoaded = realBody2, realArchive2
+      check("a gendered Jackie line reads FEMALE when the female take plays",
+            femaleSub == sub[gid].f, tostring(femaleSub))
+      check("...and MALE when the male take plays, even on a female body",
+            noArchSub == sub[gid].m,
+            "reading the wrong word is the bug; reading the true one is not")
+    end
+
     pcall(vSel.cb, 1)   -- leave the harness on the default
   end
 

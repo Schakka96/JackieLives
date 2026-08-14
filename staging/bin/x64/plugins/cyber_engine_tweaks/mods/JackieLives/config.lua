@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.70.1"
+Config.version = "1.71"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -483,7 +483,12 @@ Config.abreast = {
   angleRight     = 0.85,    -- near-front on V's RIGHT (Antonia's tuned value)
   angleLeft      = 11.25,   -- near-front on V's LEFT  (Antonia's tuned value)
   sideHysteresis = 0.6,     -- m the other side must be closer by before he switches sides (anti-flip-flop)
-  radius         = 3.5,     -- metres from V he holds — FALLBACK only; the live value is jlFollowDistance()
+  -- ⚠️ DEAD KNOB, KEPT ONLY AS THE DOCUMENTED NOMINAL. Nothing reads this: the live radius is
+  -- always jlFollowDistance(), which falls back to Config.followDistanceDefault, not to here.
+  -- It is set to match that default anyway, because a stale 3.5 sitting next to a 1.5 default is
+  -- a trap for whoever next restores a fallback path — they would silently reintroduce the
+  -- wall-clipping gap this was changed to fix (2026-08-14). Change both or neither.
+  radius         = 1.5,     -- m — nominal only; see above
   -- v1.55 FLEXIBLE DISTANCE BAND (Antonia: "the abreast follow should be more flexible on the distance:
   -- anything from 1.2m to 5m is ok"). The old model rebuilt his anchor at EXACTLY `radius` every re-issue,
   -- so any drift in or out was actively corrected — he was forever being tugged back onto one precise ring.
@@ -754,6 +759,14 @@ Config.catchUp = {
   respawnWhenStranded = true,-- v0.79: fall back to despawn+respawn when a teleport can't reach him (set false to disable)
   respawnDistance = 150.0,  -- metres beyond which we skip the doomed teleport and respawn immediately (district-scale FT)
   maxTeleTries    = 2,      -- v1.59 (was 1): failed teleports before we escalate to the visible despawn+respawn
+  -- v1.74 THE "GONE", NOT "FAR", CASE (ported from NCLives). Every rung of the ladder above is
+  -- measured in metres, so none of them could fire when the companion's body was CULLED by a load
+  -- screen and its position stopped being readable at all — catchUpTick returned on the nil position
+  -- every tick and nobody came back (NCLives, fast travel, 2026-08-14: "1165 m in red, companion
+  -- true", zero CatchUp log lines). Seconds of an unreadable position before we treat it as stranded.
+  -- ⚠️ Deliberately longer than `sustainSeconds`: a momentary stream hiccup at a district boundary
+  -- reads exactly the same for a frame or two, and being wrong here costs a visible despawn+respawn.
+  blindSustain    = 6.0,
 }
 
 -- ---- respawn settle-in (v0.82) --------------------------------------------

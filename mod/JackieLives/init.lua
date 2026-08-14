@@ -2389,12 +2389,30 @@ end
 -- keyed on — swapping in CDPR's punctuation instead would silently drop nine languages back to
 -- English to fix nothing. `e.f` stays in the generated file as the reference that shows WHY each
 -- entry is there; only `e.m` is ever substituted.
+-- ⚠️ v1.71 — THIS NOW FOLLOWS THE AUDIO, NOT THE BODY, AND THAT IS THE POINT.
+--
+-- Six Jackie lines were recorded twice under one String ID: "chica" to a female V, "mano" to a male
+-- one. config.lua ships the FEMALE wording, and this swaps in the male one when the male take is
+-- what plays. The old test was `jlVBodyMale()` — V's body — which was right only because the engine
+-- always played the male take. It doesn't any more: with the archive merged we substitute the female
+-- recording, and for a male-preference or archive-less session we don't.
+--
+-- So ask the same question the speaking path asks. VO.femaleTakeId is the single source of truth for
+-- "which recording will actually come out", and routing the subtitle through it is what closes the
+-- 2026-08-13 report for good — "the subtitles now say chica but his voice says mano".
+--
+-- Note the female-bodied, archive-less case: we now show "mano", because "mano" is what she will
+-- HEAR. Reading the wrong word is the bug; reading the true one is not.
 function jlLineText(text, sfx)
   local map = Config.voGender
-  if not map or not sfx or not jlVBodyMale() then return text end
+  if not map or not sfx then return text end
   local id = VO.lineId(sfx)
   local e  = id and map[id]
-  return (e and e.m) or text
+  if not e then return text end
+  local female = false
+  pcall(function() female = VO.femaleTakeId(id) ~= nil end)
+  if female then return text end          -- female take -> the female wording config.lua ships
+  return e.m or text                      -- male take   -> the male wording, whatever V's body is
 end
 
 -- v1.54: HERMANO IS THE DEFAULT FOR EVERY V. The old v1.2/v1.3 behaviour auto-read V's body gender on
@@ -3148,13 +3166,49 @@ end
 -- subtitle. Voice follows the body; the body is the save's to report.
 -- ---------------------------------------------------------------------------
 function jlPlayerVariant()
+  -- ⚠️ v1.71 — DEAD LEVER, PINNED. This used to map the Esc-menu choice onto a different SHAPE of
+  -- the DialogLineEvent (isPlayer / voice-tag combinations) in the hope the engine would pick the
+  -- other take. It cannot: the shape carries no gender at all, and all three shapes were confirmed
+  -- male in game against a female V (../NCLives/docs/research/vo_gender.md §6.5). The player's
+  -- choice now reaches a REAL lever — VO.femaleTakeId, which substitutes a String ID of our own
+  -- whose voiceover-map row points at the female recording. Kept as a function, returning the one
+  -- shape we know works, so no caller has to change and nobody re-derives the dead theory.
+  return 0
+end
+
+-- Is JackieLives.archive actually MERGED into the game right now?
+--
+-- The female-take String IDs (vo_female_ids.lua) exist ONLY inside our archive. Speak one without it
+-- and the line is SILENT — no error, no log, because the redscript shim returns true for any id it
+-- can parse. Silence is worse than the male take, so VO.femaleTakeId refuses to use a female id
+-- until this says yes.
+--
+-- NCLives can ask this by looking for one of its journal contacts. JackieLives has no journal, so
+-- the archive carries ONE localization string purely as a beacon (see tools/gen_vomap.py's
+-- render_beacon and the .archive.xl header). It resolves only if BOTH ArchiveXL and our archive are
+-- installed. Cached for the session on BOTH answers — archives load at startup only, so a "no"
+-- here is permanent rather than a not-yet. Global -> 200-local cap safe.
+function jlArchiveLoaded()
+  if JL.archiveOk ~= nil then return JL.archiveOk end
+  local got
+  pcall(function() got = Game.GetLocalizedTextByKey(CName.new("jl_archive_beacon")) end)
+  local ok = (tostring(got) == "jl-ok")
+  JL.archiveOk = ok
+  log(("Archive: JackieLives.archive %s. %s"):format(
+        ok and "IS loaded" or "is NOT loaded (beacon returned " .. tostring(got) .. ")",
+        ok and "V's female voice lines are available."
+           or "V and Jackie will use the male takes. Install ArchiveXL and make sure BOTH "
+              .. "JackieLives.archive and JackieLives.archive.xl are in <game>\\archive\\pc\\mod\\."))
+  return ok
+end
+
+-- The player's answer to "does V sound like the V on my screen", for VO.femaleTakeId.
+-- Persisted as JL.vVoice; read through a function rather than parked in Config.voice because
+-- config.lua is re-required from disk on every reload and would wipe it. Global -> 200-cap safe.
+function jlTakePref()
   local pick = JL.vVoice or "auto"
-  local cfg  = Config.voice or {}
-  if pick == "male"   then return 0 end
-  if pick == "female" then return cfg.femaleVariant or 1 end
-  -- auto
-  if jlVBodyMale() then return 0 end
-  return cfg.femaleVariant or 1
+  if pick ~= "male" and pick ~= "female" then pick = "auto" end
+  return pick
 end
 
 -- V'S GENDER, ONCE PER SESSION, INTO THE LOG. "V's voice sounds wrong" has four possible
@@ -3166,8 +3220,11 @@ end
 --   brain   the character creator's separate VOICE slider (SetIsBrainGenderMale). A
 --           female-bodied V with a masculine voice is a legal character — if that is the
 --           save, male audio is CORRECT and there is nothing to fix.
---   variant which shape we actually sent, and where that came from.
-function jlLogPlayerVoice(p, ver, variant)
+--   take    v1.71: WHICH RECORDING actually played, and why. `female` means we substituted a
+--           synthetic String ID pointing at the female .wem; `male` means we did not, and the
+--           three reasons are reported beside it — pref (the Esc setting), mapped (is this line
+--           gendered at all? four in five are not), archive (is JackieLives.archive merged?).
+function jlLogPlayerVoice(p, ver, variant, realId, spokenId)
   if JL.vVoiceLogged then return end
   JL.vVoiceLogged = true
   local body, brain = "?", "?"
@@ -3179,11 +3236,17 @@ function jlLogPlayerVoice(p, ver, variant)
     local st = Game.GetCharacterCustomizationSystem():GetState()
     if st then brain = st:IsBrainGenderMale() and "Male" or "Female" end
   end)
-  log(("VO: V SPOKE — shim=v%d variant=%d (setting=%s) bodyGender=%s brainGender=%s. "
-       .. "If shim<3 the redscript deploy didn't land and that is the whole bug. If bodyGender "
-       .. "is Female and the voice is male, try Esc -> Settings -> Jackie Lives -> Voice -> "
-       .. "\"V's voice\", or the A/B button in the CET window.")
-      :format(ver, variant, tostring(JL.vVoice or "auto"), body, brain))
+  local mapped, archive = false, false
+  pcall(function() mapped = (require("vo_female_ids") or {})[realId] ~= nil end)
+  pcall(function() archive = jlArchiveLoaded() end)
+  local take = (spokenId and realId and spokenId ~= realId) and "female" or "male"
+  log(("VO: V SPOKE — shim=v%d bodyGender=%s brainGender=%s take=%s "
+       .. "(pref=%s mapped=%s archive=%s id=%s). If shim<3 the redscript deploy didn't land and "
+       .. "that is the whole bug. If bodyGender is Female and take=male, the reason is one of "
+       .. "pref/mapped/archive above — mapped=false just means this line isn't gendered, which is "
+       .. "true of most of them.")
+      :format(ver, body, brain, take, jlTakePref(), tostring(mapped), tostring(archive),
+              tostring(spokenId)))
 end
 
 function jlSpeakPlayerLine(sfx, text)
@@ -3194,6 +3257,14 @@ function jlSpeakPlayerLine(sfx, text)
   local p
   pcall(function() p = Game.GetPlayer() end)
   if not p then return nil end
+
+  -- v1.71: the id we SPEAK. For a female V on a gendered line, with the archive merged, this is our
+  -- synthetic id whose voiceover-map row points at the FEMALE .wem — the only way to select a take,
+  -- because a line's two takes share one String ID and the engine picks the column natively. Falls
+  -- back to the real id whenever any condition fails, so it can never mute a line. Everything else
+  -- below stays keyed on the REAL id: durations, subtitles, the log.
+  local speakId = id
+  pcall(function() speakId = VO.femaleTakeId(id) or id end)
 
   local secs = 0
   pcall(function() secs = VO.duration(sfx, text) or 0 end)
@@ -3212,13 +3283,13 @@ function jlSpeakPlayerLine(sfx, text)
     ver = (type(ver) == "number") and ver or 0
     shim = ver
     if ver >= 3 then
-      played = p:JLVO_SpeakAsPlayer(id, ctx, expr, variant, secs)
+      played = p:JLVO_SpeakAsPlayer(speakId, ctx, expr, variant, secs)
     elseif ver >= 2 then
       -- Stale .reds next to a new .lua: still speak, just without the isPlayer flag.
       -- Empty tags — V is V, and this is the one call that must never borrow a voice.
-      played = p:JLVO_Speak(id, ctx, expr, CName.new(""), CName.new(""), secs)
+      played = p:JLVO_Speak(speakId, ctx, expr, CName.new(""), CName.new(""), secs)
     else
-      played = p:JLVO_PlayLine(id, ctx)
+      played = p:JLVO_PlayLine(speakId, ctx)
     end
   end)
   -- ⚠️ SAY IT OUT LOUD WHEN NOTHING PLAYED. A silent V is the failure this feature will
@@ -3235,7 +3306,7 @@ function jlSpeakPlayerLine(sfx, text)
     end
     return nil
   end
-  pcall(jlLogPlayerVoice, p, shim, variant)
+  pcall(jlLogPlayerVoice, p, shim, variant, id, speakId)
   log(("Branch: V spoke '%s' sfx=%s secs=%.2f expr=%d variant=%d")
       :format(tostring(text), tostring(sfx), secs, expr, variant))
   return (secs > 0) and secs or nil
@@ -7199,8 +7270,8 @@ local function nsTick()
         JL.vVoiceLogged = nil       -- re-arm the one-shot diagnostic so the next line logs the new choice
         pcall(jlSaveSettings)
         JL.ui.status = "V's voice: " .. JL.vVoice
-        log("V's voice -> " .. JL.vVoice .. " (variant " .. tostring(jlPlayerVariant())
-            .. "). Takes effect on V's next spoken line; no reload needed.")
+        log("V's voice -> " .. JL.vVoice .. " (take=" .. jlTakePref()
+            .. "). Takes effect on the next spoken line; no reload needed.")
       end
     )
 
@@ -8419,6 +8490,10 @@ registerForEvent("onInit", function()
       config      = function() return Config.voice end,
       readingSecs = readingSecs,
       playEvent   = function(target, event) return playEventOn(target, event, "") end,
+      -- v1.71: the three questions VO.femaleTakeId needs before it may speak a female-take id.
+      bodyMale    = function() return jlVBodyMale() end,
+      archiveOk   = function() return jlArchiveLoaded() end,
+      takePref    = function() return jlTakePref() end,
     }
     -- Re-apply the persisted backend choice BEFORE the first line: config.lua came fresh off disk
     -- with its shipped default, so without this a player who picked "Native only" would silently be

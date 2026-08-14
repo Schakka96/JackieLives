@@ -17,5 +17,10 @@
     <folder source="bin" destination="bin" priority="0" alwaysInstall="true" installIfUsable="true" />
     <!-- Audioware voice-bank manifest + the "how to add Jackie's voice" guide -->
     <folder source="r6" destination="r6" priority="0" alwaysInstall="true" installIfUsable="true" />
+    <!-- v1.71: the voice archive. It is what makes a FEMALE V (and a Jackie talking TO one) sound
+         right; a line's two takes share one String ID and the engine picks the male one, so the mod
+         ships String IDs of its own pointing at the female recording. Needs ArchiveXL. Installing it
+         without ArchiveXL is harmless - the mod detects that and keeps the male takes. -->
+    <folder source="archive" destination="archive" priority="0" alwaysInstall="true" installIfUsable="true" />
   </requiredInstallFiles>
 </config>
