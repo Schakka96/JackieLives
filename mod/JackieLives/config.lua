@@ -754,6 +754,14 @@ Config.catchUp = {
   respawnWhenStranded = true,-- v0.79: fall back to despawn+respawn when a teleport can't reach him (set false to disable)
   respawnDistance = 150.0,  -- metres beyond which we skip the doomed teleport and respawn immediately (district-scale FT)
   maxTeleTries    = 2,      -- v1.59 (was 1): failed teleports before we escalate to the visible despawn+respawn
+  -- v1.74 THE "GONE", NOT "FAR", CASE (ported from NCLives). Every rung of the ladder above is
+  -- measured in metres, so none of them could fire when the companion's body was CULLED by a load
+  -- screen and its position stopped being readable at all — catchUpTick returned on the nil position
+  -- every tick and nobody came back (NCLives, fast travel, 2026-08-14: "1165 m in red, companion
+  -- true", zero CatchUp log lines). Seconds of an unreadable position before we treat it as stranded.
+  -- ⚠️ Deliberately longer than `sustainSeconds`: a momentary stream hiccup at a district boundary
+  -- reads exactly the same for a frame or two, and being wrong here costs a visible despawn+respawn.
+  blindSustain    = 6.0,
 }
 
 -- ---- respawn settle-in (v0.82) --------------------------------------------

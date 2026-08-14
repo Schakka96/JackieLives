@@ -5558,8 +5558,42 @@ local function catchUpTick()
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then JL.catchUp.farSince = nil; return end
   local pp = playerPos(); if not pp then return end
-  local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
   local now = JL.clock or 0
+  local jp = nil; pcall(function() jp = h:GetWorldPosition() end)
+  -- ⚠️ v1.74 — PORTED FROM NCLIVES. THE HOLE THAT ATE A COMPANION ON A FAST TRAVEL (Antonia,
+  -- 2026-08-14, NCLives: "she vanished, distance to V 1165 m in red, companion true", and NOT ONE
+  -- CatchUp line in the log).
+  --
+  -- This used to be `if not jp then return end`. Every escalation below — including the
+  -- respawn-when-stranded ladder written specifically for district-scale fast travel — is gated on
+  -- `d`, the distance to their body. So the one case it could never handle was the case where THERE
+  -- IS NO BODY TO MEASURE: a load-screen fast travel culls the spawned NPC outright, the handle stays
+  -- valid (which is why the window still says "companion: true"), and the position read returns nil
+  -- forever. The function then returned on this line every tick, silently, and nobody ever came back.
+  -- Travelling back did not fix it either, because nothing re-armed.
+  --
+  -- ⚠️ It is NOT about AMM. This code path is the same one AMM installs ran; AMM only ever supplied
+  -- the spawn call. The bug is that "far away" and "gone" were treated as the same question and only
+  -- one of them had an answer.
+  --
+  -- So: an unreadable position is its OWN stranded condition. Sustain it briefly (a stream hiccup
+  -- while crossing a district boundary reads identically for a frame or two, and respawning on that
+  -- would visibly duplicate them), then take exactly the escalation the distance ladder would have
+  -- taken. `blindSustain` is deliberately longer than `sustainSeconds`: a wrong answer here costs a
+  -- despawn+respawn the player can see.
+  if not jp then
+    JL.catchUp.blindSince = JL.catchUp.blindSince or now
+    if (now - JL.catchUp.blindSince) < ((C.blindSustain or 6.0)) then return end
+    if (now - (JL.catchUp.lastAt or -1e9)) < (C.cooldown or 3.0) then return end
+    JL.catchUp.lastAt, JL.catchUp.farSince, JL.catchUp.teleTries = now, nil, nil
+    JL.catchUp.lastDist, JL.catchUp.graceSince, JL.catchUp.blindSince = nil, nil, nil
+    log(("CatchUp: companion body is UNREADABLE for %.0fs (culled by a load screen / fast travel) " ..
+         "-> respawning at V. A teleport cannot reach a body that no longer exists.")
+        :format(C.blindSustain or 6.0))
+    pcall(respawnCompanionAtV)
+    return
+  end
+  JL.catchUp.blindSince = nil
   local d   = dist3(pp, jp)
   -- back within range -> the last teleport (if any) took; clear the retry counter.
   if d <= (C.distance or 25.0) then
