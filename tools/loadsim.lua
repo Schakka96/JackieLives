@@ -462,7 +462,7 @@ print("\n5. the Esc-menu panel registers, completely")
 -- latches `done` once it has actually registered or given up after 1200 attempts, so swapping GetMod
 -- and ticking once more is enough to make it register now.
 if events.onUpdate then
-  local reg = { tabs = {}, subs = {}, switches = {}, buttons = {}, floats = {} }
+  local reg = { tabs = {}, subs = {}, switches = {}, buttons = {}, floats = {}, selectors = {} }
   local realGetMod = GetMod
   GetMod = function(name)
     if tostring(name) ~= "nativeSettings" then return realGetMod(name) end
@@ -483,6 +483,22 @@ if events.onUpdate then
         assert(type(cb) == "function", "addRangeFloat without a callback: " .. tostring(label))
         reg.floats[#reg.floats + 1] = { path = p, label = label, cur = cur, def = def, cb = cb }
       end,
+      -- v1.70.1. Deliberately STRICTER than the real API on the two things that are silent
+      -- failures in game: a current index outside the options list draws a blank row, and a
+      -- non-table `options` throws at DRAW time — which takes the whole subcategory with it,
+      -- exactly like the addButton arity trap in §3b.
+      addSelectorString = function(p, label, desc, options, cur, def, cb)
+        assert(type(options) == "table" and #options > 0,
+               "addSelectorString needs a non-empty options table: " .. tostring(label))
+        assert(type(cur) == "number" and cur >= 1 and cur <= #options,
+               ("addSelectorString current index %s is outside its %d options: %s")
+                 :format(tostring(cur), #options, tostring(label)))
+        assert(type(def) == "number" and def >= 1 and def <= #options,
+               "addSelectorString default index is outside its options: " .. tostring(label))
+        assert(type(cb) == "function", "addSelectorString without a callback: " .. tostring(label))
+        reg.selectors[#reg.selectors + 1] =
+          { path = p, label = label, options = options, cur = cur, def = def, cb = cb }
+      end,
     }
   end
 
@@ -501,7 +517,7 @@ if events.onUpdate then
   check("the panel registers its tab", #reg.tabs == 1 and reg.tabs[1].path == "/jackielives",
         "nsTick registered " .. #reg.tabs .. " tabs — the whole panel would be missing")
 
-  local controls = #reg.switches + #reg.buttons + #reg.floats
+  local controls = #reg.switches + #reg.buttons + #reg.floats + #reg.selectors
   check("...and every control on it survived registration", controls >= 6,
         ("only %d controls registered — a throw part-way through takes the REST of the panel with it")
           :format(controls))
@@ -534,6 +550,74 @@ if events.onUpdate then
     local okOff, errOff = pcall(s.cb, false)
     _G.print = realprint
     check("flipping '" .. s.label .. "' both ways doesn't throw", okOn and okOff, errOn or errOff)
+  end
+
+  -- ---------------------------------------------------------------------------
+  -- 5b. V's voice: the Esc control, and the variant it resolves to (v1.70.1)
+  -- ---------------------------------------------------------------------------
+  -- V speaks her own dialogue choices now, and the ONE thing a player can change about it is
+  -- this selector. Two failure modes it guards, both invisible without the game:
+  --   · the selector never registered (a throw here drops the rest of the Voice subcategory);
+  --   · the setting is stored but nothing reads it, so the switch appears to do nothing.
+  -- The second is why this asserts on jlPlayerVariant()'s OUTPUT rather than on JL.vVoice.
+  --
+  -- ⚠️ It cannot test what the engine DOES with a variant. That is audible-only and is what
+  -- the in-game A/B button exists for. This proves the wiring, not the sound.
+  print("\n5b. V's voice control")
+  local vSel
+  for _, s in ipairs(reg.selectors) do
+    if tostring(s.label):lower():find("v's voice", 1, true) then vSel = s end
+  end
+  check("the \"V's voice\" selector registered", vSel ~= nil,
+        "V speaks but the player has no way to change how — " .. #reg.selectors .. " selectors found")
+
+  if vSel and jlPlayerVariant then
+    check("...with Auto / Male / Female", #vSel.options == 3, tostring(#vSel.options) .. " options")
+    check("...and defaults to Auto", vSel.def == 1)
+
+    -- `JL` is a file-LOCAL in init.lua, so the harness cannot reach into it to fake V's body.
+    -- jlVBodyMale is a global FUNCTION, though, and jlPlayerVariant looks it up as one at call
+    -- time — so swapping it is both possible and closer to what we mean anyway ("suppose the
+    -- game reported a female body"), with no private state touched.
+    local realBody = jlVBodyMale
+    _G.print = quiet
+    -- Forcing the two explicit choices must pin the variant regardless of the body.
+    jlVBodyMale = function() return true end
+    pcall(vSel.cb, 3)                                    -- Female
+    local femaleOnMaleBody = jlPlayerVariant()
+    pcall(vSel.cb, 2)                                    -- Male
+    local maleForced = jlPlayerVariant()
+    -- Auto must follow the BODY, which is the whole claim the default rests on.
+    pcall(vSel.cb, 1)                                    -- Auto
+    local autoMale = jlPlayerVariant()
+    jlVBodyMale = function() return false end
+    local autoFemale = jlPlayerVariant()
+    _G.print = realprint
+    jlVBodyMale = realBody
+
+    check("forcing Female wins over a male body", femaleOnMaleBody ~= 0,
+          "the switch is stored but jlPlayerVariant ignores it — the control would do nothing")
+    check("forcing Male pins variant 0", maleForced == 0)
+    check("Auto on a MALE body -> variant 0 (the evidenced shape)", autoMale == 0)
+    check("Auto on a FEMALE body -> a different shape", autoFemale ~= 0,
+          "Auto returns the male shape for a female V, which is the bug the default exists to avoid")
+    pcall(vSel.cb, 1)   -- leave the harness on the default
+  end
+
+  -- The speak path itself: with no redscript shim behind the stubs, it must fail SILENTLY and
+  -- say nil — never throw, and never claim a hold that would freeze the subtitle.
+  if jlSpeakPlayerLine then
+    _G.print = quiet
+    local okSpeak, res = pcall(jlSpeakPlayerLine, "jl_2015663563352219656", "How's your mom?")
+    local okNoId       = pcall(jlSpeakPlayerLine, nil, "written line")
+    local okAB, whyAB  = pcall(jlVoiceABTest)
+    local okTick       = pcall(jlVoiceABTick)
+    _G.print = realprint
+    check("jlSpeakPlayerLine survives a missing shim", okSpeak, res)
+    check("...and an unvoiced row is a no-op, not a hold", okNoId)
+    check("the A/B test refuses cleanly with no shim", okAB and whyAB == false,
+          "it must report WHY rather than appear to work: " .. tostring(whyAB))
+    check("the A/B tick is a no-op when nothing is armed", okTick)
   end
 
   os.remove(JL_SETTINGS_FILE)

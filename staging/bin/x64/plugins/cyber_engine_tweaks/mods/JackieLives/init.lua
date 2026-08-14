@@ -2397,8 +2397,8 @@ JL_BIKE_KEPT     = 2   -- V told him she's keeping it -> it stays in her garage
 -- side anchor (while V strolls). Antonia: the two can share a default, ~3-5 m. Clamped to the slider's own
 -- range so a corrupt settings file can't park him 200 m away or inside V. Global (200-local cap).
 function jlFollowDistance()
-  local d = JL.followDistance
-  if type(d) ~= "number" then d = Config.followDistanceDefault or 3.5 end
+  local d = JL.followGap
+  if type(d) ~= "number" then d = Config.followDistanceDefault or 1.5 end
   local lo = Config.followDistanceMin or 1.2
   local hi = Config.followDistanceMax or 8.0
   if d < lo then d = lo elseif d > hi then d = hi end
@@ -2738,6 +2738,9 @@ local function withCompanionExtras(choices)
   end
   out[#out + 1] = {
     text   = (Config.dismiss and Config.dismiss.choiceText) or "Head home, Jackie.",
+    -- v1.70: the send-off is one of V's own recordings now (Config.dismiss.choiceSfx). It is
+    -- the row that ENDS a companion session, so it is heard as often as the greeting is.
+    sfx    = Config.dismiss and Config.dismiss.choiceSfx,
     to     = nil,
     action = "dismiss_walkaway",
     pin    = true,
@@ -2807,7 +2810,18 @@ local function openChoiceMenu(choices, title, node)
       local pool = src.textPool
       if pool and #pool > 0 then
         local i = 1; pcall(function() i = math.random(1, #pool) end)
-        sc.text = pool[i]
+        -- v1.70: a textPool entry may be a plain STRING (as it always was) or a
+        -- { text =, sfx = } row, so V's exit lines can carry one of her own recordings the
+        -- same way a normal choice row does. Both shapes coexist in one pool on purpose —
+        -- most written lines will never have a recording behind them, and a pool should not
+        -- have to be all-or-nothing to gain a voice.
+        local e = pool[i]
+        if type(e) == "table" then
+          sc.text = e.text
+          if e.sfx then sc.sfx = e.sfx end
+        else
+          sc.text = e
+        end
       elseif src.text then
         sc.text = src.text
       end
@@ -3053,6 +3067,199 @@ end
 
 -- act on a choice (idx optional -> highlighted). Shows the player's chosen line as a
 -- subtitle for ~1s, THEN advances to Jackie's reply / ends (handled in branchTick).
+-- ---------------------------------------------------------------------------
+-- v1.70 — V SPEAKS TOO. A choice row (or a callFarewells entry, or a textPool
+-- row) may carry `sfx = "jl_<String ID>"` naming one of **V's own** recordings.
+-- It plays out of V's body the moment the player picks it, under the subtitle we
+-- were already showing.
+--
+-- ⚠️ WHY THIS DOES NOT GO THROUGH VO.play. That path exists to make JACKIE speak,
+-- and it honours Config.voice.voiceTag — which would inject Jackie's voice tag
+-- into whatever entity it is handed. Hand it the player and V answers Jackie in
+-- Jackie's voice. V's body already carries V's own tag and the game picks the
+-- male or female take from it, so the correct call is the one with NO tag
+-- injection, which is exactly what JLVO_SpeakAsPlayer is and why it has no tag
+-- argument to get wrong.
+--
+-- ⚠️ A GLOBAL, not a `local`. init.lua sits on Lua's 200-local ceiling (see
+-- CLAUDE.md), and a global also resolves at CALL time, so Branch.confirm below
+-- may reference it regardless of where in the file it ends up.
+--
+-- Returns how long to hold the subtitle (the recording's real length), or nil if
+-- nothing played — no shim installed, no player, or not a line id. Every failure
+-- is silent by design: the subtitle is the content, the voice is the bonus.
+-- ---------------------------------------------------------------------------
+-- v1.70.1 — WHICH EVENT SHAPE V'S LINE IS SENT AS, AND WHY IT IS NOT A FIXED NUMBER.
+--
+-- ⚠️ READ THIS BEFORE "FIXING" THE V-VOICE GENDER. The Esc-menu control does NOT tell
+-- the game what sex V is. The game already knows — it is in the save, and
+-- `GetResolvedGenderName()` reports it. There is exactly ONE String ID per line and the
+-- ENGINE picks the male or female take from V's BODY before a mod gets a vote
+-- (locVoiceoverMap: of 15,187 genuinely gendered pairs, zero differ in the id). So the
+-- only thing any of this can change is the SHAPE of the DialogLineEvent, in the hope
+-- that a differently-shaped event makes the engine resolve the take differently:
+--     0  isPlayer = true,  no voice tag       <- what NCLives shipped and heard
+--     1  isPlayer = false, inject V's tag n"v"   (how V Voice Framework speaks)
+--     2  isPlayer = true,  inject V's tag
+--
+-- "auto" is the default and it routes on V's BODY, not on a preference:
+--     male body   -> 0   the shape with in-game evidence behind it
+--     female body -> 1   because 0 is the shape a female-V player was reported hearing
+--                        MALE audio from (NCLives, 2026-08-13)
+-- ⚠️ The female half is a HYPOTHESIS and has not been heard yet. That is exactly what
+-- the "Test V's voice (A/B)" button in the CET window is for — it plays one line both
+-- ways, back to back, and names each in the log. Whatever wins goes in the Esc switch.
+--
+-- ⚠️ NEVER read jlHermano() near this. The Husbando/Hermano switch picks which authored
+-- set of JACKIE's lines plays — a story preference. It says nothing about V's body, and
+-- wiring the two together is exactly how v1.69 shipped male audio under a female
+-- subtitle. Voice follows the body; the body is the save's to report.
+-- ---------------------------------------------------------------------------
+function jlPlayerVariant()
+  local pick = JL.vVoice or "auto"
+  local cfg  = Config.voice or {}
+  if pick == "male"   then return 0 end
+  if pick == "female" then return cfg.femaleVariant or 1 end
+  -- auto
+  if jlVBodyMale() then return 0 end
+  return cfg.femaleVariant or 1
+end
+
+-- V'S GENDER, ONCE PER SESSION, INTO THE LOG. "V's voice sounds wrong" has four possible
+-- causes and three of them are answerable without hearing anything, so the log answers them
+-- before Antonia has to describe a sound:
+--   shim    if this is < 3 the redscript deploy did not land and THAT is the whole bug.
+--   body    GetResolvedGenderName() -> 'Male'/'Female'. What every gender-aware system in
+--           the game reads, and what "V's physiology" means.
+--   brain   the character creator's separate VOICE slider (SetIsBrainGenderMale). A
+--           female-bodied V with a masculine voice is a legal character — if that is the
+--           save, male audio is CORRECT and there is nothing to fix.
+--   variant which shape we actually sent, and where that came from.
+function jlLogPlayerVoice(p, ver, variant)
+  if JL.vVoiceLogged then return end
+  JL.vVoiceLogged = true
+  local body, brain = "?", "?"
+  pcall(function()
+    local g = p:GetResolvedGenderName()
+    body = tostring(g and g.value or g)
+  end)
+  pcall(function()
+    local st = Game.GetCharacterCustomizationSystem():GetState()
+    if st then brain = st:IsBrainGenderMale() and "Male" or "Female" end
+  end)
+  log(("VO: V SPOKE — shim=v%d variant=%d (setting=%s) bodyGender=%s brainGender=%s. "
+       .. "If shim<3 the redscript deploy didn't land and that is the whole bug. If bodyGender "
+       .. "is Female and the voice is male, try Esc -> Settings -> Jackie Lives -> Voice -> "
+       .. "\"V's voice\", or the A/B button in the CET window.")
+      :format(ver, variant, tostring(JL.vVoice or "auto"), body, brain))
+end
+
+function jlSpeakPlayerLine(sfx, text)
+  local id
+  pcall(function() id = VO.lineId(sfx) end)
+  if not id then return nil end
+  if (Config.voice or {}).mode == "off" then return nil end
+  local p
+  pcall(function() p = Game.GetPlayer() end)
+  if not p then return nil end
+
+  local secs = 0
+  pcall(function() secs = VO.duration(sfx, text) or 0 end)
+  local ctx = (Config.voice or {}).context or -1
+  -- A call is in V's head; a conversation is in front of her. 1 = Vo_Expression_Phone,
+  -- 0 = Vo_Expression_Spoken. Passed as an Int32 for the same reason the context is:
+  -- naming an enum member that doesn't exist is a COMPILE error, and that takes down
+  -- every redscript mod the player has, not just this one.
+  local expr = (bstate.tree ~= nil
+                and (bstate.tree == Config.callTree or bstate.tree == Config.reunionCallTree)) and 1 or 0
+  local variant = jlPlayerVariant()
+
+  local played, shim = false, 0
+  pcall(function()
+    local ver = p:JLVO_Version()
+    ver = (type(ver) == "number") and ver or 0
+    shim = ver
+    if ver >= 3 then
+      played = p:JLVO_SpeakAsPlayer(id, ctx, expr, variant, secs)
+    elseif ver >= 2 then
+      -- Stale .reds next to a new .lua: still speak, just without the isPlayer flag.
+      -- Empty tags — V is V, and this is the one call that must never borrow a voice.
+      played = p:JLVO_Speak(id, ctx, expr, CName.new(""), CName.new(""), secs)
+    else
+      played = p:JLVO_PlayLine(id, ctx)
+    end
+  end)
+  -- ⚠️ SAY IT OUT LOUD WHEN NOTHING PLAYED. A silent V is the failure this feature will
+  -- actually be reported as ("she still doesn't talk"), and it has exactly one common cause:
+  -- the .reds didn't deploy, so JLVO_Version is nil and every V line no-ops. Without this the
+  -- log looked identical to a working build with no voiced rows on screen.
+  if not played then
+    if not JL.vVoiceFailLogged then
+      JL.vVoiceFailLogged = true
+      log(("VO: V did NOT speak — sfx=%s shim=v%s. If shim=v0 the redscript shim is missing: "
+           .. "check r6\\scripts\\JackieLives\\JackieLivesVO.reds is in your GAME folder and that "
+           .. "redscript is installed. Everything else still works; V is just silent.")
+          :format(tostring(sfx), tostring(shim)))
+    end
+    return nil
+  end
+  pcall(jlLogPlayerVoice, p, shim, variant)
+  log(("Branch: V spoke '%s' sfx=%s secs=%.2f expr=%d variant=%d")
+      :format(tostring(text), tostring(sfx), secs, expr, variant))
+  return (secs > 0) and secs or nil
+end
+
+-- ---------------------------------------------------------------------------
+-- THE A/B TEST, AS ONE BUTTON PRESS. (v1.70.1)
+--
+-- The one question nobody has been able to answer from a Mac: does variant 1 actually give a
+-- FEMALE take, or does the engine ignore the event shape entirely and read V's body no matter
+-- what? NCLives built a "gender lab" as a config flag that replayed the first line of every
+-- session — which is why it shipped switched off and never got its session.
+--
+-- This is the same experiment as a deliberate act instead: press once, hear the SAME line
+-- twice, ~3 s apart, each named in the log. Nothing is armed, nothing persists, no ordinary
+-- conversation is affected.
+--
+-- ⚠️ The two takes must be heard back to back with nothing on top of them, or the comparison
+-- is worthless. Do it with Jackie NOT mid-conversation.
+function jlVoiceABTest(sfx)
+  sfx = sfx or "jl_2015663563352219656"   -- "How's your mom?" — V's own line, to Jackie, 1.5 s
+  local p
+  pcall(function() p = Game.GetPlayer() end)
+  if not p then return false, "no player" end
+  local ver = 0
+  pcall(function() ver = p:JLVO_Version() or 0 end)
+  if (tonumber(ver) or 0) < 3 then
+    return false, "the redscript shim isn't loaded (JLVO_Version < 3) — nothing can play"
+  end
+  local id = VO.lineId(sfx)
+  if not id then return false, "not a line id: " .. tostring(sfx) end
+  local secs = VO.duration(sfx) or 2.0
+
+  pcall(function() p:JLVO_SpeakAsPlayer(id, 0, 0, 0, secs) end)
+  log("VO A/B: take 1 of 2 — variant 0 (isPlayer, no tag). This is what a male V is meant to sound like.")
+  -- Arm the second take. jlVoiceABTick fires it; a plain clock deadline, no coroutine.
+  JL.vAB = { id = id, secs = secs, at = (JL.clock or 0) + secs + 1.0 }
+  return true
+end
+
+-- Fires the armed second take. Self-guards, so it costs one nil check per frame otherwise.
+function jlVoiceABTick()
+  local ab = JL.vAB
+  if not ab or (JL.clock or 0) < ab.at then return end
+  JL.vAB = nil
+  local p
+  pcall(function() p = Game.GetPlayer() end)
+  if not p then return end
+  pcall(function() p:JLVO_SpeakAsPlayer(ab.id, 0, 0, (Config.voice or {}).femaleVariant or 1, ab.secs) end)
+  log("VO A/B: take 2 of 2 — variant 1 (no isPlayer, V's tag injected). "
+      .. "WHICHEVER of the two sounds like the V on your screen is the winner: set Esc -> Settings -> "
+      .. "Jackie Lives -> Voice -> \"V's voice\" to Male for take 1 or Female for take 2. "
+      .. "If BOTH sounded the same, the engine is reading V's body and ignoring the event shape — "
+      .. "say so, because that retires this switch entirely and there is nothing left to fix.")
+end
+
 Branch.confirm = function(idx)
   if not Branch.open or not menu.choices then return end
   idx = idx or menu.sel
@@ -3073,10 +3280,23 @@ Branch.confirm = function(idx)
   -- him". Floors at 0 in Fam.add: you can cool Jackie off, you can never make him a stranger again.
   if c.fam then pcall(function() Fam.add("choice", c.fam) end) end
   hideSubtitle()
+  -- v1.70: if this row carries one of V's OWN recordings, play it — and let the recording
+  -- decide how long the subtitle stays. Reading time is a guess; the game told us the real
+  -- length (vo_durations.lua), and a subtitle that clears while V is still talking is the
+  -- single most obvious way a voiced line reads as broken. Falls through to the old
+  -- reading-time behaviour whenever nothing played, so an unvoiced row is untouched.
+  local spoke = nil
+  pcall(function() spoke = jlSpeakPlayerLine(c.sfx, c.text) end)
   -- v0.94: on the reunion beats, scale V's chosen line to its length too (so long picks aren't cut off).
-  local hold = (isReunionBeat() and readingSecs(c.text))
+  local hold = spoke
+               or (isReunionBeat() and readingSecs(c.text))
                or (Config.dialogue and Config.dialogue.choiceHold) or 2.5
-  showDialogueText("V", c.text or "", hold, Game.GetPlayer())  -- V's pick, shown before Jackie replies
+  -- v1.70: run V's own line through jlLineText too. Same reason it exists for Jackie — CDPR
+  -- recorded ~2,000 of V's lines TWICE under one String ID with different words, the engine
+  -- picks the take from V's body, and a subtitle written from the female take would contradict
+  -- the audio a male V hears. No V line currently in the trees is one of those, which is
+  -- exactly why the guard belongs here now rather than after somebody ships one.
+  showDialogueText("V", jlLineText(c.text or "", c.sfx), hold, Game.GetPlayer())  -- V's pick, shown before Jackie replies
   bstate.pending       = c.to or "__end__"
   bstate.pendingAction = c.action                              -- e.g. "summon_arrival" (fires at call end)
   bstate.pendingAt     = (JL.clock or 0) + hold                -- wait out V's line before Jackie replies
@@ -3256,13 +3476,18 @@ local function closeNativeCallWindow()
   JL.call.activeId = nil    -- v1.33: clear the alive-swap override so the next call starts clean
 end
 
--- A random V hang-up sign-off (text only; V has no voice).
+-- A random V hang-up sign-off. v1.70: V HAS a voice now — the entries may be
+-- { text =, sfx = } rows carrying one of her own recordings, or plain strings as before.
+-- Returns text, sfx (sfx nil for a written line), so the caller can speak it and hold the
+-- subtitle for the recording's real length instead of a flat 1.8 s.
 local function pickFarewell()
   local f = Config.callFarewells
-  if not f or #f == 0 then return "Later." end
+  if not f or #f == 0 then return "Later.", nil end
   local i = 1
   pcall(function() i = math.random(1, #f) end)
-  return f[i] or f[1]
+  local e = f[i] or f[1]
+  if type(e) == "table" then return e.text or "Later.", e.sfx end
+  return e, nil
 end
 
 -- Teleport a spawned NPC to `pos` (used to place a called-in Jackie at distance).
@@ -6044,9 +6269,16 @@ local function branchTick()
           JL.call.hangupAt = (JL.clock or 0) + 0.4
         else
           -- other call strands: V's random sign-off shows, THEN we hang up (callTick.hangupAt)
-          showDialogueText("V", pickFarewell(), 1.8, Game.GetPlayer())
+          -- v1.70: the sign-off is spoken now, and the hang-up waits for the RECORDING rather
+          -- than a flat 1.8 s. Cutting the line off mid-word is the whole reason the old
+          -- fixed hold could not stay.
+          local fText, fSfx = pickFarewell()
+          local fHold = nil
+          pcall(function() fHold = jlSpeakPlayerLine(fSfx, fText) end)
+          fHold = (fHold and (fHold + 0.4)) or 1.8
+          showDialogueText("V", jlLineText(fText, fSfx), fHold, Game.GetPlayer())
           JL.call.hangupAction = act
-          JL.call.hangupAt = (JL.clock or 0) + 1.8
+          JL.call.hangupAt = (JL.clock or 0) + fHold
         end
         JL.ui.status = "Call wrapping up..."
       else
@@ -6865,9 +7097,39 @@ local function nsTick()
   if JL.disableVehicleArrivals == nil then JL.disableVehicleArrivals = false end  -- v0.51 (false = bike allowed)
   if JL.allowMainGigs == nil then JL.allowMainGigs = false end                    -- v1.32 (false = Quiet Life: no main-mission summons)
   if JL.walkAbreast == nil then JL.walkAbreast = true end                         -- v1.61 (true = walk-abreast ON by default). RENAMED from customWalk (v1.57's opt-in flag) so every old `customWalk=...` line in jl_settings.txt simply stops being read — restoring default-ON for everyone, the same invalidate-by-rename trick v1.57 used to flip it OFF.
-  if type(JL.followDistance) ~= "number" then JL.followDistance = Config.followDistanceDefault or 3.5 end  -- v1.55 slider
+  if type(JL.followGap) ~= "number" then JL.followGap = Config.followDistanceDefault or 1.5 end  -- v1.55 slider
+  if JL.vVoice == nil then JL.vVoice = "auto" end                                -- v1.70.1 V's voice
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
+
+    -- v1.70.1 — V'S VOICE. V speaks her own dialogue choices now, and this is the one control
+    -- for it. ⚠️ It does NOT tell the game what sex V is: the game reads that from the save
+    -- (GetResolvedGenderName), and a line's male and female takes share ONE String ID, so the
+    -- ENGINE picks the take. All this changes is the SHAPE of the event we send, which is the
+    -- only lever a mod has. See jlPlayerVariant.
+    ns.addSubcategory("/jackielives/voice", "Voice")
+    ns.addSelectorString(
+      "/jackielives/voice",
+      "V's voice",
+      "Which recording of V's line the game reaches for when V speaks a dialogue choice. " ..
+      "AUTO (default) follows V's BODY as the save reports it, which is right for almost " ..
+      "everyone — leave it alone unless V sounds like the wrong person. " ..
+      "MALE / FEMALE force it, for the two cases Auto can't cover: a V whose voice was set " ..
+      "differently from their body in the character creator, and any save where Auto simply " ..
+      "guesses wrong. Not sure? Open the CET window (the mod's own panel), Voice, and press " ..
+      "\"Test V's voice (A/B)\" — it plays the same line both ways so you can pick by ear.",
+      { "Auto (follow V's body)", "Male", "Female" },
+      ({ auto = 1, male = 2, female = 3 })[JL.vVoice] or 1,
+      1,             -- 'reset to default' = Auto
+      function(i)
+        JL.vVoice = ({ "auto", "male", "female" })[i] or "auto"
+        JL.vVoiceLogged = nil       -- re-arm the one-shot diagnostic so the next line logs the new choice
+        pcall(jlSaveSettings)
+        JL.ui.status = "V's voice: " .. JL.vVoice
+        log("V's voice -> " .. JL.vVoice .. " (variant " .. tostring(jlPlayerVariant())
+            .. "). Takes effect on V's next spoken line; no reload needed.")
+      end
+    )
 
     ns.addSubcategory("/jackielives/relationship", "Relationship")
     ns.addSwitch(
@@ -6982,9 +7244,9 @@ local function nsTick()
       0.1,                                      -- step
       "%.1f",                                   -- display format
       jlFollowDistance(),                       -- current (persisted)
-      Config.followDistanceDefault or 3.5,      -- 'reset to default'
+      Config.followDistanceDefault or 1.5,      -- 'reset to default'
       function(value)
-        JL.followDistance = value
+        JL.followGap = value
         pcall(jlSaveSettings)
         JL.ui.status = string.format("Jackie's follow distance: %.1f m", value)
         log(string.format("Follow distance -> %.1f m (trail + walk-abreast)", value))
@@ -7049,7 +7311,13 @@ JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSu
 -- v1.55: NUMERIC settings. The file used to serialize booleans only (plus the one `mode` string), which is
 -- precisely why a slider could never be added — its value didn't survive a reload. These keys round-trip as
 -- floats. Kept as a separate list so the boolean loop below stays untouched.
-JL_SETTINGS_NUMS = { "followDistance" }
+-- ⚠️ RENAMED followDistance -> followGap (2026-08-14) TO INVALIDATE THE OLD SAVED VALUE.
+-- This file is read back on every load, so a settings file written under the 3.5 m default
+-- would keep winning forever and the new 1.5 m default would reach nobody who had ever
+-- launched the mod. An unknown key is simply ignored on load, so the rename resets this one
+-- slider once, for everyone, and nothing else in the file is touched. Same trick as v1.61's
+-- customWalk -> walkAbreast; see the note on JL_SETTINGS_KEYS.
+JL_SETTINGS_NUMS = { "followGap" }
 
 function jlSaveSettings()
   local f = io.open(JL_SETTINGS_FILE, "w")
@@ -7063,6 +7331,10 @@ function jlSaveSettings()
   -- other tuner here is — config.lua is re-required from disk on reload, so an in-game choice that
   -- lived only in Config would be silently reverted by the next reload (see the seat/walk tuners).
   f:write("voiceMode=" .. tostring(JL.voiceMode or "auto") .. "\n")
+  -- v1.70.1 V's voice: "auto" (route on V's BODY gender) | "male" | "female". Persisted for the
+  -- same reason voiceMode is — config.lua is re-required from disk on every reload, so a choice
+  -- that lived only in Config would be silently reverted the next time the mod reloaded.
+  f:write("vVoice=" .. tostring(JL.vVoice or "auto") .. "\n")
   -- v1.60 language: "auto" = follow the game's own language setting, else a code from Lang.LANGUAGES.
   f:write("lang=" .. tostring(JL.langChoice or "auto") .. "\n")
   f:close()
@@ -7080,6 +7352,9 @@ function jlLoadSettings()
       if k == "lang" then JL.langChoice = v end                                   -- v1.60
       if k == "voiceMode" and (v == "auto" or v == "native" or v == "audioware" or v == "off") then
         JL.voiceMode = v                                                         -- v1.66
+      end
+      if k == "vVoice" and (v == "auto" or v == "male" or v == "female") then
+        JL.vVoice = v                                                            -- v1.70.1
       end
       for _, want in ipairs(JL_SETTINGS_KEYS) do
         if k == want then JL[k] = (v == "true") end
@@ -8801,6 +9076,7 @@ registerForEvent("onUpdate", function(dt)
   -- panel never registers there. It's the one tick allowed above the session gate.
   pcall(nsTick)         -- v0.44: register the Esc-menu panel once nativeSettings has loaded (load-order safe)
   if Session.id == 0 then return end   -- main menu / load screen: no world, no session — touch nothing
+  pcall(jlVoiceABTick)  -- v1.70.1: the armed second take of the V-voice A/B test (no-op unless armed)
   -- Retrieval questline (Vik reveal tip, Badlands shard, Misty/Mama post-reunion shards) is a QUIET-LIFE
   -- thing — in Blaze mode Jackie is handed to you by the set-piece, so none of those custom shards should
   -- fire (Antonia 2026-07-08). Blaze's finale calls Retrieval.forceReunion() directly for the unlock.
@@ -9211,6 +9487,41 @@ registerForEvent("onDraw", function()
       ImGui.TextColored(1, 0.4, 0.4, 1, "No voice backend. Check that redscript is installed and that "
         .. "r6\\scripts\\JackieLives\\JackieLivesVO.reds is in your game folder.")
     end
+
+    -- v1.70.1 V'S OWN VOICE. Everything above is about Jackie; V speaks her dialogue choices now.
+    -- This block exists to answer ONE question by ear that cannot be answered from a Mac: whether
+    -- the event shape changes which gendered take the engine plays, or whether the engine reads
+    -- V's body and ignores us. One press, two takes, both named in the log.
+    ImGui.Separator()
+    ImGui.Text("V's voice — " .. string.upper(tostring(JL.vVoice or "auto"))
+               .. "  (variant " .. tostring(jlPlayerVariant()) .. ")")
+    if ImGui.Button("Test V's voice (A/B)") then
+      local okAB, whyAB = jlVoiceABTest()
+      JL.ui.status = okAB
+        and "V voice A/B: take 1 now, take 2 in ~3 s. Listen — then set Esc > Settings > Jackie Lives > Voice."
+        or ("V voice A/B failed: " .. tostring(whyAB))
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Auto") then
+      JL.vVoice = "auto"; JL.vVoiceLogged = nil; jlSaveSettings()
+      JL.ui.status = "V's voice: AUTO (follows V's body)"
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Male##v") then
+      JL.vVoice = "male"; JL.vVoiceLogged = nil; jlSaveSettings()
+      JL.ui.status = "V's voice: MALE (variant 0)"
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Female##v") then
+      JL.vVoice = "female"; JL.vVoiceLogged = nil; jlSaveSettings()
+      JL.ui.status = "V's voice: FEMALE (variant " .. tostring((Config.voice or {}).femaleVariant or 1) .. ")"
+    end
+    ImGui.TextWrapped("Plays ONE line (\"How's your mom?\") twice, ~3 s apart: first as variant 0 "
+      .. "(male-V shape), then as variant 1 (female-V shape). Do it while Jackie is NOT mid-"
+      .. "conversation so nothing lands on top. Whichever sounds like the V on your screen is the "
+      .. "winner — pick it above, or in Esc > Settings > Jackie Lives > Voice.\n"
+      .. "If BOTH takes sound identical, the engine is reading V's body and ignoring the event "
+      .. "shape entirely: say so, and this switch gets retired instead of tuned.")
 
     -- v1.69 VOICE LAB. The dialogue event carries NO position field (verified against the RTTI
     -- dump), so if a line comes out of the wrong place the only variables are the ENTITY it was

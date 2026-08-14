@@ -11,6 +11,81 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+## ✅ v1.70 — V SPEAKS (2026-08-14)
+
+Antonia: *"many conversations with jackie have his voice, but V's bank is in fact much bigger, so we
+should always find something on the other end to have V say or respond. Especially phonecall, saying
+hi, checking in, goodbyes."*
+
+Jackie has spoken since v1.66; V has been a silent subtitle the whole time, which made every exchange
+half a conversation. She now speaks her own choice rows, in her own voice, out of her own body.
+
+### The tool first — `tools/v_index.py`
+V has **12,996** recorded lines against Jackie's 1,101, and the flat line library sorts them by
+nothing. The question you actually arrive with ("a hello, on a phone call, under two seconds, to
+Jackie, that works on any day of the story") has five axes and the library indexed none of them, so
+every session re-derived the same greps badly. Built once, now written down: each line is bucketed by
+**intent** (greet/farewell/checkin/affirm/decline/gig/invite/concern/…), mood, channel
+(phone/inner/world), length, addressee, gendered-or-not, and **standalone** — carries no plot hook, so
+it is sayable in any save at any point. `find` prints paste-ready Lua rows; `v_index.html` filters as
+you type; `verify` guards the content.
+
+### The content — 62 rows, ~30 distinct recordings
+The phone call, the base tree, all four venue trees, the familiarity hub's tier-0/1 small talk, the
+dinner date, the hub exit, the dismissal, and all twelve call sign-offs. Highlights are the ones where
+V's real scene partner said the real line: `Tell Misty I said "Hi."` answering him leaving to find her;
+`How's your mom?`; `Lesser Antil-what?` answering the iguana line it was recorded against;
+`Don't worry about me. I'll manage on my own.` as the send-off.
+
+**Deliberately left written:** tiers 2–3 of the hub. "What do you remember about that night?", "Do you
+blame me?" — V never recorded those, because in the game he doesn't survive to be asked. Which reads
+the right way round: the everyday exchanges sound like the game, the intimate ones sound earned.
+
+### Three things the swap caught
+- **`Misty misses you... loads.`** is the obvious pick for Misty's shop and is *wrong*: V recorded it
+  while Jackie was dead. It contradicts the mod's premise. The corpus will offer it again.
+- **The hub's tier-0 "busy" answer was `So let's do our thing.`** — a 2077 gig line that doesn't
+  answer the question and quietly rewrites the man who chose OUT. Now written.
+- **`Feelin' kinda hungry.`** routed to his *departure* node. A hunger cue answered with a send-off.
+
+### Engine
+`jlSpeakPlayerLine` (a **global** — the 200-local cap) + `JLVO_SpeakAsPlayer` (shim **v3**). It does
+NOT go through `VO.play`, which would inject Jackie's voice tag into the player and make V answer him
+in his own voice; the new entry point has no tag argument to get wrong. `textPool` entries and
+`callFarewells` accept `{ text, sfx }` as well as bare strings. Subtitles are held for the
+recording's real length, not reading time. `gen_vo_durations.py` and `gen_vo_gender.py` both read V's
+library now — the first because SoundDB only places `actor:Jackie` (V's lines all came back untimed),
+the second because 1,983 of V's lines have different male and female WORDS.
+
+### v1.70.1 — the switch, and the test that settles it (same day)
+Antonia: *"you sure V's voice plays now? and when a player selects female V in esc/mods menu will
+female variant play? is the default male?"*
+
+- **Esc ▸ Settings ▸ Jackie Lives ▸ Voice ▸ "V's voice"** — Auto / Male / Female, persisted to
+  `jl_settings.txt` as `vVoice` (config.lua is re-required on reload, so an in-Config-only choice
+  would be silently reverted — same reason `voiceMode` persists).
+- **The default is AUTO, not male.** `jlPlayerVariant()` routes on V's **body** as the save reports
+  it: male body → variant 0, female body → variant 1. The old fixed `Config.voice.playerVariant = 0`
+  is **gone** rather than left as a dead key, because 0 is the shape a female-V player was reported
+  hearing MALE audio from.
+- ⚠️ **The female half is a hypothesis — nobody has heard variant 1.** CET window ▸ Voice ▸
+  **"Test V's voice (A/B)"** plays one line ("How's your mom?") both ways ~3 s apart, each named in
+  the log. Better than NCLives' approach, which armed a replay of the first line of every session
+  and therefore shipped switched off and never got run. **If both takes sound the same, the engine
+  ignores the event shape and the switch should be retired, not retuned.**
+- **Diagnostics:** first V line logs shim version + body gender + brain gender + variant; a V line
+  that fails to play logs *once* saying so and naming `shim=v0` as the likely cause. A silent V was
+  otherwise indistinguishable in the log from a build with no voiced rows on screen.
+- `loadsim.lua` grew a §5b (54 → **65 checks**): the selector registered with three options,
+  Auto follows the body both ways, Male/Female pin, and the speak/AB paths no-op cleanly with no
+  shim. Its Native Settings stub now covers `addSelectorString` and is stricter than the real API
+  about an out-of-range index (a silent blank row in game).
+
+**Open — needs one in-game session:** ✅ nothing is *verified audible* yet. The mechanism is the one
+NCLives confirmed speaking on 2026-08-13, but this build has never been run. First test: summon
+Jackie, press the A/B button, read the log. None of the 70 rows in the trees is a gendered line, so
+nothing is mis-captioned today regardless — the guard is in place for whoever adds one.
+
 ## ✅ v1.69 — FOUR DIALOGUE COMPLAINTS, AND WHAT THEY TURNED OUT TO BE (2026-08-13)
 
 Antonia, after playing the v1.66 native-voice build:

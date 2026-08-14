@@ -102,3 +102,11 @@ dist/
 gameplay_showcase1/
 # rotated debug log (the live one is covered by *.log)
 *.log.prev
+
+# --- THE LINE LIBRARY (CDPR's subtitle text, verbatim) ----------------
+# Built by tools/build_line_library.py from whoever's own install. It is CDPR's text, so it is
+# theirs, not ours: never committed, never shipped (GROUND_RULES: game assets are not
+# redistributable). Regenerating it on another machine takes ~100 s, which is cheaper than the
+# licence question. tools/voicetags.json IS committed — that is nothing but voicetag numbers
+# and character names. vo_library/v_index.json is derived from it and is equally CDPR's.
+vo_library/

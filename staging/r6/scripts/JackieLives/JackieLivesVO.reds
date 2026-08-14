@@ -55,7 +55,66 @@ public class JLVOTagRestore extends DelayCallback {
 // -----------------------------------------------------------------------------
 @addMethod(GameObject)
 public final func JLVO_Version() -> Int32 {
-  return 2;
+  return 3;
+}
+
+// -----------------------------------------------------------------------------
+//  v3 — V SPEAKS. (Ported from NCLives' NCLVO_SpeakAsPlayerVariant, v1.71.)
+//
+//  Everything above this puts a line in JACKIE's mouth. This one puts a line in
+//  V's, so the player's own dialogue choices can be heard instead of read. It is
+//  a SEPARATE entry point rather than a flag on JLVO_Speak for one reason: that
+//  function can inject someone else's voice tag, and doing that to the player is
+//  the one mistake available here — V would answer Jackie in Jackie's voice. This
+//  signature cannot express it. There is no tag argument and there never will be;
+//  the only tag it may inject is V's own.
+//
+//  `variant` picks the SHAPE of the event, because a line's male and female takes
+//  share ONE String ID and the ENGINE chooses between them — a mod cannot name the
+//  take it wants, it can only change the question:
+//      0  isPlayer = true,  no tag injected     (the evidenced default)
+//      1  isPlayer = false, inject V's tag      (how V Voice Framework speaks)
+//      2  isPlayer = true,  inject V's tag
+//  jlPlayerVariant() in init.lua selects it, driven by the Esc-menu control
+//  (Jackie Lives > Voice > "V's voice") and persisted to jl_settings.txt, so a
+//  player whose V sounds like the wrong gender fixes it without a redeploy.
+// -----------------------------------------------------------------------------
+@addMethod(GameObject)
+public final func JLVO_SpeakAsPlayer(idDec: String, ctx: Int32, expr: Int32,
+                                     variant: Int32, dur: Float) -> Bool {
+  let ruid: Uint64 = StringToUint64(idDec, 0ul);
+  if Equals(ruid, 0ul) { return false; }
+
+  if variant == 1 || variant == 2 {
+    let inj = new entInjectVoiceTagEvent();
+    inj.voiceTagName = n"v";
+    this.QueueEvent(inj);
+  }
+
+  let ctxEnum: locVoiceoverContext = locVoiceoverContext.Vo_Context_Combat;
+  if ctx >= 0 { ctxEnum = IntEnum<locVoiceoverContext>(ctx); }
+
+  let data: audioDialogLineEventData;
+  data.stringId   = HashToCRUID(ruid);
+  data.isPlayer   = variant != 1;
+  data.isHolocall = false;
+  data.context    = ctxEnum;
+  if expr >= 0 { data.expression = IntEnum<locVoiceoverExpression>(expr); }
+
+  let evt = new DialogLineEvent();
+  evt.data = data;
+  this.QueueEvent(evt);
+
+  // Put V's own tag back afterwards even though V's tag is what we injected: an
+  // inject is a rebind, and leaving one live past the line is how an entity ends
+  // up speaking as somebody else for the rest of the session.
+  if variant == 1 || variant == 2 {
+    let after: Float = dur;
+    if after < 0.5 { after = 0.5; }
+    GameInstance.GetDelaySystem(this.GetGame())
+      .DelayCallback(JLVOTagRestore.Create(this, n"v"), after + 0.4, true);
+  }
+  return true;
 }
 
 // -----------------------------------------------------------------------------

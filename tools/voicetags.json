@@ -1,0 +1,96 @@
+{
+  "claire": {
+    "aka": [
+      "female",
+      "ganger"
+    ],
+    "voicetag": "1619997299022241792"
+  },
+  "evelyn": {
+    "aka": [
+      "evelyn",
+      "pier",
+      "yorinobu"
+    ],
+    "voicetag": "1103967280742240436"
+  },
+  "jackie": {
+    "aka": [
+      "jackie",
+      "montage"
+    ],
+    "voicetag": "1103967280742240500"
+  },
+  "johnny": {
+    "aka": [
+      "johnny",
+      "v",
+      "finale"
+    ],
+    "voicetag": "1103967280742240508"
+  },
+  "judy": {
+    "aka": [
+      "judy",
+      "alt",
+      "voodooqueen"
+    ],
+    "voicetag": "1103967280742240536"
+  },
+  "kerry": {
+    "aka": [
+      "kerry",
+      "japantown",
+      "downtown"
+    ],
+    "voicetag": "1103967280742240560"
+  },
+  "misty": {
+    "aka": [
+      "misty",
+      "sq050",
+      "female"
+    ],
+    "voicetag": "1103967280742240328"
+  },
+  "panam": {
+    "aka": [
+      "panam",
+      "holocall",
+      "female"
+    ],
+    "voicetag": "1196850303899549696"
+  },
+  "river": {
+    "aka": [
+      "river",
+      "japantown",
+      "ward"
+    ],
+    "voicetag": "1103967280742240776"
+  },
+  "rogue": {
+    "aka": [
+      "rogue",
+      "ambush",
+      "maelstrom"
+    ],
+    "voicetag": "1215558083456446464"
+  },
+  "takemura": {
+    "aka": [
+      "takemura",
+      "warehouse",
+      "male"
+    ],
+    "voicetag": "1641719118585413632"
+  },
+  "v": {
+    "aka": [
+      "tpp",
+      "male",
+      "female"
+    ],
+    "voicetag": "1103967280742240864"
+  }
+}

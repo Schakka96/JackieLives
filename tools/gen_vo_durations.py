@@ -221,12 +221,28 @@ def main():
     # line means it hangs around for two and a half. NCLives' line library already read a duration
     # for every line straight out of the game, so use it for whatever the scan missed. Optional:
     # no library (a checkout without the game) just leaves those ids as they were.
-    lib = os.path.join(os.path.dirname(__file__), "..", "..",
-                       "NCLives", "vo_library", "jackie.json")
+    #
+    # ⚠️ v1.70 — READ **V'S** LIBRARY TOO, NOT JUST JACKIE'S. The SoundDB step above asks for
+    # `actor:Jackie`, so it structurally cannot place a single one of V's lines — and since
+    # v1.70 the content is full of them (V speaks her own choice rows now). Every one of those
+    # came back with no duration and got paced by reading time, which is wrong in both
+    # directions: it cuts "Hey!" off late and clips "It's good to see you, too, Jack. How ya
+    # been?" short. Both libraries are read here, local first, so whichever repo has been built
+    # supplies the number.
+    here = os.path.dirname(__file__)
+    libs = []
+    for repo in (os.path.join(here, ".."), os.path.join(here, "..", "..", "NCLives")):
+        for who in ("jackie", "v"):
+            libs.append(os.path.join(repo, "vo_library", f"{who}.json"))
     still = ids - set(found)
-    if still and os.path.exists(lib):
+    secs = {}
+    for lib in libs:
+        if not os.path.exists(lib):
+            continue
         with open(lib, encoding="utf-8") as fh:
-            secs = {l["id"]: l.get("seconds") or 0 for l in json.load(fh)["lines"]}
+            for l in json.load(fh)["lines"]:
+                secs.setdefault(l["id"], l.get("seconds") or 0)
+    if still and secs:
         rescued = 0
         for sid in sorted(still):
             v = secs.get(sid, 0)
@@ -234,7 +250,7 @@ def main():
                 found[sid] = v
                 rescued += 1
         if rescued:
-            print(f"  +{rescued} duration(s) from the line library (not placed in any scene)")
+            print(f"  +{rescued} duration(s) from the line libraries (not placed in any scene)")
 
     bad = {s: v for s, v in found.items() if not (MIN_SEC <= v <= MAX_SEC)}
     if bad:

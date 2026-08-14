@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.70"
+Config.version = "1.70.1"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -144,17 +144,27 @@ Config.voice = {
   -- Nor can it be fixed in content: a line's male and female takes share ONE String
   -- ID (checked against the engine's own locVoiceoverMap — of 15,187 genuinely
   -- gendered pairs, zero differ in the id). The ENGINE picks the take. All a mod
-  -- controls is the SHAPE of the event, which is what `playerVariant` selects:
+  -- controls is the SHAPE of the event, which is what the variant selects:
   --   0  isPlayer = true,  no voice tag     <- the default, and the evidenced one
   --   1  isPlayer = false, inject V's tag      (how V Voice Framework speaks)
   --   2  isPlayer = true,  inject V's tag
   --
-  -- Default is 0 deliberately: it is the shape with in-game evidence behind it
-  -- (NCLives shipped it and it speaks), so the default is the known quantity and
-  -- the switch is the escape hatch, not the other way round. A player whose V
-  -- sounds like the wrong gender flips it — one setting, no redeploy.
-  playerVariant = 0,
-  femaleVariant = 1,   -- what an Esc-menu "female V" switch would write into the above
+  -- ⚠️ v1.70.1 — THE VARIANT IS NO LONGER CHOSEN HERE. `jlPlayerVariant()` in init.lua
+  -- owns it, driven by the Esc-menu control (Esc > Settings > Jackie Lives > Voice >
+  -- "V's voice") and persisted to jl_settings.txt as `vVoice`:
+  --     auto (default) -> V's BODY decides: male body = 0, female body = femaleVariant
+  --     male           -> pinned to 0
+  --     female         -> pinned to femaleVariant
+  -- A number left here would be read on load and then ignored, so there is no
+  -- `playerVariant` key any more — better a missing setting than a dead one that looks
+  -- live. Only `femaleVariant` survives, because it names WHICH shape "female" means and
+  -- that is the one number still worth being able to change without touching code.
+  --
+  -- ⚠️ The female shape is a HYPOTHESIS: nobody has heard variant 1 yet. The CET window's
+  -- "Test V's voice (A/B)" button plays one line both ways to settle it in a single press.
+  -- If both takes sound identical, the engine is reading V's body and ignoring the event
+  -- shape — in which case this whole switch should be RETIRED, not retuned.
+  femaleVariant = 1,   -- isPlayer = false + inject V's own tag n"v"
 }
 
 -- ---- catch-his-eye smile (v0.53) -----------------------------------------

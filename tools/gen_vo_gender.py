@@ -79,6 +79,17 @@ def lua_quote(s):
 
 def build(library):
     lines = {l["id"]: l for l in json.loads(library.read_text())["lines"]}
+    # v1.70 — V'S LINES COUNT TOO. Since V speaks her own choice rows, config.lua's `sfx` ids are
+    # no longer all Jackie's, and V has 1,983 lines whose male and female takes use DIFFERENT
+    # WORDS. Miss those and a male V reads her female wording under his own audio — the exact bug
+    # this file was written to close, reintroduced on the other side of the conversation. Merged
+    # UNDER Jackie's entries (setdefault) so his library still wins any id they share.
+    for extra in (ROOT / "vo_library" / "v.json",
+                  ROOT.parent / "NCLives" / "vo_library" / "v.json"):
+        if extra.exists():
+            for l in json.loads(extra.read_text())["lines"]:
+                lines.setdefault(l["id"], l)
+            break
     used = sorted(set(re.findall(r'jl_(\d{6,})', CONFIG.read_text())))
 
     rows, missing = [], []
