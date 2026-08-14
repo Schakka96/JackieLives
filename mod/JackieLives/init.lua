@@ -60,6 +60,9 @@ pcall(function() package.loaded["lang"] = nil; package.loaded["translations"] = 
 Lang      = require("lang")        -- v1.60 GLOBAL (200-cap): localization; Lang.t(s) at the text chokepoints (see lang.lua + translations.lua)
 pcall(function() package.loaded["dialogui"] = nil end)   -- re-read on CET soft-reload, like blaze/lang
 DialogUI  = require("dialogui")    -- v1.63 GLOBAL (200-cap): V's choices in the GAME's own dialogue widget (see dialogui.lua)
+Allies    = require("nca")         -- OPTIONAL Night City Allies bridge (see nca.lua + NCLucy's
+                                   -- docs/research/nca_integration.md). GLOBAL for the 200-local cap.
+                                   -- Does nothing unless NCA is installed, which is the normal case.
 Fam       = require("familiarity") -- v1.65 GLOBAL (200-cap): Jackie opens up over time (see familiarity.lua)
 pcall(function() package.loaded["vo"] = nil; package.loaded["vo_durations"] = nil end)  -- re-read on CET soft-reload, like blaze/lang
 VO        = require("vo")          -- v1.66 GLOBAL (200-cap): the game's OWN voice-over, no shipped audio (see vo.lua)
@@ -8277,6 +8280,32 @@ registerForEvent("onInit", function()
     }
     DialogUI.init()
   end)
+  -- ⚠️ The bridge needs the conversation runner's INTERNALS (speakJackieLine, pickPoolLine are
+  -- file-locals here), which is why it takes a bind table rather than reaching for globals. Adding a
+  -- key here means adding it to the allow-list inside Allies.bind too.
+  pcall(function()
+    Allies.bind{
+      log          = log,
+      speak        = function(text, sfx, mute) return speakJackieLine(text, sfx, mute) end,
+      sayPlayer    = function(text) pcall(showSubtitle, text, "V") end,   -- (text, speakerName)
+      pickLine     = function(pool) return pickPoolLine(pool) end,
+      var          = function(entry) return jlVar(entry) end,
+      talkTree     = function() return Config.dialogueTree end,
+      personaName  = function() return Config.jackieName or "Jackie" end,
+      activeKey    = function() return "jackie" end,
+      -- ⚠️ There is no jlRecordIsOurs() here — that predicate is NCLives', where it resolves the
+      -- ACTIVE persona out of a roster. This mod has exactly one companion, so the check is a
+      -- straight compare against his record. (Writing `jlRecordIsOurs and ...` would have looked
+      -- like a check and always returned false, leaving only the display-name fallback.)
+      recordIsOurs = function(r)
+        local want = tostring(Config.jackieRecord or "Character.Jackie"):lower()
+        return tostring(r or ""):lower():find(want, 1, true) ~= nil
+      end,
+      famAllows    = function(minFam) return Fam and Fam.allows(minFam) end,
+      famAdd       = function(award) if Fam then Fam.add("choice", award) end end,
+      endHook      = function() pcall(showJackieChoiceBox) end,
+    }
+  end)
   pcall(jlLoadSeats)       -- v1.1: restore tuned sit coords into Config so they survive a reload (old-S4 fix)
   pcall(jlLoadWalk)        -- v1.57: same for the walk/loiter tuner's knobs (they used to die on every reload)
   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
@@ -9068,6 +9097,10 @@ end
 
 registerForEvent("onUpdate", function(dt)
   JL.clock = (JL.clock or 0) + dt
+  -- OPTIONAL Night City Allies bridge. Self-limiting: looks for their mod on a 3 s timer, gives up
+  -- after 20 tries, and does nothing once attached. Safe above the session guard because it touches
+  -- no world handle — it only reads another mod's Lua table.
+  pcall(function() Allies.tick(JL.clock or 0) end)
   -- v1.52 SESSION GUARD — MUST BE FIRST. onUpdate keeps ticking through a load screen, so on the frame a
   -- new session starts every handle below this line is a pointer into the world that just died. Nothing
   -- that can touch a handle may run before this. (`pcall` cannot save us from a native use-after-free.)
@@ -9928,6 +9961,9 @@ registerForEvent("onDraw", function()
 end)
 
 registerForEvent("onShutdown", function()
+  -- ⚠️ FIRST: our Talk row lives inside ANOTHER MOD'S table. Unloading without removing it leaves
+  -- NCA rendering a row whose callback belongs to a mod that no longer exists.
+  pcall(function() Allies.detach() end)
   pcall(closeNativeCallWindow)   -- never leave a holocall window stuck open
   pcall(DialogUI.hide)           -- v1.63: never leave the native dialogue hub stuck on screen
   pcall(hideJackieChoiceBox)
