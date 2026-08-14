@@ -329,7 +329,14 @@ function M.attach(mod)
 
   local row = M.buildRow()
   row.__jackielives = true                     -- our marker, so detach removes OURS and nothing else
-  local ok = pcall(function() table.insert(list, row) end)
+  -- ⚠️ FIRST, NOT LAST — and this is not a matter of taste.
+  -- Their UI:choice paginates at MAX_CHOICES_PER_PAGE = 12: rows 1..13 render, then a "More ..."
+  -- button, then the rest on page two. Appending put our row past that cut on a fully-kitted squad
+  -- member, so in game it was invisible — behind a "More ..." that their own styling
+  -- (gameinteractionsChoiceType.AlreadyRead) draws greyed out and that Antonia could not click
+  -- (2026-08-15). Inserting at the front keeps Talk on page one whatever else they add, and it is
+  -- also the right reading order: talk to her first, command her second.
+  local ok = pcall(function() table.insert(list, 1, row) end)
   if not ok then log("could not insert our row"); return false end
 
   S.row, S.app, S.attached = row, app, true
@@ -367,7 +374,7 @@ function M.ensure()
   end
   local row = M.buildRow()
   row.__jackielives = true
-  local ok = pcall(function() table.insert(list, row) end)
+  local ok = pcall(function() table.insert(list, 1, row) end)   -- front: see the note in attach()
   if ok then
     S.row = row
     S.reasserts = (S.reasserts or 0) + 1

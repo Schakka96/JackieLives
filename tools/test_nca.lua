@@ -102,12 +102,15 @@ local mod, app, ui = fakeNCA()
 _G.GetMod = function(n) return n == "NightCityAllies" and mod or nil end
 Allies.tick(1000)
 check("attached once NCA appears", Allies.present() == true)
-check("our row was APPENDED — their own rows survive", #app.availableInteractions == 3,
+check("our row was ADDED — their own rows survive", #app.availableInteractions == 3,
       #app.availableInteractions)
-check("...and theirs are untouched and still first",
-      app.availableInteractions[1].label == "Follow" and app.availableInteractions[2].label == "Send away")
-local ours = app.availableInteractions[3]
-check("...ours is last, labelled Talk", ours.label == "Talk")
+check("...and theirs are unchanged", app.availableInteractions[2].label == "Follow"
+      and app.availableInteractions[3].label == "Send away")
+local ours = app.availableInteractions[1]
+-- ⚠️ FIRST, deliberately. Their UI paginates at 12 rows and puts the rest behind a "More ..." button
+-- that their own AlreadyRead styling greys out. Appended, our row fell off page one on a fully-kitted
+-- squad member and was simply not reachable in game (2026-08-15).
+check("...ours is FIRST, so it can never fall off page one", ours.label == "Talk")
 
 -- ⚠️ THE REGRESSION THAT WOULD SHIP TWO TALK ROWS: CET hot-reload re-runs onInit.
 Allies.tick(2000); Allies.tick(3000)
@@ -242,12 +245,28 @@ check("their reload wipes our row (this is the real behaviour, not a straw man)"
 Allies.tick(500000)                -- the next heartbeat after the reload
 local back = ourRowIn()
 check("...and the next tick puts it back", back ~= nil)
+check("...still at the front", app.availableInteractions[1].label == "Talk",
+      app.availableInteractions[1].label)
 check("...exactly once, not twice", #app.availableInteractions == 3, #app.availableInteractions)
 check("...and the restored row still works on our persona", back and back.condition(fakeNPC("Jackie")) == true)
 
 -- and it must not keep appending on every later tick
 Allies.tick(500000 + 60); Allies.tick(500000 + 120)
 check("a settled list is left alone", #app.availableInteractions == 3, #app.availableInteractions)
+
+-- ⚠️ THE PAGE-ONE GUARANTEE, against a menu big enough to paginate. Their MAX_CHOICES_PER_PAGE is 12.
+for i = 1, 20 do
+  table.insert(app.availableInteractions, { label = "cmd" .. i, condition = function() return true end,
+                                            callback = function() end })
+end
+Allies.tick(600000)
+local idx
+for i, e in ipairs(app.availableInteractions) do if e.label == "Talk" then idx = i end end
+check("with a 20+ row menu, Talk is still within the first page (<= 12)", idx ~= nil and idx <= 12, idx)
+-- put the list back as we found it, or the detach check below counts our 20 filler rows
+for i = #app.availableInteractions, 1, -1 do
+  if tostring(app.availableInteractions[i].label):find("^cmd%d") then table.remove(app.availableInteractions, i) end
+end
 
 -- status(): the line the Diagnostics hotkey prints
 local st = Allies.status()
