@@ -1559,6 +1559,25 @@ local function lookedAtJackie()
   return isJackie and target or nil
 end
 
+-- ⚠️ IS THIS BODY ONE **WE** PUT IN THE WORLD? (2026-08-14)
+-- lookedAtJackie() deliberately also claims a body it did not spawn, as long as the RECORD is his —
+-- that is what lets the mod talk to a Jackie some other system placed. Night City Allies is exactly
+-- such a system, and the moment its bridge is attached that generosity becomes a bug: the player
+-- presses [F] on an NCA-hired companion, NCA opens its own hub, and a beat later our box opens on
+-- top of it. Reported in game 2026-08-14 (NCLives, Goro through NCA): "the NCA hub is shown shortly,
+-- then immediately covered/replaced by ours".
+-- GLOBAL on purpose: called from Branch.kick, far above this line, and a file-local is not in scope
+-- above its own declaration (see the 200-cap note at the top of this file).
+function jlIsOurBody(target)
+  if not target then return false end
+  local ours = false
+  pcall(function()
+    if JL.summon and JL.summon.spawn and sameEntity(target, JL.summon.spawn.handle) then ours = true end
+    if not ours and JL.idle and JL.idle.spawn and sameEntity(target, JL.idle.spawn.handle) then ours = true end
+  end)
+  return ours
+end
+
 local function pickLine(pool)
   local lines = (Config.talkLines and Config.talkLines[pool]) or {}
   if #lines == 0 then return nil end
@@ -3336,7 +3355,14 @@ end
 -- the F hook can decide whether to play a plain grunt instead.
 Branch.kick = function()
   if Branch.busy then return false end
-  if not lookedAtJackie() then return false end
+  local looked = lookedAtJackie()
+  if not looked then return false end
+  -- ⚠️ HANDS OFF A BODY NIGHT CITY ALLIES OWNS. His conversation reaches that companion through the
+  -- `Talk` row the bridge adds to THEIR menu (nca.lua), so opening our own box here as well is not a
+  -- second route to the same content — it is our box landing on top of theirs, which is precisely the
+  -- bug the bridge exists to remove. Only stands down for a body we did NOT spawn: our own summoned
+  -- companion is talked to exactly as before, bridge or no bridge.
+  if Allies and Allies.present and Allies.present() and not jlIsOurBody(looked) then return false end
   local tree, key = currentTalkTree()
   if not tree or not tree.nodes then return false end
   -- DONE + cooldown (only the `everywhere` backup sets cooldownSeconds): if we're still
