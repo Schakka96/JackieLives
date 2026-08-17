@@ -12,6 +12,34 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
 
+
+## 🏷️ v1.8.1 — and a correction to its own commit message (2026-08-17)
+
+**⚠️ CORRECTION.** `fb27dce`'s message says v1.8 "was tagged AND pushed". **It was tagged locally and
+never pushed** — I checked the local tag list and the remote one and read a `sort -V` interleave as
+agreement. `sort -V` puts `v1.8` *before* `v1.72`, because it compares 8 against 72, and that is
+exactly how the two lists looked identical when they weren't. The commit is already pushed so the
+message stands; this is the correction.
+
+It does not change the outcome — v1.8.1 contains everything v1.8 would have, plus the three fixes —
+but it does change the *reason*. Had I read it right, the honest option was the one taken in NCLucy
+the same day: an unreleased tag can simply absorb later commits. Both tags are now on origin, so
+v1.8 → v1.8.1 reads correctly either way.
+
+**The general shape, since it bit three repos at once:** every one of them had commits sitting past
+their newest *published* tag, and in two of them the newest tag existed only on this machine. A local
+tag is invisible to everyone else — it does not make a release, and `git tag` alone will never tell
+you, because it lists local tags. The check that answers the question is:
+
+```
+git ls-remote --tags origin        # what the world can actually see
+```
+
+⚠️ **And version numbers here are NOT sortable.** This project counts 1.72 → 1.73 → 1.74 → 1.8,
+where "1.8" means the eightieth, not the eighth. Every tool that orders versions — `sort -V`, GitHub's
+release list, Nexus — will file 1.8 *below* 1.74. Nothing to fix retroactively, but worth knowing
+before trusting a sorted list of these tags, and worth considering for the next bump.
+
 ## 🔌 v1.8 — 0-ENGINE COMPATIBLE (2026-08-17)
 
 Ported from NCLives v1.78 (commit b976e30) at Antonia's request — users asked for it across all three mods.
