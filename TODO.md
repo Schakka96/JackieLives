@@ -13,6 +13,66 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 
 
 
+## 🐛 v1.8.4 + v1.8.5 — THE SEAT TUNER, AND WHO IS REALLY WRITING TO THE BODY (2026-08-17)
+
+Backfilled: these two shipped before the entry was written. The reasoning is worth keeping because
+v1.8.6 turned out to be the same bug class in two more places, and it will recur.
+
+### The pattern, stated once
+**The system that thinks it owns the companion is not always the one writing to it.** Every bug below
+is an instance. It is worth reaching for first the next time a companion "ignores" something.
+
+### v1.8.4 — the seat tuner
+* **"Take control (AI off)" did not hold them.** `OnRoleCleared` retires the follower ROLE; it does
+  not cancel the `AIMoveToCommand` already IN_PROGRESS in the command slot. They carried on walking
+  their last order and the tuner's hold teleported them back — the "snap" Antonia saw was our own
+  correction fighting a live command, twice a second, with a 15 cm leash that let the walk-off be
+  visible first. Fix: take-control calls `jlHalt` (v1.57) to OCCUPY the slot, re-issued every
+  `Config.poses.tunerHalt` (2 s) because `AIHoldPositionCommand` expires by `duration`. Never while
+  posed — the halt's fallback is a move command and would eject them from the workspot.
+* **The Turn slider slid them.** `jlPuppetCoords` built the forward/right basis from `byaw + dyaw`,
+  the live slider yaw — so Turn rotated the AXES too and the point `base + forward*dy + right*dx`
+  swept along an arc around the capture point. Basis is frozen at the captured facing now; the
+  RETURNED yaw still adds `dyaw`, so the four controls are orthogonal.
+
+### v1.8.5 — three more writers, and one lost dinner
+* **A fast travel destroyed an in-progress dinner.** The catch-up hard-respawn tore down the mappin
+  and the outing before respawning. Correct for a SEATED companion (despawning a posed puppet is the
+  documented crash); pure loss for one still WALKING, whose destination is a fixed world coordinate.
+  Self-defeating in the reported case too — she had fast-travelled TO the venue. A `walking` outing
+  is preserved now; seating/seated still abort.
+* **The `walking` dinner phase owns nobody.** `dinnerTick`'s walking branch issues ZERO movement
+  commands — it only watches V's distance to `dest`. But catch-up, walk-beside, the keep-close leash
+  and the follower-role watchdog all stood down on a bare `dinner.phase`, so for the whole walk to
+  the restaurant nothing in this mod commanded them and they coasted on the base-game trail. That is
+  "she followed me slowly, I even sprinted". `jlDinnerOwnsBody()` — seating and seated only.
+  ⚠️ The auto-leave pause deliberately still reads the RAW flag: it asks "is a meal happening at
+  all", which is a different question.
+* **The tuner latch moved to the MOVERS.** `followKeepCloseTick`, `dinnerTick`, the arrival machine,
+  the rendezvous placer and the passenger/cruise ticks had no tuner guard. Guarding tick-by-tick is
+  how this regressed, so the latch now lives in `sendWalkToPlayer` / `sendMoveToPoint` /
+  `jlRetreatFollow` — the only three ways to order this body about. `placeAtExact` and `jlHalt`
+  stay open: the tuner drives them.
+* **The seating card names AMM** when AMM is absent (the log was 29 straight failed sit poses), plus
+  an in-panel warning before a dead button is pressed.
+* **The install cards say subtitles must be ON.** Nothing here draws its own subtitle. In JackieLives
+  it is its OWN translated key appended via `concatT`, not edited into Vik's line — editing that text
+  would have invalidated nine good translations to add one setup sentence.
+
+### What the probe deserves the credit for
+The walk probe added in v1.8.3 printed `⚠ STUCK PHASE: ... Nothing is actually moving them` with the
+phase named. That line *is* the second diagnosis. It was built to answer "how could we probe this?"
+and it answered it on the first log.
+
+### The test lesson (2026-08-18)
+`tools/test_walk_gates.lua` EXTRACTS functions from `init.lua` and runs the real bytecode. It was
+extended to extract `jlDinnerOwnsBody` — and extracting a function is **not** testing it: with
+`JL.dinner` left empty every version returns falsy, so a deliberately broken predicate
+(`return p ~= nil`) passed the harness green. Mutation-tested and fixed: there are now behavioural
+assertions for walking / seating / seated, and the mutation exits 1.
+
+---
+
 ## 🐛 v1.8.6 — THE DINNER-PHASE CLASS OF BUG, AND THE [F] PROBE (2026-08-17)
 
 Ported from NCLives v1.86 the same day. Antonia: *"I tried riding a bike before asking someone out for

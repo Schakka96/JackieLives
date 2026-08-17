@@ -91,6 +91,24 @@ run(40, 0.1, 0, 1.2)
 check("flat + steady walk -> jlVertical false", jlVertical(), false)
 check("flat + steady walk -> abreast ON",       jlAbreastOn(), true)
 
+-- 1b. v1.8.5 THE DINNER PHASES, BEHAVIOURALLY. jlDinnerOwnsBody was extracted above, but extracting a
+-- function is not testing it: with JL.dinner left empty every version of the predicate returns falsy,
+-- so a broken one passed this harness untouched (verified by mutation — `return p ~= nil` was green).
+-- These three assertions are the coverage. `walking` is the one that matters: dinnerTick issues NO
+-- movement command during it, so if it counts as an owner nothing drives the companion for the whole
+-- trip to the restaurant, which is exactly the bug Antonia reported as "she followed me slowly".
+run(40, 0.1, 0, 1.2)                                    -- re-establish a steady flat walk
+JL.dinner.phase = "walking"
+check("dinner 'walking' does NOT own the body",  jlDinnerOwnsBody(), false)
+check("...so abreast is still allowed to drive", jlAbreastOn(),      true)
+JL.dinner.phase = "seating"
+check("dinner 'seating' DOES own the body",      jlDinnerOwnsBody(), true)
+check("...and abreast stands down for it",       jlAbreastOn(),      false)
+JL.dinner.phase = "seated"
+check("dinner 'seated' owns the body too",       jlDinnerOwnsBody(), true)
+JL.dinner.phase = nil
+run(40, 0.1, 0, 1.2)                                    -- back to a clean walking state for the rest
+
 -- 2. climbing stairs (V rising ~1.0 m/s) -> abreast OFF, single file
 run(10, 0.1, 0.10, 1.2)
 check("climbing -> jlVertical TRUE", jlVertical(), true)
