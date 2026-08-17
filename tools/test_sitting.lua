@@ -104,5 +104,28 @@ for _, id in ipairs(IDS) do
         dur:find(id:sub(4), 1, true) ~= nil)
 end
 
+-- ---------------------------------------------------------------------------
+print("\n5. no two CET panel sections share an ImGui id")
+-- ---------------------------------------------------------------------------
+-- ⚠️ ImGui keys a widget by its ID, so two CollapsingHeaders with the same label (or the same
+-- `##suffix`) are ONE widget drawn twice: they share an open/closed state, and collapsing either
+-- collapses both. In game that reads as "there are two sections and one of them is empty" — which is
+-- exactly what shipped when the seat tuner was lifted out of the developer section and renamed to
+-- the same label as the manual-seating header it now sits under (Antonia, 2026-08-17).
+--
+-- Nothing else can catch this: it is not a Lua error, the panel still draws, and every offline test
+-- that "opens every header" opens them by iterating, not by clicking. So the ids get checked here.
+do
+  local seen, dupes = {}, {}
+  for label in src:gmatch('CollapsingHeader%("([^"]*)"') do
+    local id = label:match("##(.+)$") or label      -- an explicit ##suffix wins, else the label IS the id
+    if seen[id] then dupes[#dupes + 1] = id else seen[id] = true end
+  end
+  local n = 0; for _ in pairs(seen) do n = n + 1 end
+  check(("all %d panel section ids are unique"):format(n), #dupes == 0,
+        "duplicate id(s): " .. table.concat(dupes, ", ")
+        .. "  -- same id = one widget drawn twice, so one section looks empty")
+end
+
 print(("\n%d checks, %d failed"):format(pass + fail, fail))
 os.exit(fail == 0 and 0 or 1)
