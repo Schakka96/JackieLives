@@ -135,8 +135,14 @@ Vector4      = setmetatable({ new = function(x, y, z, w) return { x = x, y = y, 
 -- fixed in both on 2026-08-14) returned a LIVE stub for nativeSettings, so the mod always believed
 -- Native Settings was installed: the no-Native-Settings path this comment claims to exercise was
 -- never once executed, and nsTick latched `done` against a stub that recorded nothing.
+-- 0-Engine gets the same treatment for the same reason: it is OPTIONAL and most players do not have
+-- it, so the default run here must exercise the WITHOUT-it path. A live stub would have answered
+-- GetVersion() with a stub object, zengine.lua would have refused it, and the 0-Engine section below
+-- would have been testing the refusal path while claiming to test the default install.
 GetMod = function(name)
-  if tostring(name) == "nativeSettings" then return nil end   -- the DEFAULT install: NS is optional
+  local n = tostring(name)
+  if n == "nativeSettings" then return nil end   -- the DEFAULT install: NS is optional
+  if n == "0-Engine" then return nil end         -- the DEFAULT install: 0-Engine is optional
   return stub
 end
 GetSingleton = function() return stub end
@@ -735,6 +741,59 @@ if hotkeyCb["jl_call"] and events.onUpdate and Retrieval and DialogUI then
   Retrieval.isUnlocked, Retrieval.isAwaitingCall = realUnlocked, realAwaiting
 else
   check("the call flow is reachable", false, "jl_call / onUpdate / Retrieval / DialogUI missing")
+end
+
+print("\n7. 0-Engine — the WIRING, not the adapter (tools/test_zengine.lua owns the adapter)")
+-- test_zengine.lua proves zengine.lua in isolation. What only THIS harness can prove is that
+-- init.lua actually consults it: that `jlInCutscene` prefers their value, and — the part that
+-- matters most — that the DEFAULT install (no 0-Engine, which is what the GetMod stub answers)
+-- still reads the tier off the blackboard exactly as before.
+do
+  -- (a) THE DEFAULT INSTALL. GetMod answers nil for 0-Engine, so onUpdate's ZEngine.tick has been
+  -- running all through this harness and must have given up quietly. ⚠️ It also means the retry
+  -- budget (maxTries) is SPENT by now — that is why (b) attaches directly instead of via tick();
+  -- driving tick() here would silently test nothing.
+  check("without 0-Engine the adapter never attached", ZEngine.present() == false)
+  -- ⚠️ NOT "tries == maxTries". This harness ticks onUpdate for ~30 simulated seconds, which at one
+  -- try per 3 s is 11 of the 20 — the budget is not spent here, unlike in NCLives' longer run. The
+  -- invariant that actually matters is that the retry is BOUNDED: a player without 0-Engine must never
+  -- pay a GetMod call forever. So assert the ceiling, not a specific count.
+  local tries = tonumber((ZEngine.status() or ""):match("tries=(%d+)")) or -1
+  check("...and its retries are bounded", tries >= 1 and tries <= ZEngine.maxTries,
+        "tries=" .. tostring(tries) .. " (max " .. tostring(ZEngine.maxTries) .. ")")
+  -- ⚠️ THIS is the check that protects every player who does NOT have 0-Engine: the reader must still
+  -- answer a boolean off its own blackboard read, exactly as it did before the adapter existed.
+  local okOwn, ownCut = pcall(jlInCutscene)
+  check("...and jlInCutscene still answers on its own", okOwn and type(ownCut) == "boolean",
+        tostring(ownCut))
+
+  -- (b) 0-Engine present, reporting a CINEMATIC tier (5). The stub blackboard cannot produce one, so
+  -- a passing check can only mean the value came from them.
+  local shared = { blackboard = { scene = { tier = 5 } }, inMenu = false, inCombat = false, inVehicle = false }
+  local fake = {
+    GetVersion  = function() return "0.18.6" end,
+    GetState    = function() return shared end,
+    GetDistrict = function() return "Watson" end,
+    Register    = function() return { OnFrame = function() return { unsubscribe = function() end } end } end,
+  }
+  check("0-Engine present -> attaches", ZEngine.attach(fake) == true)
+  check("a cinematic tier from THEM is believed", jlInCutscene() == true)
+
+  -- (c) their value must be re-read, not latched at attach — leaving a cutscene has to land, or Jackie
+  -- never comes back.
+  shared.blackboard.scene.tier = 1
+  check("gameplay tier lands immediately", jlInCutscene() == false)
+
+  -- (d) tier 0 means "they have not polled yet". Serving it as `< 4` would answer "not in a cutscene"
+  -- during the first frames of a load, which is exactly when a fresh session may be mid-scene.
+  shared.blackboard.scene.tier = 0
+  local ok0, cut0 = pcall(jlInCutscene)
+  check("tier 0 falls back to our own reader", ok0 and type(cut0) == "boolean", tostring(cut0))
+
+  -- (e) and if they vanish mid-session (CET reloaded them), we must not wedge.
+  ZEngine.detach()
+  local okAfter, cutAfter = pcall(jlInCutscene)
+  check("after detach our own reader takes over again", okAfter and type(cutAfter) == "boolean")
 end
 
 print(("\n%d checks, %d failed"):format(checks, fails))

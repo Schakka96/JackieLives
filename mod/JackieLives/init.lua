@@ -63,6 +63,14 @@ DialogUI  = require("dialogui")    -- v1.63 GLOBAL (200-cap): V's choices in the
 Allies    = require("nca")         -- OPTIONAL Night City Allies bridge (see nca.lua + NCLucy's
                                    -- docs/research/nca_integration.md). GLOBAL for the 200-local cap.
                                    -- Does nothing unless NCA is installed, which is the normal case.
+pcall(function() package.loaded["zengine"] = nil end)     -- re-read on CET soft-reload, like blaze/lang
+ZEngine   = require("zengine")     -- OPTIONAL 0-Engine integration (see zengine.lua + NCLives'
+                                   -- docs/research/zero_engine.md). GLOBAL for the 200-local cap —
+                                   -- ⚠️ this file is AT Lua's 200-local ceiling, so never make it a
+                                   -- `local`. Automatic: if 0-Engine is installed we take its
+                                   -- once-per-frame state instead of polling the same blackboard
+                                   -- again; if it isn't, every reader falls back to ours and nothing
+                                   -- changes. No user switch.
 Fam       = require("familiarity") -- v1.65 GLOBAL (200-cap): Jackie opens up over time (see familiarity.lua)
 pcall(function() package.loaded["vo"] = nil; package.loaded["vo_durations"] = nil end)  -- re-read on CET soft-reload, like blaze/lang
 VO        = require("vo")          -- v1.66 GLOBAL (200-cap): the game's OWN voice-over, no shipped audio (see vo.lua)
@@ -866,6 +874,10 @@ function diagnostics()   -- global (not local): 200-local cap; see note at top
   -- added and their renderer rejected our condition". Open their menu on the companion first,
   -- then press Diagnostics.
   pcall(function() for _, l in ipairs(Allies.probe()) do log(l) end end)
+  -- 0-Engine: ONE line here, not the full probe (the panel button writes that). It belongs in every
+  -- bug report because it changes where a stale scene-tier answer could have come from — theirs or
+  -- ours — and that is the first fork in diagnosing "Jackie froze mid-cutscene" from a user's log.
+  pcall(function() log(ZEngine.status()) end)
   local amm = getAMM()
   log("AMM=" .. tostring(amm ~= nil) ..
       "  Spawn=" .. tostring(amm and amm.Spawn ~= nil) ..
@@ -8270,6 +8282,15 @@ end
 -- NO false positives on holocalls / dialogue / vendors / braindance (those stay tier 1-3). Verified
 -- against psiberx/cp2077-cet-kit GameUI (the base AMM + most companion mods use). Global -> cap-safe.
 function jlInCutscene()
+  -- 0-ENGINE. If 0-Engine is installed it has ALREADY read this exact blackboard field this frame,
+  -- for the whole mod stack — so we take its answer instead of running the same three cross-boundary
+  -- calls beside it. This mod has no frame cache, so unlike NCLives this replaces an UNCACHED read
+  -- that fires several times a frame while Jackie is out. nil means "not installed / not yet polled /
+  -- shape unrecognised", and then we read it ourselves exactly as before. Safe to source cross-mod
+  -- (unlike V's position, see zengine.lua's header): the tier changes when a scene starts, and every
+  -- caller here asks "are we in a cutscene", not "where is V".
+  local shared; pcall(function() shared = ZEngine.sceneTier() end)
+  if type(shared) == "number" then return shared >= 4 end
   local inCut = false
   pcall(function()
     local defs  = Game.GetAllBlackboardDefs()
@@ -8798,6 +8819,16 @@ registerForEvent("onInit", function()
         local D = Config.dialogue or {}
         return D.hubRefreshMin or 10.0, D.hubRefreshMax or 30.0
       end,
+    }
+  end)
+  -- OPTIONAL 0-Engine. Only two keys: it consumes their state, it never drives ours.
+  -- ⚠️ `enabled` is read from Config on every call, NOT captured — config.lua is re-required from disk
+  -- on reload, so capturing the value would pin a stale copy (the config-reload trap the seat/walk
+  -- tuners hit). It is also NOT a persisted setting, so it needs no entry in JL_SETTINGS_KEYS.
+  pcall(function()
+    ZEngine.bind{
+      log     = log,
+      enabled = function() return (Config.zeroEngine or {}).enabled ~= false end,
     }
   end)
   pcall(jlLoadSeats)       -- v1.1: restore tuned sit coords into Config so they survive a reload (old-S4 fix)
@@ -9600,6 +9631,10 @@ registerForEvent("onUpdate", function(dt)
   -- after 20 tries, and does nothing once attached. Safe above the session guard because it touches
   -- no world handle — it only reads another mod's Lua table.
   pcall(function() Allies.tick(JL.clock or 0) end)
+  -- OPTIONAL 0-Engine attach. Same self-limiting shape as the Allies bridge above and safe in the
+  -- same place for the same reason: it touches no world handle, only another mod's Lua table. Stops
+  -- calling GetMod for good after 20 tries, and does nothing at all once attached.
+  pcall(function() ZEngine.tick(JL.clock or 0) end)
   -- v1.52 SESSION GUARD — MUST BE FIRST. onUpdate keeps ticking through a load screen, so on the frame a
   -- new session starts every handle below this line is a pointer into the world that just died. Nothing
   -- that can touch a handle may run before this. (`pcall` cannot save us from a native use-after-free.)
@@ -10343,6 +10378,29 @@ registerForEvent("onDraw", function()
   -- someone looking at the chair, and the player is standing right there. So the sit is a BUTTON now,
   -- and the seat tuner that used to be dev-only is its alignment tool. That is why this whole section
   -- is written as a feature the player is meant to find, not as scaffolding.
+  -- ---------------------------------------------------------------------------
+  -- 0-ENGINE — integration probe (a BUTTON, not a hotkey)
+  -- ---------------------------------------------------------------------------
+  -- "Is JackieLives 0-Engine compatible?" is a question users will ask, and this answers it on screen
+  -- without a log dive: installed / attached / their version / how many values we have taken.
+  -- ⚠️ The `##` id must be unique in this panel — two sections sharing one id are ONE widget drawn
+  -- twice, which is how NCLucy shipped an empty seat section. test_sitting.lua §5 fails on it.
+  if ImGui.CollapsingHeader("Dev: 0-Engine (integration probe)##jlzengine") then
+    local line = "0-Engine: (probe unavailable)"
+    pcall(function() line = ZEngine.status() end)
+    ImGui.TextWrapped(line)
+    ImGui.Separator()
+    if ImGui.Button("Write the full 0-Engine probe to the log##jlzeprobe") then
+      local n = 0
+      pcall(function()
+        for _, l in ipairs(ZEngine.probe()) do log(l); n = n + 1 end
+      end)
+    end
+    ImGui.TextWrapped("installed=false is the normal case and is not a fault — JackieLives then uses " ..
+                      "its own readers, exactly as it always has. attached=true means we are taking " ..
+                      "0-Engine's shared per-frame state instead of polling the same blackboard twice.")
+  end
+
   if ImGui.CollapsingHeader("Sitting — seat them by hand##jlsit") then
     ImGui.TextWrapped("NPCs stand by default — the sit animation isn't aligned to real chairs yet, "
       .. "so an automatic sit often floats. Seat them yourself instead: it lands exactly where you "
@@ -10542,6 +10600,9 @@ registerForEvent("onShutdown", function()
   -- ⚠️ FIRST: our Talk row lives inside ANOTHER MOD'S table. Unloading without removing it leaves
   -- NCA rendering a row whose callback belongs to a mod that no longer exists.
   pcall(function() Allies.detach() end)
+  -- Same reasoning, milder consequence: our heartbeat callback lives in 0-Engine's frame dispatcher.
+  -- Dropping our reference stops their overlay listing a mod that is no longer loaded.
+  pcall(function() ZEngine.detach() end)
   pcall(closeNativeCallWindow)   -- never leave a holocall window stuck open
   pcall(DialogUI.hide)           -- v1.63: never leave the native dialogue hub stuck on screen
   pcall(hideJackieChoiceBox)

@@ -24,6 +24,10 @@ Esc → Settings → JackieLives → Compatibility → *Use AMM for spawning*.
 - **AppearanceMenuMod (AMM)** — adds the sit/lean poses at venues, and lets you switch the spawn back
   to AMM's own (Esc → Settings → JackieLives → Compatibility). Nothing breaks without it.
 
+- **0-Engine** — nothing to switch on and nothing changes if you don't have it. If you do, Jackie Lives
+  reads the shared per-frame state 0-Engine already works out for your whole mod list, instead of asking
+  the game for the same thing a second time.
+
 **For Jackie's real voice (optional, but it's the whole point):**
 - **redscript** — and that's it. Jackie speaks in his actual voice, using the recordings already in
   your own copy of the game. Nothing to download, extract, convert or rename.

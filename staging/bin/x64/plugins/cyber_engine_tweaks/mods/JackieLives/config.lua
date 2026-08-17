@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.74"
+Config.version = "1.8"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -3029,5 +3029,18 @@ Config.declineLine = "V: Not draggin' Jackie into this mess. Not after everythin
 -- notifications), so a call/summon that no-ops during a main quest tells the player WHY instead of
 -- looking broken. Kept short so it fits the notice band; declineLine stays V's spoken/status line.
 Config.mainQuestBlockNotice = "Can't call Jackie during a main mission — not draggin' him into this."
+
+-- ---- 0-Engine (OPTIONAL third-party service layer) -------------------------
+-- Automatic: if 0-Engine (Nexus 27967) is installed we take its once-per-frame state instead of
+-- polling the same blackboard beside it; if it isn't, every reader falls back to ours and the mod
+-- behaves exactly as before. There is deliberately NO player-facing switch — nothing about the
+-- experience changes either way. See zengine.lua + NCLives' docs/research/zero_engine.md.
+--
+-- `enabled = false` is a DEVELOPER A/B switch: it forces the fallback path while 0-Engine IS
+-- installed, which is how you tell "their value is wrong" apart from "our reader is wrong". Ships
+-- true. NOT a persisted setting — there is no tuner UI for it, so it needs no JL_SETTINGS_KEYS entry.
+Config.zeroEngine = {
+  enabled = true,
+}
 
 return Config

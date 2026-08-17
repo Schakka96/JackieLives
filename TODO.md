@@ -12,6 +12,54 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
 
+## 🔌 v1.8 — 0-ENGINE COMPATIBLE (2026-08-17)
+
+Ported from NCLives v1.78 (commit b976e30) at Antonia's request — users asked for it across all three mods.
+
+**0-Engine** (DigitalVixen, Nexus 27967) is not a graphics or performance mod: it is a shared runtime
+service layer for CET mods. One player-position read, one blackboard poll, one Cron, one frame
+dispatcher for the whole stack, instead of every mod running its own.
+
+**It's automatic — no switch, nothing for a player to enable.** With 0-Engine installed, `zengine.lua`
+attaches (20 tries, 3 s apart, then it stops asking for good) and JackieLives takes their shared
+per-frame state. Without it — the normal case — every accessor answers nil and each reader falls back
+to the one it always used. `Config.zeroEngine.enabled = false` is a **developer** A/B switch for
+telling "their value is wrong" from "our reader is wrong"; it is not persisted, so it needs no
+`JL_SETTINGS_KEYS` entry.
+
+**⚠️ This repo gets MORE out of it than the other two.** NCLives and NCLucy have `Perf.cached`, so
+their scene-tier read was already memoised to once per frame. JackieLives has no frame cache:
+`jlInCutscene` pays `GetAllBlackboardDefs` + `GetBlackboardSystem():Get` + `GetInt` **plus a freshly
+allocated pcall closure on every call**, several times a frame while Jackie is out. With 0-Engine
+present all of that becomes a table lookup into a value they already computed. Do NOT "improve" this by
+caching their answer on our side — theirs is already per-frame, and a second cache would only add a
+staleness window of our own.
+
+**Four things deliberately NOT done** (reasoning in `../NCLives/docs/research/zero_engine.md`): our tick
+stays in our own `onUpdate` (their loop sleeps at the main menu) · V's **position** is never sourced
+from them (cross-mod tick order is CET load order, and a one-frame-stale position is a one-frame follow
+drift) · their overlay checkbox does **not** disable JackieLives · their Cron / proximity / spatial hash
+stay unused.
+
+**New:** `mod/JackieLives/zengine.lua` · `tools/test_zengine.lua` (54 checks).
+**Changed:** `init.lua` (require — a GLOBAL, this file is at the 200-local ceiling · `ZEngine.tick`
+beside `Allies.tick` · the branch atop `jlInCutscene` · `bind` · a dev panel with a unique
+`##jlzengine` id · one line in the diagnostics dump · `detach` on shutdown) · `config.lua`
+(`Config.zeroEngine`; `Config.version` deliberately untouched — the 1.8 bump is another session's
+in-flight release) · `tools/loadsim.lua` (§7, 7 checks on the wiring + the `GetMod` stub now answers
+**nil** for `0-Engine`) · CLAUDE.md · `mod/JackieLives/README.md` · staging.
+
+⚠️ loadsim's bounded-retry check asserts `tries <= maxTries`, **not** `tries == maxTries`: this harness
+only ticks ~30 simulated seconds, so it reaches 11 of the 20 tries. The invariant that matters is that a
+player without 0-Engine never pays a `GetMod` call forever — assert the ceiling, not a count.
+
+Suite: loadsim **79** · test_zengine 54 · test_vo 132 · test_dialogui 48 · test_nca 62 · test_sitting 38 ·
+test_dismiss 25 · test_familiarity 32 · test_follower 21 · test_spawn_backend 11 · test_blaze_calm ALL
+PASS · test_walk_gates ALL PASS — **0 failed**.
+
+The write-up lives once, in the **NCLives** repo (`docs/research/zero_engine.md`), for all three mods.
+
+
 ## ✍️ v1.73 — BRANCH LOGIC: rows that answered the wrong line, and `(back)` (2026-08-17)
 
 Ported from the NCLucy pass Antonia asked for; NCLives got the same treatment the same day. Two

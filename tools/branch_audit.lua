@@ -114,7 +114,9 @@ end
 -- without the player feeling cut off?
 local CLOSERS = {
   "done with this", "done with that", "done talkin", "done with the subject",
-  "enough of that", "leave it there", "we can leave that", "leave that where it fell",
+  -- ⚠️ anchored: "I've had enough of that" is a complaint, not a close. Only the
+  -- sentence-initial form ends a conversation.
+  "that's enough of that", "thats enough of that", "leave it there", "we can leave that", "leave that where it fell",
   "going to stop talking", "stop talking now", "talk to me later", "talk later",
   "i'm going to go check", "im going to go check",
   "don't ask me again for a while", "dont ask me again for a while",

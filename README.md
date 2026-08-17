@@ -78,6 +78,8 @@ Install the release zip with Vortex or MO2 — it carries a `fomod/` installer, 
 [`mod/JackieLives/README.md`](mod/JackieLives/README.md)**, which ships inside the zip. In short:
 RED4ext, CET 1.18.1+ and Codeware are required; **redscript** (his voice), AMM Expressions Overhaul
 (his mouth moving) and Native Settings UI (the in-game settings page) are optional but wanted.
+**0-Engine** is supported too (v1.8) — install it and the mod uses its shared per-frame state instead of
+polling the game a second time; skip it and nothing changes. Nothing to enable either way.
 
 🔊 **Jackie speaks, and there is nothing for you to install to make that happen** (v1.66). His audio
 is not shipped and cannot be — CDPR's files aren't redistributable — so the mod doesn't ship any. It
