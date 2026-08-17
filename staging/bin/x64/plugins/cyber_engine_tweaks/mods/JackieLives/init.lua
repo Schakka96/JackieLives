@@ -1045,6 +1045,85 @@ function jlCompanionAppearance()
   return JL.summon.appearance or Config.defaultAppearance or "jackie_welles_default"
 end
 
+-- ===========================================================================
+-- v1.77 THE NAKED COMPANION — re-assert the outfit after the body exists
+-- ===========================================================================
+-- Antonia, 2026-08-17: *"I often saw Kerry spawn naked."*
+--
+-- The appearance rides on the spawn spec (`Native.spawn` -> `spec.appearanceName`), which is the
+-- right place for it and usually works. But it is a REQUEST, not a guarantee: the appearance's
+-- garment meshes have to be streamed in, and a body built before they are resident renders with the
+-- meshes it has — which, on a character with a big wardrobe, is the bare body. That is why this is
+-- intermittent ("often", not "always") and why it picks on some characters and not others.
+--
+-- AMM never relied on the spec. It applies the appearance AFTER the body exists, and it PREFETCHES
+-- first: `PrefetchAppearanceChange` then `ScheduleAppearanceChange`
+-- (reference_mods/Appearance Menu Mod-790-2-12-5-1749642728/.../AppearanceMenuMod/init.lua:5268,
+-- reached from Modules/spawn.lua's `AMM:ChangeAppearanceTo`). We now do BOTH: keep the spec, and
+-- re-assert AMM-style once the handle resolves — then VERIFY and repeat until the engine agrees.
+--
+-- ⚠️ The read-back is the point, not a nicety. An unknown appearance name is a SILENT no-op in this
+-- engine, so "wrong name" and "lost streaming race" look identical in game and identical in the log.
+-- `GetCurrentAppearanceName()` is what tells them apart, and the warning below is what a future bug
+-- report needs to be answerable at all.
+--
+-- ⚠️ Two naming levels, and the read-back may report either. An entity template declares appearance
+-- names like `kerry_eurodyne_kerry_eurodyne_old`, each pointing at an appearance INSIDE the .app,
+-- which is named `kerry_eurodyne_old` (verified on the local install: the .ent carries both). AMM's
+-- menu shows the template name, which is what the roster stores and what we ask for. So a read-back
+-- of the shorter .app name means SUCCESS, not failure — hence the substring match rather than `==`.
+JL_APPFIX_WINDOW = 8.0   -- seconds we keep verifying after the body resolves
+JL_APPFIX_TRIES  = 4     -- re-asserts before we give up and warn
+
+-- Arm the verify/re-assert loop for a freshly resolved body. `sp.appearance` is stamped by ammSpawn
+-- with the RESOLVED name (so a nil arg records "default" and still reads back correctly).
+function jlArmAppearanceFix(h, sp, why)
+  if not (h and sp) then return false end
+  local want = sp.appearance
+  if not want or want == "" or want == "default" then return false end
+  JL.appfix = { handle = h, want = want, why = why or "spawn", tries = 0, nextAt = 0,
+                 until_ = (JL.clock or 0) + (JL_APPFIX_WINDOW or 8.0) }
+  return true
+end
+
+-- Stepped from onUpdate. Costs one native read per second for a few seconds after a spawn, then nils
+-- itself — it is not a standing per-frame cost.
+function jlAppearanceTick()
+  local A = JL.appfix
+  if not (A and A.handle and A.want) then return end
+  local now = JL.clock or 0
+  if now < (A.nextAt or 0) then return end
+  A.nextAt = now + 1.0
+
+  local cur
+  pcall(function() cur = tostring(A.handle:GetCurrentAppearanceName()) end)
+  -- Success = the engine reports the name we asked for, OR the .app-level name it maps to (see the
+  -- two-naming-levels note above). `cur` is the shorter of the pair, so it is the needle.
+  if cur and cur ~= "" and cur ~= "None"
+     and (cur == A.want or (#cur >= 4 and A.want:find(cur, 1, true) ~= nil)) then
+    log(("Appearance OK: wearing '%s' (%s; %d re-assert(s))."):format(tostring(cur), tostring(A.why), A.tries or 0))
+    JL.appfix = nil
+    return
+  end
+
+  if now >= (A.until_ or 0) or (A.tries or 0) >= (JL_APPFIX_TRIES or 4) then
+    log(("⚠ APPEARANCE NOT APPLIED: asked for '%s', the body reports '%s' after %d attempt(s). "
+      .. "An unknown appearance name no-ops silently — check it against AMM's list for this record "
+      .. "(config.lua `Config.defaultAppearance` / the venue `appearance`). This is what a naked companion looks like in the log.")
+      :format(tostring(A.want), tostring(cur), A.tries or 0))
+    JL.appfix = nil
+    return
+  end
+
+  A.tries = (A.tries or 0) + 1
+  -- PREFETCH FIRST. Scheduling a change whose meshes are not loaded is exactly the race we are here
+  -- to lose less often; this is the half our spec-based path never had.
+  pcall(function() A.handle:PrefetchAppearanceChange(CName.new(A.want)) end)
+  pcall(function() A.handle:ScheduleAppearanceChange(CName.new(A.want)) end)
+  log(("Appearance re-assert %d/%d: '%s' (body reported '%s')."):format(
+      A.tries, (JL_APPFIX_TRIES or 4), A.want, tostring(cur)))
+end
+
 local function ammDespawn(spawn)
   if not spawn then return end
   local amm = getAMM()
@@ -1148,6 +1227,7 @@ local function clearVehicleArrival()
 end
 
 local function dismissJackie()
+  pcall(function() jlManualUnseat("dismiss") end)   -- v1.77: NEVER despawn a seated puppet — stand a hand-seated Jackie up first
   setCompanionFlag(false)   -- v0.72: V let him go -> clear the persisted companion intent
   if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
@@ -1162,6 +1242,7 @@ end
 
 -- Despawn EVERY Jackie AMM knows about (clears orphans from failed dismisses / mod reloads).
 function dismissAllJackies()   -- global (not local): 200-local cap; see note at top
+  pcall(function() jlManualUnseat("dismiss all") end)   -- v1.77: ...including one the player seated by hand
   setCompanionFlag(false)   -- v0.72: a full wipe clears the persisted companion intent too
   local amm = getAMM()
   local n = 0
@@ -2875,6 +2956,26 @@ local function openChoiceMenu(choices, title, node)
       elseif src.text then
         sc.text = src.text
       end
+      -- v1.77 `variants` (array of {text=, sfx=, to=}) — a textPool that also carries the VOICE and
+      -- (optionally) the node that answers it. Ported from NCLives v1.76.
+      --
+      -- `textPool` shuffles the words alone, which is all a written line needs. A VOICED line can't
+      -- work that way: the row the player reads, the recording V speaks, and the reply that lands
+      -- have to be the same choice, and they are decided at three different moments (here, at
+      -- confirm, and when the next node opens). So the variant is picked ONCE, right here, and its
+      -- `sfx` and `to` ride along in the same copy the rest of the flow already reads.
+      --
+      -- ⚠️ `to` is an OVERRIDE, not a default: a variant that omits it keeps the choice's own.
+      local vs = src.variants
+      if vs and #vs > 0 then
+        local vi = 1; pcall(function() vi = math.random(1, #vs) end)
+        local v = vs[vi]
+        if v then
+          if v.text then sc.text = v.text end
+          if v.sfx  then sc.sfx  = v.sfx  end
+          if v.to   then sc.to   = v.to   end
+        end
+      end
       shown[#shown + 1] = sc
       srcOf[#shown]     = c              -- the ORIGINAL choice, for the hub-refresh cache below
     end
@@ -3619,9 +3720,15 @@ local function runCallAction(name)
     if JL.summon.active then
       -- v0.40: if he's near the venue the schedule wants him at, walk him BACK there + go idle
       -- (re-join the cycle) instead of despawning. Else, the normal walk-away-and-despawn.
+      -- v1.77: LOG WHICH BRANCH RAN. "They just despawn" was reported against this row, and the two
+      -- branches fail in ways that look identical from the pavement — so name the branch, every time.
       local returned = false
       if returnToPost then local ok, res = pcall(returnToPost); returned = ok and res == true end
-      if not returned and startLeaving then pcall(startLeaving) end
+      if returned then
+        log("Dismiss: return-to-post — they stay in the world and re-join their venue.")
+      elseif startLeaving then
+        pcall(startLeaving)
+      end
     end
     return
   end
@@ -4556,7 +4663,13 @@ end
 startLeaving = function(opts)
   local sp = JL.summon.spawn
   local h  = sp and sp.handle
-  if not h then return end
+  -- v1.77: this used to return SILENTLY with no handle, so a dismissal did nothing at all and left no
+  -- trace. If the body can't be reached there is no walk-off to give — say so, so the log distinguishes
+  -- "never started" from "walked off and despawned at distance" (leavingTick logs the latter).
+  if not h then
+    log("Dismiss: NO BODY to walk off (handle unresolved) — nothing to send home.")
+    return
+  end
   JL.leaving.paused = false            -- v1.62: a fresh walk-off never inherits a stale conversation-pause
   local D = Config.dismiss or {}
   opts = jlVar(opts or {})   -- v1.2: Hermano swap for an explicit parting line (e.g. mainQuestExit's "...mamita.")
@@ -4738,7 +4851,12 @@ end
 -- Promote the spawned Jackie to a real companion (follower role -> combat + auto-follow +
 -- friendly). This is when the native catch-up teleport becomes available again; we only do it
 -- once he's already close, so it never visibly skips the walk-in.
-local function promoteToCompanion()
+-- v1.77 `rejoin`: they were ALREADY with V and are simply going back on follow — after a meal, off
+-- a bike, out of a cutscene. Pass true and they say nothing. Without it every re-promotion fires the
+-- ARRIVAL GREETING below, so a companion who has been sitting across a table from V for an in-game
+-- hour stands up and greets her like they have just turned up (Antonia, 2026-08-17). Omitting the
+-- argument keeps the old behaviour, which is correct for every genuine arrival.
+local function promoteToCompanion(rejoin)
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
   -- v0.62: SAFETY dismount. On a bike arrival Jackie is sometimes STILL in the seat when he's
@@ -4761,7 +4879,8 @@ local function promoteToCompanion()
   sendWalkToPlayer(h, (Config.call and Config.call.approachMovement) or "Run",
                       (Config.call and Config.call.followDistance) or 1.6)
   JL.summon.companionSet, JL.summon.walkIn = true, false
-  JL.summon.arrivalGreetPending = true   -- v0.46/v0.48/v0.52: say a fresh greeting LINE once he closes to arrivalGruntDistance
+  JL.summon.arrivalGreetPending = not rejoin   -- v0.46/v0.48/v0.52: say a fresh greeting LINE once he closes to
+                                              -- arrivalGruntDistance. v1.77: ...unless this is a REJOIN (see above).
   setCompanionFlag(true)                 -- v0.72: persist "is companion" in the save (survives reload / culling FT)
 end
 
@@ -5175,6 +5294,13 @@ local function resolveJackieHandle()
   if h and sp.companionFlag == 1 and not sp.roleSet then
     sp.roleSet = true                                     -- latch FIRST: a failed call must not retry every frame
     jlMakeCompanion(h)
+  end
+  -- v1.77: the body exists now, so this is the first moment the outfit can be re-asserted AMM-style
+  -- (the spec asked for it at CreateEntity, which is the request that loses the streaming race).
+  -- Latched like roleSet: once per spawn record, never once per frame.
+  if h and not sp.appArmed then
+    sp.appArmed = true
+    pcall(function() jlArmAppearanceFix(h, sp, "companion spawn") end)
   end
   return h
 end
@@ -6516,11 +6642,23 @@ local function stopWorkspotPose(handle)
   JL.idle.pendingPose, JL.idle.pendingSit = nil, nil   -- cancel any not-yet-fired pose/sit
 end
 
+-- v1.77: is AUTOMATIC sit/lean on? Ships FALSE (Config.poses.enabled) — see the long note on that
+-- config block. Every engine-driven sit asks this first; the player's "Seat them here" button is the
+-- one caller allowed past it, and it says so by passing `force`.
+-- GLOBAL on purpose: read from dinnerTick, applyIdlePose and onDraw, and init.lua is at the 200-local cap.
+function jlSitPosesOn()
+  local P = Config.poses
+  return (P and P.enabled) and true or false
+end
+
 -- Play a real sit/lean animation on Jackie using AMM's proven Poses pipeline. Returns true if
 -- the call went through (no guarantee it visually took — guarded; falls back to standing).
-local function tryWorkspotPose(handle, pose, nameOverride)
+-- v1.77 `force`: play it even though automatic sitting is off. ONLY the manual "Seat them here"
+-- button passes this — it is the player looking at the chair and saying "there".
+local function tryWorkspotPose(handle, pose, nameOverride, force)
   local P = Config.poses
-  if not (P and P.enabled) then return false end
+  if not P then return false end
+  if not (P.enabled or (force and P.manual ~= false)) then return false end
   if pose ~= "sit" and pose ~= "lean" then return false end
   local name = nameOverride or P[pose]; if not name then return false end  -- per-waypoint poseAnim wins
   local amm = getAMM()
@@ -6546,15 +6684,20 @@ local function applyIdlePose(handle, wp, forceSnap)
   if not handle or not wp then return end
   local W = Config.wander or {}
   -- the exact seat point (anchor + optional poseOffset) and its facing
+  -- v1.77: with automatic sitting off, a sit/lean waypoint is just a STANDING spot. Skip the
+  -- poseOffset (it lowers him onto a seat plane he's no longer using) and skip the pendingPose chain
+  -- below — that chain ends in placeAtExact, which does NOT nav-snap, and is exactly how a standing
+  -- NPC ends up hovering. aiTeleport's nav test keeps him on the floor.
+  local sitOn = jlSitPosesOn()
   local v = wpVec4(wp)
-  if (wp.pose == "sit" or wp.pose == "lean") and wp.poseOffset then
+  if sitOn and (wp.pose == "sit" or wp.pose == "lean") and wp.poseOffset then
     v = Vector4.new(wp.pos[1] + (wp.poseOffset.x or 0), wp.pos[2] + (wp.poseOffset.y or 0),
                     wp.pos[3] + (wp.poseOffset.z or 0), 1.0)
   end
   if forceSnap or W.faceYawOnArrive ~= false then
     pcall(function() aiTeleport(handle, v, wp.yaw or 0.0) end)   -- nav-snap walk to roughly the spot
   end
-  if wp.pose == "sit" or wp.pose == "lean" then
+  if sitOn and (wp.pose == "sit" or wp.pose == "lean") then
     -- v0.45: carry the EXACT pos + yaw so the deferred fire can lock his seat position AND facing
     -- (placeAtExact) right before the workspot plays — fixes the wrong-seat-angle on arrival.
     JL.idle.pendingPose = { pose = wp.pose, name = wp.poseAnim, vec = v, yaw = wp.yaw or 0.0,
@@ -6562,6 +6705,107 @@ local function applyIdlePose(handle, wp, forceSnap)
   else
     JL.idle.pendingPose, JL.idle.pendingSit = nil, nil
   end
+end
+
+-- ===========================================================================
+-- v1.77 MANUAL SEATING — the player's own "sit down there" button
+-- ===========================================================================
+-- Automatic sitting is off (Config.poses.enabled = false; the reasoning is on that config block).
+-- The animation itself was never the problem — ALIGNING it was, and the player is standing right
+-- there looking at the chair, which is a better judge of "that's the seat" than any table of
+-- coordinates we can ship. So the sit is now a button, and the seat tuner it lives next to left the
+-- developer section: it is the alignment tool for this feature now, not dev-only scenery.
+--
+-- ⚠️ SEATED PUPPETS MUST NEVER BE DESPAWNED — that is a hard crash. Jackie's existing defence is
+-- that the dinner tree simply never OFFERS "head home" while he's seated (see Config.date's note);
+-- a hand-seated Jackie has no such tree in front of him, so manual seating carries its own latch
+-- (JL.manualSeat) and jlManualUnseat is called from every dismiss/despawn path there is. Adding a
+-- new despawn path? Call it there too.
+--
+-- Whoever is out: the summoned companion first, else the NPC idling at a venue.
+function jlSeatTargetHandle()
+  if JL.summon.active and JL.summon.spawn and JL.summon.spawn.handle then
+    return JL.summon.spawn.handle, "companion"
+  end
+  if JL.idle.spawn and JL.idle.spawn.handle then return JL.idle.spawn.handle, "idle" end
+  return nil, nil
+end
+
+-- Play the sit at a chosen spot, plus the panel's nudges. `dz` is the one that matters: the anim is
+-- rooted at the point we hand it, and a barstool's seat is most of a metre off the floor.
+--
+-- `atPlayer` picks the anchor, and both are genuinely useful:
+--   • true  (the panel's default) — V'S OWN position and facing. Stand ON the chair, face the way
+--     they should face, press the button, step back. It is the most precise aim the player has, and
+--     it is the same idiom this mod's own position capture uses. V's body yaw IS the seat facing.
+--   • false — where THEY are standing, facing the way they already face. For "just sit down here".
+-- A following companion has their follower role cleared first — otherwise the follow command walks
+-- them straight back out of the pose.
+function jlSeatHere(dx, dy, dz, dyaw, pose, atPlayer)
+  local h, which = jlSeatTargetHandle()
+  if not h then
+    JL.ui.status = "Nobody's out — call a companion (or find one at a venue) first."
+    return false
+  end
+  local src = h
+  if atPlayer ~= false then src = Game.GetPlayer() end
+  if not src then JL.ui.status = "Can't read the seat spot — try again in a second."; return false end
+  local p; pcall(function() p = src:GetWorldPosition() end)
+  if not p then JL.ui.status = "Can't read the seat spot — try again in a second."; return false end
+  local yaw = 0.0
+  pcall(function() yaw = src:GetWorldOrientation():ToEulerAngles().yaw end)
+  local dest = Vector4.new(p.x + (dx or 0), p.y + (dy or 0), p.z + (dz or 0), 1.0)
+  if which == "companion" then
+    pcall(function()                                   -- same role-clear the dinner seat does
+      local role = h:GetAIControllerComponent():GetAIRole()
+      if role then role:OnRoleCleared(h) end
+      h.isPlayerCompanionCached = false
+    end)
+  end
+  JL.idle.pendingPose, JL.idle.pendingSit = nil, nil  -- cancel any idle pose that would fight us
+  pcall(function() stopWorkspotPose(h) end)             -- out of any current pose before the new one
+  setNpcCollision(h, false)                            -- a chair can shove a collided NPC back out
+  -- The teleport is ASYNC. Playing the workspot in the same frame re-pins the pose at the OLD spot —
+  -- the "the tuner does nothing" bug — so place now, sit on the next tick batch.
+  placeAtExact(h, dest, (yaw or 0.0) + (dyaw or 0))
+  JL.manualSeat = { handle = h, which = which, fireAt = (JL.clock or 0) + ((Config.poses and Config.poses.delay) or 0.5),
+                     pose = (pose == "lean") and "lean" or "sit", posed = false }
+  JL.ui.status = "Seating them here..."
+  log(("MANUAL SEAT: %s at {%.2f, %.2f, %.2f} yaw %.1f (pose=%s)")
+      :format(tostring(which), dest.x, dest.y, dest.z, (yaw or 0.0) + (dyaw or 0), tostring(JL.manualSeat.pose)))
+  return true
+end
+
+-- Fire the deferred manual sit. Called from onUpdate; `force` is what gets it past the
+-- automatic-sitting-is-off gate in tryWorkspotPose.
+function jlManualSeatTick()
+  local M = JL.manualSeat
+  if not (M and M.handle and not M.posed) then return end
+  if (JL.clock or 0) < (M.fireAt or 0) then return end
+  local ok = false
+  pcall(function() ok = tryWorkspotPose(M.handle, M.pose, nil, true) end)
+  M.posed = true
+  JL.ui.status = ok and "Seated. Press Stand up when you're done."
+                     or  "The sit animation didn't play — AMM isn't loaded (it's the optional dep that owns poses)."
+  log("MANUAL SEAT: workspot play -> " .. tostring(ok))
+end
+
+-- Stand them back up. Restores collision, and hands a companion back to the follow engine.
+-- Safe to call blind — it is also the "never despawn a seated puppet" guard, so it must never throw.
+function jlManualUnseat(reason)
+  local M = JL.manualSeat
+  if not M then return false end
+  JL.manualSeat = nil
+  local h = M.handle
+  if h then
+    pcall(function() stopWorkspotPose(h) end)
+    pcall(function() setNpcCollision(h, true) end)
+    -- REJOIN (v1.77): standing back up is not an arrival, so no greeting.
+    if M.which == "companion" and JL.summon.active then pcall(function() promoteToCompanion(true) end) end
+  end
+  JL.ui.status = "They're back on their feet."
+  log("MANUAL SEAT cleared (" .. tostring(reason or "stand up") .. ").")
+  return true
 end
 
 -- ===========================================================================
@@ -6743,8 +6987,14 @@ local function dinnerTick()
         if role then role:OnRoleCleared(h) end
         h.isPlayerCompanionCached = false
       end)
-      setNpcCollision(h, false)                        -- v0.44: collision OFF so the chair can't block him
-      D.collisionOff = true
+      -- v0.44: collision OFF so the chair can't block him reaching the seat.
+      -- v1.77: only when he's actually going to SIT. Standing at the table with collision off means
+      -- standing INSIDE the table, so with automatic sitting disabled he keeps his normal collider
+      -- and stops wherever the navmesh lets him — which is a chair's width from the table, i.e. right.
+      if jlSitPosesOn() then
+        setNpcCollision(h, false)
+        D.collisionOff = true
+      end
       D.satAt, D.sitFireAt = nil, nil
       D.seatDeadline = now + (C.seatTimeout or 12.0)   -- v0.44: force the sit if he can't path within reach
       pcall(function() sendMoveToPoint(h, D.dest, "Walk", 0.5) end)
@@ -6765,17 +7015,26 @@ local function dinnerTick()
         local jp; pcall(function() jp = h:GetWorldPosition() end)
         local reached = jp and dist3(jp, D.dest) <= (C.seatReachRadius or 2.0)
         if reached or now >= (D.seatDeadline or 0) then
-          placeAtExact(h, D.dest, D.destYaw or 0.0)
-          D.sitFireAt = now + ((Config.poses and Config.poses.delay) or 0.5)
-          if not reached then log("Dinner: seat reach timed out -> snapping him onto the seat.") end
+          if jlSitPosesOn() then
+            placeAtExact(h, D.dest, D.destYaw or 0.0)
+            D.sitFireAt = now + ((Config.poses and Config.poses.delay) or 0.5)
+            if not reached then log("Dinner: seat reach timed out -> snapping him onto the seat.") end
+          else
+            -- v1.77 AUTOMATIC SITTING OFF: no snap, no workspot. placeAtExact is a NAV-SNAP-FREE
+            -- teleport onto the seat plane — the one thing that will float a standing NPC — and the
+            -- seat plane is ~0.45 m up. So he simply stops where he walked to and stands at the
+            -- table. The meal (and the whole `seated` phase after it) runs exactly as before.
+            D.sitFireAt = now
+            log("Dinner: sitting is off -> he stays on his feet at the table.")
+          end
         end
         return
       end
       -- (b) he's settled at the exact seat now -> just play the sit (NO teleport here).
       if now >= D.sitFireAt then
-        pcall(function() tryWorkspotPose(h, "sit") end)
+        if jlSitPosesOn() then pcall(function() tryWorkspotPose(h, "sit") end) end
         D.satAt, D.sitFireAt = now, nil
-        log("Dinner: Jackie seated.")
+        log("Dinner: Jackie " .. (jlSitPosesOn() and "seated." or "settled at the table (standing)."))
       end
       return
     end
@@ -6803,7 +7062,25 @@ local function dinnerTick()
       D.collisionOff = false
       -- the menu path already spoke his parting line (seatedTree `leave` node) — don't double it up
       if not viaMenu then pcall(function() speakJackieLine(C.getUpText, C.getUpSfx) end) end
-      pcall(promoteToCompanion)                         -- re-add follower role + follow (also re-enables collision)
+      -- v1.77 THE MEAL IS OVER -> they are your companion again, on a FULL clock.
+      -- Three things had to happen here and only the third one did:
+      --   (1) if their shift expired mid-meal they are already walking off (JL.leaving.phase ==
+      --       "walking"), and promoteToCompanion does not cancel that — V says "let's go" and they
+      --       stroll away instead. jlAbortDeparture is the one call that stops it, and it fails
+      --       closed on the main-quest exit (which genuinely isn't coming back).
+      --   (2) the companion clock. It was reset when he SAT DOWN, which is a whole meal ago.
+      --       Clearing companionExpiresGame first forces armCompanionTimer to mint a fresh deadline
+      --       rather than keep the stale one.
+      --   (3) promoteToCompanion — the follower role + the follow command.
+      do
+        local hrs = (Config.companion and Config.companion.maxGameHours) or 6.0
+        pcall(function() jlAbortDeparture(hrs, "dinner over") end)
+        JL.summon.companionExpiresGame = nil
+        pcall(function() armCompanionTimer(hrs) end)
+        log(("Dinner: companion clock re-armed for %.1f game-hours at the stand-up."):format(hrs))
+      end
+      pcall(function() promoteToCompanion(true) end)    -- re-add follower role + follow (also re-enables collision).
+                                                        -- REJOIN: no greeting — they never left (v1.77)
       D.phase, D.dest, D.satAt, D.seatDeadline, D.sitFireAt = nil, nil, nil, nil, nil
       JL.ui.status = "Jackie's back with you."
       log("Dinner: " .. (viaMenu and "'let's go' chosen" or "V left") .. "; Jackie up + following again.")
@@ -6859,6 +7136,12 @@ local function wanderTick()
   local sp = JL.idle.spawn
   local h  = sp and sp.handle
   if not h then return end
+  -- v1.77: same outfit re-assert for a VENUE body — they get a per-location appearance, so they have
+  -- the same streaming race as a summoned one (see jlArmAppearanceFix).
+  if not sp.appArmed then
+    sp.appArmed = true
+    pcall(function() jlArmAppearanceFix(h, sp, "idle spawn") end)
+  end
   local loc = Config.locations[JL.idle.locationKey]
   local wps = locWaypoints(loc)
   if not wps then return end
@@ -7044,8 +7327,26 @@ returnToPost = function()
   local anchor = { x = loc.pos[1], y = loc.pos[2], z = loc.pos[3] }
   local jp; pcall(function() jp = h:GetWorldPosition() end)
   local ref = jp or playerPos()
-  local radius = (Config.transitions and Config.transitions.returnRadius) or 100.0
-  if not ref or dist3(ref, anchor) > radius then return false end       -- too far -> normal dismiss
+  -- ⚠️ v1.77 — "THEY JUST DESPAWN" (Antonia, 2026-08-17). The two radii here have to AGREE, and they
+  -- did not. This hand-off gives the body to the idle system out to `returnRadius` (100 m), but
+  -- scheduleTick only KEEPS an idle body while V is within `Config.proximityRadius` (45 m) of that
+  -- venue — past it, `clearIdle()` deletes them on the spot, with no walk-off and no parting line.
+  -- So dismissing a companion 45-100 m from their scheduled venue popped them out of existence,
+  -- which is exactly the report: no walk-away, they just vanish.
+  --
+  -- Taking the MIN means the 45-100 m band now FAILS this check, falls through to startLeaving, and
+  -- gets the proper walk-off — while a dismissal right on their doorstep still hands them back to
+  -- the schedule as intended. Do not raise this above proximityRadius without changing scheduleTick
+  -- to match; the despawn is on that side.
+  local radius = math.min((Config.transitions and Config.transitions.returnRadius) or 100.0,
+                          Config.proximityRadius or 45.0)
+  if not ref then return false end
+  local away = dist3(ref, anchor)
+  if away > radius then                                                 -- too far -> normal dismiss
+    log(("Return-to-post declined: %.1f m from %s (keep-radius %.0f m) -> proper walk-off instead.")
+        :format(away, tostring(block.locationKey), radius))
+    return false
+  end
   -- drop the follower role so the companion AI stops pulling him back (same as startLeaving)
   pcall(function()
     local role = h:GetAIControllerComponent():GetAIRole()
@@ -7997,7 +8298,8 @@ function jlCruiseStop()
   end
   jlCruise.active, jlCruise.bikeId, jlCruise.bikeHandle, jlCruise.mountAt = false, nil, nil, nil
   jlCruise.rightAt, jlCruise.rightCheckAt = nil, nil
-  pcall(promoteToCompanion)                          -- resume normal on-foot follow
+  pcall(function() promoteToCompanion(true) end)     -- resume normal on-foot follow (REJOIN: they were riding WITH V,
+                                                     -- so no arrival greeting — v1.77)
   log("Cruise: ended -> Jackie back on foot.")
 end
 
@@ -9224,7 +9526,8 @@ function blazeFinaleSceneTick()
       log(("[Blaze] finale: Jackie placed on the mark (%.1f m off target, %.1f m from V)."):format(d, dv))
     end
     setNpcCollision(h, true)                 -- v1.50: he's on solid navmesh now — a follower must collide
-    pcall(promoteToCompanion)                -- keep him a proper follower (living Jackie going forward)
+    pcall(function() promoteToCompanion(true) end)  -- keep him a proper follower (REJOIN: a conversation starts a
+                                             -- beat from now; a greeting would talk over it — v1.77)
     -- SETTLE: don't start the convo until the fade fully lifts AND a beat passes (Antonia: subtitle+picker
     -- showed during the blackscreen). Configurable via Blaze.yori.finaleSettle.
     f.phase, f.talkAt = "talk", (JL.clock or 0) + ((Blaze.yori and Blaze.yori.finaleSettle) or 1.8)
@@ -9396,6 +9699,8 @@ registerForEvent("onUpdate", function(dt)
   pcall(settleTick)       -- v0.82: hide + no-collision for a beat after a respawn-at-V so he doesn't pop/clip in
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
   pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap
+  pcall(jlManualSeatTick)       -- v1.77: fire the player's hand-placed sit, a beat after the (async) placement
+  pcall(jlAppearanceTick)       -- v1.77: verify the spawned body is actually WEARING the outfit we asked for
 
   pcall(jlLookAtTick)     -- v1.41: venue/seated Jackie turns his head to follow V (engine look-at overlay)
   pcall(wanderTick)       -- v0.35: idle Jackie free-roams between his location's waypoints
@@ -9995,7 +10300,73 @@ registerForEvent("onDraw", function()
   end
 
   -- Consolidated "spots" tuning — idle collision, force-venue and the seat tuner, all in one place.
-  if ImGui.CollapsingHeader("Jackie's spots fine tuning") then
+  -- ===========================================================================
+  -- v1.77 SITTING — PLAYER-FACING (it left the developer section on purpose)
+  -- ===========================================================================
+  -- Automatic sit/lean is OFF (Config.poses.enabled = false): AMM's sit is a freestanding animation
+  -- rooted at whatever point we drop the NPC on, so on an untuned venue seat it reads as sitting in
+  -- mid-air. Standing is the honest default. But the animation itself works fine — what it needs is
+  -- someone looking at the chair, and the player is standing right there. So the sit is a BUTTON now,
+  -- and the seat tuner that used to be dev-only is its alignment tool. That is why this whole section
+  -- is written as a feature the player is meant to find, not as scaffolding.
+  if ImGui.CollapsingHeader("Sitting — seat them by hand##jlsit") then
+    ImGui.TextWrapped("NPCs stand by default — the sit animation isn't aligned to real chairs yet, "
+      .. "so an automatic sit often floats. Seat them yourself instead: it lands exactly where you "
+      .. "put it.")
+    ImGui.TextWrapped("1. Stand ON the chair, facing the way they should face.  2. Seat them here.  "
+      .. "3. Step back.  4. Nudge Z until they're on the seat, not through it.")
+
+    do
+      local h, which = jlSeatTargetHandle()
+      ImGui.Text(h and ("Will seat: " .. "Jackie" .. " (" .. tostring(which) .. ")")
+                    or  "Nobody's out right now — call a companion, or find one at their venue.")
+    end
+
+    -- The nudges. Z is the one that matters (a barstool seat is most of a metre up); yaw turns them
+    -- on the spot. They apply to the NEXT press, and to Re-seat, so you tune by pressing again.
+    JL.seatUI = JL.seatUI or { dx = 0, dy = 0, dz = 0, dyaw = 0, atPlayer = true }
+    local S = JL.seatUI
+    S.atPlayer = ImGui.Checkbox("Seat them at MY spot (off = where they're standing)", S.atPlayer ~= false)
+    S.dz   = ImGui.SliderFloat("Height nudge Z (m)##jlseat", S.dz,   -1.5, 1.5)
+    S.dyaw = ImGui.SliderFloat("Turn them (deg)##jlseat",    S.dyaw, -180.0, 180.0)
+    S.dx   = ImGui.SliderFloat("Nudge X (m)##jlseat",        S.dx,   -3.0, 3.0)
+    S.dy   = ImGui.SliderFloat("Nudge Y (m)##jlseat",        S.dy,   -3.0, 3.0)
+    if ImGui.Button("Z -0.05##jlseat") then S.dz = S.dz - 0.05 end ImGui.SameLine()
+    if ImGui.Button("Z +0.05##jlseat") then S.dz = S.dz + 0.05 end ImGui.SameLine()
+    if ImGui.Button("Reset nudges##jlseat") then S.dx, S.dy, S.dz, S.dyaw = 0, 0, 0, 0 end
+
+    if ImGui.Button("Seat them here (play sitting animation)##jlseat") then
+      jlSeatHere(S.dx, S.dy, S.dz, S.dyaw, "sit", S.atPlayer ~= false)
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Lean them here##jlseat") then
+      jlSeatHere(S.dx, S.dy, S.dz, S.dyaw, "lean", S.atPlayer ~= false)
+    end
+    ImGui.SameLine()
+    if ImGui.Button("Stand them up##jlseat") then jlManualUnseat("button") end
+    ImGui.TextWrapped("Stand them up before you dismiss them or switch companion — despawning a "
+      .. "seated NPC crashes the game, and this is the button that prevents it. (The mod also does "
+      .. "it for you on every dismiss it knows about.)")
+
+    -- The escape hatch, for anyone who HAS tuned their venues: put automatic sitting back.
+    ImGui.Separator()
+    do
+      local prev = (Config.poses and Config.poses.enabled) and true or false
+      local now  = ImGui.Checkbox("Let them sit down automatically (off by default — often floats)", prev)
+      if Config.poses and now ~= prev then
+        Config.poses.enabled = now
+        log("Automatic sit/lean -> " .. (now and "ON" or "OFF (they stand)"))
+        JL.ui.status = now and "Automatic sitting ON — expect floating on untuned seats."
+                            or  "Automatic sitting OFF — they stand."
+      end
+    end
+    ImGui.TextWrapped("This one is not saved across a reload on purpose: it is a look-at-it switch, "
+      .. "not a setting. Set Config.poses.enabled in config.lua to make it permanent.")
+  end
+
+
+
+  if ImGui.CollapsingHeader("Jackie's spots — seat fine tuning") then
 
     -- MASTER flip switch — collision off for idle Jackie's whole stay (so chairs/stalls can't block him).
     do
@@ -10136,6 +10507,7 @@ registerForEvent("onShutdown", function()
   pcall(clearIdle)
   pcall(clearVehicleArrival)     -- v0.34: never orphan the arrival bike
   pcall(bikeTestDespawn)         -- v0.63: never orphan the bike-model test spawn
+  pcall(function() jlManualUnseat("shutdown") end)  -- v1.77: never leave a hand-seated puppet in a workspot we no longer own
   pcall(clearDinnerWaypoint)     -- v0.41: never leave a dinner map pin stuck
   pcall(function() if jlCruise and jlCruise.active then jlCruiseStop() end end)  -- v0.92: never orphan the cruise Arch
   -- v1.41: aiBikeKnockOffModifier is a GLOBAL TweakDB flat. Force it back to the captured original on

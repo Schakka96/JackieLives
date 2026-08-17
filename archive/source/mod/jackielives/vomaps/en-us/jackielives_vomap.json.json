@@ -219,6 +219,26 @@
             },
             {
               "$type": "locVoLineEntry",
+              "stringId": "9181556867751798481",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sts_wat_kab_02_f_17a6782aea559000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sts_wat_kab_02_f_17a6782aea559000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
               "stringId": "1467358998955516960",
               "femaleResPath": {
                 "DepotPath": {
@@ -273,6 +293,26 @@
                   "$type": "ResourcePath",
                   "$storage": "string",
                   "$value": "base\\localization\\en-us\\vo\\v_q005_f_17e3a5de232cd000.wem"
+                },
+                "Flags": "Soft"
+              }
+            },
+            {
+              "$type": "locVoLineEntry",
+              "stringId": "14432192521269852017",
+              "femaleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sq031_f_184a94a0e64b6000.wem"
+                },
+                "Flags": "Soft"
+              },
+              "maleResPath": {
+                "DepotPath": {
+                  "$type": "ResourcePath",
+                  "$storage": "string",
+                  "$value": "base\\localization\\en-us\\vo\\v_sq031_f_184a94a0e64b6000.wem"
                 },
                 "Flags": "Soft"
               }

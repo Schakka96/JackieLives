@@ -656,6 +656,73 @@ Landed there as **v1.3** (`Schakka96/NCLives`, commit e0ca63a) on 2026-07-30, wi
 trap documented in its CLAUDE.md so the mistake can't be repeated, and its `loadsim.lua` taught to
 stub the dialogue widget. Both repos now retire the custom ImGui picker permanently.
 
+### Problems & Resolutions (2026-08-17, v1.77b — the naked spawn, and the dismissal)
+
+6. 🐛 **A companion could spawn NAKED** (reported against NCLives' Kerry; the same code ships here).
+   The appearance rode only on the spawn spec (`Native.spawn` -> `spec.appearanceName`), which is a
+   REQUEST, not a guarantee: a body built before its garment meshes are streamed in renders with the
+   meshes it has — the bare body. Hence intermittent, and worse on characters with big wardrobes.
+   **AMM never relied on the spec**: it PREFETCHES (`PrefetchAppearanceChange`) and then applies
+   (`ScheduleAppearanceChange`) *after* the body exists. We now do both, and then **verify** with
+   `GetCurrentAppearanceName()`, re-asserting up to 4 times over 8 s before warning.
+   ⚠️ The warning matters as much as the fix: an unknown appearance name is a **silent no-op**, so
+   "wrong name" and "lost the streaming race" are indistinguishable in game and in the log. The
+   read-back is what separates them.
+   ⚠️ Two naming levels, verified on the local install: an entity template declares
+   `kerry_eurodyne_kerry_eurodyne_old` (AMM's name, the one the roster stores) pointing at
+   `kerry_eurodyne_old` inside the `.app`. A read-back of the shorter name is SUCCESS — hence the
+   substring match rather than `==`.
+
+7. 🐛 **"Head home" popped them instead of walking them off.** The walk-off was fully implemented;
+   the **two radii disagreed**. `returnToPost` hands the body back to the idle system out to
+   `Config.transitions.returnRadius` (100 m), but `scheduleTick` only KEEPS an idle body while V is
+   within `Config.proximityRadius` (45 m) of that venue — beyond it, `clearIdle()` deletes it on the
+   spot, with no walk and no parting line. So a dismissal 45-100 m from their scheduled venue was an
+   instant despawn. Clamped to `math.min` of the two, so that band now falls through to
+   `startLeaving`. Both branches log which one ran, and `startLeaving` no longer returns silently
+   when the handle is unresolvable.
+
+8. 🧪 `tools/test_dismiss.lua` (25 checks) pins the radius clamp, the walk-off branches, the
+   conversation-pause and the prefetch-before-schedule order.
+
+> ⚠️ **`v1.77` in the comments below is the shared CROSS-REPO marker for this pass** (JackieLives,
+> NCLives and NCLucy were changed together, and NCLives is the repo at 1.77). JackieLives itself
+> ships this as **v1.72** — `Config.version` bumped 1.71 -> 1.72. Don't "fix" the inline tags to
+> match; they are what lets you find the same change in the other two repos.
+
+### Problems & Resolutions (2026-08-17, v1.77 — sitting, and the end of a dinner)
+
+1. 🐛 **He sat in mid-air at dinner venues.** AMM's sit is a **freestanding** animation rooted at
+   whatever point we drop him on, so landing it on a real chair means tuning that venue's seat to the
+   centimetre — per venue, per seat, per chair model. Standing is the honest default until that work
+   is done, so `Config.poses.enabled` now ships **false** and nothing plays a sit by itself. The
+   animation was never the broken part; ALIGNING it was, and the player is standing right there
+   looking at the chair. So the sit became a **button** (CET window ▸ *Jackie's spots — seat fine
+   tuning* ▸ "Seat them here"), the one caller allowed past the gate via `tryWorkspotPose(..., force)`.
+   The seat tuner beside it is that button's alignment tool now, not developer scenery.
+   ⚠️ Two things had to be gated with it, not just the workspot: the dinner seat SNAP (`placeAtExact`
+   does not nav-snap, so ungated it floats a *standing* NPC onto the 0.45 m seat plane) and the
+   collision drop (standing at a table with no collider means standing *inside* the table).
+
+2. 🐛 **"Let's go" ended the meal but not the outing.** The stand-up re-promoted him and did nothing
+   else, so a companion whose shift had expired mid-meal simply strolled away, and the clock he was
+   running on was the one set when he sat down. It now cancels a walk-off in progress
+   (`jlAbortDeparture`), clears the stale deadline and re-arms the companion timer before promoting.
+
+3. 🐛 **He greeted V after standing up, like a first meeting.** `promoteToCompanion` unconditionally
+   set `arrivalGreetPending`, and every re-promotion therefore fired the ARRIVAL greeting. It now
+   takes `rejoin`, passed at the four sites where he was already with V (dinner stand-up, manual
+   unseat, cruise end, Blaze finale). Omitting the argument keeps the greeting — correct for every
+   genuine arrival, which is why the fix is an opt-out rather than an opt-in.
+
+4. ✨ **The dinner exit row always played the same take.** `JL_LETS_GO` — three of V's own
+   recordings ("Let's go." ×2 takes, "Come on."), shuffled per menu through the new `variants` field
+   ported from NCLives v1.76. Verified against the local install with `tools/v_index.py`: all three
+   are standalone and name nobody.
+
+5. 🧪 `tools/test_sitting.lua` (24 checks) pins all four, because every one of them is invisible
+   offline and expensive to test in game.
+
 ### Problems & Resolutions (2026-07-30, second pass)
 
 1. **The failure was invisible by construction.** Four things must hold for the box to render and all

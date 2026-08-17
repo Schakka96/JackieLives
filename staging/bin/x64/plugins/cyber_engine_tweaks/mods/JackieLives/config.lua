@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.71"
+Config.version = "1.72"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -918,6 +918,32 @@ Config.followDistanceMax     = 8.0   -- m — slider ceiling
 -- sit anim, waits, says one line, and the companion clock FULLY RESETS (once per 24 in-game hours).
 -- When V walks off (>getUpRadius) Jackie gets up, says a line, and re-follows. He stays our
 -- companion (never despawns) the whole time. No quest/WolvenKit - a Lua state machine (dinnerTick).
+-- ---------------------------------------------------------------------------
+-- LETS_GO — the way V ends a meal (v1.77). Replaces the written "Let's get moving." on every
+-- seatedTree exit row, in Jackie's seatedTree.
+--
+-- This row does more than any other in the dinner: it is the one that stands them up, re-arms their
+-- clock and puts them back on follow (`action = "dinner_leave"` on the node it leads to). It was the
+-- only unvoiced beat left in an otherwise spoken outing, and V has recorded exactly this line.
+--
+-- Three takes rather than one because a player eats with a companion often, and hearing the same
+-- 1.2 seconds every time is what makes a pool feel like a menu. Two are the same words in different
+-- reads; the third is different words, which is why it carries its own `text` — the RECORDING owns
+-- the words, always (the "recording owns the words" rule in CLAUDE.md).
+--
+-- Verified against the local install (tools/v_index.py): all three are STANDALONE — sayable on any
+-- day of the story — and name nobody. The second take is filed against Rogue in CDPR's data, which
+-- is bookkeeping about the scene it was recorded for, not something audible in two words.
+--
+-- ⚠️ Gendered, one String ID per line with a male and a female take, and a female V
+-- only gets hers through the voiceover-map fix (../NCLives/docs/research/vo_gender.md). Re-run
+-- `python3 tools/gen_vomap.py` after touching this table.
+JL_LETS_GO = {
+  { text = "Let's go.",  sfx = "jl_1624186312695238656" },  -- 1.22s — neutral, clean
+  { text = "Let's go.",  sfx = "jl_1750374823966236672" },  -- 1.25s — same words, different read
+  { text = "Come on.",   sfx = "jl_1704181634721746944" },  -- different words, same speech act
+}
+
 Config.date = {
   inviteText           = "Wanna get something to eat?",  -- the menu option (V's invite)
   unlockAfterGameHours = 1.0,    -- the invite only appears after this long together...
@@ -1026,7 +1052,7 @@ Config.date = {
           { text = "This city's been grindin' me down lately.",   to = "nightcity", chance = 0.6 },
           { text = "Think Arasaka ever pays for what they did?",  to = "arasaka",   chance = 0.5 },
           { text = "You been with Misty a while, huh?",           to = "misty",     chance = 0.6, sfx = "jl_2015652467958521856" },
-          { text = "OK, ready. Let's move.",          to = "leave", sfx = "jl_1650054817721577472" },
+          { variants = JL_LETS_GO,          to = "leave" },
         },
       },
       merc = {
@@ -1036,7 +1062,7 @@ Config.date = {
         },
         choices = {
           { text = "Yeah. We made it out, though.", to = "open"  },
-          { text = "Let's go.",             to = "leave", sfx = "jl_1624186312695238656" },
+          { variants = JL_LETS_GO,             to = "leave" },
         },
       },
       nightcity = {
@@ -1047,7 +1073,7 @@ Config.date = {
         },
         choices = {
           { text = "Guess that's enough.", to = "open"  },
-          { text = "Let's go.",    to = "leave", sfx = "jl_1624186312695238656" },
+          { variants = JL_LETS_GO,    to = "leave" },
         },
       },
       arasaka = {
@@ -1057,7 +1083,7 @@ Config.date = {
         },
         choices = {
           { text = "Livin' good. I'll drink to that.", to = "open"  },
-          { text = "Let's go.",                to = "leave", sfx = "jl_1624186312695238656" },
+          { variants = JL_LETS_GO,                to = "leave" },
         },
       },
       misty = {
@@ -1072,7 +1098,7 @@ Config.date = {
         },
         choices = {
           { text = "She's good for you.",  to = "open"  },
-          { text = "Let's go.",    to = "leave", sfx = "jl_1624186312695238656" },
+          { variants = JL_LETS_GO,    to = "leave" },
         },
       },
       leave = {
@@ -2623,8 +2649,23 @@ Config.wander = {
 -- `poseOffset = { x=, y=, z= }` (world-space metres) to nudge him onto the seat (z down = lower him).
 -- A waypoint can override the anim with `poseAnim = "<name>"` — e.g. most of Jackie's chairs are
 -- BARSTOOLS (default below), but Misty's is a deep low chair, so that waypoint sets the low-chair anim.
+--
+-- ⚠️ v1.77 — `enabled` SHIPS FALSE. AUTOMATIC SITTING IS OFF.
+-- Antonia, 2026-08-17: *"sitting at dinner venues is not tuned (aka they sit in the air)"*. That is
+-- the freestanding-anim problem above, and it is not a bug we can fix from Lua: the pose is rooted at
+-- whatever point we drop the NPC on, so landing it ON a real chair means tuning that venue's seat to
+-- the centimetre, per venue, per seat, per chair model. Until every venue is tuned, an NPC standing
+-- at the table reads as normal and an NPC hovering 40 cm above a stool reads as a broken mod.
+--
+-- So the sit is now something the PLAYER asks for, in a spot they can see is right:
+--   • `enabled = false` -> nothing plays a sit or lean by itself. Idle NPCs stand at their waypoint,
+--     and the dinner companion walks to the table and stands there (see dinnerTick).
+--   • `manual = true`   -> the CET window's "Sitting" section can still play it on demand
+--     ("Seat them here"), which is the only path that passes `force` to tryWorkspotPose.
+-- Flip `enabled` back to true once the venue seats are tuned and automatic sitting looks right.
 Config.poses = {
-  enabled = true,
+  enabled = false,  -- v1.77: automatic sit/lean OFF (see the note above) — they stand instead
+  manual  = true,   -- v1.77: ...but the player's "Seat them here" button may still play it
   delay   = 0.5,    -- seconds after the snap-teleport before playing the pose (fixes the float race)
   ent     = "base\\amm_workspots\\entity\\workspot_anim.ent",
   comp    = "amm_workspot_base",
