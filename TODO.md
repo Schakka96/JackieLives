@@ -35,10 +35,24 @@ its worst. Each now carries something V would actually say, written against ever
 the line. And since v1.70 some of V's rows are voiced too, so `sfx` has to be checked in both
 directions: *"Lesser Antil-what?"* was left exactly as it is for that reason.
 
-⚠️ `tools/build_line_library.py verify` is broken **in this repo** — it reads
-`mod/NCLives/voices.lua`, a path that doesn't exist here, and dies with FileNotFoundError. Not
-caused by this pass, but it means the caption-vs-recording check can't be run from JackieLives until
-someone points it at `config.lua`. Verified by diff instead: this pass touched no line carrying `sfx`.
+✅ `tools/build_line_library.py verify` **runs here now** (was: hardcoded to `mod/NCLives/voices.lua`
+and died with FileNotFoundError, so the caption-vs-recording check — the only check that can see a
+subtitle drifting from its audio — could not run in the most heavily voiced repo of the three).
+Three fixes: it picks the content file per repo (`voices.lua`, else JackieLives' `config.lua`);
+a repo with no `Voices.packs.*` is ONE character, resolved to a real `voicetags.json` key
+(`jackie`, not the folder name `jackielives` — that alone was 134 bogus "no voicetag" lines); and
+the comparison now RENDERS CDPR's inline markup before comparing (`<mothertongue>` → before+word+after,
+`<kiroshi>` → the spoken original) and folds accents and curly punctuation. 134 → 70 → **33**.
+
+⚠️ **The remaining 33 are unaudited, and most are the known punctuation-drift class** — "can't
+complain. But" vs "can't complain, but...". Read them, don't bulk-fix them: `translations.lua` is
+keyed on the authored English, so "correcting" a caption no player can hear drops that line to
+English in every shipped language. This tool has no note-vs-failure split (NCLives' `v_index.py
+verify` does); adding one here is the honest follow-up.
+
+⚠️ The same markup-comparison gap exists in NCLives' and NCLucy's copies of this file. They are NOT
+kept identical (they already differ by 16 and 4 lines), so the patch was not blind-copied there —
+port it deliberately if their counts (10 and 6) are worth driving down.
 
 ## ✅ v1.70 — V SPEAKS (2026-08-14)
 

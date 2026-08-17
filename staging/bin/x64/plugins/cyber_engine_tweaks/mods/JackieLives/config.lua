@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.72"
+Config.version = "1.73"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -1072,7 +1072,7 @@ Config.date = {
           { text = "This town chews everybody up. Trick's not lettin' it swallow ya whole. You got me, I got you — that's the trick." },
         },
         choices = {
-          { text = "Guess that's enough.", to = "open"  },
+          { text = "You got me too.", to = "open" },
           { variants = JL_LETS_GO,    to = "leave" },
         },
       },
@@ -1082,7 +1082,7 @@ Config.date = {
           { text = "Corpo rats always land on their feet. Best revenge's livin' good — like right now, full plate in front of us." },
         },
         choices = {
-          { text = "Livin' good. I'll drink to that.", to = "open"  },
+          { text = "I'll take that win.", to = "open" },
           { variants = JL_LETS_GO,                to = "leave" },
         },
       },
@@ -1536,7 +1536,7 @@ Config.locationDialogue = {
           { minFam = 2, text = "Some days good. Some days I sit down in the middle of the afternoon 'cause my body says so and I don't argue with it no more." },
           { minFam = 3, text = "Honest? I don't sleep right. I get to about four and I'm awake, and I lie there listenin' to the building. ...But I'm here to not sleep. That's the trade, and I'd take it again." },
         },
-        choices = { { text = "(back)", to = "open" } },
+        choices = { { text = "Suits you, Jackie.", to = "open" } },
       },
       busy = {
         jackiePool = {
@@ -1553,7 +1553,7 @@ Config.locationDialogue = {
           { minFam = 1, text = "Bar, mostly. And people keep findin' me with problems. Small ones. I like the small ones." },
           { minFam = 2, text = "Kid down the block needed his brother found. Took me two days and a lotta talkin' and nobody got shot. Best work I ever did, and it don't pay nothin'." },
         },
-        choices = { { text = "(back)", to = "open" } },
+        choices = { { text = "Small ones count.", to = "open" } },
       },
 
       -- ---- TIER 1 — Close --------------------------------------------------
@@ -1589,14 +1589,14 @@ Config.locationDialogue = {
           { minFam = 1, text = "It's honest. Nobody's ever pulled a gun on me over a bad pour." },
           { minFam = 2, text = "I know everybody's drink and half their troubles. Turns out that's a kind of power too. Just the slow kind." },
         },
-        choices = { { text = "(back)", to = "open" } },
+        choices = { { text = "Still your turf.", to = "open" } },
       },
       heywood = {
         jackiePool = {
           { minFam = 1, text = "Always did. Same corners, same abuelas yellin' out the same windows." },
           { minFam = 2, text = "I walk it different now, though. Used to walk it like I was gonna own it one day. Now I just... walk it." },
         },
-        choices = { { text = "(back)", to = "open" } },
+        choices = { { text = "Glad you're here to say it.", to = "open" } },
       },
 
       -- ---- TIER 2 — Trusted ------------------------------------------------
@@ -1637,7 +1637,7 @@ Config.locationDialogue = {
           { minFam = 2, text = "Once a month. He don't charge me, which drives me crazy, so I bring him somethin' from Mama's kitchen and we call it square." },
           { minFam = 3, text = "That man kept his mouth shut for a long time so I could stay dead. You know what that costs a guy like Vik? He carried it alone. I owe him more than the ribs." },
         },
-        choices = { { text = "(back)", to = "open" } },
+        choices = { { text = "Vik's good people.", to = "open" } },
       },
 
       -- ---- TIER 3 — Family -------------------------------------------------
@@ -1723,7 +1723,7 @@ Config.locationDialogue = {
           { minFam = 3, text = "Y'know... butterfly effect or whatever.", sfx = "jl_1729989454324494336" },
         },
         choices = {
-          { text = "Brotherly hate. Heh.",       to = "open" },
+          { text = "That's one word for it.", to = "open" },
           { text = "I found mine.",              to = "open" },
         },
       },
@@ -1806,7 +1806,7 @@ Config.locationDialogue = {
           { minFam = 3, text = "I died, V. However you wanna say it — my heart quit and somebody's hands started it again. So do I believe? I believe SOMETHIN' held the door for a second. I don't need to know whose hand it was." },
         },
         choices = {
-          { text = "Somethin' held the door.", to = "open" },
+          { text = "Amen to that.",   to = "open" },
           { text = "Mama'd be glad to hear it.", to = "open" },
         },
       },

@@ -63,6 +63,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import time
 import urllib.parse
 import urllib.request
@@ -525,6 +526,45 @@ def cmd_search(args):
         print(f"\n... {len(hits) - args.limit} more (--limit)")
 
 
+# CDPR's recorded strings carry INLINE MARKUP that the game renders before it ever reaches a
+# subtitle, so a raw string compare calls 43 of Jackie's 49 captions "drifted" when every one of
+# them is right. Two forms appear in the corpus:
+#   <mothertongue l="mex" m="chica" b="before " a="."/>   -> before + chica + .
+#   <kiroshi l="mex" o="Si, si." t="Yeah, yeah." .../>     -> the spoken original, o (t is the gloss)
+# Render them the way the player reads them, then compare. Anything we don't recognise is stripped
+# to its bare text rather than dropped, so an unknown tag degrades to a looser check, never a
+# silent pass.
+def render_recorded(sub: str) -> str:
+    if not sub or "<" not in sub:
+        return sub
+
+    def _mother(m):
+        d = dict(re.findall(r'(\w+)="([^"]*)"', m.group(0)))
+        return d.get("b", "") + d.get("m", "") + d.get("a", "")
+
+    def _kiroshi(m):
+        d = dict(re.findall(r'(\w+)="([^"]*)"', m.group(0)))
+        return d.get("b", "") + (d.get("o") or d.get("t") or "") + d.get("a", "")
+
+    out = re.sub(r"<mothertongue\b[^>]*/?>", _mother, sub)
+    out = re.sub(r"<kiroshi\b[^>]*/?>", _kiroshi, out)
+    out = re.sub(r"<[^>]+>", "", out)              # any other tag: keep the text around it
+    return out.strip()
+
+
+# Accents and curly punctuation differ between our authored text and CDPR's without being a
+# different sentence ("Si" vs "Si"). Fold them for the comparison only — never for display, so the
+# report still shows exactly what each side says.
+def fold_caption(s: str) -> str:
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    for a, b in (("\u2019", "'"), ("\u2018", "'"), ("\u201c", '"'), ("\u201d", '"'),
+                 ("\u2013", "-"), ("\u2014", "-"), ("\u2026", "..."),
+                 ("\u00bf", ""), ("\u00a1", "")):   # Spanish opening ? and !: we don't author them
+        s = s.replace(a, b)
+    return " ".join(s.lower().split())
+
+
 def cmd_verify(args):
     """Every `sfx` in voices.lua: is it that persona's line, and is the caption the line?
 
@@ -545,7 +585,21 @@ def cmd_verify(args):
     tags = load_tags()
     text, lib = blob["text"], blob["lib"]
 
-    src = os.path.join(ROOT, "mod", "NCLives", "voices.lua")
+    # ⚠️ THE CONTENT FILE IS NOT THE SAME IN ALL THREE REPOS. This was hardcoded to NCLives'
+    # `mod/NCLives/voices.lua`, so in JackieLives `verify` died with FileNotFoundError and the
+    # caption check — the ONLY check that can see a subtitle drifting from its recording — could
+    # not run at all in the most heavily voiced repo of the three.
+    #   NCLives / NCLucy : mod/<Mod>/voices.lua, many `Voices.packs.<name>` blocks
+    #   JackieLives      : mod/JackieLives/config.lua, ONE character and no packs at all
+    src = None
+    for cand in (os.path.join(ROOT, "mod", "NCLives", "voices.lua"),
+                 os.path.join(ROOT, "mod", "NCLucy", "voices.lua"),
+                 os.path.join(ROOT, "mod", "JackieLives", "config.lua")):
+        if os.path.exists(cand):
+            src = cand
+            break
+    if src is None:
+        raise SystemExit("verify: found no content file (voices.lua / config.lua) under mod/")
     with open(src, encoding="utf-8") as fh:
         lua = fh.read()
 
@@ -553,7 +607,20 @@ def cmd_verify(args):
     # enough — no Lua parsing, and nothing to keep in step with the content.
     packs = [(m.start(), m.group(1)) for m in re.finditer(r"^Voices\.packs\.(\w+) = \{", lua, re.M)]
 
+    # A repo with no `Voices.packs.*` (JackieLives) is ONE character, not an unknown one — reporting
+    # "?" there would make every row look unattributable and hide the real failures in the noise.
+    # The persona name has to be a key in voicetags.json ("jackie"), not the mod folder
+    # ("JackieLives") — get that wrong and every single row reports "no voicetag" and the real
+    # failures drown in 130 lines of noise.
+    solo = None
+    if not packs:
+        folder = os.path.basename(os.path.dirname(src)).lower()
+        known  = load_tags()
+        solo   = next((k for k in known if k and k in folder), folder)
+
     def pack_at(pos):
+        if solo:
+            return solo
         cur = "?"
         for start, name in packs:
             if start <= pos:
@@ -597,10 +664,11 @@ def cmd_verify(args):
                             + f'  "{caption[:60]}"')
             continue
         real = text.get(sid, ["", ""])
-        if caption not in (real[0], real[1]):
+        shown = [render_recorded(r) for r in real]
+        if fold_caption(caption) not in {fold_caption(x) for x in shown if x}:
             problems.append(f'{pack}: caption differs from the recording\n'
                             f'    subtitle: "{caption}"\n'
-                            f'    recorded: "{real[0] or real[1]}"')
+                            f'    recorded: "{shown[0] or shown[1]}"')
         # A choice row is not run through nclVar, so it has ONE subtitle for both Vs. A line the game
         # recorded with different male and female text would caption one player and be heard by the
         # other — pick a gender-neutral take instead.
