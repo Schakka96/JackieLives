@@ -47,6 +47,21 @@ BUILD = os.path.join(PROJ, ".build")
 
 STEAM_DEFAULT = r"E:\SteamLibrary\steamapps\common\Cyberpunk 2077"
 
+# ⚠️ 2026-08-17 BUG FIX: this list is USED on two lines below and was never DEFINED, so the script
+# died with `NameError: name 'WOLVENKIT_DEFAULTS' is not defined` before it did anything at all —
+# including before it could print the helpful "here is where I looked" message, which is the one
+# thing that block exists for. Ported from NCLives, which has had it all along; the two copies of
+# this file drifted, as they do.
+#
+# Where WolvenKit's CLI actually lives, tried in order. `.env` and the environment still WIN, so a
+# second machine overrides without touching this file — but on Antonia's box it just works, which is
+# the point: .env is gitignored, so a fresh clone had no path and the build stopped on setup rather
+# than on anything real.
+WOLVENKIT_DEFAULTS = [
+    r"C:\Users\donat\Desktop\Projects\Modding\Wolvenkit_CLI\WolvenKit.CLI.exe",
+    r"C:\Tools\WolvenKit.Console\WolvenKit.CLI.exe",
+]
+
 def load_env():
     cfg = {}
     path = os.path.join(PROJ, ".env")

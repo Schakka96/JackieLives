@@ -767,6 +767,13 @@ Config.catchUp = {
   -- ⚠️ Deliberately longer than `sustainSeconds`: a momentary stream hiccup at a district boundary
   -- reads exactly the same for a frame or two, and being wrong here costs a visible despawn+respawn.
   blindSustain    = 6.0,
+  -- Ported from NCLives v1.75. Beyond this many metres, catch-up stops asking permission: not combat,
+  -- not a dinner/arrival/walk-off phase, not the patience timers. Nothing legitimately owns a
+  -- companion at district scale — they were left behind by a fast travel — so the outing is aborted
+  -- (unseat first) and a fresh body is spawned at V.
+  -- ⚠️ Well above respawnDistance (150) on purpose: that rung still respects the phase guards, this
+  -- one ignores them, so it must never fire on a gap an arrival could still close by walking.
+  hardRespawnDistance = 300.0,
 }
 
 -- ---- respawn settle-in (v0.82) --------------------------------------------

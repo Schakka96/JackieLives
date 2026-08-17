@@ -5873,6 +5873,37 @@ local function catchUpTick()
   if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   -- v1.35: in COMBAT, let him roam/fight — don't yank him back to V's side. (Reset the far-timer so a
   -- post-combat gap re-arms cleanly instead of teleporting instantly on a stale timer.)
+  -- ⚠️ THE CEILING ON EVERY GUARD BELOW (ported from NCLives v1.75). Read the distance FIRST, and if
+  -- it is district-scale, nothing under this line gets a vote: not combat, not a phase, not the
+  -- patience timers. A companion 1800 m away is not fighting beside V and is not walking to a
+  -- restaurant — they were left behind by a fast travel, and the only thing that closes that gap is a
+  -- respawn. Deliberately BEFORE the combat and phase guards, because those are the two that swallow
+  -- it: the reported case stood down on "a phase owns their movement" forever.
+  -- ⚠️ Unseat BEFORE despawning. A dinner means a seated puppet, and every dismiss path in this file
+  -- already stands one up first.
+  do
+    local hh = JL.summon.spawn and JL.summon.spawn.handle
+    local ppq = playerPos()
+    if hh and ppq and jlBodyAlive(hh) then
+      local jq; pcall(function() jq = hh:GetWorldPosition() end)
+      local dq = jq and dist3(ppq, jq) or nil
+      if dq and dq >= ((Config.catchUp or {}).hardRespawnDistance or 300.0)
+         and ((JL.clock or 0) - (JL.catchUp.lastAt or -1e9)) >= ((Config.catchUp or {}).cooldown or 3.0) then
+        JL.catchUp.lastAt = (JL.clock or 0)
+        JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil
+        JL.catchUp.lastDist, JL.catchUp.graceSince, JL.catchUp.blindSince = nil, nil, nil
+        pcall(function() jlManualUnseat("catch-up respawn") end)
+        JL.dinner.phase, JL.dinner.dest = nil, nil
+        JL.leaving.phase = nil
+        if JL.varrival then JL.varrival.phase = nil end
+        log(("CatchUp: %.0f m is beyond anything that can be walked or teleported back " ..
+             "-> respawning at V regardless of what else is running."):format(dq))
+        pcall(respawnCompanionAtV)
+        return
+      end
+    end
+  end
+
   if jlInCombat() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active) then   -- v0.85: don't teleport him off his cruising bike
