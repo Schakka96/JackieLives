@@ -183,6 +183,15 @@ local JL = {
   talkDone = {},     -- v0.32: [treeKey] = clock time a cooldown'd talk tree was finished
 }
 
+-- v1.8.3 OFFLINE TEST HOOK. `JL` is a file-local, which is correct for the mod and is also why
+-- tools/loadsim.lua here is a fraction of the size of NCLives' — that harness reaches the state table
+-- through `NCL.env.NCS` and can therefore drive the actual state machines (catch-up, respawn, the
+-- appearance verify); this one could only ever call functions with no state behind them. NCLives has
+-- twice shipped a bug that its own tests caught and this repo's could not even express, so: one global
+-- alias to the SAME table. No copy, no behaviour, no local slot spent.
+JL_ENV = JL
+
+
 -- v0.76: log to the CET console AND append to jackie_debug.log in the mod folder (CET sandboxes io to
 -- the mod dir → .../mods/JackieLives/jackie_debug.log). Commit that file to share full logs — no more
 -- OCR'ing the console. Truncated fresh each load (see onInit). pcall'd so io being unavailable never breaks logging.
@@ -1087,6 +1096,17 @@ end
 JL_APPFIX_WINDOW = 8.0   -- seconds we keep verifying after the body resolves
 JL_APPFIX_TRIES  = 4     -- re-asserts before we give up and warn
 
+-- v1.8.3: the readable name out of a CName. `tostring` on a CName gives the whole struct —
+-- `ToCName{ hash_lo = 0x..., hash_hi = 0x... --[[ jackie_welles_default --]] }` — so anything that
+-- compares a CName read-back to a plain string is comparing against that, and fails forever. The name
+-- is only inside the `--[[ ... --]]` comment. (NCLives has this as `NCL.recordPath` in ncl.lua; this
+-- repo has no ncl.lua, so it lives here.) Global -> 200-local cap safe.
+function jlCNameName(v)
+  local s; pcall(function() s = tostring(v) end)
+  if type(s) ~= "string" or s == "" then return nil end
+  return s:match("%-%-%[%[%s*(.-)%s*%-%-%]%]") or s
+end
+
 -- Arm the verify/re-assert loop for a freshly resolved body. `sp.appearance` is stamped by ammSpawn
 -- with the RESOLVED name (so a nil arg records "default" and still reads back correctly).
 function jlArmAppearanceFix(h, sp, why)
@@ -1107,8 +1127,15 @@ function jlAppearanceTick()
   if now < (A.nextAt or 0) then return end
   A.nextAt = now + 1.0
 
+  -- ⚠️ v1.8.3 (ported from NCLives v1.83) — THIS READ-BACK COULD NEVER MATCH.
+  -- GetCurrentAppearanceName() returns a CName, and `tostring` on a CName is not the name — it is the
+  -- whole struct: `ToCName{ hash_lo = 0x..., hash_hi = 0x... --[[ jackie_welles_default --]] }`.
+  -- Comparing THAT against 'jackie_welles_default' is false forever, so every spawn re-asserted four
+  -- times and then logged "⚠ APPEARANCE NOT APPLIED" — including the ones wearing exactly the right
+  -- body. A diagnostic that cries wolf on every spawn is worse than none: in NCLives it hid a companion
+  -- who really WAS undressed for weeks. The readable name lives in the `--[[ ... --]]` comment.
   local cur
-  pcall(function() cur = tostring(A.handle:GetCurrentAppearanceName()) end)
+  pcall(function() cur = jlCNameName(A.handle:GetCurrentAppearanceName()) end)
   -- Success = the engine reports the name we asked for, OR the .app-level name it maps to (see the
   -- two-naming-levels note above). `cur` is the shorter of the pair, so it is the needle.
   if cur and cur ~= "" and cur ~= "None"
@@ -5033,6 +5060,30 @@ local function deleteEntityById(id)
   pcall(function() local des = Game.GetDynamicEntitySystem(); if des then des:DeleteEntity(id) end end)
 end
 
+-- ===========================================================================
+-- v1.8.3 THE ARRIVAL SPAWN — ported from NCLives v1.83 (where it was Kerry turning up naked)
+-- ===========================================================================
+-- v1.77 armed the outfit re-assert at `resolveCompanionHandle()`, the chokepoint every spawn passes
+-- through — and it still did nothing on the ARRIVAL paths, because `jlArmAppearanceFix` needs
+-- `sp.appearance` and the three arrival spawns never set one. They called `spawnDynEntity(...)` with no
+-- appearance argument at all, which becomes `spec.appearanceName = "default"`, and stamped a spawn
+-- record of `{ id, handle }`. So the summon-by-phone path asked the engine for the record's bare
+-- default body and then had nothing to verify against.
+--
+-- ⚠️ Jackie has been getting away with this: `Character.Jackie`'s own default IS his normal outfit, so
+-- it looked fine. It is the same latent bug that shipped NCLives' Kerry naked — his record's default is
+-- a bare body — and it also means his outfit was never actually verified. Fixed here for both reasons.
+-- GLOBAL (200-local cap) — captures the spawnDynEntity local declared above; defined below it.
+function jlSpawnArrivalBody(pt, yawDeg)
+  local app = jlCompanionAppearance()
+  local rec = Config.jackieRecord or "Character.Jackie"
+  local jid = spawnDynEntity(rec, pt, yawDeg, "JackieLives_jackie", app)
+  if not jid then return nil end
+  -- v1.52: stamp so a post-load stale ref is dropped, not dereferenced. The appearance/record fields
+  -- are what ammSpawn has always recorded; the arrival paths simply never did.
+  return Session.stamp({ id = jid, handle = nil, appearance = app, record = rec })
+end
+
 -- Yaw (deg) so an entity at `from` faces V (so the bike points the way it will drive).
 local function yawToward(from, to)
   if not from or not to then return 0.0 end
@@ -5432,15 +5483,15 @@ local function vehicleArrivalFootFallback(reason)
     va.phase = nil; return
   end
   local yaw = yawToward(pt, pp)
-  local jid = spawnDynEntity(Config.jackieRecord or "Character.Jackie", pt, yaw, "JackieLives_jackie")
-  if not jid then
+  local sp = jlSpawnArrivalBody(pt, yaw)   -- v1.8.3: WITH an outfit, and a record the appfix can verify
+  if not sp then
     log("VehArrival: foot fallback fresh spawn FAILED -> companion fallback.")
     local spawn = ammSpawn(1, Config.defaultAppearance)
     JL.summon.spawn = spawn or nil
     JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, (spawn ~= nil), false
     va.phase = nil; return
   end
-  JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.52: stamp so a post-load stale ref is dropped, not dereferenced
+  JL.summon.spawn = sp
   JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
   va.bikeId, va.bikeHandle = nil, nil
   va.phase          = "sprinting"                        -- reuse the on-foot sprint -> walk -> handoff
@@ -5469,9 +5520,9 @@ local function beginFootApproach(dist, reason)
   JL.summon.spawn = nil
   local pt = navmeshArrivalPoint(dist) or arrivalPoint()
   if not pt then JL.ui.status = "Arrival: no valid spawn point."; log(("FootApproach: NO navmesh/height-valid point at %.0f m."):format(dist)); return false end
-  local jid = spawnDynEntity(Config.jackieRecord or "Character.Jackie", pt, yawToward(pt, pp), "JackieLives_jackie")
-  if not jid then JL.ui.status = "Arrival spawn failed (see console)."; log("FootApproach: spawn failed."); return false end
-  JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.52: stamp so a post-load stale ref is dropped, not dereferenced
+  local sp = jlSpawnArrivalBody(pt, yawToward(pt, pp))   -- v1.8.3: WITH an outfit (see jlSpawnArrivalBody)
+  if not sp then JL.ui.status = "Arrival spawn failed (see console)."; log("FootApproach: spawn failed."); return false end
+  JL.summon.spawn = sp
   JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
   va.pt             = pt
   va.bikeId, va.bikeHandle = nil, nil
@@ -5520,13 +5571,13 @@ local function vehicleArrivalTick()
     va.bikeId  = spawnDynEntity(c.bikeRecord or "Vehicle.v_sportbike2_arch_jackie_player", va.pt, yaw,
                                 "JackieLives_bike", c.bikeAppearance or "default")
     local jpos = snapToNavmesh(Vector4.new(va.pt.x + 1.5, va.pt.y, va.pt.z, 1.0)) or va.pt
-    local jid  = spawnDynEntity(Config.jackieRecord or "Character.Jackie", jpos, yaw, "JackieLives_jackie")
-    if not va.bikeId or not jid then
+    local sp   = jlSpawnArrivalBody(jpos, yaw)   -- v1.8.3: WITH an outfit
+    if not va.bikeId or not sp then
       JL.ui.status = "Vehicle arrival spawn failed (see console)."
-      log("VehArrival: spawn failed (bike=" .. tostring(va.bikeId ~= nil) .. ", jackie=" .. tostring(jid ~= nil) .. ")")
-      despawnArrivalBike(); if jid then deleteEntityById(jid) end; return
+      log("VehArrival: spawn failed (bike=" .. tostring(va.bikeId ~= nil) .. ", jackie=" .. tostring(sp ~= nil) .. ")")
+      despawnArrivalBike(); if sp and sp.id then deleteEntityById(sp.id) end; return
     end
-    JL.summon.spawn = Session.stamp({ id = jid, handle = nil })   -- v1.52: stamp so a post-load stale ref is dropped, not dereferenced
+    JL.summon.spawn = sp
     JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = true, false, true
     va.bikeHandle = nil
     va.placeAt    = (JL.clock or 0) + 1.0
@@ -5879,7 +5930,63 @@ function jlWeaponMirrorTick()
       st.reasserts, W.maxReasserts or 6))
 end
 
-local function catchUpTick()
+-- v1.8.3 (ported from NCLives v1.83): the blind-body branch, lifted OUT of catchUpTick so it can be
+-- asked BEFORE the combat/phase guards (see ceiling #2 there). Returns true when it has consumed this
+-- tick — the companion has no readable position, so nothing below it has anything to reason about.
+-- Global -> 200-local cap safe.
+function jlCatchUpBlind(C)
+  C = C or Config.catchUp or {}
+  local h = JL.summon.spawn and JL.summon.spawn.handle
+  if not h then return false end
+  local now = JL.clock or 0
+  local jp = nil; pcall(function() jp = h:GetWorldPosition() end)
+  if jp then JL.catchUp.blindSince = nil; return false end
+  -- ⚠️ v1.74 — PORTED FROM NCLIVES. THE HOLE THAT ATE A COMPANION ON A FAST TRAVEL (Antonia,
+  -- 2026-08-14, NCLives: "she vanished, distance to V 1165 m in red, companion true", and NOT ONE
+  -- CatchUp line in the log).
+  --
+  -- This used to be `if not jp then return end`. Every escalation below — including the
+  -- respawn-when-stranded ladder written specifically for district-scale fast travel — is gated on
+  -- `d`, the distance to their body. So the one case it could never handle was the case where THERE
+  -- IS NO BODY TO MEASURE: a load-screen fast travel culls the spawned NPC outright, the handle stays
+  -- valid (which is why the window still says "companion: true"), and the position read returns nil
+  -- forever. The function then returned on this line every tick, silently, and nobody ever came back.
+  -- Travelling back did not fix it either, because nothing re-armed.
+  --
+  -- ⚠️ It is NOT about AMM. This code path is the same one AMM installs ran; AMM only ever supplied
+  -- the spawn call. The bug is that "far away" and "gone" were treated as the same question and only
+  -- one of them had an answer.
+  --
+  -- So: an unreadable position is its OWN stranded condition. Sustain it briefly (a stream hiccup
+  -- while crossing a district boundary reads identically for a frame or two, and respawning on that
+  -- would visibly duplicate them), then take exactly the escalation the distance ladder would have
+  -- taken. `blindSustain` is deliberately longer than `sustainSeconds`: a wrong answer here costs a
+  -- despawn+respawn the player can see.
+  do
+    -- ⚠️ THE LOAD-SCREEN CRASH GUARD, and it is load-bearing now that this runs ABOVE the rest of the
+    -- tick (it used to inherit catchUpTick's own `local pp = playerPos(); if not pp then return end`).
+    -- The body becomes unreadable AT THE START of a load, so `blindSustain` can elapse while the world
+    -- is still streaming — and respawning into a not-yet-streamed world is the v0.84 load crash,
+    -- verbatim. While the PLAYER is not in the world this is a load screen, not a stranding.
+    if not playerPos() then JL.catchUp.blindSince = nil; return true end
+    JL.catchUp.blindSince = JL.catchUp.blindSince or now
+    if (now - JL.catchUp.blindSince) < ((C.blindSustain or 6.0)) then return true end
+    if (now - (JL.catchUp.lastAt or -1e9)) < (C.cooldown or 3.0) then return true end
+    JL.catchUp.lastAt, JL.catchUp.farSince, JL.catchUp.teleTries = now, nil, nil
+    JL.catchUp.lastDist, JL.catchUp.graceSince, JL.catchUp.blindSince = nil, nil, nil
+    log(("CatchUp: companion body is UNREADABLE for %.0fs (culled by a load screen / fast travel) " ..
+         "-> respawning at V. A teleport cannot reach a body that no longer exists.")
+        :format(C.blindSustain or 6.0))
+    pcall(respawnCompanionAtV)
+    return true
+  end
+end
+
+-- ⚠️ GLOBAL, not a file-local (ported from NCLives v1.75's reasoning): loadsim can only drive a global,
+-- and this is the function that decides whether a stranded companion is ever recovered — the one
+-- behaviour that has cost the most in-game sessions, so it must be testable offline. Making it global
+-- also FREES a local slot against init.lua's 200-local cap rather than spending one.
+function catchUpTick()
   if jlPuppetHolds() then return end   -- v1.9: seat tuner owns this body (catch-up would snap him back to V's side mid-slide)
   local C = Config.catchUp or {}
   if C.enabled == false then return end
@@ -5923,6 +6030,18 @@ local function catchUpTick()
     end
   end
 
+  -- ⚠️ CEILING #2, PORTED FROM NCLIVES v1.83 — the OTHER half of the ceiling above, and the half that
+  -- was missing here too. (Antonia, 2026-08-17, on NCLives: "Kerry didn't follow my fast travel after I
+  -- started the dinner objective." Panam, same save, same travel, DID — the only difference being that
+  -- her body was still readable and his was not.)
+  --
+  -- Ceiling #1 ranks a district-scale DISTANCE above every guard. But a load-screen fast travel has two
+  -- endings and only one of them is a distance: the body survives far away (readable -> #1 fires) or it
+  -- is CULLED (unreadable -> there is nothing to measure at all). The v1.74 blind-body branch handles
+  -- the second case perfectly — and it sat BELOW the phase guard, so a companion who was mid-dinner-walk
+  -- when V travelled stood down on "a phase owns their movement" forever, exactly the case #1 exists for.
+  if jlCatchUpBlind(C) then return end
+
   if jlInCombat() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active) then   -- v0.85: don't teleport him off his cruising bike
@@ -5933,39 +6052,7 @@ local function catchUpTick()
   local pp = playerPos(); if not pp then return end
   local now = JL.clock or 0
   local jp = nil; pcall(function() jp = h:GetWorldPosition() end)
-  -- ⚠️ v1.74 — PORTED FROM NCLIVES. THE HOLE THAT ATE A COMPANION ON A FAST TRAVEL (Antonia,
-  -- 2026-08-14, NCLives: "she vanished, distance to V 1165 m in red, companion true", and NOT ONE
-  -- CatchUp line in the log).
-  --
-  -- This used to be `if not jp then return end`. Every escalation below — including the
-  -- respawn-when-stranded ladder written specifically for district-scale fast travel — is gated on
-  -- `d`, the distance to their body. So the one case it could never handle was the case where THERE
-  -- IS NO BODY TO MEASURE: a load-screen fast travel culls the spawned NPC outright, the handle stays
-  -- valid (which is why the window still says "companion: true"), and the position read returns nil
-  -- forever. The function then returned on this line every tick, silently, and nobody ever came back.
-  -- Travelling back did not fix it either, because nothing re-armed.
-  --
-  -- ⚠️ It is NOT about AMM. This code path is the same one AMM installs ran; AMM only ever supplied
-  -- the spawn call. The bug is that "far away" and "gone" were treated as the same question and only
-  -- one of them had an answer.
-  --
-  -- So: an unreadable position is its OWN stranded condition. Sustain it briefly (a stream hiccup
-  -- while crossing a district boundary reads identically for a frame or two, and respawning on that
-  -- would visibly duplicate them), then take exactly the escalation the distance ladder would have
-  -- taken. `blindSustain` is deliberately longer than `sustainSeconds`: a wrong answer here costs a
-  -- despawn+respawn the player can see.
-  if not jp then
-    JL.catchUp.blindSince = JL.catchUp.blindSince or now
-    if (now - JL.catchUp.blindSince) < ((C.blindSustain or 6.0)) then return end
-    if (now - (JL.catchUp.lastAt or -1e9)) < (C.cooldown or 3.0) then return end
-    JL.catchUp.lastAt, JL.catchUp.farSince, JL.catchUp.teleTries = now, nil, nil
-    JL.catchUp.lastDist, JL.catchUp.graceSince, JL.catchUp.blindSince = nil, nil, nil
-    log(("CatchUp: companion body is UNREADABLE for %.0fs (culled by a load screen / fast travel) " ..
-         "-> respawning at V. A teleport cannot reach a body that no longer exists.")
-        :format(C.blindSustain or 6.0))
-    pcall(respawnCompanionAtV)
-    return
-  end
+  if not jp then return end   -- v1.8.3: handled by jlCatchUpBlind, above every other guard
   JL.catchUp.blindSince = nil
   local d   = dist3(pp, jp)
   -- back within range -> the last teleport (if any) took; clear the retry counter.
@@ -6400,21 +6487,98 @@ end
 -- back to AMM's long native leash. Both ticks now ask this one question, so exactly one of them owns him.
 -- Global -> 200-local cap safe.
 function jlAbreastOn()
+  return jlAbreastWhy() == nil
+end
+
+-- v1.8.3 THE SAME PREDICATE, BUT IT SAYS WHY (ported from NCLives v1.83). Eleven gates, and the failure
+-- looks identical from outside all of them: the companion trails. So the gates live here, each returning
+-- a stable one-line reason, and jlAbreastOn is just "no reason". jlWalkProbeTick prints the reason
+-- whenever it CHANGES, which turns "sometimes he walks wrong" into a named guard in the log.
+-- ⚠️ The reasons are CONSTANT strings on purpose — this runs several times a frame, and building a
+-- message with the numbers in it would allocate every frame for a line nobody reads. The numbers are the
+-- probe's job; this only names the guard. Global -> 200-local cap safe.
+function jlAbreastWhy()
   local A = Config.abreast or {}
-  if not A.enabled or not JL.walkAbreast then return false end      -- v1.57: opt-in; default = plain trailing follower
-  if not (JL.summon.active and JL.summon.companionSet) then return false end
-  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase) then return false end
-  if jlCruise and jlCruise.active then return false end            -- not while cruising on his bike
-  if jlTakedownBusy() then return false end                        -- v1.48: a takedown owns him; don't re-issue
-  if jlInCombat() then return false end                            -- fighting -> free him to fight
-  if jlVertical() then return false end                            -- v1.46: stairs/slope -> single file
-  if jlVSneaking() then return false end                           -- v1.46: crouched -> shadow her, never lead
+  if not A.enabled then return "walk-beside disabled in config" end -- v1.57: opt-in; default = plain trailing follower
+  if not JL.walkAbreast then return "walk-beside switched OFF in settings" end
+  if not (JL.summon.active and JL.summon.companionSet) then return "not a settled companion" end
+  if JL.dinner.phase then return "the DINNER phase owns his movement" end
+  if JL.leaving.phase then return "the LEAVING phase owns his movement" end
+  if JL.varrival and JL.varrival.phase then return "the ARRIVAL phase owns his movement" end
+  if jlCruise and jlCruise.active then return "cruising on the bike" end   -- not while cruising on his bike
+  if jlTakedownBusy() then return "mid-takedown" end                       -- v1.48: a takedown owns him
+  if jlInCombat() then return "V is in combat" end                         -- fighting -> free him to fight
+  if jlVertical() then return "stairs/slope -> single file" end            -- v1.46
+  if jlVSneaking() then return "V is crouched" end                         -- v1.46: shadow her, never lead
   -- v1.57: V is basically standing -> the TRAIL owns him, because that's where the loiter halt lives. With
   -- stock values jlVWalking() already says no here (stopSpeed sits below walkMinSpeed), but the two are
   -- independently tunable now, so state it explicitly rather than rely on the bands not overlapping — if
   -- both ticks thought they owned him he'd be shoved to a side anchor and told to hold still at once.
-  if jlVLoitering() then return false end
-  return jlVWalking()
+  if jlVLoitering() then return "V is standing still (loiter)" end
+  if not jlVWalking() then return "V isn't in the steady-walk band" end
+  return nil
+end
+
+-- ---------------------------------------------------------------------------
+-- v1.8.3 WALK PROBE (ported from NCLives v1.83)
+-- ---------------------------------------------------------------------------
+-- A companion who trails when he should be beside V looks the same whichever of the eleven gates above
+-- refused, and the phase guards can be STUCK — a dinner/arrival flag that was never cleared reads as
+-- "something owns his movement" forever, and catch-up stands down on the same flag. So this writes the
+-- one fact that separates them, to the log, with no console and no hotkey:
+--   * EDGE — every time the reason changes: "beside OFF -> the ARRIVAL phase owns his movement".
+--   * HEARTBEAT — every `interval` s while he is out and V is moving: the numbers.
+--   * STUCK — once per episode, if a phase guard has held for `stuckSeconds` while he stands next to V.
+--     A phase that owns his movement while he is 2 m away and idle is not owning anything; that line IS
+--     the bug report.
+-- Global -> 200-local cap safe.
+function jlWalkProbeTick()
+  local P = Config.walkProbe or {}
+  if P.enabled == false then return end
+  local st = JL.walkProbe; if not st then st = {}; JL.walkProbe = st end
+  local now = JL.clock or 0
+  local h   = JL.summon.spawn and JL.summon.spawn.handle
+  if not (JL.summon.active and h) then
+    st.why, st.whySince, st.stuckLogged, st.lastBeat = nil, nil, nil, nil
+    return
+  end
+  local why = jlAbreastWhy()
+
+  local function readout()
+    local pp, jp = playerPos(), nil
+    pcall(function() jp = h:GetWorldPosition() end)
+    local d = (pp and jp) and dist3(pp, jp) or nil
+    return ("V=%.2f m/s | d=%s m | phases: arrival=%s dinner=%s leaving=%s | catching=%s waiting=%s")
+      :format(JL.abreast.vSpeed or 0.0, d and ("%.1f"):format(d) or "?",
+              tostring(JL.varrival and JL.varrival.phase), tostring(JL.dinner.phase),
+              tostring(JL.leaving.phase), tostring(JL.abreast.catching), tostring(JL.abreast.waiting))
+  end
+
+  if why ~= st.why then
+    st.why, st.whySince, st.stuckLogged = why, now, nil
+    log(("[WalkProbe] beside %s | %s"):format(why and ("OFF -> " .. why) or "ON", readout()))
+  end
+
+  if why and why:find("owns his movement", 1, true) and not st.stuckLogged
+     and (now - (st.whySince or now)) >= (P.stuckSeconds or 45.0) then
+    local pp, jp = playerPos(), nil
+    pcall(function() jp = h:GetWorldPosition() end)
+    local d = (pp and jp) and dist3(pp, jp) or nil
+    if d and d <= (P.stuckNearMetres or 15.0) then
+      st.stuckLogged = true
+      log(("[WalkProbe] ⚠ STUCK PHASE: %s and has for %.0f s, while he stands %.1f m from V. " ..
+           "Nothing is actually moving him — walk-beside AND catch-up are both standing down on this " ..
+           "flag, which is why a fast travel is ignored and why only a catch-up respawn 'fixes' it. %s")
+          :format(why, now - (st.whySince or now), d, readout()))
+    end
+  end
+
+  if (now - (st.lastBeat or -1e9)) >= (P.interval or 15.0) then
+    st.lastBeat = now
+    if (JL.abreast.vSpeed or 0.0) > (P.beatMinSpeed or 0.3) then
+      log(("[WalkProbe] %s | %s"):format(why and ("off: " .. why) or "beside", readout()))
+    end
+  end
 end
 
 -- v0.67 KEEP-CLOSE FOLLOW. After handoff we issue ONE tight follow (followDistance), but AMM's own
@@ -6516,6 +6680,7 @@ function abreastTick()
   if not jlAbreastOn() then
     JL.abreast.smFwdX = nil     -- reset the heading EMA so it re-seeds cleanly when abreast resumes
     JL.abreast.catching = nil   -- v1.36: re-engage re-evaluates behind/hold from scratch
+    JL.abreast.waiting, JL.abreast.waitHoldAt = nil, nil   -- v1.8.3: and never resume mid-wait
     return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -6595,11 +6760,51 @@ function abreastTick()
   local sprinting = catchingNow
 
   -- Target: while SPRINTING in, aim at the anchor itself (tight). While HOLDING, aim at a point a little
-  -- AHEAD of the anchor along V's heading (leadDistance) so he strolls FORWARD with V inside the wide leash
-  -- instead of stop-starting on the exact spot.
+  -- AHEAD of the anchor along V's heading so he strolls FORWARD with V inside the wide leash instead of
+  -- stop-starting on the exact spot.
+  --
+  -- ---- v1.8.3 (A) THE LOOKAHEAD IS A TIME, NOT A DISTANCE (ported from NCLives v1.67) ----------------
+  -- Antonia, 2026-08-17: *"Jackie often very aggressively walks ahead too fast and then is stuck at the
+  -- edge of his leash and doesn't fall back well. This aspect of his movement looks broken."*
+  --
+  -- `leadDistance` was a flat 2 m, which is only correct at one walking speed. Slow V down and that
+  -- constant point sits permanently in front of a companion who already out-walks her: he can never
+  -- arrive, he steps forward on every re-issue, and once he is ahead the rear-arc test (which only fires
+  -- BEHIND) can never pull him back. `V's speed x leadSeconds` is the standard pure-pursuit lookahead —
+  -- scale-invariant, and it collapses to nothing by itself as she slows to a stop.
   local lead = A.leadDistance or 2.0
+  if A.leadSeconds then
+    lead = math.min((JL.abreast.vSpeed or 0.0) * A.leadSeconds, A.leadMax or 2.5)
+  end
   local destX = sprinting and tx or (tx + sx * lead)
   local destY = sprinting and ty or (ty + sy * lead)
+
+  -- ---- v1.8.3 (B) AND WHEN HE IS ALREADY AHEAD, HE WAITS --------------------------------------------
+  -- (A) alone stops him RUNNING ahead; it cannot bring back one who already is. NCLives brakes with a
+  -- sub-1.0 time dilation, and this repo deliberately has no dilation channel at all (v1.39: "scaling his
+  -- time made his stride float and broke the angular leash"), so the only honest brake here is to stop
+  -- giving him somewhere to go. `aerr` is the along-track error — how far ahead of HIM his spot is,
+  -- measured along V's heading. Negative means he has overrun it. Past `waitAhead` he plants himself and
+  -- lets V walk up, which is what a person does; the hysteresis (release at the smaller `waitRelease`)
+  -- is what stops that becoming a stutter, and it re-issues on the loiter hold interval because the hold
+  -- command is time-limited — the same shape the loiter halt in followKeepCloseTick already uses.
+  if not sprinting and (A.waitWhenAhead ~= false) then
+    local aerr = (destX - jp.x) * sx + (destY - jp.y) * sy
+    local st   = JL.abreast
+    if st.waiting then
+      if aerr >= -(A.waitRelease or 0.4) then st.waiting = false end
+    elseif aerr <= -(A.waitAhead or 1.2) then
+      st.waiting = true
+    end
+    if st.waiting then
+      if (now - (st.waitHoldAt or -1e9)) >= ((Config.loiter or {}).holdInterval or 2.0) then
+        st.waitHoldAt = now
+        jlHalt(h)
+      end
+      return
+    end
+    st.waitHoldAt = nil
+  end
 
   -- --- issue on a short throttle; SPRINT while catching up (behind V), else Walk his natural gait ---------
   -- (v1.39: pace-match time-dilation removed — it made his stride float and broke the angular leash. He now
@@ -9955,6 +10160,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(jlCruiseTick)     -- v0.85: V on a BIKE -> Jackie trails on his Arch (gated before the foot ticks)
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(abreastTick)      -- v0.84: OR (when enabled) hold him beside/ahead of V instead of trailing
+  pcall(jlWalkProbeTick)  -- v1.8.3: log WHICH gate is refusing walk-beside (self-guards; edge + heartbeat)
   pcall(jlTakedownTick)   -- v1.48: watch an ordered takedown to a conclusion (grapple / down / timeout)
   pcall(blazeCalmHoldTick) -- v1.51: re-assert holster/uncrouch after the async finale teleport, and verify
   pcall(jlWeaponMirrorTick) -- v1.61: Jackie holsters when V does (after combat he lingered armed too long)

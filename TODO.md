@@ -13,6 +13,55 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 
 
 
+## 🐛 v1.8.3 — THE NCLIVES ENGINE FIXES, PLUS THE WALK-AHEAD (2026-08-17)
+
+Antonia, on Jackie specifically: *"Jackie often very aggressively walks ahead too fast and then is
+stuck at the edge of his leash and doesn't fall back well. This aspect of his movement looks broken."*
+
+### The walk-ahead — and it IS a real difference, not a feeling
+JackieLives has **no pace matching at all**: `Config.autoPace` does not exist here (removed at v1.39,
+"scaling his time made his stride float and broke the angular leash"). So his only station-keeping is
+the rear-arc **sprint**, and his walk target sat a flat `leadDistance = 2.0` m ahead of a near-front
+anchor. Two consequences, both of which are exactly what she describes: closing any gap is a sprint
+(the aggression), and once he is AHEAD nothing can pull him back, because the rear-arc test only fires
+BEHIND — he parks at the far edge of the leash and stays there. Two halves:
+
+* **`leadSeconds` (ported from NCLives v1.67).** The lookahead is a fraction of a second of V's CURRENT
+  pace, capped by `leadMax`, instead of a constant. A flat 2 m is only correct at one walking speed;
+  slow V down and it sits permanently in front of a companion who already out-walks her.
+* **`waitWhenAhead` (new here).** That fixes him running ahead; it cannot bring back one who already
+  is. NCLives brakes with a sub-1.0 time dilation and this repo has no dilation channel by design, so
+  the honest brake is to stop giving him somewhere to go: past `waitAhead` metres beyond his own spot
+  he plants himself with `jlHalt` and lets V walk up, releasing at the smaller `waitRelease`. The
+  hysteresis is what keeps that from becoming a stutter, and the re-issue rides the loiter hold
+  interval because the hold command is time-limited — the same shape followKeepCloseTick already uses.
+
+### Three engine fixes ported from NCLives v1.83 (same day, on purpose)
+* **The culled-body fast travel.** A load screen either leaves the body far away (a DISTANCE — the
+  v1.75 ceiling already outranks every guard) or CULLS it (no distance at all). The blind-body branch
+  handles the second and sat **below** the phase guard, so mid-dinner it stood down forever.
+  `jlCatchUpBlind` is now asked first, carrying its own `playerPos()` load-screen guard since it no
+  longer inherits the tick's.
+* **The appearance read-back could never match.** `tostring` on a CName is the whole
+  `ToCName{ ... --[[ jackie_welles_default --]] }` struct, so the verify warned on every spawn,
+  including correct ones. `jlCNameName` extracts the needle (NCLives has this as `NCL.recordPath`).
+* **The arrival spawns had no outfit.** All three asked for `appearanceName = "default"` and stamped a
+  record with no `appearance`, so the v1.77 re-assert had nothing to verify. `jlSpawnArrivalBody` now
+  builds them. ⚠️ Jackie has been getting away with this — `Character.Jackie`'s own default IS his
+  normal outfit — which is why it looked fine here and shipped NCLives' Kerry naked.
+* **The walk probe** came with them: `jlAbreastWhy()` gives each of the eleven walk-beside gates a
+  stable reason, and `jlWalkProbeTick` logs it on every change, a heartbeat every 15 s, and a one-shot
+  STUCK warning when a phase guard has owned his movement for 45 s while he stands next to V.
+
+### And loadsim can finally drive a state machine
+`JL` is a file-local, which is why this harness was 79 checks to NCLives' 359: it could only call pure
+functions. `JL_ENV` is one global alias to the same table, `catchUpTick` became a global for the same
+reason NCLives made it one at v1.75, and §9 now drives the actual catch-up and appearance machines.
+87 checks, 0 failed. **The walk-ahead change is the one thing here that offline tests cannot judge** —
+it needs a walk in-game.
+
+---
+
 ## 🐛 v1.8.2 — FOUR IN-GAME REPORTS FROM THE DINNER/DISMISS PASS (2026-08-17)
 
 Antonia, playing Jackie. Three of them are engine bugs this repo shares with NCLives and NCLucy; the fourth is Jackie's alone.

@@ -796,5 +796,75 @@ do
   check("after detach our own reader takes over again", okAfter and type(cutAfter) == "boolean")
 end
 
+-- ---------------------------------------------------------------------------
+-- 9. THE v1.8.3 ENGINE FIXES, PORTED FROM NCLIVES v1.83
+-- ---------------------------------------------------------------------------
+-- ⚠️ These are the first checks in this file that drive a STATE MACHINE rather than a pure function,
+-- and they are only possible because init.lua now exposes `JL_ENV` (read the note there). Both bugs
+-- were found in NCLives and both live in code this repo carries verbatim — which is exactly the drift
+-- CLAUDE.md warns about, so they are pinned here rather than trusted to have been ported correctly.
+do
+  print("\n9. the v1.8.3 engine fixes (culled-body catch-up, CName read-back, arrival outfit)")
+  local S = JL_ENV
+
+  -- (a) A load-screen fast travel either leaves the body far away (a DISTANCE — the hard-respawn
+  -- ceiling already outranks every guard) or CULLS it (no distance at all). The blind-body branch
+  -- handles the second, and it used to sit BELOW the phase guard, so a companion who was mid-dinner
+  -- when V travelled stood down on "a phase owns his movement" forever.
+  local keep = { spawn = S.summon.spawn, active = S.summon.active, set = S.summon.companionSet,
+                 dinner = S.dinner.phase }
+  local respawned = 0
+  local realRespawn = respawnCompanionAtV
+  respawnCompanionAtV = function() respawned = respawned + 1; return true end
+  S.summon.active, S.summon.companionSet = true, true
+  S.summon.spawn = { handle = { GetWorldPosition = function() return nil end } }  -- handle lives, position doesn't
+  S.dinner.phase = "walking"
+  S.catchUp.lastAt, S.catchUp.blindSince = nil, (S.clock or 0) - 999
+  local ranOk, err = pcall(catchUpTick)
+  check("catchUpTick survives an unreadable body", ranOk, tostring(err))
+  check("a culled body mid-dinner is respawned, not swallowed by the phase guard", respawned > 0,
+        "the blind branch is below the phase guard again")
+  respawned = 0
+  S.summon.spawn = { handle = { GetWorldPosition = function() return { x = 0, y = 0, z = 0 } end } }
+  S.catchUp.blindSince = (S.clock or 0) - 999
+  pcall(catchUpTick)
+  check("...but a readable body next to V is left alone", respawned == 0)
+  check("...and the blind timer clears once the body reads again", S.catchUp.blindSince == nil)
+  respawnCompanionAtV = realRespawn
+  S.summon.spawn, S.summon.active, S.summon.companionSet = keep.spawn, keep.active, keep.set
+  S.dinner.phase = keep.dinner
+
+  -- (b) The appearance read-back tostring()'d a CName, which is the whole struct, so it could never
+  -- match the wanted name and warned on EVERY spawn — including correctly dressed ones.
+  local keepFix = S.appfix
+  local cnameish = setmetatable({}, { __tostring = function()
+    return "ToCName{ hash_lo = 0x1, hash_hi = 0x2 --[[ jackie_welles_default --]] }" end })
+  S.appfix = { handle = { GetCurrentAppearanceName = function() return cnameish end },
+               want = "jackie_welles_default", why = "test", tries = 0, nextAt = 0,
+               until_ = (S.clock or 0) + 8.0 }
+  jlAppearanceTick()
+  check("a CName read-back of the WANTED name counts as success", S.appfix == nil,
+        "the tostring(CName) struct is being compared verbatim again")
+  local wrong = setmetatable({}, { __tostring = function()
+    return "ToCName{ hash_lo = 0x3, hash_hi = 0x4 --[[ someone_else --]] }" end })
+  S.appfix = { handle = { GetCurrentAppearanceName = function() return wrong end,
+                          PrefetchAppearanceChange = function() end,
+                          ScheduleAppearanceChange = function() end },
+               want = "jackie_welles_default", why = "test", tries = 0, nextAt = 0,
+               until_ = (S.clock or 0) + 8.0 }
+  jlAppearanceTick()
+  check("...but a DIFFERENT appearance is still re-asserted", S.appfix ~= nil and (S.appfix.tries or 0) > 0)
+  S.appfix = keepFix
+
+  -- (c) Every arrival spawn record must carry the outfit the appfix verifies against.
+  local sp = jlSpawnArrivalBody({ x = 0, y = 0, z = 0 }, 0.0)
+  check("jlSpawnArrivalBody produces a spawn record", sp ~= nil)
+  if sp then
+    check("...carrying the appearance (without it jlArmAppearanceFix returns false)",
+          type(sp.appearance) == "string" and sp.appearance ~= "" and sp.appearance ~= "default",
+          tostring(sp.appearance))
+  end
+end
+
 print(("\n%d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)

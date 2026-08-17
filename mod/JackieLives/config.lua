@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.8.2"
+Config.version = "1.8.3"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -498,6 +498,18 @@ Config.persist = {
 --    centred directly behind her). Then he sprints up to the set angle and, once back inside `zoneRadius`,
 --    CALMS to a walk again — and stays walking until he falls behind into the rear arc once more.
 -- Angle values are FRACTIONAL dial steps (of `positions`). Pace + zone knobs live in the CET pace tuner.
+-- ---- v1.8.3 WALK PROBE — why is walk-beside not running RIGHT NOW? ------------------------------
+-- The diagnostic behind jlWalkProbeTick (read its header). Ships ON: the bugs it exists for are
+-- intermittent, and a probe you have to switch on before the bug happens is a probe you never have the
+-- log for. Costs one string per heartbeat.
+Config.walkProbe = {
+  enabled         = true,
+  interval        = 15.0,  -- s between heartbeat readouts (only while V is actually moving)
+  beatMinSpeed    = 0.3,   -- m/s — below this V is standing around and the readout says nothing new
+  stuckSeconds    = 45.0,  -- s a phase guard may own his movement before we call it stuck
+  stuckNearMetres = 15.0,  -- ...and he must be THIS close to V for it to be a stuck flag, not a real walk
+}
+
 Config.abreast = {
   enabled        = true,    -- FEATURE master (leave true). The per-player default is JL.walkAbreast = true (v1.61: default-ON)
   positions      = 12,      -- steps in the full dial the fractional angles are measured in
@@ -530,7 +542,20 @@ Config.abreast = {
   -- his WALK target ahead of the anchor along V's heading so he strolls forward WITH her, not stop-start.
   rearArcFrac    = 0.40,    -- rear slice of the circle (behind V) that permits a sprint (bigger = sprints sooner)
   zoneRadius     = 1.5,     -- m free-walk leash around the anchor; sprint ends + hold-tolerance = this
+  -- ⚠️ v1.8.3: `leadDistance` is LEGACY — the fallback used only if `leadSeconds` is cleared to nil.
   leadDistance   = 2.0,     -- m his WALK target sits ahead of the anchor (along V's heading) so he keeps moving
+  -- v1.8.3 THE LOOKAHEAD, AND THE BRAKE. Antonia, 2026-08-17: "Jackie often very aggressively walks
+  -- ahead too fast and then is stuck at the edge of his leash and doesn't fall back well."
+  -- A flat `leadDistance` is only right at one walking speed — see the long note in abreastTick. These
+  -- two make it a fraction of a second of V's CURRENT pace instead, so it shrinks with her.
+  leadSeconds    = 0.7,     -- s of V's current pace that the walk target sits ahead of the anchor
+  leadMax        = 2.5,     -- m hard cap, so a brief speed spike can't fling the target forward
+  -- ...and the half that brings back a companion who is ALREADY ahead. This repo has no time-dilation
+  -- channel to brake with (v1.39), so he plants himself and lets V walk up. Hysteresis: engage at
+  -- `waitAhead` past his spot, release at the smaller `waitRelease`, or it stutters.
+  waitWhenAhead  = true,    -- false = pre-v1.8.3 behaviour (he never waits, he just runs out of leash)
+  waitAhead      = 1.2,     -- m past his own spot before he stops and waits
+  waitRelease    = 0.4,     -- m — V has closed back to here, so he walks again
   catchUpMovement= "Sprint",-- how he moves to GET into position when he's fallen behind (must out-pace a walking V)
   catchUpSmoothSeconds = 0.5, -- while sprinting in, aim at a near-INSTANT heading (where V is NOW), not the EMA
   catchUpTolerance = 0.35,  -- target distance while sprinting in
