@@ -866,5 +866,73 @@ do
   end
 end
 
+-- ---------------------------------------------------------------------------
+-- 10. ONE FLAG, TWO QUESTIONS — no mover may read `JL.dinner.phase` raw (v1.8.6)
+-- ---------------------------------------------------------------------------
+-- Antonia, 2026-08-17: *"I tried riding a bike before asking someone out for dinner and after. After
+-- did NOT work! Somehow the AI is dumber when they're on their way to dinner. This is an issue which
+-- has bit several times now — can you see the underlying cause?"*
+--
+-- She is describing a CLASS of bug, and she is right that it keeps coming back. `JL.dinner.phase`
+-- answers two different questions and the code kept asking it the wrong one:
+--   * "is a meal happening at all?"      -> the auto-leave pause, the topic gates. A bare read is RIGHT.
+--   * "is something driving the body?"   -> every movement system. A bare read is WRONG, because the
+--     `walking` phase issues no commands at all — it only watches V's distance to the restaurant. So
+--     each mover that read it raw switched itself off for the entire walk to dinner and left the
+--     companion to the base game's follower AI. That is the slow-follow report, the ignored fast
+--     travel, AND the bike that would not spawn — three symptoms, one flag.
+-- v1.8.6 moved four sites onto jlDinnerOwnsBody(); v1.8.6 found two more (cruise, persist). This scan
+-- is what stops the seventh: a mover may not name the raw flag, it must ask the predicate.
+do
+  print("\n10. no movement tick reads JL.dinner.phase raw")
+  local f = assert(io.open(ROOT .. "init.lua", "r"))
+  local src = f:read("a"); f:close()
+
+  -- Body of a named function, from its header to the next line that is exactly `end` at column 0.
+  -- ⚠️ Match the two header forms EXPLICITLY. The first version of this used `\n[%w%s]-function <name>%(`
+  -- to cover both, and `[%w%s]-` happily swallowed the PREVIOUS function's `end` plus the blank lines
+  -- after it — so the match started there, the very next `\nend\n` was that same `end`, and every body
+  -- came back five characters long. The scan then passed against source I had deliberately broken.
+  -- A test that cannot fail is worse than no test; this one is verified against a mutant.
+  local function bodyOf(name)
+    local s0 = src:find("\nlocal function " .. name .. "%(") or src:find("\nfunction " .. name .. "%(")
+    if not s0 then return nil end
+    local e0 = src:find("\nend\n", s0 + 1)
+    return src:sub(s0, e0 and e0 + 4 or nil)
+  end
+
+  -- Every tick that MOVES the companion or decides whether a body should exist.
+  -- ⚠️ No passenger tick in this repo — NCLives' "V gets in a car, the companion gets in too" was never
+  -- ported here, so there is nothing to scan. Listed nowhere rather than listed and skipped, because a
+  -- name in this table that does not exist is how the list rots.
+  for _, name in ipairs({ "jlCruiseTick", "companionPersistTick",
+                          "followKeepCloseTick", "abreastTick", "catchUpTick", "jlAbreastWhy",
+                          "jlFollowerWatchTick" }) do
+    local body = bodyOf(name)
+    check(name .. " exists (renamed? then fix this list)", body ~= nil)
+    if body then
+      -- Strip comments first: the explanations above these guards legitimately NAME the raw flag.
+      local code = body:gsub("%-%-[^\n]*", "")
+      -- ...then strip the reads that are asking the NARROW question, which are fine: a comparison
+      -- against a specific phase (`== "walking"`) and an assignment/clear. Only a BARE truthiness read
+      -- is the bug — that is the one that means "somebody owns the body" when nobody does.
+      code = code:gsub("[%w_]+%.dinner%.phase%s*[=,]+[^\n]*", "")
+      check(("%s asks jlDinnerOwnsBody(), not the raw flag"):format(name),
+            code:find("JL%.dinner%.phase") == nil,
+            "a raw JL.dinner.phase read is back — a `walking` dinner will switch this tick off for the "
+            .. "whole walk to the restaurant")
+    end
+  end
+
+  -- ...and the predicate itself must stay narrow: `walking` is NOT ownership.
+  local S = JL_ENV
+  local keep = S.dinner.phase
+  S.dinner.phase = "walking"; check("walking is NOT ownership", jlDinnerOwnsBody() == false)
+  S.dinner.phase = "seating"; check("seating IS ownership",      jlDinnerOwnsBody() == true)
+  S.dinner.phase = "seated";  check("seated IS ownership",       jlDinnerOwnsBody() == true)
+  S.dinner.phase = nil;       check("no dinner is not ownership", jlDinnerOwnsBody() == false)
+  S.dinner.phase = keep
+end
+
 print(("\n%d checks, %d failed"):format(checks, fails))
 os.exit(fails == 0 and 0 or 1)

@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.8.5"
+Config.version = "1.8.6"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -502,6 +502,15 @@ Config.persist = {
 -- The diagnostic behind jlWalkProbeTick (read its header). Ships ON: the bugs it exists for are
 -- intermittent, and a probe you have to switch on before the bug happens is a probe you never have the
 -- log for. Costs one string per heartbeat.
+-- ---- v1.8.6 PROMPT PROBE — where does the [F] overlay go when NCA is installed? ------------------
+-- The diagnostic behind jlPromptProbeTick (read its header — it names three candidate causes with
+-- three different fixes). Reads the blackboard back a beat after we write it and prints what actually
+-- survived. Logs only when the picture changes, and only while the prompt should be up.
+Config.promptProbe = {
+  enabled  = true,
+  interval = 1.0,   -- s between read-backs; matches Config.talk.boxRefresh so it samples one full cycle
+}
+
 Config.walkProbe = {
   enabled         = true,
   interval        = 15.0,  -- s between heartbeat readouts (only while V is actually moving)

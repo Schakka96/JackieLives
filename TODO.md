@@ -13,6 +13,52 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 
 
 
+## 🐛 v1.8.6 — THE DINNER-PHASE CLASS OF BUG, AND THE [F] PROBE (2026-08-17)
+
+Ported from NCLives v1.86 the same day. Antonia: *"I tried riding a bike before asking someone out for
+dinner and after. After did NOT work! ... This is an issue which has bit several times now — can you
+see the underlying cause?"*
+
+The cause is that **`JL.dinner.phase` answers two different questions** — "is a meal happening?" (the
+auto-leave pause; a bare read is right) and "is something actively driving the body?" (every movement
+system; a bare read is wrong). It is wrong because the `walking` phase issues no commands at all, so
+each mover that read it raw switched itself off for the whole walk to the restaurant. v1.8.5 moved four
+sites onto `jlDinnerOwnsBody()`; this found the two it missed:
+
+* **`jlCruiseTick`** — V on a bike, Jackie following on his Arch. Ordering dinner switched the entire
+  cruise system off, so V rode away alone.
+* **`companionPersistTick`** — a body culled during the walk to dinner was never restored.
+
+**loadsim §10 is the scan that stops the seventh site**: it extracts each movement tick's body and
+fails if it names the raw flag, stripping the narrow reads (`== "walking"`, assignments) that are
+legitimate. Two things it found immediately: `catchUpTick` here reads the raw flag *correctly* (the
+v1.8.5 keep-the-dinner logic lives inline rather than in its own function), and **this repo has no
+passenger tick at all** — NCLives' "V gets in a car, the companion gets in too" was never ported.
+⚠️ The scan is verified against a mutant; its first version could not fail (see NCLives' TODO).
+
+### And a probe for the [F] overlay that vanished when NCA was installed
+*"I'm currently not seeing the [F] key overlay ... ever since I got NCA; when I uninstall Night City
+Allies, the button shows normally."* Reading both mods gives THREE candidates with three different
+fixes, so guessing costs a session each time:
+
+* **They swallow it.** NCA overrides `InteractionUIBase::OnInteractionData` — the handler for the very
+  blackboard field our prompt writes — and returns without calling `wrapped` while
+  `ui.hubShown and ui.customHubSelected` (`Application/Lib/interactionUI.lua:382`). If those flags are
+  ever left set, every prompt we push is dropped before it is drawn and no re-push can help.
+* **They overwrite it.** Their `ui.update()` runs EVERY FRAME and writes `ActiveChoiceHubID` /
+  `SelectedIndex` to force a refresh. We re-assert once a second. A per-frame writer beats that, and
+  then the fix is ours.
+* **Neither** — our push already failed. `showCompanionChoiceBox` only logged that `SetVariant`
+  returned, which says nothing about whether the value survived.
+
+So the probe reads the blackboard BACK a beat after we write it and prints what actually survived,
+next to what we asked for and next to their two flags, with the verdict named in the line itself.
+One look at the next log picks the cause. Ships ON; logs only when the picture changes.
+
+`JL.talkPromptShown` mirrors a file-local so the probe (and the harness) can read it. 87 -> 105 checks.
+
+---
+
 ## 🐛 v1.8.3 — THE NCLIVES ENGINE FIXES, PLUS THE WALK-AHEAD (2026-08-17)
 
 Antonia, on Jackie specifically: *"Jackie often very aggressively walks ahead too fast and then is

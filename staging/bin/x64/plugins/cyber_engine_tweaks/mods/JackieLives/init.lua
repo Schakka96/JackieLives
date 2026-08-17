@@ -2160,6 +2160,97 @@ local function updateTalkPrompt(dt)
     if choiceBox.shown then hideJackieChoiceBox() end
     talkUI.shown = false
   end
+  -- v1.8.6: mirror onto JL so jlPromptProbeTick (and loadsim) can read it — talkUI is a file-local.
+  JL.talkPromptShown = talkUI.shown
+end
+
+-- ---------------------------------------------------------------------------
+-- v1.8.6 PROMPT PROBE — "no [F] overlay since I installed Night City Allies"
+-- ---------------------------------------------------------------------------
+-- Antonia, 2026-08-17: *"I'm currently not seeing the [F] key overlay for Lucy or NCLives or Jackie...
+-- This is ever since I got NCA, when I uninstall night city allies, the button shows normally."*
+--
+-- Reading both mods gives three candidates and they need DIFFERENT fixes, so guessing is expensive:
+--
+--   (1) THEY SWALLOW IT. NCA overrides `InteractionUIBase::OnInteractionData` — which is the handler
+--       for the very blackboard field our prompt writes (UIInteractions.InteractionChoiceHub) — and
+--       returns without calling wrapped while `ui.hubShown and ui.customHubSelected`
+--       (their Application/Lib/interactionUI.lua:382). If those flags are ever left set — an ally
+--       despawned, a hub not hidden — every prompt we push is dropped before it is drawn, and no
+--       amount of re-pushing on our side can help.
+--   (2) THEY OVERWRITE IT. Their `ui.update()` runs EVERY FRAME and, while their hub is shown, writes
+--       ActiveChoiceHubID and SelectedIndex to force a UI refresh. Our box is re-asserted only every
+--       `Config.talk.boxRefresh` (1 s), so a per-frame writer beats a per-second one and the fix is
+--       on our side (push faster, or push into the list they use).
+--   (3) NEITHER — our push already failed, and NCA is a red herring. `showCompanionChoiceBox` only
+--       logs `ok`/`pushed`, which say the SetVariant returned, not that the value survived.
+--
+-- So: read the blackboard BACK, a beat after we wrote it, and print what is actually in it next to
+-- what we asked for and next to their two flags. One look at the log names the culprit.
+-- Logs only when the picture CHANGES (this runs while the player looks at a companion, which is a lot
+-- of frames), and only while we believe the prompt should be up.
+-- Global -> 200-local cap safe.
+function jlPromptProbeTick()
+  local P = Config.promptProbe or {}
+  if P.enabled == false then return end
+  local st = JL.promptProbe; if not st then st = {}; JL.promptProbe = st end
+  local now = JL.clock or 0
+  if (now - (st.lastAt or -1e9)) < (P.interval or 1.0) then return end
+  st.lastAt = now
+  if not JL.talkPromptShown then st.sig = nil; return end
+
+  -- what the blackboard is holding NOW (i.e. ~1 s after our last push)
+  local heldId, heldActive, heldChoices, activeHub, nHubs
+  pcall(function()
+    local idef = GetAllBlackboardDefs().UIInteractions
+    local bb   = Game.GetBlackboardSystem():Get(idef)
+    if not bb then return end
+    pcall(function()
+      local h = FromVariant(bb:GetVariant(idef.InteractionChoiceHub))
+      if h then
+        heldId, heldActive = h.id, h.active
+        pcall(function() heldChoices = h.choices and #h.choices or nil end)
+      end
+    end)
+    pcall(function() if idef.ActiveChoiceHubID then activeHub = bb:GetInt(idef.ActiveChoiceHubID) end end)
+    pcall(function()
+      local d = FromVariant(bb:GetVariant(idef.DialogChoiceHubs))
+      nHubs = d and d.choiceHubs and #d.choiceHubs or nil
+    end)
+  end)
+
+  -- ...and THEIR two flags, read straight off the table our bridge already reaches (nca.lua's note on
+  -- `app` being reachable-not-published applies here too: every read is pcall'd and optional).
+  local ncaShown, ncaCustom
+  pcall(function()
+    local m   = GetMod("NightCityAllies")
+    local aui = m and m.app and m.app.ui
+    if aui then ncaShown, ncaCustom = aui.hubShown, aui.customHubSelected end
+  end)
+
+  local sig = table.concat({ tostring(heldId), tostring(heldActive), tostring(heldChoices),
+                             tostring(activeHub), tostring(nHubs),
+                             tostring(ncaShown), tostring(ncaCustom), tostring(choiceBox.shown) }, "|")
+  if sig == st.sig then return end
+  st.sig = sig
+
+  -- Name the verdict in the line itself, so the log answers the question instead of posing it.
+  local verdict
+  if heldId == nil then
+    verdict = "the field is EMPTY — our push did not survive (someone cleared it, or it never landed)"
+  elseif heldId ~= choiceBox.id then
+    verdict = ("another hub (id=%s) is in the field — ours was REPLACED"):format(tostring(heldId))
+  elseif heldActive == false then
+    verdict = "our hub is there but INACTIVE — something deactivated it"
+  else
+    verdict = "our hub is in the field and active — so the loss is DOWNSTREAM of the blackboard " ..
+              "(a swallowed OnInteractionData is the candidate; see NCA's flags)"
+  end
+  st.verdict = verdict   -- v1.8.6: kept on NCS so loadsim can assert it (`log` is a file-local here)
+  log(("[PromptProbe] we asked for id=%d | field holds id=%s active=%s choices=%s | " ..
+       "ActiveChoiceHubID=%s DialogChoiceHubs=%s | NCA hubShown=%s customHubSelected=%s | %s")
+      :format(choiceBox.id, tostring(heldId), tostring(heldActive), tostring(heldChoices),
+              tostring(activeHub), tostring(nHubs), tostring(ncaShown), tostring(ncaCustom), verdict))
 end
 
 -- ---------------------------------------------------------------------------
@@ -8919,9 +9010,14 @@ function jlCruiseTick()
   local C = Config.cruise or {}
   if C.enabled == false then if jlCruise.active then jlCruiseStop() end; return end
   local companion = JL.summon and JL.summon.active and JL.summon.spawn and JL.summon.spawn.handle
-  -- only cruise a SETTLED companion (not mid-arrival / dinner / walk-off)
+  -- only cruise a SETTLED companion (not mid-arrival / mid-seating / walk-off)
+  -- ⚠️ v1.8.6 — `jlDinnerOwnsBody()`, NOT a bare `JL.dinner.phase`. (Antonia, 2026-08-17: *"I
+  -- tried riding a bike before asking someone out for dinner and after. After did NOT work!"*)
+  -- The `walking` phase issues no commands whatsoever — it only watches V's distance to the
+  -- restaurant — so treating it as "something owns the body" switched the whole cruise system off
+  -- for the entire walk: no bike, no companion on it, V rides away alone.
   local settled = companion and JL.summon.companionSet
-    and not (JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase))
+    and not (jlDinnerOwnsBody() or JL.leaving.phase or (JL.varrival and JL.varrival.phase))
     and not jlInCutscene()   -- v0.92: never spawn/keep his Arch during a cutscene
   local onBike = settled and jlIsBikeVeh(jlPlayerVehicleObj())
   if onBike and not jlCruise.active then jlCruiseStart()
@@ -9239,7 +9335,10 @@ function companionPersistTick()
   if not companionFlagSet() then JL.persist.gapSince = nil; return end
 
   -- He SHOULD be here. Don't fight a state machine that's already placing/removing him.
-  if (JL.varrival and JL.varrival.phase) or JL.leaving.phase or JL.dinner.phase or JL.summon.walkIn then
+  -- ⚠️ v1.8.6: `jlDinnerOwnsBody()` for the same reason as the cruise tick above — a `walking`
+  -- dinner places nobody, so a body culled on the way to the restaurant was never restored.
+  -- seating/seated DO place him, and this must keep its hands off those.
+  if (JL.varrival and JL.varrival.phase) or JL.leaving.phase or jlDinnerOwnsBody() or JL.summon.walkIn then
     JL.persist.gapSince = nil; return
   end
 
@@ -10177,6 +10276,7 @@ registerForEvent("onUpdate", function(dt)
   -- (v1.54: the per-frame jlDetectGenderOnce gender probe is gone — Hermano is now the flat default for
   --  every V and is applied once at load by jlDefaultHermano. Nothing to poll here any more.)
   -- (nsTick moved above the session gate — it must also run at the main menu; see there.)
+  pcall(jlPromptProbeTick)  -- v1.8.6: read the interaction blackboard BACK (the missing [F] with NCA)
   pcall(updateTalkPrompt, dt)
   pcall(function() DialogUI.tick(JL.clock or 0) end)  -- v1.63: republish the highlighted row + drop the box if the world went away
   pcall(dialogueTick)
