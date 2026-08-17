@@ -4578,8 +4578,40 @@ end
 -- The stealth gait is instead a BOOL on the command — `alwaysUseStealth`, inherited from AIMoveCommand —
 -- whose handler puts the NPC into the Stealth high-level state, and THAT drives the crouched locomotion.
 -- Set on its own field so an older/renamed build just ignores it (the follow still works).
+-- ---------------------------------------------------------------------------
+-- IS THIS BODY STILL THERE? — ask BEFORE writing to it. (ported from NCLives v1.78)
+-- ---------------------------------------------------------------------------
+-- ⚠️ THE FAST-TRAVEL CRASH. A load-screen fast travel tears the companion's body down while the
+-- handle still resolves for a frame or two, and every write primitive below ends in SendCommand (or,
+-- for Native.setCompanion, ScaleToPlayer / ChangeHighLevelState / SetAIRole / ai:OnAttach) on that
+-- puppet. Those are NATIVE calls: the pcalls wrapped around them catch a Lua error and do nothing
+-- whatsoever about the game falling over.
+--
+-- `if not handle` is a NIL check, NOT liveness. A handle outlives its entity by a frame or two, which
+-- is precisely the window a fast travel lands in.
+--
+-- ⚠️ Guard the PRIMITIVES, not the callers. NCLives spent three rounds guarding call sites inferred
+-- from the last line of a crash log — which is the last FLUSHED line, not necessarily the crashing
+-- call — while sendWalkToPlayer, driven by the follow trail EVERY TICK, went unguarded the whole time.
+--
+-- ⚠️ FAILS OPEN. Unknown means "assume alive": skipping a body that IS there costs a companion who
+-- stops following, and that trade is only worth making on a clear no.
+-- GLOBAL -> 200-local cap safe.
+function jlBodyAlive(h, key)
+  if not h then return false end
+  local attached
+  pcall(function() attached = h:IsAttached() end)
+  if attached == true  then return true  end
+  if attached == false then return false end
+  if key then return (function() local p; pcall(function() p = h:GetWorldPosition() end); return p ~= nil end)() end
+  local pos
+  pcall(function() pos = h:GetWorldPosition() end)
+  return pos ~= nil
+end
+
 local function sendWalkToPlayer(handle, movementType, desiredDistance, stealth)
   if not handle then return false end
+  if not jlBodyAlive(handle) then return false end
   return (pcall(function()
     local cmd = NewObject('handle:AIFollowTargetCommand')
     cmd.target                     = Game.GetPlayer()
@@ -4851,6 +4883,7 @@ end
 -- through the AI controller, the same channel the move command uses.
 local function aiTeleport(handle, pos, yawDeg, doNavTest)
   if not handle or not pos then return false end
+  if not jlBodyAlive(handle) then return false end   -- see jlBodyAlive
   if doNavTest == nil then doNavTest = true end   -- default ON (existing callers); pass FALSE for exact placement
   return (pcall(function()
     local cmd = NewObject('handle:AITeleportCommand')
@@ -5782,6 +5815,7 @@ end
 -- jlWeaponDrawn and keeps re-issuing). Global -> 200-local cap safe.
 function jlHolster(handle)
   if not handle then return false end
+  if not jlBodyAlive(handle) then return false end   -- see jlBodyAlive
   local any = false
   for _, slot in ipairs({ "AttachmentSlots.WeaponRight", "AttachmentSlots.WeaponLeft" }) do
     local ok = pcall(function()
