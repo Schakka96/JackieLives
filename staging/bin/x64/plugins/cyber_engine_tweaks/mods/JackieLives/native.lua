@@ -208,6 +208,8 @@ end
 -- Make `handle` a genuine player companion. Returns true only if the engine AGREES afterwards.
 function Native.setCompanion(handle)
   if not handle then return false end
+  -- ported from NCLives v1.78: liveness, not nil. See jlBodyAlive in init.lua.
+  if jlBodyAlive and not jlBodyAlive(handle) then return false end
 
   -- Level-scale first, so a companion spawned in a high-level district isn't a paper target.
   -- (AMM does this too — NPCManager:ScaleToPlayer, Modules/spawn.lua:697.)

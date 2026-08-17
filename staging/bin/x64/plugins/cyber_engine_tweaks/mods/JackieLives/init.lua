@@ -3319,30 +3319,44 @@ function jlPlayerVariant()
   return 0
 end
 
--- Is JackieLives.archive actually MERGED into the game right now?
+-- Is the installed archive the one this Lua was generated against?
 --
--- The female-take String IDs (vo_female_ids.lua) exist ONLY inside our archive. Speak one without it
--- and the line is SILENT — no error, no log, because the redscript shim returns true for any id it
--- can parse. Silence is worse than the male take, so VO.femaleTakeId refuses to use a female id
--- until this says yes.
+-- ⚠️ "IS AN ARCHIVE LOADED" IS THE WRONG QUESTION, and getting it wrong is silent. NCLives shipped
+-- that mistake on 2026-08-17: new voiced lines were added, the player deployed the Lua but not a
+-- rebuilt archive, and every new line played SILENT — the presence probe passed while the archive
+-- had never heard of the ids being spoken, and the redscript shim returns true for any id it can
+-- parse. No error, no log line, nothing to grep.
 --
--- NCLives can ask this by looking for one of its journal contacts. JackieLives has no journal, so
--- the archive carries ONE localization string purely as a beacon (see tools/gen_vomap.py's
--- render_beacon and the .archive.xl header). It resolves only if BOTH ArchiveXL and our archive are
--- installed. Cached for the session on BOTH answers — archives load at startup only, so a "no"
--- here is permanent rather than a not-yet. Global -> 200-local cap safe.
+-- So the archive carries a TOKEN fingerprinting exactly which substitutions it can serve, and we
+-- refuse to substitute unless it matches the token generated beside vo_female_ids.lua. A stale
+-- archive then degrades to the MALE take — wrong, but audible and instantly diagnosable.
+--
+-- Cached for the session on BOTH answers: archives load at startup only, so a "no" is permanent.
+-- Global -> 200-local cap safe.
 function jlArchiveLoaded()
   if JL.archiveOk ~= nil then return JL.archiveOk end
+
+  local want
+  pcall(function() want = (require("vo_female_ids") or {}).__token end)
+  if not want then JL.archiveOk = false; return false end
+
   local got
-  pcall(function() got = Game.GetLocalizedTextByKey(CName.new("jl_archive_beacon")) end)
-  local ok = (tostring(got) == "jl-ok")
-  JL.archiveOk = ok
-  log(("Archive: JackieLives.archive %s. %s"):format(
-        ok and "IS loaded" or "is NOT loaded (beacon returned " .. tostring(got) .. ")",
-        ok and "V's female voice lines are available."
-           or "V and Jackie will use the male takes. Install ArchiveXL and make sure BOTH "
-              .. "JackieLives.archive and JackieLives.archive.xl are in <game>\\archive\\pc\\mod\\."))
-  return ok
+  pcall(function() got = Game.GetLocalizedTextByKey(CName.new("jl_vomap_token")) end)
+  got = got and tostring(got) or ""
+
+  JL.archiveOk = (got == want)
+  if JL.archiveOk then
+    log("Archive: voice map is CURRENT (token " .. want .. ") — V's female takes are available.")
+  elseif got == "" then
+    log("Archive: JackieLives.archive is NOT loaded (no voice-map token). V and Jackie will use the "
+        .. "MALE takes. Check that ArchiveXL is installed and that BOTH JackieLives.archive and "
+        .. "JackieLives.archive.xl are in <game>\\archive\\pc\\mod\\.")
+  else
+    log(("Archive: the installed voice map is STALE (archive says %s, this build needs %s). Using "
+         .. "the MALE takes so nothing goes silent. Fix: run build_archive.bat on Windows, then "
+         .. "restart the game — archives load at startup only."):format(got, want))
+  end
+  return JL.archiveOk
 end
 
 -- The player's answer to "does V sound like the V on my screen", for VO.femaleTakeId.
@@ -4564,8 +4578,40 @@ end
 -- The stealth gait is instead a BOOL on the command — `alwaysUseStealth`, inherited from AIMoveCommand —
 -- whose handler puts the NPC into the Stealth high-level state, and THAT drives the crouched locomotion.
 -- Set on its own field so an older/renamed build just ignores it (the follow still works).
+-- ---------------------------------------------------------------------------
+-- IS THIS BODY STILL THERE? — ask BEFORE writing to it. (ported from NCLives v1.78)
+-- ---------------------------------------------------------------------------
+-- ⚠️ THE FAST-TRAVEL CRASH. A load-screen fast travel tears the companion's body down while the
+-- handle still resolves for a frame or two, and every write primitive below ends in SendCommand (or,
+-- for Native.setCompanion, ScaleToPlayer / ChangeHighLevelState / SetAIRole / ai:OnAttach) on that
+-- puppet. Those are NATIVE calls: the pcalls wrapped around them catch a Lua error and do nothing
+-- whatsoever about the game falling over.
+--
+-- `if not handle` is a NIL check, NOT liveness. A handle outlives its entity by a frame or two, which
+-- is precisely the window a fast travel lands in.
+--
+-- ⚠️ Guard the PRIMITIVES, not the callers. NCLives spent three rounds guarding call sites inferred
+-- from the last line of a crash log — which is the last FLUSHED line, not necessarily the crashing
+-- call — while sendWalkToPlayer, driven by the follow trail EVERY TICK, went unguarded the whole time.
+--
+-- ⚠️ FAILS OPEN. Unknown means "assume alive": skipping a body that IS there costs a companion who
+-- stops following, and that trade is only worth making on a clear no.
+-- GLOBAL -> 200-local cap safe.
+function jlBodyAlive(h, key)
+  if not h then return false end
+  local attached
+  pcall(function() attached = h:IsAttached() end)
+  if attached == true  then return true  end
+  if attached == false then return false end
+  if key then return (function() local p; pcall(function() p = h:GetWorldPosition() end); return p ~= nil end)() end
+  local pos
+  pcall(function() pos = h:GetWorldPosition() end)
+  return pos ~= nil
+end
+
 local function sendWalkToPlayer(handle, movementType, desiredDistance, stealth)
   if not handle then return false end
+  if not jlBodyAlive(handle) then return false end
   return (pcall(function()
     local cmd = NewObject('handle:AIFollowTargetCommand')
     cmd.target                     = Game.GetPlayer()
@@ -4837,6 +4883,7 @@ end
 -- through the AI controller, the same channel the move command uses.
 local function aiTeleport(handle, pos, yawDeg, doNavTest)
   if not handle or not pos then return false end
+  if not jlBodyAlive(handle) then return false end   -- see jlBodyAlive
   if doNavTest == nil then doNavTest = true end   -- default ON (existing callers); pass FALSE for exact placement
   return (pcall(function()
     local cmd = NewObject('handle:AITeleportCommand')
@@ -5768,6 +5815,7 @@ end
 -- jlWeaponDrawn and keeps re-issuing). Global -> 200-local cap safe.
 function jlHolster(handle)
   if not handle then return false end
+  if not jlBodyAlive(handle) then return false end   -- see jlBodyAlive
   local any = false
   for _, slot in ipairs({ "AttachmentSlots.WeaponRight", "AttachmentSlots.WeaponLeft" }) do
     local ok = pcall(function()
@@ -5825,6 +5873,37 @@ local function catchUpTick()
   if not (JL.summon.active and JL.summon.companionSet) then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   -- v1.35: in COMBAT, let him roam/fight — don't yank him back to V's side. (Reset the far-timer so a
   -- post-combat gap re-arms cleanly instead of teleporting instantly on a stale timer.)
+  -- ⚠️ THE CEILING ON EVERY GUARD BELOW (ported from NCLives v1.75). Read the distance FIRST, and if
+  -- it is district-scale, nothing under this line gets a vote: not combat, not a phase, not the
+  -- patience timers. A companion 1800 m away is not fighting beside V and is not walking to a
+  -- restaurant — they were left behind by a fast travel, and the only thing that closes that gap is a
+  -- respawn. Deliberately BEFORE the combat and phase guards, because those are the two that swallow
+  -- it: the reported case stood down on "a phase owns their movement" forever.
+  -- ⚠️ Unseat BEFORE despawning. A dinner means a seated puppet, and every dismiss path in this file
+  -- already stands one up first.
+  do
+    local hh = JL.summon.spawn and JL.summon.spawn.handle
+    local ppq = playerPos()
+    if hh and ppq and jlBodyAlive(hh) then
+      local jq; pcall(function() jq = hh:GetWorldPosition() end)
+      local dq = jq and dist3(ppq, jq) or nil
+      if dq and dq >= ((Config.catchUp or {}).hardRespawnDistance or 300.0)
+         and ((JL.clock or 0) - (JL.catchUp.lastAt or -1e9)) >= ((Config.catchUp or {}).cooldown or 3.0) then
+        JL.catchUp.lastAt = (JL.clock or 0)
+        JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil
+        JL.catchUp.lastDist, JL.catchUp.graceSince, JL.catchUp.blindSince = nil, nil, nil
+        pcall(function() jlManualUnseat("catch-up respawn") end)
+        JL.dinner.phase, JL.dinner.dest = nil, nil
+        JL.leaving.phase = nil
+        if JL.varrival then JL.varrival.phase = nil end
+        log(("CatchUp: %.0f m is beyond anything that can be walked or teleported back " ..
+             "-> respawning at V regardless of what else is running."):format(dq))
+        pcall(respawnCompanionAtV)
+        return
+      end
+    end
+  end
+
   if jlInCombat() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active) then   -- v0.85: don't teleport him off his cruising bike
