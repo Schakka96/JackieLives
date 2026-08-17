@@ -11,6 +11,35 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 > auto-close (v0.81), fast-travel persistence/respawn (v0.72/v0.79/v0.82). The still-open items live in
 > **"📋 Companion backlog (merged 2026-07-01)"** below, next to the START-HERE bug list.
 
+
+## ✍️ v1.73 — BRANCH LOGIC: rows that answered the wrong line, and `(back)` (2026-08-17)
+
+Ported from the NCLucy pass Antonia asked for; NCLives got the same treatment the same day. Two
+rules, now written up at the bottom of `docs/conversations.md`, plus two new tools:
+`lua tools/branch_audit.lua` (finds the mechanical half of both; always exits 0, deliberately not a
+deploy gate) and `lua tools/dump_nodes.lua --config everywhere.howbeen` (prints a beat the way the
+player meets it, marking VOICED lines so nobody rewords a subtitle that belongs to a recording).
+
+**Rule 1 — a row must answer EVERY line its node can open with.** `jackiePool` picks one of N at
+random; the rows are written once. `everywhere.city` opens four ways and V's row quoted one of them
+(*"Brotherly hate. Heh."* → *"That's one word for it."*); `everywhere.faith` opens with two Spanish
+lines and a long tier-3 one, and V's row echoed only the tier-3 (→ *"Amen to that."*). Same in the
+seated tree (`arasaka`, `nightcity`).
+
+**Rule 2 — Jackie has to be able to end a conversation, and V needs something to say.** Five topics
+— `bar`, `busy`, `heywood`, `howbeen`, `vik` — ended on a V row that was the literal string
+**`(back)`**. That is not a line, it is a button, and it is what "V always speaks last" looks like at
+its worst. Each now carries something V would actually say, written against every answer in the pool.
+
+⚠️ **Fixes here go on V's rows, not Jackie's** — his lines are CDPR recordings and the subtitle *is*
+the line. And since v1.70 some of V's rows are voiced too, so `sfx` has to be checked in both
+directions: *"Lesser Antil-what?"* was left exactly as it is for that reason.
+
+⚠️ `tools/build_line_library.py verify` is broken **in this repo** — it reads
+`mod/NCLives/voices.lua`, a path that doesn't exist here, and dies with FileNotFoundError. Not
+caused by this pass, but it means the caption-vs-recording check can't be run from JackieLives until
+someone points it at `config.lua`. Verified by diff instead: this pass touched no line carrying `sfx`.
+
 ## ✅ v1.70 — V SPEAKS (2026-08-14)
 
 Antonia: *"many conversations with jackie have his voice, but V's bank is in fact much bigger, so we

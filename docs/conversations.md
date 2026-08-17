@@ -390,3 +390,35 @@ jl_1658860298971172864  [But that's done after tomorrow.] Afterlife, here we com
 jl_1691270077089771520  [That kinda sounded like a "yes."] Meet me at Lizzie's. [Be there in an hour.]  (venue self-pick: lizzies)
 jl_1790891785270616064  ['Ey, let Dex know... And then I say] we hit the Afterlife, hahaha... do some shots.  (venue self-pick: afterlife)
 ```
+
+---
+
+## The two branch-logic rules (2026-08-17)
+
+Found by audit in NCLucy and applied across all three repos. The long version with worked examples
+is `../NCLucy/docs/AUTHORING.md`; the NCLives copy is `../NCLives/docs/DIALOGUE.md` §9. Run
+`lua tools/branch_audit.lua` to find the mechanical half of both (it always exits 0 — it reports
+candidates for a human to judge, and is deliberately not wired into a deploy gate), and
+`lua tools/dump_nodes.lua --config <tree>.<node>` to read a beat the way the player meets it.
+
+**Rule 1 — every choice must answer EVERY line the node can open with.** A `jackiePool` says one of
+N things at random; the rows under it are written once and have to work against all N. The failure
+is always the same shape: the pool gets written, then the rows get written while looking at one
+entry. `city` opened four ways and V's row was *"Brotherly hate. Heh."*, which is a quote from one
+of them. `minFam` on a pool entry does **not** gate a row's correctness — a tier-3 entry and a
+tier-0 entry are both eligible at tier 3.
+
+⚠️ **Here, the fix is almost always V's row.** Jackie's lines are CDPR recordings and the subtitle
+*is* the line — reword one and it desyncs from the clip the moment you hear it. V's rows were free
+until v1.70; **since v1.70 some of them are voiced too** (`sfx` on a choice row), and those are just
+as fixed. Check for `sfx` before rewording anything, in either direction.
+
+**Rule 2 — Jackie has to be able to end a conversation.** A node with no `choices` is terminal: he
+speaks and the box closes. Only `bye` and the seated `leave` used it, so V spoke last every time —
+and five topics (`bar`, `busy`, `heywood`, `howbeen`, `vik`) ended on a row that was literally the
+word **`(back)`**, which is not a line, it is a button. They now carry something V would say. Use a
+terminal node when his line *is* a close; keep V's row when it opens something or repairs something
+(`quiet_no` → *"I'm sorry. You're right."* stays, because that apology is the point of the branch).
+
+⚠️ `seatedTree` is the exception: terminal there ends the conversation but not the meal, and neither
+of them can walk away from a table. Only `action = "dinner_leave"` stands them up.
