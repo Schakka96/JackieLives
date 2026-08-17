@@ -3319,30 +3319,44 @@ function jlPlayerVariant()
   return 0
 end
 
--- Is JackieLives.archive actually MERGED into the game right now?
+-- Is the installed archive the one this Lua was generated against?
 --
--- The female-take String IDs (vo_female_ids.lua) exist ONLY inside our archive. Speak one without it
--- and the line is SILENT — no error, no log, because the redscript shim returns true for any id it
--- can parse. Silence is worse than the male take, so VO.femaleTakeId refuses to use a female id
--- until this says yes.
+-- ⚠️ "IS AN ARCHIVE LOADED" IS THE WRONG QUESTION, and getting it wrong is silent. NCLives shipped
+-- that mistake on 2026-08-17: new voiced lines were added, the player deployed the Lua but not a
+-- rebuilt archive, and every new line played SILENT — the presence probe passed while the archive
+-- had never heard of the ids being spoken, and the redscript shim returns true for any id it can
+-- parse. No error, no log line, nothing to grep.
 --
--- NCLives can ask this by looking for one of its journal contacts. JackieLives has no journal, so
--- the archive carries ONE localization string purely as a beacon (see tools/gen_vomap.py's
--- render_beacon and the .archive.xl header). It resolves only if BOTH ArchiveXL and our archive are
--- installed. Cached for the session on BOTH answers — archives load at startup only, so a "no"
--- here is permanent rather than a not-yet. Global -> 200-local cap safe.
+-- So the archive carries a TOKEN fingerprinting exactly which substitutions it can serve, and we
+-- refuse to substitute unless it matches the token generated beside vo_female_ids.lua. A stale
+-- archive then degrades to the MALE take — wrong, but audible and instantly diagnosable.
+--
+-- Cached for the session on BOTH answers: archives load at startup only, so a "no" is permanent.
+-- Global -> 200-local cap safe.
 function jlArchiveLoaded()
   if JL.archiveOk ~= nil then return JL.archiveOk end
+
+  local want
+  pcall(function() want = (require("vo_female_ids") or {}).__token end)
+  if not want then JL.archiveOk = false; return false end
+
   local got
-  pcall(function() got = Game.GetLocalizedTextByKey(CName.new("jl_archive_beacon")) end)
-  local ok = (tostring(got) == "jl-ok")
-  JL.archiveOk = ok
-  log(("Archive: JackieLives.archive %s. %s"):format(
-        ok and "IS loaded" or "is NOT loaded (beacon returned " .. tostring(got) .. ")",
-        ok and "V's female voice lines are available."
-           or "V and Jackie will use the male takes. Install ArchiveXL and make sure BOTH "
-              .. "JackieLives.archive and JackieLives.archive.xl are in <game>\\archive\\pc\\mod\\."))
-  return ok
+  pcall(function() got = Game.GetLocalizedTextByKey(CName.new("jl_vomap_token")) end)
+  got = got and tostring(got) or ""
+
+  JL.archiveOk = (got == want)
+  if JL.archiveOk then
+    log("Archive: voice map is CURRENT (token " .. want .. ") — V's female takes are available.")
+  elseif got == "" then
+    log("Archive: JackieLives.archive is NOT loaded (no voice-map token). V and Jackie will use the "
+        .. "MALE takes. Check that ArchiveXL is installed and that BOTH JackieLives.archive and "
+        .. "JackieLives.archive.xl are in <game>\\archive\\pc\\mod\\.")
+  else
+    log(("Archive: the installed voice map is STALE (archive says %s, this build needs %s). Using "
+         .. "the MALE takes so nothing goes silent. Fix: run build_archive.bat on Windows, then "
+         .. "restart the game — archives load at startup only."):format(got, want))
+  end
+  return JL.archiveOk
 end
 
 -- The player's answer to "does V sound like the V on my screen", for VO.femaleTakeId.

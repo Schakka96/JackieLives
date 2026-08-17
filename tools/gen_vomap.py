@@ -54,6 +54,7 @@ USAGE  (Mac only — it reads the installed game; the ARCHIVE is still packed on
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -76,8 +77,12 @@ VOMAP_LUA = os.path.join(PROJ, "mod", "JackieLives", "vo_female_ids.lua")
 # journal contacts; JackieLives ships no journal, so it ships ONE localization string instead and
 # asks for it by key. Without a detector we could not tell "no archive" from "wrong gender", and
 # speaking a synthetic id with no archive is SILENCE — the failure this whole design must never have.
-BEACON_KEY = "jl_archive_beacon"
-BEACON_VALUE = "jl-ok"
+BEACON_KEY = "jl_vomap_token"
+# ⚠️ The beacon carries the MAP'S VERSION, not a constant "I am here". A constant answers the wrong
+# question: a STALE archive is present and still cannot serve the ids the Lua now references, so it
+# passes an is-it-loaded check and then plays SILENCE, with nothing in the log — the shim returns true
+# for any id it can parse. That shipped in NCLives on 2026-08-17. Comparing versions makes a stale
+# archive degrade to the MALE take instead: wrong, but audible.
 
 # The maps, by depot path. Addressed by PATH, never by archive index: indices move between patches
 # and these do not. Recovered by reversing the archives' FNV1a64 file table against WolvenKit's
@@ -248,10 +253,18 @@ def render_json(rows):
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 
 
-def render_beacon():
+def token_for(rows):
+    """A short, stable fingerprint of exactly which substitutions this build can serve."""
+    h = hashlib.sha256()
+    for real, syn, _f in rows:
+        h.update((real + ">" + syn + ";").encode("utf-8"))
+    return h.hexdigest()[:16]
+
+
+def render_beacon(token):
     """One localization string, so Lua can prove the archive is really loaded.
 
-    ArchiveXL merges this into the game's onscreens; `Game.GetLocalizedTextByKey(n"jl_archive_beacon")`
+    ArchiveXL merges this into the game's onscreens; `Game.GetLocalizedTextByKey(n"jl_vomap_token")`
     then returns BEACON_VALUE if and only if BOTH ArchiveXL and our archive are installed. That is the
     same class of test NCLives makes against its journal entries — it just needs its own carrier here.
     `primaryKey` must be the FNV-1a 64 hash of the key, exactly as the game computes LocKey ids.
@@ -279,8 +292,8 @@ def render_beacon():
                         "$type": "localizationPersistenceOnScreenEntries",
                         "entries": [{
                             "$type": "localizationPersistenceOnScreenEntry",
-                            "femaleVariant": BEACON_VALUE,
-                            "maleVariant": BEACON_VALUE,
+                            "femaleVariant": token,
+                            "maleVariant": token,
                             "primaryKey": str(h),
                             "secondaryKey": BEACON_KEY,
                         }],
@@ -305,12 +318,18 @@ def render_lua(rows):
         "-- they don't resolve the line is silent, so vo.lua must never speak one without a fallback.",
         "--",
         "-- Numbers only — no CDPR text, no audio — so this file IS committed.",
+        "--",
+        "-- ⚠️ `__token` FINGERPRINTS THIS EXACT SET. The archive carries the same token as a",
+        "-- localization string, and vo.lua substitutes NOTHING unless the two match. Without that",
+        "-- check a STALE archive — one built before these ids existed — passes an is-it-loaded test",
+        "-- and then plays SILENCE on precisely the newest lines, leaving no trace anywhere. That",
+        "-- shipped once, on 2026-08-17. Mismatch now degrades to the MALE take: wrong, but audible.",
         "",
         "local F = {",
     ]
     for real, syn, _female in rows:
         out.append(f'  ["{real}"] = "{syn}",')
-    out += ["}", "", "return F", ""]
+    out += ["}", "", f'F.__token = "{token_for(rows)}"', "", "return F", ""]
     return "\n".join(out)
 
 
@@ -358,7 +377,7 @@ def main():
                  "Check that config.lua still uses `sfx = \"jl_<digits>\"`.")
 
     ok = write_if_changed(VOMAP_JSON, render_json(rows), args.check)
-    ok &= write_if_changed(BEACON_JSON, render_beacon(), args.check)
+    ok &= write_if_changed(BEACON_JSON, render_beacon(token_for(rows)), args.check)
     ok &= write_if_changed(VOMAP_LUA, render_lua(rows), args.check)
     sys.exit(0 if ok else 1)
 

@@ -9,6 +9,12 @@
 -- they don't resolve the line is silent, so vo.lua must never speak one without a fallback.
 --
 -- Numbers only — no CDPR text, no audio — so this file IS committed.
+--
+-- ⚠️ `__token` FINGERPRINTS THIS EXACT SET. The archive carries the same token as a
+-- localization string, and vo.lua substitutes NOTHING unless the two match. Without that
+-- check a STALE archive — one built before these ids existed — passes an is-it-loaded test
+-- and then plays SILENCE on precisely the newest lines, leaving no trace anywhere. That
+-- shipped once, on 2026-08-17. Mismatch now degrades to the MALE take: wrong, but audible.
 
 local F = {
   ["1155727714874494976"] = "5802188105055782140",
@@ -61,5 +67,7 @@ local F = {
   ["2036084339811217408"] = "4337307806031948526",
   ["2238739839238447112"] = "3100098350000206694",
 }
+
+F.__token = "30504152ec614b81"
 
 return F

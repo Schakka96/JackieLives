@@ -19,10 +19,10 @@
           "entries": [
             {
               "$type": "localizationPersistenceOnScreenEntry",
-              "femaleVariant": "jl-ok",
-              "maleVariant": "jl-ok",
-              "primaryKey": "5925865356862217147",
-              "secondaryKey": "jl_archive_beacon"
+              "femaleVariant": "30504152ec614b81",
+              "maleVariant": "30504152ec614b81",
+              "primaryKey": "13918845819671198089",
+              "secondaryKey": "jl_vomap_token"
             }
           ]
         }
