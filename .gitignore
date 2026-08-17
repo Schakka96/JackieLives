@@ -69,6 +69,13 @@ reference_mods/
 
 # --- Built game archives (binary assets; keep repo source-only) ------
 *.archive
+# ...EXCEPT our own. JackieLives.archive is the generated voiceover MAP (a few KB of JSON,
+# no audio, nothing of CDPR's to redistribute), and package_nexus.sh cannot build a zip
+# without it — so ignoring it meant a fresh clone could not produce a release at all, while
+# NCLives and NCLucy have always tracked theirs. The blanket rule above still covers every
+# third-party and reference archive, which is what it was written for.
+!archive/pc/mod/JackieLives.archive
+!staging/archive/pc/mod/JackieLives.archive
 
 # COPYRIGHTED transcripts of CDPR VO (like index.json) — never commit
 audioware/JackieLives/transcripts.json
