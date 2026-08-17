@@ -408,6 +408,7 @@ return {
     ["Amen to that."] = "まったくだ。",
     ["Seating is manual"] = "座らせるのは手動です",
     ["They stand at the table - automatic sitting floats, so it's off.\\n\\nCET overlay -> \\\"Seat tuner\\\":\\n1. Take control (AI off)\\n2. Slide them into the chair\\n3. Seat them\\n4. Save this seat\\n5. Release them"] = "テーブルでは立ったままです。自動で座らせると浮くのでオフにしています。\\n\\nCETオーバーレイ →「Seat tuner」:\\n1. Take control（AIオフ）\\n2. 椅子までスライドさせる\\n3. Seat them\\n4. Save this seat\\n5. Release them",
+    ["⚠ Turn ON \\\"Dialog subtitles\\\" (Settings -> Interface) — every line this mod speaks is a game subtitle, so with them off you'll hear him and read nothing."] = "「ダイアログ字幕」をオンにします(設定→ インターフェイス) — このMODが話しているすべての行は、ゲーム字幕です。したがって、それらをオフにすると、彼を聞くと何も読みません。",
   },
   ["es"] = {
     ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Esto huele a problemas de los gordos, V. Espero un minuto — pero déjalo, o me largo.",
@@ -814,6 +815,7 @@ return {
     ["Amen to that."] = "Amén a eso.",
     ["Seating is manual"] = "Sentarlos es manual",
     ["They stand at the table - automatic sitting floats, so it's off.\\n\\nCET overlay -> \\\"Seat tuner\\\":\\n1. Take control (AI off)\\n2. Slide them into the chair\\n3. Seat them\\n4. Save this seat\\n5. Release them"] = "Se quedan de pie en la mesa: sentarse solos los deja flotando, así que está desactivado.\\n\\nSuperposición de CET -> «Seat tuner»:\\n1. Take control (IA apagada)\\n2. Deslízalos hasta la silla\\n3. Seat them\\n4. Save this seat\\n5. Release them",
+    ["⚠ Turn ON \\\"Dialog subtitles\\\" (Settings -> Interface) — every line this mod speaks is a game subtitle, so with them off you'll hear him and read nothing."] = "Subtítulos Diálogos (Configuración) Interface) — cada línea que este mod habla es un subtítulo de juego, así que con ellos fuera lo escucharás y no leerás nada.",
   },
   ["de"] = {
     ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Das riecht nach ganz großem Ärger, V. Ich warte 'ne Minute — aber lass es, oder ich bin weg.",
@@ -1220,6 +1222,7 @@ return {
     ["Amen to that."] = "Dem ist nichts hinzuzufügen.",
     ["Seating is manual"] = "Hinsetzen ist Handarbeit",
     ["They stand at the table - automatic sitting floats, so it's off.\\n\\nCET overlay -> \\\"Seat tuner\\\":\\n1. Take control (AI off)\\n2. Slide them into the chair\\n3. Seat them\\n4. Save this seat\\n5. Release them"] = "Sie stehen am Tisch — automatisches Hinsetzen lässt sie schweben, also ist es aus.\\n\\nCET-Overlay -> „Seat tuner“:\\n1. Take control (KI aus)\\n2. Schieb sie auf den Stuhl\\n3. Seat them\\n4. Save this seat\\n5. Release them",
+    ["⚠ Turn ON \\\"Dialog subtitles\\\" (Settings -> Interface) — every line this mod speaks is a game subtitle, so with them off you'll hear him and read nothing."] = "<0xE2><0x9A><0xA0> \\\"Dialog-Untertitel\\\" einschalten (Einstellungen -> Interface) - jede zeile, die dieser mod spricht, ist ein spiel-untertitel, also mit ihnen aus, werden sie ihn hören und nichts lesen.",
   },
   ["fr"] = {
     ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Ça sent les gros ennuis, V. J'attends une minute — mais laisse tomber, ou je me casse.",
@@ -1626,6 +1629,7 @@ return {
     ["Amen to that."] = "Amen à ça.",
     ["Seating is manual"] = "L'assise est manuelle",
     ["They stand at the table - automatic sitting floats, so it's off.\\n\\nCET overlay -> \\\"Seat tuner\\\":\\n1. Take control (AI off)\\n2. Slide them into the chair\\n3. Seat them\\n4. Save this seat\\n5. Release them"] = "Ils restent debout à table : l'assise automatique les fait flotter, donc elle est coupée.\\n\\nSurcouche CET -> « Seat tuner » :\\n1. Take control (IA coupée)\\n2. Faites-les glisser sur la chaise\\n3. Seat them\\n4. Save this seat\\n5. Release them",
+    ["⚠ Turn ON \\\"Dialog subtitles\\\" (Settings -> Interface) — every line this mod speaks is a game subtitle, so with them off you'll hear him and read nothing."] = "\\\"Dialog sous-titres\\\" (Paramètres -> Interface) — chaque ligne que ce mod parle est un sous-titre de jeu, donc avec eux hors vous l'entendez et ne lisez rien.",
   },
   ["it"] = {
     ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Questa puzza di guai grossi, V. Aspetto un minuto — ma lascia perdere, o me ne vado.",
@@ -2032,6 +2036,7 @@ return {
     ["Amen to that."] = "Amen.",
     ["Seating is manual"] = "Farli sedere è manuale",
     ["They stand at the table - automatic sitting floats, so it's off.\\n\\nCET overlay -> \\\"Seat tuner\\\":\\n1. Take control (AI off)\\n2. Slide them into the chair\\n3. Seat them\\n4. Save this seat\\n5. Release them"] = "Restano in piedi al tavolo: sedersi da soli li fa fluttuare, quindi è disattivato.\\n\\nOverlay CET -> «Seat tuner»:\\n1. Take control (IA spenta)\\n2. Trascinali sulla sedia\\n3. Seat them\\n4. Save this seat\\n5. Release them",
+    ["⚠ Turn ON \\\"Dialog subtitles\\\" (Settings -> Interface) — every line this mod speaks is a game subtitle, so with them off you'll hear him and read nothing."] = "⚠ Accendere \\\"Dialog sottotitoli\\\" (Impostazioni -> Interfaccia) — ogni riga che questo mod parla è un sottotitolo di gioco, quindi con loro fuori lo sentirai e non leggerai nulla.",
   },
   ["pl"] = {
     ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "To pachnie grubą aferą, V. Poczekam minutę — ale odpuść, albo mnie tu nie ma.",
@@ -2438,6 +2443,7 @@ return {
     ["Amen to that."] = "Amen.",
     ["Seating is manual"] = "Sadzanie jest ręczne",
     ["They stand at the table - automatic sitting floats, so it's off.\\n\\nCET overlay -> \\\"Seat tuner\\\":\\n1. Take control (AI off)\\n2. Slide them into the chair\\n3. Seat them\\n4. Save this seat\\n5. Release them"] = "Stoją przy stole — automatyczne siadanie lewituje, więc jest wyłączone.\\n\\nNakładka CET -> „Seat tuner”:\\n1. Take control (SI wyłączona)\\n2. Przesuń ich na krzesło\\n3. Seat them\\n4. Save this seat\\n5. Release them",
+    ["⚠ Turn ON \\\"Dialog subtitles\\\" (Settings -> Interface) — every line this mod speaks is a game subtitle, so with them off you'll hear him and read nothing."] = "Ustawienia Włącz \\\"Napisy dialogowe\\\" (Ustawienia - > Interfejs) - każda linia, którą ten mod mówi, jest podtytułem gry, więc bez nich usłyszycie go i nic nie przeczytacie.",
   },
   ["ptbr"] = {
     ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Isso tá cheirando a encrenca grande, V. Espero um minuto — mas larga isso, ou eu vou embora.",
@@ -2844,6 +2850,7 @@ return {
     ["Amen to that."] = "Amém a isso.",
     ["Seating is manual"] = "Sentar é manual",
     ["They stand at the table - automatic sitting floats, so it's off.\\n\\nCET overlay -> \\\"Seat tuner\\\":\\n1. Take control (AI off)\\n2. Slide them into the chair\\n3. Seat them\\n4. Save this seat\\n5. Release them"] = "Eles ficam de pé à mesa: sentar sozinhos os deixa flutuando, então está desligado.\\n\\nSobreposição do CET -> «Seat tuner»:\\n1. Take control (IA desligada)\\n2. Deslize-os até a cadeira\\n3. Seat them\\n4. Save this seat\\n5. Release them",
+    ["⚠ Turn ON \\\"Dialog subtitles\\\" (Settings -> Interface) — every line this mod speaks is a game subtitle, so with them off you'll hear him and read nothing."] = "\\\"Ligar as legendas do Dialog\\\" (Configurações -> Interface) — cada linha que este mod fala é uma legenda de jogo, então com eles fora você vai ouvi-lo e ler nada.",
   },
   ["ru"] = {
     ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "Пахнет крупными неприятностями, V. Подожду минуту — но бросай это, или я ухожу.",
@@ -3250,6 +3257,7 @@ return {
     ["Amen to that."] = "Аминь.",
     ["Seating is manual"] = "Усаживание — вручную",
     ["They stand at the table - automatic sitting floats, so it's off.\\n\\nCET overlay -> \\\"Seat tuner\\\":\\n1. Take control (AI off)\\n2. Slide them into the chair\\n3. Seat them\\n4. Save this seat\\n5. Release them"] = "Они стоят у стола: автоматическая посадка оставляет их парить, поэтому она отключена.\\n\\nОверлей CET -> «Seat tuner»:\\n1. Take control (ИИ выключен)\\n2. Сдвиньте их на стул\\n3. Seat them\\n4. Save this seat\\n5. Release them",
+    ["⚠ Turn ON \\\"Dialog subtitles\\\" (Settings -> Interface) — every line this mod speaks is a game subtitle, so with them off you'll hear him and read nothing."] = "s Включить «Диалоговые субтитры» (Настройки ->) Интерфейс — каждая строка, которую говорит этот мод, является игровым подзаголовком, поэтому с ними вы услышите его и ничего не прочитаете.",
   },
   ["zhcn"] = {
     ["This smells like main-event trouble, V. I'll hang back a minute — but drop it, or I'm out."] = "这闻着就是大事的麻烦，V。我等一分钟——但你不撒手，我就走了。",
@@ -3656,5 +3664,6 @@ return {
     ["Amen to that."] = "说得没错。",
     ["Seating is manual"] = "坐下需要手动摆放",
     ["They stand at the table - automatic sitting floats, so it's off.\\n\\nCET overlay -> \\\"Seat tuner\\\":\\n1. Take control (AI off)\\n2. Slide them into the chair\\n3. Seat them\\n4. Save this seat\\n5. Release them"] = "他们会站在桌边——自动坐下会悬空，所以已关闭。\\n\\nCET 覆盖层 ->「Seat tuner」：\\n1. Take control（关闭 AI）\\n2. 把他们滑到椅子上\\n3. Seat them\\n4. Save this seat\\n5. Release them",
+    ["⚠ Turn ON \\\"Dialog subtitles\\\" (Settings -> Interface) — every line this mod speaks is a game subtitle, so with them off you'll hear him and read nothing."] = "* 打开“拨号字幕”(安排 - > Interface)——每行这个mod说话都是游戏字幕,所以有了这些字幕,你就会听到他,一无所获.",
   },
 }

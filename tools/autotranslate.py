@@ -149,6 +149,13 @@ def to_plain(key):
         return "@@%d@@" % (len(slots) - 1)
 
     s = re.sub(r"%[-+ #0-9.]*[sdifgqxX%]", grab, s)
+    # Lua's DECIMAL byte escapes (\226\154\160 = the warning sign). Left alone they reach the model
+    # as literal backslash-digits, and it happily rewrites or drops them — which corrupts the string
+    # for every language at once. Decode to the real character BEFORE translating: the model then
+    # treats it as ordinary text and it re-encodes as plain UTF-8 on the way out.
+    s = re.sub(r"((?:\\\\[0-9]{1,3})+)",
+               lambda m: bytes(int(x) for x in re.findall(r"\\\\([0-9]{1,3})", m.group(1)))
+                          .decode("utf-8", "replace"), s)
     return s, slots
 
 

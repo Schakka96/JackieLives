@@ -343,5 +343,76 @@ do
         src:find("Config%.poses%.tunerHalt") ~= nil and src:find("Config%.poses%.tunerSlack") ~= nil)
 end
 
+-- ---------------------------------------------------------------------------
+print("\n10. the dinner outing, and who is allowed to move the body (v1.8.5)")
+-- ---------------------------------------------------------------------------
+-- Three reports from Antonia, 2026-08-17, all from one play session:
+--
+--   1. *"when I just fast travelled with Lucy to get to the Ginger Panda (on a mission to have a
+--      dinner with her there) she forgot and the white marker disappeared from the map."*
+--   2. *"she did follow me slowly again after fast travel... I even sprinted... it just seems that
+--      she's not under full control of our mod?"*
+--   3. *"the fix for taking over control over her from her AI did not work... when I mean turn off
+--      the AI I mean OUR AI behavior, of which we have plenty."*
+--
+-- (2) and (3) turned out to share a shape: something OTHER than the system that thinks it owns the
+-- body is the one actually writing to it. v1.8.4 took the game's AI command slot and stopped there.
+do
+  -- ── 1. A fast travel must not eat a dinner that is still just a WALK to a venue.
+  check("a catch-up respawn keeps a `walking` outing",
+        src:find("local keepDinner = ") ~= nil and src:find('%.dinner%.phase == "walking"') ~= nil,
+        "the destination is a fixed world coord — a respawn moves the body, not the restaurant")
+  check("...and only tears the pin down when it is NOT keeping it",
+        src:find("if not keepDinner then") ~= nil,
+        "clearing the mappin unconditionally is what made the marker vanish")
+  check("...while a SEATED outing still aborts (despawning a posed puppet is the documented crash)",
+        src:find('keepDinner = %(JL%.dinner%.phase == "walking"%)') ~= nil)
+
+  -- ── 2. `walking` owns nobody. dinnerTick's walking branch sends no move command at all, so the
+  --    systems that stand down on it were leaving the companion uncommanded for the whole trip.
+  check("there is one predicate for 'the dinner owns the body'", src:find("function jlDinnerOwnsBody") ~= nil)
+  check("...and it is TRUE only for seating/seated",
+        src:find('p == "seating" or p == "seated"') ~= nil,
+        "if `walking` counts, nothing commands them on the way to the restaurant")
+  check("...and every movement gate asks it rather than the bare phase",
+        select(2, src:gsub("jlDinnerOwnsBody%(%)", "")) >= 4,
+        select(2, src:gsub("jlDinnerOwnsBody%(%)", "")) .. " uses")
+  check("...including the walk-beside reason, so the probe names the REAL refusing gate",
+        src:find("jlDinnerOwnsBody%(%) then return \"the DINNER phase owns") ~= nil,
+        "reporting a phase that no longer owns anything sends the next debugger to the wrong place")
+  check("...but the auto-leave pause still covers the WHOLE outing, walking included",
+        src:find("not JL%.dinner%.phase") ~= nil,
+        "that gate asks 'is a meal happening', which is a different question")
+
+  -- ── 3. The tuner latch is enforced at the MOVERS, not tick by tick. Guarding each tick is how
+  --    this regressed: the list is long and a new tick joins it silently.
+  for _, fn in ipairs({ "sendWalkToPlayer", "sendMoveToPoint", "jlRetreatFollow" }) do
+    check(fn .. " refuses to move a body the seat tuner holds",
+          src:find("function " .. fn .. "%(.-jlPuppetHolds%(handle%)") ~= nil,
+          "a per-tick guard can be forgotten; these three are the only way to order this body about")
+  end
+  -- ⚠️ Bounded to each function's OWN body. An unanchored `.-` walks the whole file and finds the
+  -- next PuppetHolds anywhere below, which passes for the wrong reason (it did, first time).
+  local function bodyOf(name)
+    local at = src:find("function " .. name .. "%(")
+    if not at then return "" end
+    local stop = src:find("\nend", at) or #src
+    return src:sub(at, stop)
+  end
+  check("...and the tuner's OWN movers stay unguarded, or it could not place anyone",
+        bodyOf("placeAtExact"):find("jlPuppetHolds") == nil
+          and bodyOf("jlHalt"):find("jlPuppetHolds") == nil,
+        "the tuner drives placeAtExact and the halt itself — guarding those would freeze the panel")
+  check("dinnerTick stands down too (it calls placeAtExact and the pose directly)",
+        src:find("local function dinnerTick%(.-jlPuppetHolds%(%)") ~= nil)
+
+  -- ── 4. And the card is honest about the one thing it cannot do without AMM.
+  check("the seating card names its dependency when AMM is absent",
+        src:find("if not getAMM%(%) then") ~= nil and src:find("AppearanceMenuMod") ~= nil,
+        "without AMM every button the card points at is a no-op — her log is 29 failed poses")
+  check("...conditionally, so the card stays short for players who have AMM",
+        src:find("text = T%.text") ~= nil)
+end
+
 print(("\n%d checks, %d failed"):format(pass + fail, fail))
 os.exit(fail == 0 and 0 or 1)

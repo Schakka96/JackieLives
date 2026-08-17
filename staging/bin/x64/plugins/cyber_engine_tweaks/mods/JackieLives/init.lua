@@ -2623,7 +2623,20 @@ function jlShowSeatTip(force)
     pcall(jlSaveSettings)
     log("Seat tip shown (first dinner) — marked done in " .. tostring(JL_SETTINGS_FILE))
   end
-  local ok = pcall(function() Retrieval.showTip(T.title, T.text, T.duration or 22.0) end)
+  -- ⚠️ v1.8.5 SAY IT WHEN IT IS TRUE. Antonia, 2026-08-17: *"does the seating tutorial card say
+  -- that this works only with AMM installed?"* It did not, and it needed to: the sit/lean animations
+  -- are AMM's workspots, so without AMM every button in the panel the card sends you to does nothing.
+  -- Her own log is 29 consecutive `PUPPET: pose 'sit' -> false` under `AMM present: false` — a player
+  -- reading that card without AMM is being sent to a dead end and left to think it is their aim.
+  --
+  -- Appended CONDITIONALLY rather than written into Config.seatTip, because the card is meant to stay
+  -- very short (the whole point of the v1.8.2 rewrite) and this line is noise for players who have AMM.
+  local text = T.text
+  if not getAMM() then
+    text = text .. "\n\nNote: the sit animation comes from AppearanceMenuMod. Without AMM they can "
+                .. "still be placed and turned, but \"Seat them\" will not play."
+  end
+  local ok = pcall(function() Retrieval.showTip(T.title, text, T.duration or 22.0) end)
   if not ok then log("Seat tip: Retrieval.showTip failed") end
   return ok
 end
@@ -4653,6 +4666,21 @@ end
 
 local function sendWalkToPlayer(handle, movementType, desiredDistance, stealth)
   if not handle then return false end
+  -- ⚠️ v1.8.5 THE SEAT TUNER OUTRANKS EVERY MOVE ORDER, AND THIS IS WHERE THAT IS ENFORCED.
+  -- Antonia, 2026-08-17: *"the fix for taking over control over her from her AI did not work...
+  -- when I mean turn off the AI I mean OUR AI behavior, of which we have plenty"* — and she found
+  -- the specific one: *"Goro seemed to want to move away from where I slid him to... because he
+  -- wanted to be within the allowed leash around V distance?"* Exactly that. v1.84 took the GAME's
+  -- command slot with jlHalt and stopped there, but our own ticks were re-issuing straight over the
+  -- top of it. followKeepCloseTick, dinnerTick, the arrival machine, the rendezvous placer and the
+  -- passenger/cruise ticks had no tuner guard at all.
+  --
+  -- Guarding each tick is how it was done before, and it is how this came back: the list is long,
+  -- nobody can hold it in their head, and a new tick joins it silently. So the latch is enforced HERE
+  -- instead — at the three functions that are the only way to tell this body to go somewhere. A tick
+  -- that forgets the guard now simply cannot move a held puppet, including one written next year.
+  -- ⚠️ jlHalt, placeAtExact and aiTeleport are deliberately NOT guarded: the tuner itself drives them.
+  if jlPuppetHolds(handle) then return false end
   if not jlBodyAlive(handle) then return false end
   return (pcall(function()
     local cmd = NewObject('handle:AIFollowTargetCommand')
@@ -4677,6 +4705,7 @@ end
 -- pace instead of matching a standing V (which would leave him frozen). Global -> 200-local cap safe.
 function jlRetreatFollow(handle, movementType, distance)
   if not handle then return end
+  if jlPuppetHolds(handle) then return false end   -- v1.8.5: the seat tuner outranks every move order (see sendWalkToPlayer)
   pcall(function()
     local cmd = NewObject('handle:AIFollowTargetCommand')
     cmd.target                     = Game.GetPlayer()
@@ -4719,6 +4748,7 @@ end
 -- but to a fixed Vector4 instead of V's position). Used to walk Jackie away when dismissed.
 local function sendMoveToPoint(handle, pos, movementType, desiredDistance)
   if not handle or not pos then return false end
+  if jlPuppetHolds(handle) then return false end   -- v1.8.5: the seat tuner outranks every move order (see sendWalkToPlayer)
   return (pcall(function()
     local dest = NewObject('WorldPosition')
     dest:SetVector4(dest, pos)
@@ -5934,6 +5964,29 @@ end
 -- asked BEFORE the combat/phase guards (see ceiling #2 there). Returns true when it has consumed this
 -- tick — the companion has no readable position, so nothing below it has anything to reason about.
 -- Global -> 200-local cap safe.
+-- v1.8.5 WHICH DINNER PHASES ACTUALLY OWN THE BODY — and it is not all of them.
+-- Antonia, 2026-08-17: *"she did follow me slowly again after fast travel... I even sprinted... it
+-- just seems that she's not under full control of our mod?"* Both of her slow-follow reports were
+-- during a dinner outing, and that is not a coincidence.
+--
+-- `dinnerTick`'s `walking` branch issues NO movement command at all — read it: it only watches V's
+-- distance to `dest` and waits. The companion is supposed to be an ordinary follower for the whole
+-- walk to the restaurant. But catch-up, walk-beside, the keep-close leash and the follower-role
+-- watchdog all stood down on a bare `dinner.phase`, so for that entire walk NOTHING in this mod was
+-- commanding them and they coasted on the base-game follower trail — which is slow, and which no
+-- amount of sprinting by V can speed up. The walk probe had already said so in as many words:
+-- "⚠ STUCK PHASE ... Nothing is actually moving them".
+--
+-- Only `seating` and `seated` genuinely own the body: seating sends its own move-to-the-seat and may
+-- snap+pose, and seated is a posed puppet nothing else may touch.
+-- ⚠️ This is deliberately NOT used by the auto-leave pause (which must stay off for the WHOLE outing,
+-- walking included) — that one wants "is a meal happening at all", a different question.
+-- Global -> 200-local cap safe.
+function jlDinnerOwnsBody()
+  local p = JL.dinner and JL.dinner.phase
+  return p == "seating" or p == "seated"
+end
+
 function jlCatchUpBlind(C)
   C = C or Config.catchUp or {}
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -6018,8 +6071,25 @@ function catchUpTick()
         JL.catchUp.lastAt = (JL.clock or 0)
         JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil
         JL.catchUp.lastDist, JL.catchUp.graceSince, JL.catchUp.blindSince = nil, nil, nil
+        -- ⚠️ v1.8.5 A FAST TRAVEL MUST NOT EAT THE DINNER. Antonia, 2026-08-17: *"when I just fast
+        -- travelled with Lucy to get to the Ginger Panda (on a mission to have a dinner with her
+        -- there) she forgot and the white marker disappeared from the map and I couldn't start the
+        -- dinner."* This path fires on every district-scale fast travel and used to abort the outing
+        -- outright. For a SEATED companion that is correct — despawning a posed puppet is the
+        -- documented hard crash. For one still WALKING to the venue it is pure loss: the destination
+        -- is a fixed world coordinate, the pin points at a restaurant that has not moved, and the
+        -- respawn only puts their body back beside V. It was self-defeating in her exact case, too —
+        -- she fast-travelled TO the venue, so keeping the outing lands her straight in the seating
+        -- phase instead of losing the marker. `seating`/`seated` still abort: V has already arrived,
+        -- and those are the phases where a posed body can exist.
+        local keepDinner = (JL.dinner.phase == "walking") and JL.dinner.dest ~= nil
         pcall(function() jlManualUnseat("catch-up respawn") end)
-        JL.dinner.phase, JL.dinner.dest = nil, nil
+        if not keepDinner then
+          pcall(function() clearDinnerWaypoint() end)
+          JL.dinner.phase, JL.dinner.dest = nil, nil
+        else
+          log("CatchUp: KEEPING the walk to " .. tostring(JL.dinner.destName or "the venue") .. ".")
+        end
         JL.leaving.phase = nil
         if JL.varrival then JL.varrival.phase = nil end
         log(("CatchUp: %.0f m is beyond anything that can be walked or teleported back " ..
@@ -6043,7 +6113,7 @@ function catchUpTick()
   if jlCatchUpBlind(C) then return end
 
   if jlInCombat() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
-  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
+  if jlDinnerOwnsBody() or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active) then   -- v0.85: don't teleport him off his cruising bike
     JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return
   end
@@ -6502,7 +6572,9 @@ function jlAbreastWhy()
   if not A.enabled then return "walk-beside disabled in config" end -- v1.57: opt-in; default = plain trailing follower
   if not JL.walkAbreast then return "walk-beside switched OFF in settings" end
   if not (JL.summon.active and JL.summon.companionSet) then return "not a settled companion" end
-  if JL.dinner.phase then return "the DINNER phase owns his movement" end
+  -- v1.8.5: only seating/seated own the body — see jlDinnerOwnsBody. A `walking` dinner falls THROUGH
+  -- to the gates below, so the probe keeps naming the guard that is really refusing.
+  if jlDinnerOwnsBody() then return "the DINNER phase owns his movement" end
   if JL.leaving.phase then return "the LEAVING phase owns his movement" end
   if JL.varrival and JL.varrival.phase then return "the ARRIVAL phase owns his movement" end
   if jlCruise and jlCruise.active then return "cruising on the bike" end   -- not while cruising on his bike
@@ -6600,7 +6672,7 @@ local function followKeepCloseTick()
   -- (on stairs the old `jlVWalking()` test here yielded to an abreast that had already gated itself off).
   if jlAbreastOn() then return end
   if not (JL.summon.active and JL.summon.companionSet) then return end
-  if JL.dinner.phase or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
+  if jlDinnerOwnsBody() or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
      or (jlCruise and jlCruise.active) then return end   -- v0.85: leave him on his cruising bike
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
@@ -7430,6 +7502,10 @@ end
 local function dinnerTick()
   local D = JL.dinner
   if not D.phase then return end
+  -- v1.8.5: the seat tuner owns this body. The move commands below are already refused centrally
+  -- (see sendWalkToPlayer), but this tick ALSO calls placeAtExact and the workspot pose directly,
+  -- and those are deliberately unguarded because the tuner itself drives them. Stand down whole.
+  if jlPuppetHolds() then return end
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not JL.summon.active or not h then               -- dismissed / gone -> abort cleanly
     pcall(clearDinnerWaypoint)
@@ -9073,7 +9149,7 @@ function jlFollowerWatchTick()
     return
   end
   if JL.varrival and JL.varrival.phase then return end
-  if JL.dinner and JL.dinner.phase then return end
+  if jlDinnerOwnsBody() then return end   -- v1.8.5: a WALKING dinner is an ordinary follow; only seating/seated own him
   if JL.leaving and JL.leaving.phase then return end
   -- v1.9: ...and neither is a body the SEAT TUNER is holding. This watchdog re-applies the follower
   -- role every 2 s, and the role is exactly what drags him back toward V and cancels the pose — so
@@ -10773,6 +10849,14 @@ registerForEvent("onDraw", function()
 
     ImGui.TextWrapped("Companions stand at tables — the sit animation isn't tied to real furniture, "
       .. "so an automatic sit floats. Place them yourself and it lands exactly where you put it.")
+    -- v1.8.5: name the dependency BEFORE they press a dead button, not after. Placing them and
+    -- turning them is ours and always works; the sit/lean ANIMATION is AMM's workspot system.
+    if not getAMM() then
+      ImGui.TextColored(0.95, 0.80, 0.35, 1.0, "AppearanceMenuMod is not loaded.")
+      ImGui.TextWrapped("Placing and turning them still works. \"Seat them\" will not — the sit and "
+        .. "lean animations are AMM's, and there is no substitute for them in this mod.")
+      ImGui.Separator()
+    end
     ImGui.Text("1. Stand where you can SEE them.")
     ImGui.Text("2. Take control - this switches their AI off.")
     ImGui.Text("3. Slide them into the chair. They move as you drag.")

@@ -57,6 +57,11 @@ load(extract("jlVertical"))()
 load(extract("jlVLoitering"))()   -- v1.57 gate, extracted (not stubbed) so it can't drift either
 -- v1.8.3: the gates moved into jlAbreastWhy (jlAbreastOn is now "no reason"). Extract BOTH — the whole
 -- point of this harness is that it runs the shipped bytecode, so a split predicate must be loaded split.
+-- v1.8.5: jlAbreastWhy now asks jlDinnerOwnsBody() instead of the bare JL.dinner.phase, because a
+-- `walking` dinner does NOT own the body (dinnerTick issues no move command during it). EXTRACTED,
+-- not stubbed, for the same reason as jlVLoitering above: a stub would let the two drift, and the
+-- whole point of this harness is that it runs the shipped bytecode.
+load(extract("jlDinnerOwnsBody"))()
 load(extract("jlAbreastWhy"))()
 load(extract("jlAbreastOn"))()
 

@@ -103,6 +103,20 @@ M.Config = {
          .. "wouldn't say over the phone.\n\n"
          .. "Go see him at his clinic.\n\n"
          .. "(For mod settings go to Esc -> Mods -> JackieLives) ",
+    -- v1.8.5: Antonia, 2026-08-17 — *"please make it clear on the intro info card that the games own
+    -- cinematic subtitles have to be active for this mod"*. It is the one setting that makes the mod
+    -- look broken rather than quiet: nothing here draws its own subtitle, every line goes through the
+    -- GAME's subtitle widget, so with them off the player hears Jackie and reads an empty screen.
+    --
+    -- ⚠️ ITS OWN KEY, appended at SHOW time, NOT edited into `text` above — and that is a
+    -- localization decision, not a style one. `lang.lua` keys on the whole assembled English string,
+    -- so adding a sentence to `text` invalidates it in all nine languages at once and throws away
+    -- nine good translations of VIK'S LINE to add one line of setup. Worse, the replacements would
+    -- be machine ones: tools/autotranslate.py rendered "Vik... left a message" into Polish with a
+    -- feminine "I left". Keeping them separate means only this short, purely instructional sentence
+    -- is ever re-translated, which is exactly the text machine translation is good at.
+    subtitleText = "⚠ Turn ON \"Dialog subtitles\" (Settings -> Interface) — every line this mod "
+                .. "speaks is a game subtitle, so with them off you'll hear him and read nothing.",
     duration = 16.0,
     -- v1.64: shown instead of the above when the gate can't read the quest state AT ALL ("unknown"). Says
     -- nothing about Jackie being alive or dead — safe in a pre-heist save — but it does point at the manual
@@ -508,17 +522,28 @@ local function welcomeTick()
   if getStage() >= TIP then                            -- questline already started -> card is pointless
     setFactNum(W.fact, 1); return
   end
+  -- v1.8.5: the subtitle requirement rides along as its OWN translated string (see Config.welcome
+  -- .subtitleText for why it is not part of `text`). showTip runs both halves through Lang.t.
+  -- ⚠️ concatT, not a plain `..`. showTip runs Lang.t over whatever it is handed, so joining the two
+  -- English halves first would produce ONE key that matches neither of them and the card would fall
+  -- back to English entirely. concatT translates each half against its own key and then joins; the
+  -- Lang.t inside showTip then no-ops on the already-translated result. This is the same reason the
+  -- shard notes go through it (see the note above concatT).
+  local function withNote(body)
+    if not W.subtitleText or W.subtitleText == "" then return body end
+    return concatT({ body, "", W.subtitleText })
+  end
   local gs = questGateState()
   if gs == "notyet" then return end                    -- confirmed pre-heist -> say NOTHING (no spoiler)
   if gs == "unknown" then                              -- can't read the story at all -> spoiler-free notice
     if not W.unknownText then return end
     setFactNum(W.fact, 1)
-    showTip(W.unknownTitle or W.title, W.unknownText, W.duration or 16.0)
+    showTip(W.unknownTitle or W.title, withNote(W.unknownText), W.duration or 16.0)
     log("Welcome card shown (gate UNKNOWN variant — points at the manual start button).")
     return
   end
   setFactNum(W.fact, 1)
-  showTip(W.title, W.text, W.duration or 16.0)
+  showTip(W.title, withNote(W.text), W.duration or 16.0)
   log("Welcome card shown (post-'Playing for Time', first load after install).")
 end
 
