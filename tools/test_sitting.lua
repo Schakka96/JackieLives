@@ -55,8 +55,15 @@ check("tryWorkspotPose really takes a 4th `force` argument",
       src:find("local function tryWorkspotPose%(handle, pose, nameOverride, force%)") ~= nil)
 check("...and its gate is the one pinned above",
       src:find("if not %(P%.enabled or %(force and P%.manual ~= false%)%) then return false end") ~= nil)
-check("the manual seat is the ONLY caller passing force",
-      select(2, src:gsub("tryWorkspotPose%(M%.handle, M%.pose, nil, true%)", "")) == 1)
+-- Exactly ONE caller may pass `force`, and it must be the seat tuner. The shape of the call is
+-- allowed to change; the count is not — a second forced caller means something started playing
+-- poses behind the player's back, which is the behaviour Config.poses.enabled ships false to stop.
+check("the seat tuner is the ONLY caller passing force",
+      select(2, src:gsub("tryWorkspotPose%b(), true%)", "")) +
+      select(2, src:gsub("tryWorkspotPose%([^\n]-, true%)", "")) >= 1)
+check("...and there is exactly one of them",
+      select(2, src:gsub("tryWorkspotPose%([^\n]-, true%)", "")) == 1,
+      "found " .. select(2, src:gsub("tryWorkspotPose%([^\n]-, true%)", "")))
 
 -- ---------------------------------------------------------------------------
 -- 3. the dinner exit
@@ -137,9 +144,18 @@ do
   local T = Config.seatTip
   check("Config.seatTip exists", type(T) == "table")
   check("...with a title and a body", type(T and T.title) == "string" and #(T and T.text or "") > 80)
+  -- v1.8.2 AND IT STAYS SHORT. Antonia, 2026-08-17: *"MUCH shorter, concise instructions only.
+  -- very few words please."* The card is read standing at a table waiting for something to
+  -- happen, so every sentence of background costs the instructions their reader. This bound is the
+  -- brief, written down — if a future edit needs more room, it needs a different card.
+  check("...and it is SHORT — instructions, not an essay",
+        #(T and T.text or "") < 300, #(T and T.text or "") .. " chars")
   check("...and it points the player at the manual control",
-        (T and T.text or ""):lower():find("seat them here", 1, true) ~= nil,
+        (T and T.text or ""):lower():find("seat tuner", 1, true) ~= nil,
         "a card that says 'not finished' without saying 'here is the knob' is just an apology")
+  check("...including the step everything else depends on (take control / AI off)",
+        (T and T.text or ""):lower():find("take control", 1, true) ~= nil,
+        "slide them before taking control and the follow AI drags them back while you watch")
 
   -- ⚠️ ONCE PER MOD. The fact is SHARED game state, so the name must be this mod's own — otherwise
   -- a player running two of these mods is taught once and the other mod is silently skipped.
@@ -147,11 +163,22 @@ do
         (T and T.fact or ""):find("jackielives_", 1, true) == 1,
         "got " .. tostring(T and T.fact) .. ", expected it to start with " .. "jackielives_")
 
-  check("it fires at the marker (the walking -> seating transition)",
-        src:find("jlShowSeatTip" .. "%(false%)") ~= nil)
-  local seatingBlock = src:match('if pp and D%.dest and dist3.-D%.phase = "seating".-\n(.-)\n    end') or src
-  check("...and NOT from a tick that could re-fire it every frame",
+  -- v1.8.2 IT FIRES AT THE TABLE, NOT ON THE WAY TO IT. It used to go up on the walking ->
+  -- seating hand-off, which is `Config.date.seatTriggerRadius` (12 m) out — a card about a
+  -- chair the player cannot see yet. Antonia asked for 3 m, and 3 m is a knob now.
+  check("the card has a trigger radius of its own", type(T and T.radius) == "number" and T.radius > 0,
+        tostring(T and T.radius))
+  check("...and it is much tighter than the 12 m seat hand-off",
+        (T and T.radius or 99) < (Config.date.seatTriggerRadius or 12.0),
+        "a card that fires at the peel-off point is a card the player reads mid-room")
+  check("...and the tick actually reads it (not a hardcoded distance)",
+        src:find("Config%.seatTip and Config%.seatTip%.radius") ~= nil)
+  check("it fires from the dinner tick, latched so it cannot re-ask every frame",
+        src:find("jlShowSeatTip" .. "%(false%)") ~= nil and src:find("D%.seatTipTried = true") ~= nil)
+  check("...and there is still exactly ONE unforced call site",
         select(2, src:gsub("jlShowSeatTip" .. "%(false%)", "")) == 1)
+  check("...whose latch is cleared when a new outing starts, so a later dinner can still teach it",
+        src:find("dinner%.dwellSince, .-dinner%.seatTipTried = nil, nil") ~= nil)
 
   check("gated per SAVE by a quest fact", src:find("jlShowSeatTip") ~= nil and src:find("jlFactNum" .. "%(T%.fact") ~= nil)
   check("...and per INSTALL by a persisted flag", src:find("seatTipDone") ~= nil)
@@ -168,6 +195,97 @@ do
   local impls = select(2, src:gsub("gamePopupData%.new%(%)", ""))
   check(("exactly %d popup implementation in init.lua"):format(0), impls == 0,
         "found " .. impls .. " — a second one means the card duplicated the renderer instead of reusing it")
+end
+-- ---------------------------------------------------------------------------
+print("\n7. the seat tuner is a puppet tool (v1.9)")
+-- ---------------------------------------------------------------------------
+-- One panel, not two. The v1.77 split into "Sitting" + "Seat tuner" was one job pretending to be
+-- two, and it is what produced the duplicate-id bug.
+check("there is exactly ONE seat/sitting section",
+      select(2, src:gsub('CollapsingHeader%("Seat tuner', "")) == 1
+      and src:find('CollapsingHeader%("Sitting') == nil,
+      "a second section is the split this rewrite removed")
+check("...and the useless 'seat them at MY spot' option is gone",
+      src:find("atPlayer") == nil, "the player has to WATCH them slide; posing at V's feet is not that")
+
+-- MAKE THEM DUMB. This is the whole feature: follow AI re-issues a move every couple of seconds and
+-- the watchdog re-applies the follower role, and BOTH cancel the pose and drag the body back to V.
+-- Without every one of these guards the sliders appear not to work.
+check("taking control clears the follower role", src:find("function jlPuppetTake") ~= nil
+      and src:match("function jlPuppetTake.-OnRoleCleared") ~= nil)
+check("...and drops collision (a solid chair shoves them back out)",
+      src:match("function jlPuppetTake.-setNpcCollision%(h, false%)") ~= nil)
+for _, tick in ipairs({ "jlFollowerWatchTick", "catchUpTick", "settleTick", "abreastTick", "wanderTick" }) do
+  local body = src:match("function " .. tick .. "%(%)(.-)\nend") or ""
+  check(tick .. " stands down while the tuner holds the body",
+        body:find("jlPuppetHolds%(%)") ~= nil,
+        "this tick moves or re-roles the NPC; unguarded it fights every slider drag")
+end
+
+-- LIVE, and the one constraint that shapes how.
+check("the sliders place the body on change (live)",
+      select(2, src:gsub("if ch then jlPuppetPlace%(true%) end", "")) >= 4,
+      "all four axes must be live, or the panel is a form you submit")
+check("moving DROPS the pose first",
+      src:match("function jlPuppetPlace.-stopWorkspotPose") ~= nil,
+      "a puppet pinned in a workspot cannot be teleported - this repo's 'solid as a rock' finding")
+check("...and re-plays it after the last change, not during the drag",
+      src:match("function jlPuppetPlace.-replayAt") ~= nil
+      and src:match("function jlPuppetTick.-replayAt") ~= nil)
+
+check("releasing gives the AI back as a REJOIN (no arrival greeting)",
+      src:match("function jlPuppetRelease.-promoteToCompanion%(true%)") ~= nil)
+check("...and restores collision", src:match("function jlPuppetRelease.-setNpcCollision%(h, true%)") ~= nil)
+check("despawn paths still stand a posed puppet up first",
+      src:find("function jlManualUnseat%(reason%) return jlPuppetRelease") ~= nil,
+      "despawning a posed puppet is a hard crash")
+
+check("a tuned seat can still be STORED", src:find("jlPersistSeat%(t%.key") ~= nil)
+-- Match CODE, not mentions: the deletion is documented in comments naming both, and a test that
+-- greps for the bare name would fail on its own tombstone.
+check("the superseded walk-in re-seat is gone, not left compiling",
+      src:find("local function tunerApply") == nil
+      and src:find("local function tunerPrint") == nil
+      and src:find("JL%.tuner%.walk%s*=") == nil,
+      "dead code that still compiles is how a panel grows two ways to do one thing")
+
+-- ---------------------------------------------------------------------------
+print("\n8. the arrival line waits for a real arrival (v1.8.2)")
+-- ---------------------------------------------------------------------------
+-- Antonia, 2026-08-17: *"the NPC says a line once they arrive - this line currently also fires too
+-- early. Should only fire once NPC reached 2m radius of the coordinate and has been there for 2s."*
+--
+-- The bug was that `D.satAt` — the stamp the line counted from — is set when the SEAT ROUTINE ends,
+-- which is not the same event as the companion getting to the table. It also fires on the
+-- `seatTimeout` give-up path, and with automatic sitting off (the v1.77 default) it fires on the
+-- very next tick, before they have taken a step. So the gate is geometry now, and these checks pin
+-- the three pieces that make it geometry: a radius, a DWELL that resets, and a fail-open.
+do
+  local D = Config.date or {}
+  check("there is a radius that counts as 'arrived'", type(D.lineRadius) == "number" and D.lineRadius > 0,
+        tostring(D.lineRadius))
+  check("...and it is tight — the table, not the room",
+        (D.lineRadius or 99) <= 2.0, tostring(D.lineRadius))
+  check("...and the dwell they have to hold it for is the old sitWaitSeconds",
+        type(D.sitWaitSeconds) == "number" and D.sitWaitSeconds >= 2.0, tostring(D.sitWaitSeconds))
+
+  check("the tick measures distance to the seat before speaking",
+        src:find("C%.lineRadius") ~= nil)
+  check("...and the dwell clock RESETS when they leave it",
+        src:find("D%.dwellSince = D%.dwellSince or now") ~= nil and src:find("D%.dwellSince = nil") ~= nil,
+        "without the reset, a companion shoved out and back in keeps credit for standing still")
+  check("...and the old count-from-satAt gate is GONE, not left beside it",
+        src:find("now %- D%.satAt >= %(C%.sitWaitSeconds") == nil,
+        "two gates on one line is how it starts firing early again")
+
+  -- ⚠️ The fail-open is not optional. An unreachable seat (blocked navmesh, a chair in the doorway)
+  -- would otherwise park the dinner in `seating` forever: no line, no companion-clock reset, and no
+  -- way to end the meal. It must be generous enough that it only ever fires when the dwell honestly
+  -- cannot be met — never as the normal path.
+  check("an unreachable seat still ends the meal (fail-open)",
+        type(D.lineTimeout) == "number" and src:find("C%.lineTimeout") ~= nil, tostring(D.lineTimeout))
+  check("...and that fail-open is a last resort, not the normal path",
+        (D.lineTimeout or 0) > (D.sitWaitSeconds or 2.0) * 5, tostring(D.lineTimeout))
 end
 
 print(("\n%d checks, %d failed"):format(pass + fail, fail))

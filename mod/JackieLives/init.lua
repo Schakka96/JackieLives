@@ -1238,9 +1238,22 @@ local function clearVehicleArrival()
   JL.varrival.pingAt, JL.varrival.slowedLogged = nil, nil
 end
 
+-- v1.8.2 SEND-OFF -> IDLE COOLDOWN. Stamp "the schedule may not put a body in front of V yet".
+-- Read at the top of scheduleTick. See Config.dismiss.idleCooldown for the whole story (short
+-- version: dismissing the companion opens the gate on the idle/schedule body, and if V is standing
+-- at the venue the schedule wants him at, a second Jackie spawns in V's face a second later).
+-- Global, not a top-level local — init.lua is at Lua's 200-local cap.
+function jlStampIdleCooldown(why)
+  local secs = (Config.dismiss or {}).idleCooldown or 180.0
+  if secs <= 0 then return end
+  JL.idle.blockUntil = (JL.clock or 0) + secs
+  log(("Idle: schedule re-spawn held off for %.0f s (%s)."):format(secs, tostring(why or "?")))
+end
+
 local function dismissJackie()
   pcall(function() jlManualUnseat("dismiss") end)   -- v1.77: NEVER despawn a seated puppet — stand a hand-seated Jackie up first
   setCompanionFlag(false)   -- v0.72: V let him go -> clear the persisted companion intent
+  pcall(function() jlStampIdleCooldown("dismissed") end)   -- v1.8.2: no instant idle Jackie in V's face
   if JL.summon.spawn then ammDespawn(JL.summon.spawn) end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
   JL.summon.companionSinceGame, JL.summon.companionExpiresGame = nil, nil   -- v0.39: reset duration clock
@@ -1256,6 +1269,7 @@ end
 function dismissAllJackies()   -- global (not local): 200-local cap; see note at top
   pcall(function() jlManualUnseat("dismiss all") end)   -- v1.77: ...including one the player seated by hand
   setCompanionFlag(false)   -- v0.72: a full wipe clears the persisted companion intent too
+  pcall(function() jlStampIdleCooldown("dismiss all") end)   -- v1.8.2: a full wipe must not re-fill on the next tick
   local amm = getAMM()
   local n = 0
   if amm and amm.Spawn and amm.Spawn.spawnedNPCs then
@@ -2751,6 +2765,7 @@ local function startDinnerWalk(key)
   JL.dinner.destName = r.name
   JL.dinner.destYaw  = r.yaw or 0.0
   JL.dinner.satAt    = nil
+  JL.dinner.dwellSince, JL.dinner.seatTipTried = nil, nil   -- v1.8.2: a fresh outing gets a fresh arrival-dwell clock and may re-offer the seat card
   -- v0.52: if HE picked the spot ("You pick, hermano." -> dine:random) and it has a naming line, he SAYS it
   -- ("Meet me at Lizzie's." / "...we hit the Afterlife..."); otherwise the generic accept ack.
   local selfPick = (key == "random") and r.pickSfx
@@ -4820,6 +4835,9 @@ local function leavingTick()
   local far = d and d >= (D.despawnDistance or 30.0)
   if far or (JL.leaving.deadline and now >= JL.leaving.deadline) then
     setCompanionFlag(false)   -- v0.72: he's finished walking off and despawned -> intent over
+    -- v1.8.2: THIS is the path Antonia hit — he walks off, vanishes, and scheduleTick (ungated the
+    -- moment JL.summon.active goes false) spawns a fresh idle Jackie at the venue V is standing in.
+    pcall(function() jlStampIdleCooldown("walked off") end)
     ammDespawn(sp)
     pcall(hideSubtitle)                                  -- never leave the parting line on screen
     JL.summon.spawn, JL.summon.active, JL.summon.companionSet, JL.summon.walkIn = nil, false, false, false
@@ -5862,6 +5880,7 @@ function jlWeaponMirrorTick()
 end
 
 local function catchUpTick()
+  if jlPuppetHolds() then return end   -- v1.9: seat tuner owns this body (catch-up would snap him back to V's side mid-slide)
   local C = Config.catchUp or {}
   if C.enabled == false then return end
   if JL.blazeFinale then return end   -- v1.47: the finale places Jackie itself; a respawn-when-stranded here
@@ -6490,6 +6509,7 @@ end
 --    behaviour ON. It is OFF by default — out of the box Jackie is the plain trailing follower.
 -- Command re-issue is throttled to `interval` (short, so he tracks the drifting anchor). Global -> cap safe.
 function abreastTick()
+  if jlPuppetHolds() then return end   -- v1.9: seat tuner owns this body (walk-abreast re-issues a position every tick)
   local A = Config.abreast or {}
   -- v1.46: every gate now lives in jlAbreastOn() (shared with followKeepCloseTick's yield test), so the
   -- trail picks him up in exactly the cases abreast declines him — stairs and slopes included.
@@ -6829,21 +6849,35 @@ local function applyIdlePose(handle, wp, forceSnap)
 end
 
 -- ===========================================================================
--- v1.77 MANUAL SEATING — the player's own "sit down there" button
+-- v1.9 THE SEAT TUNER — a puppet manipulation tool
 -- ===========================================================================
--- Automatic sitting is off (Config.poses.enabled = false; the reasoning is on that config block).
--- The animation itself was never the problem — ALIGNING it was, and the player is standing right
--- there looking at the chair, which is a better judge of "that's the seat" than any table of
--- coordinates we can ship. So the sit is now a button, and the seat tuner it lives next to left the
--- developer section: it is the alignment tool for this feature now, not dev-only scenery.
+-- Antonia, 2026-08-17: *"the seat tuner menu is just a puppet manipulation tool: make them dumb,
+-- shove them forward/backward/left and right and play their seating animation."* That is the whole
+-- design, and it replaces v1.77's split into a "sitting" section and a "tuner" section — one job,
+-- one panel.
 --
--- ⚠️ SEATED PUPPETS MUST NEVER BE DESPAWNED — that is a hard crash. Jackie's existing defence is
--- that the dinner tree simply never OFFERS "head home" while he's seated (see Config.date's note);
--- a hand-seated Jackie has no such tree in front of him, so manual seating carries its own latch
--- (JL.manualSeat) and jlManualUnseat is called from every dismiss/despawn path there is. Adding a
--- new despawn path? Call it there too.
+-- Automatic sitting is off (Config.poses.enabled ships false): AMM's sit is a FREESTANDING animation
+-- rooted at whatever point we drop the NPC on, so on an untuned venue seat it reads as sitting in
+-- mid-air. Aligning it is a job for someone LOOKING at the chair, which is the player. So the panel
+-- hands them the three things that job actually needs, in the order it needs them:
 --
--- Whoever is out: the summoned companion first, else the NPC idling at a venue.
+--   1. MAKE THEM DUMB.  A companion is running follow AI. It re-issues a move command every couple of
+--      seconds and re-asserts the follower role, and both of those FIGHT the pose: the NPC drifts back
+--      toward V and the workspot is cancelled from under you. Nothing else here works until the AI is
+--      off, which is why "take control" is step one and not a footnote.
+--   2. DROP COLLISION.  A chair is solid. A collided NPC shoved into one is pushed straight back out,
+--      so the seat you tuned is not the seat they end up in.
+--   3. MOVE AND POSE.   Then, and only then, sliding them around and playing the animation is honest.
+--
+-- ⚠️ WHY MOVING DROPS THE POSE FIRST. A puppet pinned in a workspot CANNOT BE TELEPORTED — the call
+-- returns success and the body does not move. That is this repo's oldest tuner finding (v1.1's
+-- "solid as a rock" failure, and the reason the retired live re-seat never took). So a live slider
+-- cannot simply place them: `jlPuppetPlace` stops the workspot, moves the standing body, and
+-- re-plays the pose a beat after the last change. You watch them slide on their feet and sit down
+-- when you let go, which is both live AND correct.
+-- ===========================================================================
+
+-- Who the tuner acts on: the summoned companion first, else the NPC idling at a venue.
 function jlSeatTargetHandle()
   if JL.summon.active and JL.summon.spawn and JL.summon.spawn.handle then
     return JL.summon.spawn.handle, "companion"
@@ -6852,82 +6886,148 @@ function jlSeatTargetHandle()
   return nil, nil
 end
 
--- Play the sit at a chosen spot, plus the panel's nudges. `dz` is the one that matters: the anim is
--- rooted at the point we hand it, and a barstool's seat is most of a metre off the floor.
---
--- `atPlayer` picks the anchor, and both are genuinely useful:
---   • true  (the panel's default) — V'S OWN position and facing. Stand ON the chair, face the way
---     they should face, press the button, step back. It is the most precise aim the player has, and
---     it is the same idiom this mod's own position capture uses. V's body yaw IS the seat facing.
---   • false — where THEY are standing, facing the way they already face. For "just sit down here".
--- A following companion has their follower role cleared first — otherwise the follow command walks
--- them straight back out of the pose.
-function jlSeatHere(dx, dy, dz, dyaw, pose, atPlayer)
+-- STEP 1 — TAKE CONTROL. Clear the follower role, stop the move commands, drop collision, and latch
+-- `JL.puppet.on` so the rest of the engine leaves them alone (see jlPuppetHolds below). Captures
+-- their CURRENT position as the origin the sliders are offsets from, so the numbers always start at 0
+-- wherever they happen to be standing.
+function jlPuppetTake()
   local h, which = jlSeatTargetHandle()
   if not h then
-    JL.ui.status = "Nobody's out — call a companion (or find one at a venue) first."
+    JL.ui.status = "Nobody's out — call a companion, or find one at their venue."
     return false
   end
-  local src = h
-  if atPlayer ~= false then src = Game.GetPlayer() end
-  if not src then JL.ui.status = "Can't read the seat spot — try again in a second."; return false end
-  local p; pcall(function() p = src:GetWorldPosition() end)
-  if not p then JL.ui.status = "Can't read the seat spot — try again in a second."; return false end
+  local p; pcall(function() p = h:GetWorldPosition() end)
+  if not p then JL.ui.status = "Can't read where they are — try again in a second."; return false end
   local yaw = 0.0
-  pcall(function() yaw = src:GetWorldOrientation():ToEulerAngles().yaw end)
-  local dest = Vector4.new(p.x + (dx or 0), p.y + (dy or 0), p.z + (dz or 0), 1.0)
-  if which == "companion" then
-    pcall(function()                                   -- same role-clear the dinner seat does
-      local role = h:GetAIControllerComponent():GetAIRole()
-      if role then role:OnRoleCleared(h) end
-      h.isPlayerCompanionCached = false
-    end)
-  end
-  JL.idle.pendingPose, JL.idle.pendingSit = nil, nil  -- cancel any idle pose that would fight us
-  pcall(function() stopWorkspotPose(h) end)             -- out of any current pose before the new one
-  setNpcCollision(h, false)                            -- a chair can shove a collided NPC back out
-  -- The teleport is ASYNC. Playing the workspot in the same frame re-pins the pose at the OLD spot —
-  -- the "the tuner does nothing" bug — so place now, sit on the next tick batch.
-  placeAtExact(h, dest, (yaw or 0.0) + (dyaw or 0))
-  JL.manualSeat = { handle = h, which = which, fireAt = (JL.clock or 0) + ((Config.poses and Config.poses.delay) or 0.5),
-                     pose = (pose == "lean") and "lean" or "sit", posed = false }
-  JL.ui.status = "Seating them here..."
-  log(("MANUAL SEAT: %s at {%.2f, %.2f, %.2f} yaw %.1f (pose=%s)")
-      :format(tostring(which), dest.x, dest.y, dest.z, (yaw or 0.0) + (dyaw or 0), tostring(JL.manualSeat.pose)))
+  pcall(function() yaw = h:GetWorldOrientation():ToEulerAngles().yaw end)
+
+  pcall(function()                                   -- the AI has to stop, or it fights every step
+    local role = h:GetAIControllerComponent():GetAIRole()
+    if role then role:OnRoleCleared(h) end
+    h.isPlayerCompanionCached = false
+  end)
+  setNpcCollision(h, false)                          -- a chair shoves a collided NPC back out
+  JL.idle.pendingPose, JL.idle.pendingSit = nil, nil   -- cancel any scheduled idle pose
+  pcall(function() stopWorkspotPose(h) end)
+
+  JL.puppet = { on = true, handle = h, which = which,
+                 bx = p.x, by = p.y, bz = p.z, byaw = yaw,
+                 dx = 0, dy = 0, dz = 0, dyaw = 0,
+                 pose = "sit", posed = false, replayAt = nil }
+  JL.ui.status = "Control taken — their AI is off. Slide them into the chair."
+  log(("PUPPET: took control of the %s at {%.2f, %.2f, %.2f} yaw %.1f — AI off, collision off.")
+      :format(tostring(which), p.x, p.y, p.z, yaw))
   return true
 end
 
--- Fire the deferred manual sit. Called from onUpdate; `force` is what gets it past the
--- automatic-sitting-is-off gate in tryWorkspotPose.
-function jlManualSeatTick()
-  local M = JL.manualSeat
-  if not (M and M.handle and not M.posed) then return end
-  if (JL.clock or 0) < (M.fireAt or 0) then return end
-  local ok = false
-  pcall(function() ok = tryWorkspotPose(M.handle, M.pose, nil, true) end)
-  M.posed = true
-  JL.ui.status = ok and "Seated. Press Stand up when you're done."
-                     or  "The sit animation didn't play — AMM isn't loaded (it's the optional dep that owns poses)."
-  log("MANUAL SEAT: workspot play -> " .. tostring(ok))
+-- Is the tuner holding this body? Read by the ticks that would otherwise re-assert follow AI.
+function jlPuppetHolds(h)
+  local P = JL.puppet
+  if not (P and P.on and P.handle) then return false end
+  if h == nil then return true end
+  return sameEntity(h, P.handle)
 end
 
--- Stand them back up. Restores collision, and hands a companion back to the follow engine.
--- Safe to call blind — it is also the "never despawn a seated puppet" guard, so it must never throw.
-function jlManualUnseat(reason)
-  local M = JL.manualSeat
-  if not M then return false end
-  JL.manualSeat = nil
-  local h = M.handle
+-- The tuner's working coordinate: the captured origin plus the sliders. FORWARD/RIGHT are relative to
+-- the NPC's own facing, not to world X/Y — "shove them forward" has to mean forward from where the
+-- player is looking at them, or the sliders are a coordinate puzzle instead of a control.
+function jlPuppetCoords()
+  local P = JL.puppet; if not P then return 0, 0, 0, 0 end
+  local yaw = (P.byaw or 0) + (P.dyaw or 0)
+  local r   = math.rad(yaw)
+  local fx, fy = -math.sin(r), math.cos(r)          -- the game's yaw 0 faces +Y
+  local rx, ry =  math.cos(r), math.sin(r)
+  return P.bx + fx * (P.dy or 0) + rx * (P.dx or 0),
+         P.by + fy * (P.dy or 0) + ry * (P.dx or 0),
+         P.bz + (P.dz or 0),
+         yaw
+end
+
+-- Place them at the current coordinate. LIVE: called on every slider change.
+-- The pose is dropped first (a workspot-pinned puppet cannot be teleported — see the header) and
+-- re-armed for `replayAt`, so a continuous drag never fights a re-play mid-move.
+function jlPuppetPlace(replay)
+  local P = JL.puppet
+  if not (P and P.on and P.handle) then return false end
+  local x, y, z, yaw = jlPuppetCoords()
+  if P.posed then
+    pcall(function() stopWorkspotPose(P.handle) end)
+    P.posed = false
+  end
+  placeAtExact(P.handle, Vector4.new(x, y, z, 1.0), yaw)
+  if replay ~= false then
+    P.replayAt = (JL.clock or 0) + ((Config.poses and Config.poses.delay) or 0.5)
+  end
+  return true
+end
+
+-- Play the pose now (the "Seat them" button, and the debounced re-play after a slide).
+function jlPuppetPose(pose)
+  local P = JL.puppet
+  if not (P and P.on and P.handle) then
+    JL.ui.status = "Take control first — their AI would cancel the animation."
+    return false
+  end
+  if pose then P.pose = pose end
+  P.replayAt = nil
+  local ok = false
+  pcall(function() ok = tryWorkspotPose(P.handle, P.pose == "lean" and "lean" or "sit", P.anim, true) end)
+  P.posed = ok and true or false
+  JL.ui.status = ok and "Playing the animation. Slide them until it lines up."
+                     or  "The animation didn't play — AMM isn't loaded (it owns the poses)."
+  log("PUPPET: pose '" .. tostring(P.anim or P.pose) .. "' -> " .. tostring(ok))
+  return ok
+end
+
+-- Stepped from onUpdate. Two jobs, both cheap and both only while the tuner is live:
+--   * fire the debounced re-play once the player stops dragging;
+--   * hold the body where we put it. The engine has several paths that nudge an NPC (catch-up,
+--     settle, the follower watchdog) and one of them getting a frame in is what makes a tuned seat
+--     drift while you are looking at it.
+function jlPuppetTick()
+  local P = JL.puppet
+  if not (P and P.on and P.handle) then return end
+  local now = JL.clock or 0
+  if P.replayAt and now >= P.replayAt then
+    P.replayAt = nil
+    jlPuppetPose(nil)
+    return
+  end
+  if P.posed then return end                          -- a played workspot pins them; don't fight it
+  if (now - (P.holdAt or 0)) < 0.5 then return end
+  P.holdAt = now
+  local jp; pcall(function() jp = P.handle:GetWorldPosition() end)
+  local x, y, z = jlPuppetCoords()
+  if jp and dist3(jp, { x = x, y = y, z = z }) > 0.15 then
+    local _, _, _, yaw = jlPuppetCoords()
+    placeAtExact(P.handle, Vector4.new(x, y, z, 1.0), yaw)
+  end
+end
+
+-- RELEASE. Stand them up, give collision back, and hand a companion to the follow engine as a REJOIN
+-- (no arrival greeting — they never left). Safe to call blind: it is also the "never despawn a posed
+-- puppet" guard, so it must never throw.
+function jlPuppetRelease(reason)
+  local P = JL.puppet
+  if not P then return false end
+  JL.puppet = nil
+  local h = P.handle
   if h then
     pcall(function() stopWorkspotPose(h) end)
     pcall(function() setNpcCollision(h, true) end)
-    -- REJOIN (v1.77): standing back up is not an arrival, so no greeting.
-    if M.which == "companion" and JL.summon.active then pcall(function() promoteToCompanion(true) end) end
+    if P.which == "companion" and JL.summon.active then
+      pcall(function() promoteToCompanion(true) end)
+    end
   end
-  JL.ui.status = "They're back on their feet."
-  log("MANUAL SEAT cleared (" .. tostring(reason or "stand up") .. ").")
+  JL.ui.status = "Control released — they're back on their feet."
+  log("PUPPET: released (" .. tostring(reason or "button") .. ").")
   return true
 end
+
+-- ⚠️ NEVER DESPAWN A POSED PUPPET — it is a hard crash. NCL.unseatIfSeated only knows about the
+-- dinner, so the tuner carries its own latch and this is called from every dismiss/despawn path.
+-- Adding a new one? Call it there too.
+function jlManualUnseat(reason) return jlPuppetRelease(reason) end
 
 -- ===========================================================================
 -- v1.41 LOOK-AT / head tracking. See the long note on Config.lookAt. We queue ONE `entLookAtAddEvent`
@@ -7093,11 +7193,27 @@ local function dinnerTick()
       if D.collisionOff then setNpcCollision(h, true) end   -- never leave a freed entity collision-less
     end
     D.phase, D.collisionOff, D.seatDeadline, D.sitFireAt = nil, false, nil, nil
+    D.dwellSince, D.seatTipTried = nil, nil   -- v1.8.2: arrival-dwell clock + seat-card latch
     return
   end
   local C   = Config.date or {}
   local now = JL.clock or 0
   local pp  = playerPos()
+
+  -- v1.8.2 THE SEAT CARD FIRES AT THE TABLE, NOT ON THE WAY TO IT.
+  -- It used to go up on the walking -> seating hand-off, which happens `seatTriggerRadius` (12 m)
+  -- from the seat — so the player read a card about a chair they could not see yet. Antonia,
+  -- 2026-08-17: *"it should appear once V reaches the actual coordinate (3m radius) not sooner."*
+  -- Checked every tick for the whole outing (not just in `walking`) because V can drift out and
+  -- back in, and it is `jlShowSeatTip` itself that keeps it once-ever — `seatTipTried` only stops us
+  -- re-asking sixty times a second.
+  if pp and D.dest and not D.seatTipTried then
+    local tipR = (Config.seatTip and Config.seatTip.radius) or 3.0
+    if dist3(pp, D.dest) <= tipR then
+      D.seatTipTried = true
+      pcall(function() jlShowSeatTip(false) end)
+    end
+  end
 
   if D.phase == "walking" then
     -- arrived = V within seatTriggerRadius of the seat. Then Jackie drops follow + heads to his seat.
@@ -7122,10 +7238,6 @@ local function dinnerTick()
       D.phase = "seating"
       JL.ui.status = "Jackie's grabbin' his seat."
       log("Dinner: V arrived; Jackie heading to his seat.")
-      -- v1.74: FIRST dinner ever -> the seating-is-WIP card. Here, at the marker, because this is
-      -- the moment the player is looking at the table waiting for someone to sit down. Guarded and
-      -- once-ever-per-mod; see Config.seatTip.
-      pcall(function() jlShowSeatTip(false) end)
     end
     return
   end
@@ -7163,8 +7275,30 @@ local function dinnerTick()
       end
       return
     end
-    -- `sitWaitSeconds` after sitting -> one final line + the (once/24h) full reset
-    if now - D.satAt >= (C.sitWaitSeconds or 2.0) then
+    -- v1.8.2 THE ARRIVAL LINE WAITS FOR THEM TO ACTUALLY ARRIVE.
+    -- `D.satAt` is stamped when the SEAT ROUTINE finishes, and that is not the same event as the
+    -- companion getting to the table: it also fires on the `seatTimeout` give-up path, and with
+    -- automatic sitting off (the v1.77 default) it fires on the very next tick, before they have
+    -- taken a step. Counting `sitWaitSeconds` from it therefore had them say "here we are" while
+    -- still walking in. Antonia, 2026-08-17: *"the NPC says a line once they arrive - this line
+    -- currently also fires too early. Should only fire once NPC reached 2m radius of the
+    -- coordinate and has been there for 2s."*
+    -- So the gate is geometry now, not bookkeeping: within `lineRadius` of the seat, and STAYED
+    -- there for `sitWaitSeconds` — the dwell clock resets if they get shoved back out, so a
+    -- crowd bumping past cannot buy them credit for standing still.
+    -- ⚠️ `lineTimeout` is the fail-open and it is not optional: an unreachable seat (blocked
+    -- navmesh, a chair in the doorway) would otherwise park the state machine in `seating`
+    -- forever — no line, no clock reset, and no way out of the meal.
+    local sp_; pcall(function() sp_ = h:GetWorldPosition() end)
+    if sp_ and D.dest and dist3(sp_, D.dest) <= (C.lineRadius or 2.0) then
+      D.dwellSince = D.dwellSince or now
+    else
+      D.dwellSince = nil
+    end
+    local dwelled = D.dwellSince and (now - D.dwellSince) >= (C.sitWaitSeconds or 2.0)
+    local gaveUp  = (now - D.satAt) >= (C.lineTimeout or 30.0)
+    if dwelled or gaveUp then
+      if not dwelled then log("Dinner: never settled within reach of the seat -> speaking the arrival line anyway.") end
       pcall(function() speakJackieLine(C.doneText, C.doneSfx) end)
       armCompanionTimer((Config.companion and Config.companion.maxGameHours) or 6.0)
       D.lastResetGame = getGameSeconds()   -- stamp the day: the start gate refuses a 2nd dinner within 24h
@@ -7255,6 +7389,7 @@ end
 -- on-screen flash fired once from startDinnerWalk (showOnscreenMsg). Map waypoint still guides.
 
 local function wanderTick()
+  if jlPuppetHolds() then return end   -- v1.9: seat tuner owns this body (the venue wander walks him to the next waypoint)
   if not (Config.wander and Config.wander.enabled) then return end
   if JL.summon.active then return end                  -- following V -> not idle-wandering
   if JL.idle.leaving then return end                   -- walking off to despawn -> idleLeavingTick owns him
@@ -7279,39 +7414,8 @@ local function wanderTick()
   -- never a teleport on a workspot-pinned puppet (that was the "solid as a rock" failure). Collisions
   -- stay off so he can walk into the bar-stool. Driven here (idle Jackie's per-frame tick) and RETURNS
   -- while active so the normal dwell/wander loop can't fight it. Loud logs so we can see each step.
-  local TW = JL.tuner.walk
-  if TW and TW.phase then
-    local jp; pcall(function() jp = h:GetWorldPosition() end)
-    if TW.phase == "toStart" then
-      local d = jp and dist3(jp, { x = TW.startVec.x, y = TW.startVec.y, z = TW.startVec.z }) or 99
-      if d <= 1.0 or now >= TW.deadline then
-        TW.phase, TW.deadline, TW.nextAt = "toSeat", now + 6.0, 0
-        log(("TUNER walk: reached start (d=%.2f m) -> walking into seat."):format(d))
-      elseif now >= (TW.nextAt or 0) then
-        TW.nextAt = now + 1.5
-        pcall(function() sendMoveToPoint(h, TW.startVec, "Walk", 0.6) end)
-      end
-    elseif TW.phase == "toSeat" then
-      local d = jp and dist3(jp, { x = TW.seatVec.x, y = TW.seatVec.y, z = TW.seatVec.z }) or 99
-      if d <= 0.8 or now >= TW.deadline then
-        placeAtExact(h, TW.seatVec, TW.yaw)                 -- STANDING now -> exact lock works (unlike when seated)
-        TW.phase, TW.at = "sitting", now + 0.45
-        log(("TUNER walk: at seat (d=%.2f m) -> exact place + sit in 0.45 s."):format(d))
-      elseif now >= (TW.nextAt or 0) then
-        TW.nextAt = now + 1.5
-        pcall(function() sendMoveToPoint(h, TW.seatVec, "Walk", 0.4) end)
-      end
-    elseif TW.phase == "sitting" then
-      if now >= (TW.at or 0) then
-        pcall(function() tryWorkspotPose(h, "sit", TW.poseAnim) end)
-        JL.tuner.walk = nil
-        JL.idle.phase, JL.idle.dwellUntil = "dwelling", now + 3600   -- hold him seated while you judge the fit
-        log("TUNER walk: sit played. DONE — nudge sliders + 'Move Jackie here' to redo.")
-        JL.ui.status = "Seated. Nudge sliders + Move Jackie here to redo."
-      end
-    end
-    return   -- walk-in owns him this frame; skip the normal dwell/wander logic below
-  end
+  -- (v1.9: the TUNER WALK-IN state machine was DELETED here with tunerApply, the only thing that
+  -- ever armed `JL.tuner.walk`. The tuner no longer walks anyone anywhere.)
 
   -- v0.45 deferred sit/lean in TWO steps so the (async) exact-teleport lands BEFORE the workspot plays
   -- (playing it same-frame let the workspot re-pin him at the OLD spot — the "tuner does nothing" bug):
@@ -7574,6 +7678,13 @@ end
 local function scheduleTick()
   if JL.idle.leaving then return end                 -- a departure is in progress; idleLeavingTick owns it
   if JL.summon.active then clearIdle(); return end
+  -- v1.8.2: V JUST SENT HIM OFF. Hold the schedule back so the send-off actually reads as one —
+  -- see Config.dismiss.idleCooldown and jlStampIdleCooldown. clearIdle() (not a bare return) so a
+  -- body that somehow survived the dismiss is removed rather than left standing.
+  if JL.idle.blockUntil then
+    if (JL.clock or 0) < JL.idle.blockUntil then clearIdle(); return end
+    JL.idle.blockUntil = nil
+  end
   if not Retrieval.isUnlocked() then clearIdle(); return end   -- gated: Jackie stays "absent" until the retrieval quest is done
   if not Config.enableSchedule then clearIdle(); return end
 
@@ -8592,6 +8703,7 @@ end
 -- once the window closes. Mirrors the arrival sequence's own hide-until-placed trick (setVisible/setNpcCollision).
 -- GLOBAL (not a top-level local): init.lua is at Lua's 200-local hard cap — see companionPersistTick etc.
 function settleTick()
+  if jlPuppetHolds() then return end   -- v1.9: seat tuner owns this body (settle re-hides and re-places him for a beat)
   local s = JL.settle
   if not (s and (s.hideUntil or s.collideUntil or s.reposePending)) then return end
   local now = JL.clock or 0
@@ -8664,7 +8776,8 @@ function jlResetSessionState(id, why)
   JL.idle     = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
                   spawnedAt = 0, dwellUntil = 0, arriveBy = 0, lastReissue = 0,
                   leaving = false, leaveTarget = nil, leaveDeadline = 0, leaveReissue = 0,
-                  collisionOff = false }
+                  collisionOff = false,
+                  blockUntil = nil }   -- v1.8.2: JL.clock deadline before the schedule may re-spawn him (post-dismiss)
   JL.settle   = { hideUntil = nil, collideUntil = nil, handle = nil,
                   reposePending = nil, reposeAt = nil, reposeLast = nil }
   JL.smile    = { until_ = 0, nextRoll = 0, nextApply = 0, cooldownUntil = 0, handle = nil,
@@ -8717,6 +8830,10 @@ function jlFollowerWatchTick()
   if JL.varrival and JL.varrival.phase then return end
   if JL.dinner and JL.dinner.phase then return end
   if JL.leaving and JL.leaving.phase then return end
+  -- v1.9: ...and neither is a body the SEAT TUNER is holding. This watchdog re-applies the follower
+  -- role every 2 s, and the role is exactly what drags him back toward V and cancels the pose — so
+  -- without this the tuner is unusable and it looks like the sliders don't work.
+  if jlPuppetHolds() then return end
 
   local now = JL.clock or 0
   if (now - (jlFollowerWatch.at or -999)) < (F.roleWatchInterval or 2.0) then return end
@@ -9847,7 +9964,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(settleTick)       -- v0.82: hide + no-collision for a beat after a respawn-at-V so he doesn't pop/clip in
   pcall(dinnerTick)       -- v0.41: dinner outing (walk to restaurant -> linger -> full reset)
   pcall(jackieDinnerOfferTick)  -- v0.48: Jackie proposes the outing himself after a random in-game gap
-  pcall(jlManualSeatTick)       -- v1.77: fire the player's hand-placed sit, a beat after the (async) placement
+  pcall(jlPuppetTick)           -- v1.9: seat tuner — debounced pose re-play + hold them where we put them
   pcall(jlAppearanceTick)       -- v1.77: verify the spawned body is actually WEARING the outfit we asked for
 
   pcall(jlLookAtTick)     -- v1.41: venue/seated Jackie turns his head to follow V (engine look-at overlay)
@@ -9934,62 +10051,10 @@ local function tunerHere()   -- is idle Jackie present at the tuned venue?
   return JL.idle.spawn and JL.idle.spawn.handle and JL.idle.locationKey == JL.tuner.key
 end
 
--- "Move Jackie here" — WALK-IN re-seat (v1.1, Antonia's design). Get him up out of the chair, walk
--- him a few metres out, then walk him back INTO the exact tuned coordinate and play the sit. NO
--- teleport on a seated puppet (that never took). Collisions off so he can walk into the bar-stool.
--- The state machine + logs live in wanderTick's TUNER WALK-IN block; here we just arm it.
-local function tunerApply()
-  if not tunerHere() then
-    JL.ui.status = "Move ignored: Jackie's not idle here yet — walk up to him first."
-    log(("TUNER: Move-here IGNORED — tuner key=%s but idle Jackie locationKey=%s (spawn=%s)."):format(
-        tostring(JL.tuner.key), tostring(JL.idle.locationKey), tostring(JL.idle.spawn ~= nil)))
-    return false
-  end
-  local h = JL.idle.spawn.handle
-  local x, y, z, yaw   = tunerCoords()
-  local wp, loc, seats = tunerSeatWaypoint()
-  if not (wp and loc) then return false end
-  -- stage the tuned coords onto the seat waypoint (persistence + fallback spot track it)
-  wp.pos = { x, y, z }; wp.yaw = yaw
-  if #seats <= 1 then loc.pos = { x, y, z }; loc.yaw = yaw end
-  local seatVec = Vector4.new(x, y, z, 1.0)
-  -- start point: ~2.5 m out FROM the seat toward V, so he walks in from your side (fallback: -X 2.5 m)
-  local sx, sy = x - 2.5, y
-  local pp = playerPos()
-  if pp then
-    local dx, dy = pp.x - x, pp.y - y
-    local len = math.sqrt(dx * dx + dy * dy)
-    if len > 0.3 then sx, sy = x + (dx / len) * 2.5, y + (dy / len) * 2.5 end
-  end
-  JL.ui.forceVenue = JL.tuner.key                        -- pin him here so scheduleTick can't walk him off mid-tune
-  stopWorkspotPose(h)                                    -- get him UP (this works — wander uses the same)
-  setNpcCollision(h, false)                              -- collisions OFF so he can walk into the stool
-  JL.idle.pendingPose, JL.idle.pendingSit = nil, nil     -- cancel any idle sit that would fight us
-  JL.idle.phase = "tuning"                               -- freeze the normal dwell/wander loop
-  JL.tuner.walk = { phase = "toStart", startVec = Vector4.new(sx, sy, z, 1.0), seatVec = seatVec,
-                    yaw = yaw, poseAnim = wp.poseAnim, deadline = (JL.clock or 0) + 5.0, nextAt = 0 }
-  pcall(function() sendMoveToPoint(h, JL.tuner.walk.startVec, "Walk", 0.6) end)
-  log(("TUNER: Move-here PRESSED -> walking Jackie in. seat={%.2f,%.2f,%.2f} yaw=%.1f start={%.2f,%.2f}")
-      :format(x, y, z, yaw, sx, sy))
-  JL.ui.status = "Walking Jackie in to the seat... (watch the CET console / jackie_debug.log)"
-  return true
-end
-
--- Commit this seat: live-patch the in-memory config so he keeps sitting right this session, PERSIST
--- it to jl_seats.txt so it survives a reload (v1.1 old-S4 fix), AND print the config-ready line so
--- Antonia can still bake it into config.lua permanently. Updates THIS seat waypoint (key + seatIdx);
--- for a single-seat venue it also moves the anchor pos so his fall-back spot tracks the seat.
-local function tunerPrint()
-  local x, y, z, yaw = tunerCoords()
-  local line = string.format("pos = { %.3f, %.3f, %.3f }, yaw = %.1f", x, y, z, yaw)
-  JL.ui.lastCapture = line
-  log(("%s seat %d tuned -> %s"):format(JL.tuner.key, JL.tuner.seatIdx, line))
-  local wp, loc, seats = tunerSeatWaypoint()
-  if wp then wp.pos = { x, y, z }; wp.yaw = yaw end
-  if loc and #seats <= 1 then loc.pos = { x, y, z }; loc.yaw = yaw end  -- single-seat venue: anchor tracks it
-  jlPersistSeat(JL.tuner.key, JL.tuner.seatIdx, x, y, z, yaw)           -- write-back so it survives a reload
-  JL.ui.status = ("Saved %s seat %d — survives reload."):format(JL.tuner.key, JL.tuner.seatIdx)
-end
+-- (v1.9: `tunerApply` and `tunerPrint` were DELETED here, together with the WALK-IN re-seat they
+-- drove. Both are superseded by the puppet tuner, which places the body directly and saves from
+-- the same coordinates it is showing you. Git is the archive; a dead second path that still
+-- compiles is how a panel grows two ways to do one thing.)
 
 registerForEvent("onDraw", function()
   -- (v1.63: the choice box is drawn by the GAME now — see dialogui.lua. Nothing to render here.)
@@ -10447,227 +10512,183 @@ registerForEvent("onDraw", function()
     if ImGui.Button("Re-arm Reverend Flash egg") then pcall(function() Retrieval.resetRevflash() end) end
   end
 
-  -- Consolidated "spots" tuning — idle collision, force-venue and the seat tuner, all in one place.
   -- ===========================================================================
-  -- v1.77 SITTING — PLAYER-FACING (it left the developer section on purpose)
+  -- v1.9 SEAT TUNER — one panel, and it is a puppet manipulation tool
   -- ===========================================================================
-  -- Automatic sit/lean is OFF (Config.poses.enabled = false): AMM's sit is a freestanding animation
-  -- rooted at whatever point we drop the NPC on, so on an untuned venue seat it reads as sitting in
-  -- mid-air. Standing is the honest default. But the animation itself works fine — what it needs is
-  -- someone looking at the chair, and the player is standing right there. So the sit is a BUTTON now,
-  -- and the seat tuner that used to be dev-only is its alignment tool. That is why this whole section
-  -- is written as a feature the player is meant to find, not as scaffolding.
-  -- ---------------------------------------------------------------------------
-  -- 0-ENGINE — integration probe (a BUTTON, not a hotkey)
-  -- ---------------------------------------------------------------------------
-  -- "Is JackieLives 0-Engine compatible?" is a question users will ask, and this answers it on screen
-  -- without a log dive: installed / attached / their version / how many values we have taken.
-  -- ⚠️ The `##` id must be unique in this panel — two sections sharing one id are ONE widget drawn
-  -- twice, which is how NCLucy shipped an empty seat section. test_sitting.lua §5 fails on it.
-  if ImGui.CollapsingHeader("Dev: 0-Engine (integration probe)##jlzengine") then
-    local line = "0-Engine: (probe unavailable)"
-    pcall(function() line = ZEngine.status() end)
-    ImGui.TextWrapped(line)
+  -- Replaces v1.77's split into a "Sitting" section and a "Seat tuner" section. They were one job
+  -- pretending to be two, and the split is what produced the duplicate-id bug in the first place.
+  --
+  -- The ORDER of this panel is the order the job actually has to happen in, and it is not cosmetic:
+  -- take the AI off them, drop collision, THEN move and pose. Slide them before taking control and
+  -- the follow AI drags them back while you watch, which reads as "the sliders don't work".
+  if ImGui.CollapsingHeader("Seat tuner — pose them by hand##jlseattuner") then
+    local P = JL.puppet
+    local held = (P and P.on) and true or false
+
+    ImGui.TextWrapped("Companions stand at tables — the sit animation isn't tied to real furniture, "
+      .. "so an automatic sit floats. Place them yourself and it lands exactly where you put it.")
+    ImGui.Text("1. Stand where you can SEE them.")
+    ImGui.Text("2. Take control - this switches their AI off.")
+    ImGui.Text("3. Slide them into the chair. They move as you drag.")
+    ImGui.Text("4. Press Seat them to play the animation.")
+    ImGui.Text("5. Nudge until it looks right, then Save this seat.")
+    ImGui.Text("6. Release them when you're done.")
     ImGui.Separator()
-    if ImGui.Button("Write the full 0-Engine probe to the log##jlzeprobe") then
-      local n = 0
-      pcall(function()
-        for _, l in ipairs(ZEngine.probe()) do log(l); n = n + 1 end
-      end)
-    end
-    ImGui.TextWrapped("installed=false is the normal case and is not a fault — JackieLives then uses " ..
-                      "its own readers, exactly as it always has. attached=true means we are taking " ..
-                      "0-Engine's shared per-frame state instead of polling the same blackboard twice.")
-  end
 
-  if ImGui.CollapsingHeader("Sitting — seat them by hand##jlsit") then
-    ImGui.TextWrapped("NPCs stand by default — the sit animation isn't aligned to real chairs yet, "
-      .. "so an automatic sit often floats. Seat them yourself instead: it lands exactly where you "
-      .. "put it.")
-    ImGui.TextWrapped("1. Stand ON the chair, facing the way they should face.  2. Seat them here.  "
-      .. "3. Step back.  4. Nudge Z until they're on the seat, not through it.")
-
+    -- ── 1. CONTROL. Nothing below works until the AI is off, so it is the first control. ──
     do
       local h, which = jlSeatTargetHandle()
-      ImGui.Text(h and ("Will seat: " .. "Jackie" .. " (" .. tostring(which) .. ")")
-                    or  "Nobody's out right now — call a companion, or find one at their venue.")
-    end
-
-    -- The nudges. Z is the one that matters (a barstool seat is most of a metre up); yaw turns them
-    -- on the spot. They apply to the NEXT press, and to Re-seat, so you tune by pressing again.
-    JL.seatUI = JL.seatUI or { dx = 0, dy = 0, dz = 0, dyaw = 0, atPlayer = true }
-    local S = JL.seatUI
-    S.atPlayer = ImGui.Checkbox("Seat them at MY spot (off = where they're standing)", S.atPlayer ~= false)
-    S.dz   = ImGui.SliderFloat("Height nudge Z (m)##jlseat", S.dz,   -1.5, 1.5)
-    S.dyaw = ImGui.SliderFloat("Turn them (deg)##jlseat",    S.dyaw, -180.0, 180.0)
-    S.dx   = ImGui.SliderFloat("Nudge X (m)##jlseat",        S.dx,   -3.0, 3.0)
-    S.dy   = ImGui.SliderFloat("Nudge Y (m)##jlseat",        S.dy,   -3.0, 3.0)
-    if ImGui.Button("Z -0.05##jlseat") then S.dz = S.dz - 0.05 end ImGui.SameLine()
-    if ImGui.Button("Z +0.05##jlseat") then S.dz = S.dz + 0.05 end ImGui.SameLine()
-    if ImGui.Button("Reset nudges##jlseat") then S.dx, S.dy, S.dz, S.dyaw = 0, 0, 0, 0 end
-
-    if ImGui.Button("Seat them here (play sitting animation)##jlseat") then
-      jlSeatHere(S.dx, S.dy, S.dz, S.dyaw, "sit", S.atPlayer ~= false)
-    end
-    ImGui.SameLine()
-    if ImGui.Button("Lean them here##jlseat") then
-      jlSeatHere(S.dx, S.dy, S.dz, S.dyaw, "lean", S.atPlayer ~= false)
-    end
-    ImGui.SameLine()
-    if ImGui.Button("Stand them up##jlseat") then jlManualUnseat("button") end
-    ImGui.SameLine()
-    -- v1.74: re-read the first-dinner card on demand. `force` = true, so it neither consumes nor
-    -- needs either gate. It lives HERE, not with the retrieval cards, because this is the section
-    -- it talks about.
-    if ImGui.Button("What's this? (show card)##jlseat") then
-      JL.ui.status = jlShowSeatTip(true)
-        and "Seating card shown (bottom-left; press any key to dismiss)."
-        or  "Card unavailable — check jackie_debug.log."
-    end
-    ImGui.TextWrapped("Stand them up before you dismiss them or switch companion — despawning a "
-      .. "seated NPC crashes the game, and this is the button that prevents it. (The mod also does "
-      .. "it for you on every dismiss it knows about.)")
-
-    -- The escape hatch, for anyone who HAS tuned their venues: put automatic sitting back.
-    ImGui.Separator()
-    do
-      local prev = (Config.poses and Config.poses.enabled) and true or false
-      local now  = ImGui.Checkbox("Let them sit down automatically (off by default — often floats)", prev)
-      if Config.poses and now ~= prev then
-        Config.poses.enabled = now
-        log("Automatic sit/lean -> " .. (now and "ON" or "OFF (they stand)"))
-        JL.ui.status = now and "Automatic sitting ON — expect floating on untuned seats."
-                            or  "Automatic sitting OFF — they stand."
+      if held then
+        ImGui.TextColored(0.45, 0.95, 0.55, 1.0, "IN CONTROL - their AI is off (" .. tostring(P.which) .. ")")
+      elseif h then
+        ImGui.TextColored(0.95, 0.80, 0.35, 1.0, "Their AI is RUNNING - it will fight the pose. Take control first.")
+      else
+        ImGui.TextDisabled("Nobody's out. Call a companion, or find one at their venue.")
+      end
+      if not held then
+        if ImGui.Button("Take control (AI off)##jlpup") then jlPuppetTake() end
+      else
+        if ImGui.Button("Release them (AI back on)##jlpup") then jlPuppetRelease("button") end
+      end
+      ImGui.SameLine()
+      if ImGui.Button("What's this? (show card)##jlpup") then
+        JL.ui.status = jlShowSeatTip(true)
+          and "Seating card shown (bottom-left; press any key to dismiss)."
+          or  "Native popup unavailable - shown on the notice band instead."
       end
     end
-    ImGui.TextWrapped("This one is not saved across a reload on purpose: it is a look-at-it switch, "
-      .. "not a setting. Set Config.poses.enabled in config.lua to make it permanent.")
-  end
 
-
-
-  if ImGui.CollapsingHeader("Jackie's spots — seat fine tuning") then
-
-    -- MASTER flip switch — collision off for idle Jackie's whole stay (so chairs/stalls can't block him).
+    -- ── 2. COLLISION. High up because a solid chair shoves a collided NPC straight back out. ──
+    ImGui.Separator()
     do
       local prev = Config.idleNoCollision
-      Config.idleNoCollision = ImGui.Checkbox("Idle Jackie: collisions OFF (no chair-blocking)", Config.idleNoCollision and true or false)
+      Config.idleNoCollision = ImGui.Checkbox("Collisions OFF (they can be pushed into furniture)",
+                                              Config.idleNoCollision and true or false)
       if Config.idleNoCollision ~= prev then
         applyIdleCollision()
         log("Idle collision master -> " .. (Config.idleNoCollision and "OFF (no collision)" or "ON (normal collision)"))
       end
-    end
-    do
-      local setting = Config.idleNoCollision and "OFF" or "ON"
-      local live
-      if JL.dinner.collisionOff then
-        live = "OFF — dinner seat (companion)"
-      elseif JL.idle.spawn then
-        live = JL.idle.collisionOff and "OFF — deactivated ✓" or "ON"
-      else
-        live = "— (no idle Jackie spawned yet)"
-      end
-      ImGui.Text(("Collision  setting: %s   |   live on Jackie: %s"):format(setting, live))
+      local live = "-"
+      if held then live = "OFF - the tuner holds them"
+      elseif JL.dinner.collisionOff then live = "OFF - dinner seat"
+      elseif JL.idle.spawn then live = JL.idle.collisionOff and "OFF" or "ON" end
+      ImGui.TextDisabled(("live on them: %s"):format(live))
     end
 
-    -- Force his schedule to a venue so you can go observe him (overrides time + secret).
+    -- ── 3. MOVE. LIVE: every change places them immediately. ──
+    -- ⚠️ Forward/Right are relative to the NPC'S OWN FACING, not world X/Y. "Shove them forward" has
+    -- to mean forward from where you are looking at them, or these are a coordinate puzzle.
+    -- ⚠️ Moving DROPS the pose and re-plays it a beat after you stop: a puppet pinned in a workspot
+    -- cannot be teleported (this repo's "solid as a rock" finding). So you see them slide on their
+    -- feet and sit again when you let go. That is deliberate, not a glitch.
     ImGui.Separator()
-    ImGui.Text("Force venue:  " .. (JL.ui.forceVenue and ("-> " .. tostring(JL.ui.forceVenue)) or "OFF (following schedule)"))
-    local venueKeys = { "noodle", "misty", "coyote", "afterlife", "ginger", "redwood", "lizzies", "secret", "test" }
-    local perRow = 4
-    for i, k in ipairs(venueKeys) do
-      local loc = Config.locations[k]
-      if loc then
-        if ((i - 1) % perRow) ~= 0 then ImGui.SameLine() end
-        local lbl = (loc.name or k) .. (JL.ui.forceVenue == k and " *" or "")
-        if ImGui.Button(lbl .. "##fv_" .. k) then
-          JL.ui.forceVenue = k
-          log("Force venue -> " .. k .. " (go to " .. (loc.name or k) .. " to see him; overrides time).")
+    if not held then
+      ImGui.TextDisabled("Take control to move them.")
+    else
+      local ch
+      P.dy,   ch = ImGui.SliderFloat("Forward / back (m)##jlpup", P.dy or 0, -3.0, 3.0)
+      if ch then jlPuppetPlace(true) end
+      P.dx,   ch = ImGui.SliderFloat("Left / right (m)##jlpup",   P.dx or 0, -3.0, 3.0)
+      if ch then jlPuppetPlace(true) end
+      P.dz,   ch = ImGui.SliderFloat("Up / down (m)##jlpup",      P.dz or 0, -2.0, 2.0)
+      if ch then jlPuppetPlace(true) end
+      P.dyaw, ch = ImGui.SliderFloat("Turn (deg)##jlpup",         P.dyaw or 0, -180.0, 180.0)
+      if ch then jlPuppetPlace(true) end
+
+      if ImGui.Button("fwd -0.05##jlpup") then P.dy = (P.dy or 0) - 0.05; jlPuppetPlace(true) end ImGui.SameLine()
+      if ImGui.Button("fwd +0.05##jlpup") then P.dy = (P.dy or 0) + 0.05; jlPuppetPlace(true) end ImGui.SameLine()
+      if ImGui.Button("up -0.05##jlpup")  then P.dz = (P.dz or 0) - 0.05; jlPuppetPlace(true) end ImGui.SameLine()
+      if ImGui.Button("up +0.05##jlpup")  then P.dz = (P.dz or 0) + 0.05; jlPuppetPlace(true) end
+      if ImGui.Button("Reset to where they stood##jlpup") then
+        P.dx, P.dy, P.dz, P.dyaw = 0, 0, 0, 0; jlPuppetPlace(true)
+      end
+      local x, y, z, yaw = jlPuppetCoords()
+      ImGui.TextDisabled(("world { %.3f, %.3f, %.3f }  yaw %.1f"):format(x, y, z, yaw))
+    end
+
+    -- ── 4. POSE. The animation set, so a barstool and a low chair aren't the same button. ──
+    ImGui.Separator()
+    if held then
+      if ImGui.Button("Seat them##jlpup") then jlPuppetPose("sit") end
+      ImGui.SameLine()
+      if ImGui.Button("Stand them up##jlpup") then
+        pcall(function() stopWorkspotPose(P.handle) end); P.posed = false
+        JL.ui.status = "Standing. They stay under your control."
+      end
+      ImGui.SameLine()
+      if ImGui.Button("Lean##jlpup") then jlPuppetPose("lean") end
+      -- Per-anim: the venue seats are not all the same furniture.
+      local PZ = Config.poses or {}
+      local anims = { { "Barstool", PZ.sit }, { "Chair (low)", PZ.sitChair }, { "Wall lean", PZ.lean } }
+      for i, a in ipairs(anims) do
+        if a[2] then
+          if i > 1 then ImGui.SameLine() end
+          if ImGui.Button(a[1] .. "##jlpupanim" .. i) then
+            P.anim = a[2]
+            jlPuppetPose(a[1] == "Wall lean" and "lean" or "sit")
+          end
         end
       end
+      ImGui.TextDisabled("playing: " .. tostring(P.anim or PZ.sit or "-") .. (P.posed and "  (posed)" or "  (standing)"))
+    else
+      ImGui.TextDisabled("Take control to pose them.")
     end
-    if ImGui.Button("Clear force (resume schedule)") then JL.ui.forceVenue = nil; log("Force venue cleared.") end
 
-    -- v0.43 SEAT TUNER (v0.45: any venue + multi-seat): slide a seat until perfect, print for config.lua.
+    -- ── 5. STORE. A tuned spot is worth nothing until it survives a reload. ──
     ImGui.Separator()
-    -- BUILD STAMP: confirm the deployed build actually loaded. If this doesn't say WALK-IN, the game
-    -- had the mod files locked during deploy (deploy with the game CLOSED, then reload).
-    ImGui.TextColored(0.45, 0.85, 1.0, 1.0, "Seat tuner build: v" .. tostring(Config.version) .. " (WALK-IN)")
     if not JL.tuner.init then tunerInit() end
     local t = JL.tuner
-
-    -- v1.1: AUTO-POINT the tuner at the venue where idle Jackie ACTUALLY is, so you can just walk up to
-    -- him and tune — no need to click the venue first (that trap gave "pick the venue, then walk over"
-    -- even while you were staring right at him). Only adopts when he's SETTLED at a sit-capable venue,
-    -- not while he's still walking to a venue you force-picked (locationKey != the forceVenue target).
-    if JL.idle.spawn and JL.idle.spawn.handle and JL.idle.locationKey then
-      local enroute = JL.ui.forceVenue and (JL.idle.locationKey ~= JL.ui.forceVenue)
-      local hisLoc  = Config.locations[JL.idle.locationKey]
-      if not enroute and JL.idle.locationKey ~= t.key
-         and hisLoc and #tunerSitWaypoints(hisLoc) > 0 then
-        t.key, t.seatIdx = JL.idle.locationKey, 1
-        tunerInit()
-      end
-    end
-
-    -- LOCATION picker — only venues that have a sit waypoint. Picking one also Force-venues Jackie there.
-    ImGui.Text("Venue:")
+    ImGui.Text("Save as a venue seat:")
     local venues = tunerSitVenues()
     for i, k in ipairs(venues) do
       if ((i - 1) % 4) ~= 0 then ImGui.SameLine() end
       local loc = Config.locations[k]
       if ImGui.Button(((loc and loc.name or k) .. (k == t.key and " *" or "")) .. "##tv_" .. k) then
         t.key, t.seatIdx = k, 1
-        JL.ui.forceVenue = k                 -- send Jackie there so you can tune him on the spot
-        tunerInit()
-        log("Tuner -> " .. k .. " (Force venue set; go to " .. (loc and loc.name or k) .. ").")
+        log("Seat tuner -> " .. k .. " (" .. (loc and loc.name or k) .. ").")
       end
     end
-
-    -- SEAT picker — only when this venue has more than one stool/chair.
     local _, _, seats = tunerSeatWaypoint()
     if seats and #seats > 1 then
-      if ImGui.Button("< prev seat") then t.seatIdx = ((t.seatIdx - 2) % #seats) + 1; tunerInit() end
+      if ImGui.Button("< prev seat##jlpup") then t.seatIdx = ((t.seatIdx - 2) % #seats) + 1 end
       ImGui.SameLine()
-      if ImGui.Button("next seat >") then t.seatIdx = (t.seatIdx % #seats) + 1; tunerInit() end
+      if ImGui.Button("next seat >##jlpup") then t.seatIdx = (t.seatIdx % #seats) + 1 end
       ImGui.SameLine(); ImGui.Text(("seat %d / %d"):format(t.seatIdx, #seats))
     end
+    if held then
+      if ImGui.Button(("Save this seat as %s #%d##jlpup"):format(tostring(t.key), t.seatIdx)) then
+        local x, y, z, yaw = jlPuppetCoords()
+        local wp, loc, sl = tunerSeatWaypoint()
+        if wp then wp.pos = { x, y, z }; wp.yaw = yaw end
+        if loc and (#(sl or {}) <= 1) then loc.pos = { x, y, z }; loc.yaw = yaw end
+        jlPersistSeat(t.key, t.seatIdx, x, y, z, yaw)
+        JL.ui.lastCapture = string.format("pos = { %.3f, %.3f, %.3f }, yaw = %.1f", x, y, z, yaw)
+        JL.ui.status = ("Saved %s seat %d - survives a reload."):format(tostring(t.key), t.seatIdx)
+        log(("%s seat %d saved -> %s"):format(tostring(t.key), t.seatIdx, JL.ui.lastCapture))
+      end
+      ImGui.TextDisabled("Writes jl_seats.txt and applies now. Automatic sitting stays off until "
+        .. "you turn it on below.")
+    else
+      ImGui.TextDisabled("Take control and place them, then save.")
+    end
 
-    local here = tunerHere()
-    ImGui.TextWrapped(here
-      and ("Jackie is here — slide and he re-seats live (he blinks out/in each time — that's the " ..
-           "respawn that guarantees he actually moves). Editing " .. t.key .. " seat " .. t.seatIdx .. ".")
-      or  ((JL.idle.spawn and JL.idle.spawn.handle)
-           and ("Jackie's still heading to " .. t.key .. " — walk over once he's settled on the seat.")
-           or  "No idle Jackie nearby yet. Get within range of his venue (or Force-pick one above), then walk up to him."))
-    ImGui.TextWrapped("Offsets from the captured seat. X/Y/Z = position (metres); YAW spins him to the " ..
-                      "right seat angle (his facing is now forced from this, so it's the same no matter " ..
-                      "which way he walked in). Yaw range is wider so you can flip him fully around.")
-    t.dx   = ImGui.SliderFloat("X offset (m)",          t.dx,   -3.0, 3.0)
-    t.dz   = ImGui.SliderFloat("Z offset — up/down (m)", t.dz,   -2.0, 2.0)
-    t.dy   = ImGui.SliderFloat("Y offset (m)",          t.dy,   -3.0, 3.0)
-    t.dyaw = ImGui.SliderFloat("Yaw offset (deg)",      t.dyaw, -180.0, 180.0)
-    -- fine nudges for the two axes you care about
-    if ImGui.Button("X -0.02") then t.dx = t.dx - 0.02 end ImGui.SameLine()
-    if ImGui.Button("X +0.02") then t.dx = t.dx + 0.02 end ImGui.SameLine()
-    if ImGui.Button("Z -0.02") then t.dz = t.dz - 0.02 end ImGui.SameLine()
-    if ImGui.Button("Z +0.02") then t.dz = t.dz + 0.02 end
-    local x, y, z, yaw = tunerCoords()
-    ImGui.Text(string.format("Working coords: { %.3f, %.3f, %.3f }  yaw %.1f", x, y, z, yaw))
-
-    -- Live re-seat RETIRED (it never took): slide freely, then press "Move Jackie here" to WALK him in.
-    ImGui.TextWrapped("Slide to set the target, then press Move Jackie here — he gets up, walks in, and " ..
-                      "sits at the exact spot. Redo as often as you like.")
-
-    if ImGui.Button("Move Jackie here (walk in + sit)") then tunerApply() end
-    ImGui.SameLine()
-    if ImGui.Button("Reset offsets") then t.dx, t.dy, t.dz, t.dyaw = 0, 0, 0, 0 end
-    ImGui.SameLine()
-    if ImGui.Button("Save seat (survives reload)") then tunerPrint() end
-    ImGui.TextWrapped("Saves this seat to jl_seats.txt so it sticks after a reload AND applies now. " ..
-                      "The same line is printed to the console + the 'Last capture' box above — tell me " ..
-                      "the numbers and I'll also bake them into config.lua permanently.")
+    -- ── 6. The escape hatch, for anyone who HAS tuned their venues. ──
+    ImGui.Separator()
+    do
+      local prev = (Config.poses and Config.poses.enabled) and true or false
+      local now  = ImGui.Checkbox("Let them sit down automatically (off by default - often floats)", prev)
+      if Config.poses and now ~= prev then
+        Config.poses.enabled = now
+        log("Automatic sit/lean -> " .. (now and "ON" or "OFF (they stand)"))
+        JL.ui.status = now and "Automatic sitting ON - expect floating on untuned seats."
+                            or  "Automatic sitting OFF - they stand."
+      end
+    end
+    ImGui.TextDisabled("Not saved across a reload on purpose - set Config.poses.enabled in config.lua "
+      .. "to make it permanent.")
   end
+
+
 
   ImGui.Separator()
   if JL.ui.status ~= "" then ImGui.TextWrapped("> " .. JL.ui.status) end

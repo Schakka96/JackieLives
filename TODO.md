@@ -13,6 +13,66 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 
 
 
+## 🐛 v1.8.2 — FOUR IN-GAME REPORTS FROM THE DINNER/DISMISS PASS (2026-08-17)
+
+Antonia, playing Jackie. Three of them are engine bugs this repo shares with NCLives and NCLucy; the fourth is Jackie's alone.
+
+### The seat card was an essay, and it arrived early
+*"The tutorial notice about seat tuning should be MUCH shorter, concise instructions only. very few
+words please. Also it should appear once V reaches the actual coordinate (3m radius) not sooner."*
+
+Two separate mistakes wearing one coat:
+
+* **Length.** The card opened with three sentences explaining *why* automatic sitting is off
+  (freestanding anims, the floating problem, why standing won the trade) before it got anywhere near
+  a button. That reasoning belongs in `config.lua`, where it already is at length — a card nobody
+  finishes reading teaches nothing. It is now one line of context and five numbered presses.
+* **Timing.** It fired on the `walking -> seating` hand-off, which happens at
+  `Config.date.seatTriggerRadius` — **12 m** from the seat. So the player read instructions for a
+  chair they could not see yet. `Config.seatTip.radius` (3 m) is now its own knob, checked every tick
+  of the outing rather than once at the hand-off, and latched per outing by `D.seatTipTried`.
+
+### The arrival line fired before the arrival
+*"The NPC says a line once they arrive - this line currently also fires too early. Should only fire
+once NPC reached 2m radius of the coordinate and has been there for 2s."*
+
+The line counted `sitWaitSeconds` from `D.satAt`, and `D.satAt` is stamped when the **seat routine**
+ends — which is not the same event as the companion reaching the table. It is also set on the
+`seatTimeout` give-up path, and with automatic sitting off (the v1.77 default) it is set on the very
+next tick, before they have taken a step. So the gate is geometry now, not bookkeeping:
+
+* `Config.date.lineRadius` (2 m) — how close to the seat coordinate counts as arrived;
+* `sitWaitSeconds` (2 s) is a **dwell** they have to hold — walking back out resets the clock, so a
+  crowd shoving past cannot buy them credit for standing still;
+* `Config.date.lineTimeout` (30 s) is the fail-open, and it is **not optional**: an unreachable seat
+  would otherwise park the dinner in `seating` forever — no line, no companion-clock reset, no way
+  to end the meal.
+
+`tools/test_sitting.lua` pins all three, plus the absence of the old count-from-`satAt` gate (two
+gates on one line is how it starts firing early again).
+
+### A dismissal followed by a second Jackie
+*"Jackie after I've dismissed him walks away, despawns, and then a DIFFERENT Jackie puppet spawns in
+my face now"* — later narrowed by Antonia herself: *"might be because I forced a venue (Lizzie's) and
+I was near Lizzie's. He wore a tanktop."* That is the whole diagnosis, and it was right.
+
+Nothing was spawning twice. `scheduleTick` keeps an **idle** Jackie standing at whatever venue the
+schedule — or the CET *Force venue* override, or the v1.3 approach cameo — wants him at, for as long
+as V is inside `Config.proximityRadius` (45 m). While he is a companion that tick is gated off by
+`JL.summon.active`. The instant `leavingTick` despawned him the gate opened, V was still standing in
+Lizzie's, and the schedule dutifully stood a fresh one up wearing that venue's outfit.
+
+Working as written, and still wrong: a send-off means *not right now*. `Config.dismiss.idleCooldown`
+(180 real seconds) is stamped by every path that removes him — the walk-off, the instant dismiss and
+dismiss-all — and read at the top of `scheduleTick`, which `clearIdle()`s rather than merely
+returning, so a body that somehow survived the dismiss is removed instead of left standing.
+
+⚠️ **This one cannot happen in NCLives or NCLucy** and the reason is worth keeping: both ship
+`Config.enableSchedule = false` (no per-persona daily schedule yet), so they have no idle body to
+re-spawn. Antonia confirmed it: *"1st issue doesn't happen for Lucy or NCLives characters."* Do not
+"port the fix" — port the *test's comment*, not the code.
+
+---
 ## 🏷️ v1.8.1 — and a correction to its own commit message (2026-08-17)
 
 **⚠️ CORRECTION.** `fb27dce`'s message says v1.8 "was tagged AND pushed". **It was tagged locally and

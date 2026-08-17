@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.8.1"
+Config.version = "1.8.2"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -382,6 +382,27 @@ Config.dismiss = {
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
+  -- v1.8.2 IDLE COOLDOWN — Antonia, 2026-08-17: *"Jackie after I've dismissed him walks away,
+  -- despawns, and then a DIFFERENT Jackie puppet spawns in my face."*
+  --
+  -- Not a spawn bug: it is scheduleTick doing exactly what it is told. That tick keeps an IDLE
+  -- Jackie standing at whatever venue the schedule (or the CET "Force venue" override, or the
+  -- v1.3 approach cameo) wants him at, for as long as V is within Config.proximityRadius (45 m)
+  -- of it. While he is a COMPANION that tick is gated off (`JL.summon.active` -> clearIdle). The
+  -- instant leavingTick despawns him, the gate opens — V is still standing at the venue — and a
+  -- second, freshly-spawned Jackie appears wearing that venue's outfit. Antonia had Lizzie's
+  -- force-pinned and got the tank-top Jackie back in her face within a second of sending him off.
+  --
+  -- NCLives/NCLucy never showed this because `Config.enableSchedule` ships FALSE there (no
+  -- per-persona daily schedule yet), so they have no idle body to re-spawn at all.
+  --
+  -- The fix is a plain cooldown: a send-off means "not right now", so the schedule may not put a
+  -- body back in front of V until this many REAL seconds have passed. Long enough that V has
+  -- either walked out of the venue's radius or clearly changed their mind, short enough that
+  -- coming back to El Coyote half an hour later still finds him there. It is stamped in
+  -- leavingTick (and in the instant-despawn path) and read at the top of scheduleTick.
+  -- Set to 0 to go back to the old behaviour.
+  idleCooldown    = 180.0,   -- REAL seconds after a send-off before the schedule may re-spawn him
 }
 
 -- ---- main-quest "excuse himself" exit (v0.62) ----------------------------
@@ -959,7 +980,15 @@ Config.date = {
   seatTriggerRadius = 12.0,  -- metres: V this close to the spot -> Jackie peels off to his seat
   seatReachRadius   = 2.0,   -- metres: Jackie this close to his seat -> snap + sit
   seatTimeout       = 12.0,  -- v0.44 seconds: if he can't path within seatReachRadius by now, snap+sit anyway
-  sitWaitSeconds    = 2.0,   -- seconds seated before he says his line + the clock resets
+  -- v1.8.2: `sitWaitSeconds` is a DWELL now, not a delay — see dinnerTick. They must be inside
+  -- `lineRadius` of the seat and STAY there this long before the arrival line plays; walking
+  -- back out resets the clock. Raising it makes them settle visibly before speaking.
+  sitWaitSeconds    = 2.0,   -- seconds settled AT the seat before the arrival line + the clock reset
+  lineRadius        = 2.0,   -- metres: how close to the seat coordinate counts as "arrived"
+  -- Fail-open. An unreachable seat (blocked navmesh, a chair in the doorway) must not park the
+  -- dinner in `seating` forever, so the line plays anyway this long after the seat routine ends.
+  -- Generous on purpose: it should only ever fire when the dwell gate genuinely cannot be met.
+  lineTimeout       = 30.0,  -- seconds
   getUpRadius       = 10.0,  -- metres: V this far from seated Jackie -> he gets up + re-follows
   resetCooldownHours = 24.0, -- the dinner FULL reset can only fire once per this many in-game hours
   -- v1.57: inviting a WALKING-OFF Jackie to dinner cancels his departure (jlAbortDeparture) so he doesn't
@@ -2668,17 +2697,25 @@ Config.wander = {
 -- saved the game), and this is the same shape, so it gets the same fix.
 Config.seatTip = {
   fact  = "jackielives_seat_tip",
-  title = "Sitting down is still a work in progress",
-  text  = "They'll stand at the table rather than sit.\n\n"
-       .. "The sit animation isn't tied to real furniture yet — it plays wherever the character is "
-       .. "standing, so an automatic sit usually leaves them hovering above the chair. Standing "
-       .. "looked better than floating, so standing is the default.\n\n"
-       .. "You can seat them yourself, and it lands exactly where you put it: open the CET overlay, "
-       .. "find \"NCLives - Companions\" -> \"Sitting - seat them by hand\". Stand on the chair "
-       .. "facing the way they should face, press \"Seat them here\", then step back and nudge the "
-       .. "height and angle sliders until it looks right.\n\n"
-       .. "Stand them up again with the same panel before you send them home.",
-  duration = 22.0,
+  -- v1.8.2 - SHORT. Antonia, 2026-08-17: *"the tutorial notice about seat tuning should be MUCH
+  -- shorter, concise instructions only. very few words please."* The old card opened with three
+  -- sentences of WHY (freestanding anims, why standing is the default) in front of a player who is
+  -- standing at a table waiting for something to happen. None of that is actionable, and a card
+  -- nobody finishes reading teaches nothing. One line of context, then the five button presses.
+  title = "Seating is manual",
+  text  = "They stand at the table - automatic sitting floats, so it's off.\n\n"
+       .. "CET overlay -> \"Seat tuner\":\n"
+       .. "1. Take control (AI off)\n"
+       .. "2. Slide them into the chair\n"
+       .. "3. Seat them\n"
+       .. "4. Save this seat\n"
+       .. "5. Release them",
+  duration = 14.0,
+  -- v1.8.2 WHEN. Was: the walking -> seating hand-off, i.e. `Config.date.seatTriggerRadius` (12 m)
+  -- out, which put the card on screen while V was still crossing the room. It fires at the TABLE
+  -- now - V within this many metres of the seat coordinate - because the card is instructions for
+  -- a thing the player is about to look at, and it should arrive when they are looking at it.
+  radius = 3.0,
 }
 
 -- ---- sit / lean poses (v0.39) ---------------------------------------------

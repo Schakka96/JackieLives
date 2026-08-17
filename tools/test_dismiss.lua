@@ -99,5 +99,34 @@ check("latched, so it cannot re-fire every frame",
       select(2, src:gsub("sp%.appArmed = true", "")) == 2)
 check("stepped from onUpdate", src:find('pcall%(jlAppearanceTick%)') ~= nil)
 
+-- ---------------------------------------------------------------------------
+print("\n4. a send-off is not followed by a second Jackie (v1.8.2)")
+-- ---------------------------------------------------------------------------
+-- Antonia, 2026-08-17: *"Jackie after I've dismissed him walks away, despawns, and then a DIFFERENT
+-- Jackie puppet spawns in my face now"* — with Lizzie's force-pinned in the CET window, and the new
+-- one wearing that venue's tank top. Not a spawn bug: `scheduleTick` is GATED on JL.summon.active,
+-- so the instant leavingTick despawns the companion the gate opens, V is still inside the venue's
+-- 45 m radius, and the schedule dutifully stands an idle Jackie up right there.
+--
+-- ⚠️ This is the one report in this file that could NOT happen in NCLives or NCLucy, and the reason
+-- is worth keeping: those two ship `Config.enableSchedule = false` (no per-persona daily schedule
+-- yet), so they have no idle body to re-spawn. Do not "port the fix" by copying this test there.
+check("a send-off starts an idle-respawn cooldown", cfg:find("idleCooldown%s*=") ~= nil)
+check("...that is long enough for V to walk out of a venue's 45 m radius",
+      tonumber(cfg:match("idleCooldown%s*=%s*([%d%.]+)") or "0") >= 60.0,
+      cfg:match("idleCooldown%s*=%s*([%d%.]+)"))
+check("...stamped by every path that removes him: the walk-off, the instant dismiss, and dismiss-all",
+      select(2, src:gsub("jlStampIdleCooldown%(", "")) >= 4,   -- 1 definition + 3 call sites
+      select(2, src:gsub("jlStampIdleCooldown%(", "")) .. " mentions")
+check("...and read by scheduleTick BEFORE it decides to spawn",
+      src:find("JL%.idle%.blockUntil") ~= nil
+        and src:find("local function scheduleTick.-JL%.idle%.blockUntil.-if not wantKey") ~= nil,
+      "a cooldown checked after the spawn decision is not a cooldown")
+check("...which clears itself, so he does come back later",
+      src:find("JL%.idle%.blockUntil = nil") ~= nil)
+check("the cooldown holds the body OUT rather than merely skipping the tick",
+      src:find("JL%.idle%.blockUntil then.-clearIdle%(%); return") ~= nil,
+      "a bare return would leave a body that somehow survived the dismiss standing there")
+
 print(("\n%d checks, %d failed"):format(pass + fail, fail))
 os.exit(fail == 0 and 0 or 1)
