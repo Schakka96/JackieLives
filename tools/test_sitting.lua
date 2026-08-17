@@ -288,5 +288,60 @@ do
         (D.lineTimeout or 0) > (D.sitWaitSeconds or 2.0) * 5, tostring(D.lineTimeout))
 end
 
+-- ---------------------------------------------------------------------------
+print("\n9. the seat tuner really takes control (v1.8.4)")
+-- ---------------------------------------------------------------------------
+-- Two reports from Antonia, 2026-08-17, after the tuner otherwise worked ("it moves them live",
+-- "collision off works", "giving control back works"):
+--
+--   1. *"the button to turn off the AI and 'take over' does not work as expected. They can be slided
+--      around, but then start moving away and snap back again - as if the AI tries to move to another
+--      spot every few ticks and is not truly disabled."*
+--   2. *"the turning their attitude (different facing angle) slider does not work. It just moves them
+--      along an axis rather than rotating them."*
+--
+-- Both were real and neither was where it looked. #1: clearing the follower ROLE does not cancel the
+-- AIMoveToCommand already in the slot, so they kept walking their last order and the tuner's hold
+-- yanked them back — the snap WAS our own correction fighting a live command. #2: the offset basis
+-- was derived from the slider-adjusted yaw, so Turn rotated the forward/right AXES and swept the body
+-- along an arc. Static reads: this all lives in globals that only a full engine load can reach.
+do
+  -- ── #2, the geometry. This is the one that can be proven from the source text alone: the basis
+  --    must come from the CAPTURED facing, and the returned yaw must still include the slider.
+  check("the tuner's offset basis uses the CAPTURED facing, not the live one",
+        src:find("local base = P%.byaw or 0") ~= nil and src:find("local r    = math%.rad%(base%)") ~= nil,
+        "byaw + dyaw as the basis makes Turn a second move control (it sweeps them along an arc)")
+  check("...while the yaw it RETURNS still includes the Turn slider",
+        src:find("base %+ %(P%.dyaw or 0%)") ~= nil,
+        "freezing the basis must not also freeze the facing — then Turn would do nothing at all")
+  check("...so `byaw + dyaw` is gone from the coordinate maths entirely",
+        src:find("local yaw = %(P%.byaw or 0%) %+ %(P%.dyaw or 0%)") == nil)
+
+  -- ── #1, the command slot. Taking control has to OCCUPY it; replacing the command is how this
+  --    engine cancels one. And it has to keep occupying it, because the hold expires.
+  check("taking control issues a stand-still, not just a role clear",
+        src:find("jlPuppetTake.-jlHalt%(h%)") ~= nil,
+        "OnRoleCleared retires the role; the AIMoveToCommand in the slot keeps running regardless")
+  check("...and the tick RE-issues it on a heartbeat",
+        src:find("P%.haltAt = now") ~= nil and src:find("jlHalt%(P%.handle%)") ~= nil,
+        "AIHoldPositionCommand expires by `duration`, and the drift comes straight back when it does")
+  check("...often enough that the hold never lapses between beats",
+        (Config.poses.tunerHalt or 99) < ((Config.loiter and Config.loiter.holdDuration) or 6.0),
+        ("tunerHalt=%s vs holdDuration=%s"):format(tostring(Config.poses.tunerHalt),
+              tostring(Config.loiter and Config.loiter.holdDuration)))
+  check("...but never at a POSED puppet (a move command would eject them from the workspot)",
+        src:find("if P%.posed then return end.-P%.haltAt = now") ~= nil)
+
+  -- ── #1, the other half: the hold that produced the visible snap.
+  check("the drift correction is tight, not a 15 cm leash",
+        type(Config.poses.tunerSlack) == "number" and Config.poses.tunerSlack <= 0.05,
+        tostring(Config.poses.tunerSlack))
+  check("...and it is checked every frame, not twice a second",
+        src:find("now %- %(P%.holdAt or 0%)%) < 0%.5") == nil,
+        "a 0.5 s / 0.15 m deadband is what let them walk away and get teleported back")
+  check("...and both numbers are knobs, not literals in the tick",
+        src:find("Config%.poses%.tunerHalt") ~= nil and src:find("Config%.poses%.tunerSlack") ~= nil)
+end
+
 print(("\n%d checks, %d failed"):format(pass + fail, fail))
 os.exit(fail == 0 and 0 or 1)

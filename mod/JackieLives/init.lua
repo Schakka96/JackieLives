@@ -7111,6 +7111,20 @@ function jlPuppetTake()
     if role then role:OnRoleCleared(h) end
     h.isPlayerCompanionCached = false
   end)
+  -- ⚠️ v1.8.4 CLEARING THE ROLE IS NOT STOPPING THEM, AND THAT WAS THE WHOLE BUG.
+  -- Antonia, 2026-08-17: *"they can be slided around, but then start moving away and snap back
+  -- again - as if the AI tries to move to another spot every few ticks and is not truly disabled."*
+  -- Exactly right, and the two halves of it are:
+  --   * `OnRoleCleared` retires the follower ROLE. It does not cancel the AIMoveToCommand that is
+  --     already IN_PROGRESS in the command slot, so whatever they were last told to walk to, they
+  --     carry on walking to — role or no role.
+  --   * jlPuppetTick's hold then yanked them back, which is the "snap back" she saw. The hold was
+  --     fighting a live command instead of there being no command to fight.
+  -- `jlHalt` is the existing answer (v1.57): it OCCUPIES the command slot with a stand-still, which
+  -- is how you cancel a command in this engine — you replace it. Issued here, and re-issued on a
+  -- heartbeat in the tick, because AIHoldPositionCommand expires by `duration` and the drift comes
+  -- straight back when it does.
+  pcall(function() jlHalt(h) end)
   setNpcCollision(h, false)                          -- a chair shoves a collided NPC back out
   JL.idle.pendingPose, JL.idle.pendingSit = nil, nil   -- cancel any scheduled idle pose
   pcall(function() stopWorkspotPose(h) end)
@@ -7138,14 +7152,25 @@ end
 -- player is looking at them, or the sliders are a coordinate puzzle instead of a control.
 function jlPuppetCoords()
   local P = JL.puppet; if not P then return 0, 0, 0, 0 end
-  local yaw = (P.byaw or 0) + (P.dyaw or 0)
-  local r   = math.rad(yaw)
+  -- ⚠️ v1.8.4 THE OFFSET BASIS IS THE *CAPTURED* FACING (`byaw`), NEVER `byaw + dyaw`.
+  -- It used to be the live, slider-adjusted yaw, and that quietly made Turn a second MOVE control:
+  -- forward/right are derived from it, so rotating the slider rotated the AXES too and the point
+  -- `base + forward*dy + right*dx` swept along an ARC around the capture point. On screen the body
+  -- slid sideways and barely appeared to turn. Antonia, 2026-08-17: *"the turning their attitude
+  -- (different facing angle) slider does not work. It just moves them along an axis rather than
+  -- rotating them."*
+  -- Freezing the basis at take-control makes the four controls orthogonal — Forward/Right/Up move,
+  -- Turn only turns — which is the only way a seat is tunable without chasing your own tail.
+  -- (It also means the offsets keep meaning what they meant when you dragged them: re-deriving the
+  -- axes mid-tune would silently redefine every slider you had already set.)
+  local base = P.byaw or 0
+  local r    = math.rad(base)
   local fx, fy = -math.sin(r), math.cos(r)          -- the game's yaw 0 faces +Y
   local rx, ry =  math.cos(r), math.sin(r)
   return P.bx + fx * (P.dy or 0) + rx * (P.dx or 0),
          P.by + fy * (P.dy or 0) + ry * (P.dx or 0),
          P.bz + (P.dz or 0),
-         yaw
+         base + (P.dyaw or 0)
 end
 
 -- Place them at the current coordinate. LIVE: called on every slider change.
@@ -7199,12 +7224,27 @@ function jlPuppetTick()
     return
   end
   if P.posed then return end                          -- a played workspot pins them; don't fight it
-  if (now - (P.holdAt or 0)) < 0.5 then return end
-  P.holdAt = now
+
+  -- v1.8.4 KEEP THE STAND-STILL ALIVE. AIHoldPositionCommand ends after its `duration` (6 s by
+  -- default) and jlHalt's fallback is a move-to-own-spot that completes on arrival — so BOTH rungs
+  -- of that ladder stop holding after a few seconds and the old behaviour resumes underneath us.
+  -- That is the "every few ticks" in the report. The heartbeat is what makes "AI off" mean off.
+  -- ⚠️ Only while UNPOSED: a workspot already pins them, and pushing a command at a posed puppet can
+  -- eject them from it (the jlHalt fallback is a move command).
+  local every = (Config.poses and Config.poses.tunerHalt) or 2.0
+  if (now - (P.haltAt or -1e9)) >= every then
+    P.haltAt = now
+    pcall(function() jlHalt(P.handle) end)
+  end
+
+  -- ...and hold the ground every frame, not twice a second. The old 0.5 s / 0.15 m deadband WAS the
+  -- visible snap: it let them walk up to 15 cm away and then teleported them back, which reads as a
+  -- fight rather than as control. With the halt above there should be nothing to correct, so this is
+  -- now a tight safety net — cheap, because it only teleports when there is real drift to undo.
+  local slack = (Config.poses and Config.poses.tunerSlack) or 0.05
   local jp; pcall(function() jp = P.handle:GetWorldPosition() end)
-  local x, y, z = jlPuppetCoords()
-  if jp and dist3(jp, { x = x, y = y, z = z }) > 0.15 then
-    local _, _, _, yaw = jlPuppetCoords()
+  local x, y, z, yaw = jlPuppetCoords()
+  if jp and dist3(jp, { x = x, y = y, z = z }) > slack then
     placeAtExact(P.handle, Vector4.new(x, y, z, 1.0), yaw)
   end
 end

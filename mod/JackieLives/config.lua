@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.8.3"
+Config.version = "1.8.4"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -2782,6 +2782,15 @@ Config.poses = {
   sit     = "sit_barstool__2h_on_lap__01",          -- DEFAULT = barstool (most of his chairs)
   sitChair= "sit_chair__2h_on_lap__01",             -- low/deep chair (Misty's) — used via poseAnim
   lean    = "stand_wall_lean180__2h_on_wall__01",
+  -- v1.8.4 SEAT TUNER — the two numbers that make "take control" actually hold them.
+  -- `tunerHalt`  = seconds between re-issuing the stand-still command while the tuner is live and
+  --                they are NOT posed. Must stay comfortably under Config.loiter.holdDuration (6 s),
+  --                or the hold lapses between heartbeats and they start walking off again.
+  -- `tunerSlack` = metres of drift tolerated before the tuner teleports them back. Small on purpose:
+  --                the old 0.15 m let them visibly walk away and snap back. Raise it only if a
+  --                particular animation jitters the root under the deadband.
+  tunerHalt  = 2.0,
+  tunerSlack = 0.05,
 }
 
 -- ---- DIALOGUE PICKER (v1.63) -----------------------------------------------
