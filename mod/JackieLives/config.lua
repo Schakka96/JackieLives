@@ -2634,6 +2634,46 @@ Config.wander = {
   faceYawOnArrive = true,     -- snap onto the waypoint's exact spot + yaw on arrival (lean/sit framing)
 }
 
+-- ---- FIRST DINNER: the seating card (v1.74) --------------------------------
+-- Antonia, 2026-08-17: the first time a player walks a companion to a dinner venue and reaches the
+-- marker, tell them seating is a work in progress and hand them the manual control.
+--
+-- WHY IT EXISTS. `Config.poses.enabled` ships false (see that block), so a companion STANDS at the
+-- table. Without a word of explanation that reads as a missing feature — the player booked a dinner
+-- and nobody sat down. One card turns "this mod is broken" into "this bit isn't finished, and here
+-- is the knob", which is a completely different experience of the same behaviour.
+--
+-- WHEN IT FIRES. On the walking -> seating transition in dinnerTick — the moment V reaches the seat
+-- marker, which is exactly when the player is looking at the table wondering what happens next.
+-- Not on the invite, not on arrival at the district: at the marker.
+--
+-- HOW OFTEN. ONCE, ever. Two gates, deliberately different lifetimes, copied from NCLives' Config.welcome:
+--   * `fact` is a numeric quest fact -> lives in the SAVE, so it survives reloads. ⚠️ The NAME is
+--     per-mod on purpose: quest facts are SHARED game state, so a player running JackieLives and
+--     NCLives together must be taught by each mod once, not taught once and silently skipped
+--     by the other;
+--   * `JL.seatTipDone` is in jl_settings.txt -> lives on the INSTALL, so a second playthrough
+--     doesn't re-teach something the player already knows.
+-- ⚠️ The card itself is rendered by `Retrieval.showTip` — the SAME lower-left popup Vik's
+-- message and Jackie's note use. Do not grow a second popup implementation for it.
+-- The settings flag is written the instant the card fires, not on the next settings change — the
+-- welcome card shipped that bug once (a "shown" record that only reached disk if the player later
+-- saved the game), and this is the same shape, so it gets the same fix.
+Config.seatTip = {
+  fact  = "jackielives_seat_tip",
+  title = "Sitting down is still a work in progress",
+  text  = "They'll stand at the table rather than sit.\n\n"
+       .. "The sit animation isn't tied to real furniture yet — it plays wherever the character is "
+       .. "standing, so an automatic sit usually leaves them hovering above the chair. Standing "
+       .. "looked better than floating, so standing is the default.\n\n"
+       .. "You can seat them yourself, and it lands exactly where you put it: open the CET overlay, "
+       .. "find \"NCLives - Companions\" -> \"Sitting - seat them by hand\". Stand on the chair "
+       .. "facing the way they should face, press \"Seat them here\", then step back and nudge the "
+       .. "height and angle sliders until it looks right.\n\n"
+       .. "Stand them up again with the same panel before you send them home.",
+  duration = 22.0,
+}
+
 -- ---- sit / lean poses (v0.39) ---------------------------------------------
 -- Real sit/lean ANIMATIONS, via AMM's own workspot system (the exact path AMM's Poses tab uses:
 -- Game.GetWorkspotSystem():PlayInDeviceSimple + SendJumpToAnimEnt). When Jackie dwells at a

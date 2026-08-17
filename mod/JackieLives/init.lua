@@ -2545,6 +2545,36 @@ function jlSetFactNum(name, n)
 end
 function jlBikeOutcome() return jlFactNum("jackielives_bike") end
 
+-- v1.74 FIRST DINNER: seating is a work in progress, and here is the manual control.
+-- Fired from dinnerTick the moment V reaches the seat marker (see Config.seatTip for the why and
+-- the two gates). `force` = the CET button, which re-shows it without consuming either gate.
+--
+-- ⚠️ The card is rendered by `Retrieval.showTip` — the SAME renderer as Vik's message and Jackie's
+-- note. It is not a second popup implementation, and it must not become one: that path already
+-- knows about the delayed Popup_Data listener and the Lang.t chokepoint, and it degrades to the
+-- on-screen band by itself when the native push fails.
+function jlShowSeatTip(force)
+  local T = Config.seatTip
+  if not T then return false end
+  if not force then
+    if JL.seatTipDone == true then return false end             -- per INSTALL (jl_settings.txt)
+    if jlFactNum(T.fact or "jackielives_seat_tip") >= 1 then    -- per SAVE (survives reloads)
+      JL.seatTipDone = true                                     -- an old save already taught it
+      pcall(jlSaveSettings)
+      return false
+    end
+    jlSetFactNum(T.fact or "jackielives_seat_tip", 1)
+    -- Written NOW, not at the next settings change: a "shown" record that only reaches disk if
+    -- something else happens afterwards is the bug NCLives' welcome card shipped once.
+    JL.seatTipDone = true
+    pcall(jlSaveSettings)
+    log("Seat tip shown (first dinner) — marked done in " .. tostring(JL_SETTINGS_FILE))
+  end
+  local ok = pcall(function() Retrieval.showTip(T.title, T.text, T.duration or 22.0) end)
+  if not ok then log("Seat tip: Retrieval.showTip failed") end
+  return ok
+end
+
 -- ---------------------------------------------------------------------------
 -- MISTY, RETIRED (v1.55 — Husbando only). Antonia: "after Jackie has been to Misty's once (that's when
 -- they break up) Jackie should NOT go to Misty again. Swap for noodle bar in schedule, he won't come back
@@ -7001,6 +7031,10 @@ local function dinnerTick()
       D.phase = "seating"
       JL.ui.status = "Jackie's grabbin' his seat."
       log("Dinner: V arrived; Jackie heading to his seat.")
+      -- v1.74: FIRST dinner ever -> the seating-is-WIP card. Here, at the marker, because this is
+      -- the moment the player is looking at the table waiting for someone to sit down. Guarded and
+      -- once-ever-per-mod; see Config.seatTip.
+      pcall(function() jlShowSeatTip(false) end)
     end
     return
   end
@@ -7751,7 +7785,7 @@ end
 JL_VO_TESTLINE = "1790891785270616064"
 
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
+JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast", "seatTipDone" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
 
 -- v1.55: NUMERIC settings. The file used to serialize booleans only (plus the one `mode` string), which is
 -- precisely why a slider could never be added — its value didn't survive a reload. These keys round-trip as
@@ -10344,6 +10378,15 @@ registerForEvent("onDraw", function()
     end
     ImGui.SameLine()
     if ImGui.Button("Stand them up##jlseat") then jlManualUnseat("button") end
+    ImGui.SameLine()
+    -- v1.74: re-read the first-dinner card on demand. `force` = true, so it neither consumes nor
+    -- needs either gate. It lives HERE, not with the retrieval cards, because this is the section
+    -- it talks about.
+    if ImGui.Button("What's this? (show card)##jlseat") then
+      JL.ui.status = jlShowSeatTip(true)
+        and "Seating card shown (bottom-left; press any key to dismiss)."
+        or  "Card unavailable — check jackie_debug.log."
+    end
     ImGui.TextWrapped("Stand them up before you dismiss them or switch companion — despawning a "
       .. "seated NPC crashes the game, and this is the button that prevents it. (The mod also does "
       .. "it for you on every dismiss it knows about.)")

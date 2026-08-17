@@ -740,6 +740,14 @@ end
 function M.unavailableMsg() return "Number disconnected." end
 function M.notifyUnavailable() onscreen(M.unavailableMsg(), 2.5) end   -- native band, no init.lua scope needed
 
+-- v1.74: EXPOSE the tutorial card. `showTip` is the mod's one card renderer — the native lower-left
+-- popup that Vik's message and Jackie's note already use, with the on-screen band as its fallback —
+-- and until now it was a file-local, so anything outside the retrieval questline that wanted a card
+-- had to grow its own copy. It nearly did: the first-dinner seating card was written as 73 lines of
+-- duplicated popup code in init.lua before this export replaced it. One renderer, one set of
+-- quirks (the delayed Popup_Data listener, the Lang.t chokepoint), one place to fix them.
+function M.showTip(title, text, duration) return showTip(title, text, duration) end
+
 -- Inject init.lua helpers. ALL optional:
 --   log(msg)                              -- logger
 --   showTip(title, text) -> bool          -- native tutorial popup (Phase 2)

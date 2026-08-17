@@ -127,5 +127,48 @@ do
         .. "  -- same id = one widget drawn twice, so one section looks empty")
 end
 
+-- ---------------------------------------------------------------------------
+print("\n6. the first-dinner seating card")
+-- ---------------------------------------------------------------------------
+-- The card that tells a player, at the moment they reach the dinner marker, that seating is a work
+-- in progress and where the manual control is. Without it, a companion standing at the table reads
+-- as a missing feature rather than an unfinished one.
+do
+  local T = Config.seatTip
+  check("Config.seatTip exists", type(T) == "table")
+  check("...with a title and a body", type(T and T.title) == "string" and #(T and T.text or "") > 80)
+  check("...and it points the player at the manual control",
+        (T and T.text or ""):lower():find("seat them here", 1, true) ~= nil,
+        "a card that says 'not finished' without saying 'here is the knob' is just an apology")
+
+  -- ⚠️ ONCE PER MOD. The fact is SHARED game state, so the name must be this mod's own — otherwise
+  -- a player running two of these mods is taught once and the other mod is silently skipped.
+  check("the fact name is namespaced to THIS mod",
+        (T and T.fact or ""):find("jackielives_", 1, true) == 1,
+        "got " .. tostring(T and T.fact) .. ", expected it to start with " .. "jackielives_")
+
+  check("it fires at the marker (the walking -> seating transition)",
+        src:find("jlShowSeatTip" .. "%(false%)") ~= nil)
+  local seatingBlock = src:match('if pp and D%.dest and dist3.-D%.phase = "seating".-\n(.-)\n    end') or src
+  check("...and NOT from a tick that could re-fire it every frame",
+        select(2, src:gsub("jlShowSeatTip" .. "%(false%)", "")) == 1)
+
+  check("gated per SAVE by a quest fact", src:find("jlShowSeatTip") ~= nil and src:find("jlFactNum" .. "%(T%.fact") ~= nil)
+  check("...and per INSTALL by a persisted flag", src:find("seatTipDone") ~= nil)
+  check("...which is in the persisted-settings key list, or it would never survive a reload",
+        src:find('"seatTipDone"', 1, true) ~= nil)
+  check("...written the INSTANT it fires, not at the next settings change",
+        src:find("jlShowSeatTip" .. ".-pcall%(" .. "jlSaveSettings" .. "%)") ~= nil,
+        "the welcome card shipped that bug once: a 'shown' record that only reached disk later")
+
+  check("a CET button can re-show it without consuming either gate",
+        src:find("show card%)##" ) ~= nil and src:find("jlShowSeatTip" .. "%(true%)") ~= nil)
+
+  -- ONE renderer. The card must not grow a second popup implementation.
+  local impls = select(2, src:gsub("gamePopupData%.new%(%)", ""))
+  check(("exactly %d popup implementation in init.lua"):format(0), impls == 0,
+        "found " .. impls .. " — a second one means the card duplicated the renderer instead of reusing it")
+end
+
 print(("\n%d checks, %d failed"):format(pass + fail, fail))
 os.exit(fail == 0 and 0 or 1)
