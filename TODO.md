@@ -13,6 +13,42 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 
 
 
+## 📜 DESIGNED 2026-08-18 — "GHOST IN THE MACHINE": a real questline, now that WolvenKit CLI is on Windows
+
+Full design: **`docs/QUEST_ARASAKA.md`**. Nothing built yet — this is the design pass Antonia asked for.
+
+**The unlock.** `tools/build_archive.py` already authors CR2W-JSON on the Mac and packs it with
+`WolvenKit.CLI.exe` on Windows (that's how the female-V voice map ships). A questline adds files to that
+same folder and runs that same build — no new tooling, no new player-facing dependency. What it buys:
+**real journal quests with tracked objectives**, **real phone SMS** (impossible at runtime — see memory
+`cp2077-sms-needs-an-archive`), **real Codex shards**, all localisable.
+
+**The ceiling, stated honestly:** no new VO for anyone, ever (Jackie is limited to his ~1200 recorded
+lines), and no new cutscenes (`.scene` authoring is a different order of difficulty). Hence the design
+rule: **voice for what Jackie can really say, text for everything else** — every other character
+communicates by SMS/shard/journal, which is also how people hide a thing like this.
+
+**The arc.** The shipped `retrieval.lua` questline becomes Act I, untouched. Then: Vik saved Jackie with
+salvaged **Arasaka mil-spec chrome**, which left two things in him — a **factory telemetry beacon** (he's
+traceable) and a half-executed **Arasaka suppression daemon** (his own chrome is turning on him). Five
+parts: *Static* (reveal) → *Phone Home* (beacon; a **heat counter** that spawns snatch squads, reusing the
+already-harvested `Character.q005_arasaka_kill_squad_*` records + the proven `blaze.lua` spawn pattern) →
+*Passenger* (the daemon takes his hands; ships behind a config toggle + warning) → *Salvage* (three durable
+endings: clean-but-ordinary / caged-with-upkeep / refuse-and-fight) → *After*.
+
+**Feasibility:** fights = easy (assembly); heat/facts/choices = easy (shipped systems); journal + SMS +
+shards = medium, one real unknown. **Biggest risk is writing volume, not tech** — roughly as much prose as
+the existing mod, assembled from a fixed pool of takes, so draft every beat against `vo_library/jackie.csv`
+first and let the available lines shape the scene.
+
+- `- [ ] SPIKE FIRST:` can CET Lua deliver a `gameJournalPhoneMessage`, or does it need a redscript shim?
+  (`docs/research/texting_research.md`, the one open unknown.) One text from Jackie on a fact = the test.
+- `- [ ] NEXT:` replace ONE existing retrieval message-band flash with a real journal objective — proves the
+  archive→journal→`ChangeEntryState` chain on something already tested, at zero story risk.
+- `- [ ] THEN:` Part 1 end-to-end as the vertical slice, before committing to Parts 2-5.
+- ⚠️ **Gating discipline:** arm only on positively-confirmed facts, default to silence, keep a manual start
+  button. v1.56 spoiled Jackie's survival pre-heist; v1.64 never fired for anybody. Same trap, twice.
+
 ## 🐛 v1.8.4 + v1.8.5 — THE SEAT TUNER, AND WHO IS REALLY WRITING TO THE BODY (2026-08-17)
 
 Backfilled: these two shipped before the entry was written. The reasoning is worth keeping because
