@@ -2128,6 +2128,21 @@ local function updateTalkPrompt(dt)
   end
   if Branch.busy then return end   -- a conversation is running; don't fight / clear its choice box
   local j = lookedAtJackie()
+  -- v1.8.7 ⚠️ NEVER ADVERTISE A KEY THAT DOES NOTHING. Branch.kick already stands down on a body Night
+  -- City Allies owns (see the note there): our conversation reaches that companion through the `Talk`
+  -- row the bridge appends to THEIR menu, not through our own box. THE PROMPT NEVER LEARNED THAT. So
+  -- on an NCA-hired Jackie we kept pushing our "[F] Talk" hub anyway — which on a controller draws as a
+  -- permanent (X) hint sitting on top of NCA's own, and which, when pressed, opens THEIR menu rather
+  -- than ours. Reported against NCLucy on 2026-08-18 by a controller player; the engine is shared, so
+  -- the bug was here word for word.
+  -- Same gate, same body test as Branch.kick, so the two can never disagree: a Jackie WE summoned still
+  -- gets the prompt exactly as before, bridge attached or not.
+  if j and Allies and Allies.present and Allies.present() and not jlIsOurBody(j) then
+    if choiceBox.shown then hideJackieChoiceBox() end
+    talkUI.shown       = false
+    JL.talkPromptShown = false
+    return
+  end
   local within = false
   if j then
     within = true
@@ -2138,6 +2153,17 @@ local function updateTalkPrompt(dt)
     end
   end
   if within then
+    -- v1.8.7 ⚠️ "off" MEANS OFF — checked before anything is drawn, and it is the ONE state with no
+    -- exception clause. A player running a HUD-hider mod wants a clean screen; a player who knows the
+    -- key wants their reminder gone. Neither is served by a prompt that reappears "just this once".
+    -- The KEY ITSELF IS UNTOUCHED: look at him and press it and he talks exactly as before. This hides
+    -- the reminder, and only the reminder.
+    if Config.talk and Config.talk.prompt == "off" then
+      if choiceBox.shown then hideJackieChoiceBox() end
+      talkUI.shown       = true      -- we ARE in range and looking; only the DRAWING is suppressed
+      JL.talkPromptShown = true
+      return
+    end
     if Config.talk and Config.talk.useChoiceBox then
       -- Permanent look-driven box: push on first look, then re-assert on the heartbeat
       -- interval so it survives if the game's interaction system clears the blackboard.
@@ -6205,7 +6231,8 @@ function catchUpTick()
 
   if jlInCombat() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   if jlDinnerOwnsBody() or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
-     or (jlCruise and jlCruise.active) then   -- v0.85: don't teleport him off his cruising bike
+     or (jlCruise and jlCruise.active)        -- v0.85: don't teleport him off his cruising bike
+     or jlPassengerBusy() then                -- v1.90: ...or off his walk to V's car door
     JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -6669,6 +6696,7 @@ function jlAbreastWhy()
   if JL.leaving.phase then return "the LEAVING phase owns his movement" end
   if JL.varrival and JL.varrival.phase then return "the ARRIVAL phase owns his movement" end
   if jlCruise and jlCruise.active then return "cruising on the bike" end   -- not while cruising on his bike
+  if jlPassengerBusy() then return "getting into V's car" end              -- v1.90: see jlPassengerBusy()
   if jlTakedownBusy() then return "mid-takedown" end                       -- v1.48: a takedown owns him
   if jlInCombat() then return "V is in combat" end                         -- fighting -> free him to fight
   if jlVertical() then return "stairs/slope -> single file" end            -- v1.46
@@ -6764,7 +6792,8 @@ local function followKeepCloseTick()
   if jlAbreastOn() then return end
   if not (JL.summon.active and JL.summon.companionSet) then return end
   if jlDinnerOwnsBody() or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
-     or (jlCruise and jlCruise.active) then return end   -- v0.85: leave him on his cruising bike
+     or (jlCruise and jlCruise.active)                   -- v0.85: leave him on his cruising bike
+     or jlPassengerBusy() then return end                -- v1.90: leave him walking to V's car door
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
   local now = JL.clock or 0
@@ -8192,8 +8221,53 @@ local function nsTick()
   if JL.walkAbreast == nil then JL.walkAbreast = true end                         -- v1.61 (true = walk-abreast ON by default). RENAMED from customWalk (v1.57's opt-in flag) so every old `customWalk=...` line in jl_settings.txt simply stops being read — restoring default-ON for everyone, the same invalidate-by-rename trick v1.57 used to flip it OFF.
   if type(JL.followGap) ~= "number" then JL.followGap = Config.followDistanceDefault or 1.5 end  -- v1.55 slider
   if JL.vVoice == nil then JL.vVoice = "auto" end                                -- v1.70.1 V's voice
+  if JL.talkPrompt == nil then JL.talkPrompt = "native" end                      -- v1.8.7 talk-prompt style
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
+
+    -- LANGUAGE, in the Esc menu (2026-08-19). It had been CET-window-only, which put the one
+    -- setting a non-English player needs FIRST behind a debug overlay most of them never open.
+    -- First subcategory on purpose: it changes every other line the mod puts on screen.
+    -- ⚠️ TEXT ONLY, and the description says so — Jackie's voice is the game's own recording and stays in the game's language.
+    -- ⚠️ This panel's OWN labels stay English: Native Settings rows are registered once at load
+    -- and are not routed through Lang.t, so re-translating them would need a re-registration
+    -- the API does not offer. Don't claim otherwise in the description.
+    -- The list is built from Lang.LANGUAGES so a language added there shows up here for free.
+    -- Wrapped in do...end: the locals are released at the end of the block, so the registration
+    -- function's register budget is untouched (200-local cap, see the note at the top).
+    ns.addSubcategory("/jackielives/language", "Language")
+    do
+      local labels, codes = { "Auto (follow the game's language)" }, { "auto" }
+      for _, L in ipairs(Lang.LANGUAGES) do
+        labels[#labels + 1] = L.label
+        codes[#codes + 1]   = L.code
+      end
+      local cur = 1
+      for i, c in ipairs(codes) do if c == (JL.langChoice or "auto") then cur = i end end
+      ns.addSelectorString(
+        "/jackielives/language",
+        "Mod language",
+        "Which language this mod's own text appears in — the subtitles it writes, its notices " ..
+        "and its prompts. AUTO (default) follows the game's own language setting, which is " ..
+        "right for almost everyone; pick a language here only to override that. " ..
+        "⚠️ SUBTITLES, NOT AUDIO: Jackie's voice is the game's own recording and stays in the game's language. " ..
+        "Anything not translated yet falls back to English rather than going blank, and this " ..
+        "settings panel itself stays English.",
+        labels, cur, 1,
+        function(i)
+          JL.langChoice = codes[i] or "auto"
+          if JL.langChoice == "auto" then
+            Lang.auto = true;  Lang.load(Lang.detect())
+          else
+            Lang.auto = false; Lang.load(JL.langChoice)
+          end
+          pcall(jlSaveSettings)
+          JL.ui.status = "Language: " .. Lang.labelFor(Lang.code) .. (Lang.auto and " (auto)" or "")
+          log("Language -> " .. tostring(JL.langChoice) .. " (active " .. Lang.code .. ")")
+        end
+      )
+    end
+
 
     -- v1.70.1 — V'S VOICE. V speaks her own dialogue choices now, and this is the one control
     -- for it. ⚠️ It does NOT tell the game what sex V is: the game reads that from the save
@@ -8248,6 +8322,32 @@ local function nsTick()
     -- v1.68 COMPATIBILITY. AMM used to be REQUIRED; it is optional now, and this is where a player who
     -- already runs it can keep the old behaviour rather than being moved onto a new code path by an
     -- update. Default OFF = the native backend, which is the one that works with or without AMM.
+    -- v1.8.7 CONTROLS. New subcategory, placed to match NCLives/NCLucy so the three mods' panels read the
+    -- same way. Reported against NCLucy on 2026-08-18 by a controller player: with Night City Allies
+    -- installed the native box drew a permanent (X) hint that could not be turned off. The engine is
+    -- shared, so JackieLives had it too — and here it is worse, because this mod has no "release F to
+    -- another mod" switch, so before this there was no way to quieten the prompt at all.
+    -- ⚠️ This is a DISPLAY switch, not a control switch. Whichever state it is in, F still talks to him.
+    ns.addSubcategory("/jackielives/controls", "Controls")
+    ns.addSelectorString(
+      "/jackielives/controls",
+      "Talk prompt",
+      "What you see when you look at Jackie, close enough to talk. GAME PROMPT (default) = the game's " ..
+      "own interaction box, the one that reads [F] on a keyboard and draws the (X) glyph on a " ..
+      "controller. TEXT = a plain line on the left of the screen. NONE = no prompt at all, for " ..
+      "HUD-hider setups. F still talks to him in every setting — this only changes what is drawn.",
+      { "Game prompt ([F] / (X))", "Text on screen", "None" },
+      ({ native = 1, text = 2, off = 3 })[JL.talkPrompt] or 1,
+      1,             -- 'reset to default' = the game prompt
+      function(i)
+        JL.talkPrompt = ({ "native", "text", "off" })[i] or "native"
+        pcall(jlSaveSettings)
+        jlApplyTalkPrompt()   -- into the LIVE Config, now
+        JL.ui.status = "Talk prompt: " .. JL.talkPrompt .. " (F still works)."
+        log("Talk prompt -> " .. JL.talkPrompt)
+      end
+    )
+
     ns.addSubcategory("/jackielives/compat", "Compatibility")
     ns.addSwitch(
       "/jackielives/compat",
@@ -8428,6 +8528,8 @@ function jlSaveSettings()
   -- same reason voiceMode is — config.lua is re-required from disk on every reload, so a choice
   -- that lived only in Config would be silently reverted the next time the mod reloaded.
   f:write("vVoice=" .. tostring(JL.vVoice or "auto") .. "\n")
+  -- v1.8.7 talk prompt: also a STRING ("native" | "text" | "off"), same reason as vVoice above.
+  f:write("talkPrompt=" .. tostring(JL.talkPrompt or "native") .. "\n")
   -- v1.60 language: "auto" = follow the game's own language setting, else a code from Lang.LANGUAGES.
   f:write("lang=" .. tostring(JL.langChoice or "auto") .. "\n")
   f:close()
@@ -8448,6 +8550,9 @@ function jlLoadSettings()
       end
       if k == "vVoice" and (v == "auto" or v == "male" or v == "female") then
         JL.vVoice = v                                                            -- v1.70.1
+      end
+      if k == "talkPrompt" and (v == "native" or v == "text" or v == "off") then
+        JL.talkPrompt = v                                                        -- v1.8.7
       end
       for _, want in ipairs(JL_SETTINGS_KEYS) do
         if k == want then JL[k] = (v == "true") end
@@ -8588,6 +8693,25 @@ JL_SEATS_FILE = "jl_seats.txt"
 
 -- Re-apply one persisted override INTO the live Config, mirroring tunerPrint's in-memory patch so
 -- both the tuner and the normal scheduled sit path pick it up. Returns true if it landed on a seat.
+-- v1.8.7 — HOW THE "look at Jackie" PROMPT IS DRAWN, or whether it is drawn at all. Same
+-- config-is-re-required-from-disk reason as every other jlApply* here: the live value has to be
+-- copied back into Config after jlLoadSettings or a reload silently resets the player's choice.
+--   "native" (default) = the game's own interaction box, "[F] Talk". On a controller it draws the
+--                        (X) glyph, because that box hard-codes the Choice1 input action.
+--   "text"             = the plain on-screen line "Talk to Jackie [ <key> ]".
+--   "off"              = no prompt at all. For HUD-hider setups, and for players who already know
+--                        the key. The KEY STILL WORKS — this hides the reminder, nothing else.
+-- ⚠️ JackieLives has no "release F to another mod" hatch (NCLives/NCLucy v1.45 added one; here F is
+-- the only way in), which makes "off" the ONLY way to quieten this prompt — so it matters more here,
+-- not less. Global -> 200-cap safe.
+function jlApplyTalkPrompt()
+  Config.talk = Config.talk or {}
+  local pick = JL.talkPrompt or "native"
+  if pick ~= "native" and pick ~= "text" and pick ~= "off" then pick = "native" end
+  Config.talk.prompt       = pick
+  Config.talk.useChoiceBox = (pick == "native")
+end
+
 function jlApplySeatOverride(key, seatIdx, x, y, z, yaw)
   local loc = Config.locations and Config.locations[key]
   if not (loc and loc.waypoints) then return false end
@@ -8878,6 +9002,188 @@ function jlIsBikeVeh(veh)
   local cn = ""; pcall(function() cn = tostring(veh:GetClassName()) end)
   cn = cn:lower()
   return (cn:find("bike") ~= nil) or (cn:find("motorcycle") ~= nil)
+end
+
+-- ---------------------------------------------------------------------------
+-- v1.90 CAR PASSENGER — Jackie gets in when V does
+-- ---------------------------------------------------------------------------
+-- ⚠️ THIS DID NOT EXIST BEFORE v1.90, and that is the whole bug report. The follower role does NOT
+-- get an NPC into a car; vanilla only seats followers through scripted quest commands. AMM does it
+-- in `Scan:AutoAssignSeats` (Modules/scan.lua:781) — but that loop iterates `AMM.Spawn.spawnedNPCs`,
+-- and since v1.68 Jackie is spawned NATIVELY (init.lua's ammSpawn NATIVE branch). AMM has never
+-- heard of him. So with AMM installed he sometimes rode along (the old AMM-spawn path) and with the
+-- native spawn he never did. "Unreliable" was really "absent, with an AMM-shaped exception".
+--
+-- Ported wholesale from NCLives v1.85. The backend is native.lua §3; everything below is the
+-- policy: when to ask, how long to wait, and what to do when the walk doesn't land.
+--
+-- Deliberately NOT handled here:
+--   * BIKES. V on a bike is `jlCruiseTick`'s job — Jackie gets his own Arch and trails.
+--     `jlCruiseTick` is gated ahead of this in onUpdate; this tick stands down on two wheels.
+--   * V's own seat. Native.seats() never offers seat_front_left (see native.lua).
+--
+-- State lives on a GLOBAL rather than JL so a soft-reload can't strand a live command — and because
+-- init.lua is at Lua's 200-local cap and cannot afford another top-level local.
+jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
+                mounted = false, seat = nil, armed = nil }
+
+-- THE GATE THE WHOLE FIX HANGS ON.
+--
+-- A companion who has been told to get into a car is BUSY. Without this, the ticks that run right
+-- after the passenger tick — followKeepCloseTick, then abreast, then catchUp — re-issue their own
+-- move command at a V who is now sitting in a moving car, which REPLACES the mount command while
+-- Jackie is still walking to the door. catchUp goes further and teleports him.
+--
+-- Every one of those ticks was already gated on `jlCruise.active` for exactly this reason (v0.85,
+-- "don't drag him off the bike"). This is the same gate for the car.
+function jlPassengerBusy()
+  return (jlPassenger and jlPassenger.veh) and true or false
+end
+
+-- V has STARTED getting in (see setupPassengerHook). The polled tick can only react once V's own
+-- mount has completed and GetVehicleObject() goes non-nil, which is ~2 s of door animation Jackie
+-- could have spent walking. Arm the tick early.
+function jlPassengerArm(veh)
+  if not veh then return end
+  if jlPassenger.veh == veh then return end
+  jlPassenger.armed = veh
+end
+
+-- Register that early trigger. `OnVehicleStartedMountingEvent` fires the moment V reaches for the
+-- door — AMM watches the same event for its own driver bookkeeping (AMM init.lua:589), so the shape
+-- of `event` is not a guess: `.character` is who is mounting, `.isMounting` distinguishes getting in
+-- from getting out. The observer mounts nobody; it sets a flag, so all the gating, throttling and
+-- escalation stays in jlPassengerTick.
+function setupPassengerHook()
+  if JL.passengerHooked then return end
+  local ok = pcall(function()
+    Observe("VehicleComponent", "OnVehicleStartedMountingEvent", function(self, event)
+      pcall(function()
+        if not (event and event.isMounting) then return end
+        if not (event.character and event.character:IsPlayer()) then return end
+        jlPassengerArm(self:GetVehicle())
+      end)
+    end)
+  end)
+  JL.passengerHooked = ok
+  log("Passenger early-entry hook (VehicleComponent:OnVehicleStartedMountingEvent) registered: " .. tostring(ok))
+end
+
+function jlPassengerTick()
+  local P = (Config.follow or {}).passenger
+  if P == false then return end                     -- opt-out; default is on
+  if jlCruise and jlCruise.active then return end   -- bikes belong to the cruise system
+
+  -- PERF: table lookups before engine reads. With no companion out — which is most of the time
+  -- anyone is playing — this tick must cost nothing but the branches above and the one below.
+  --
+  -- ⚠️ The early-out has to survive a STANDING command: if V is driving with Jackie aboard and he is
+  -- then dismissed, `jlPassenger.veh` is still set and needs clearing. So bail only when there is
+  -- nothing to clean up either.
+  if not (JL.summon.active and JL.summon.companionSet) and not jlPassenger.veh then return end
+
+  local live = jlPlayerVehicleObj()
+  local veh  = live or jlPassenger.armed
+
+  -- V got out (or swapped vehicles): drop the standing command so Jackie resumes following on foot
+  -- instead of walking to a car that's driving away.
+  if jlPassenger.veh and veh ~= jlPassenger.veh then
+    local h = JL.summon.spawn and JL.summon.spawn.handle
+    if h and jlPassenger.cmd then Native.cancelMount(h, jlPassenger.cmd) end
+    jlPassenger.veh, jlPassenger.cmd, jlPassenger.deadline = nil, nil, nil
+    jlPassenger.tries, jlPassenger.mounted, jlPassenger.seat = 0, false, nil
+  end
+  if not live then jlPassenger.armed = nil end
+
+  if not veh then return end
+  if jlIsBikeVeh(veh) then return end
+
+  -- Only a real, promoted companion rides along — not an idle/venue Jackie, not a mid-arrival one
+  -- still walking in (he'd abandon the arrival to chase the car), and not one the dinner or the
+  -- leaving machine already owns.
+  if not (JL.summon.active and JL.summon.companionSet) then return end
+  if JL.varrival and JL.varrival.phase then return end
+  if jlDinnerOwnsBody() or JL.leaving.phase then return end
+  local h = resolveJackieHandle(); if not h then return end
+
+  local now = JL.clock or 0
+  local C   = (Config.follow or {}).passengerTiming or {}
+
+  -- -------------------------------------------------------------------------------------------
+  -- ALREADY SENT FOR THIS VEHICLE -> the VERIFY half
+  -- -------------------------------------------------------------------------------------------
+  if jlPassenger.veh == veh then
+    if jlPassenger.mounted then return end          -- aboard; nothing left to do all journey
+    if Native.isMountedTo(h, veh) then
+      jlPassenger.mounted = true
+      log(("Passenger: Jackie is in the car (seat %s, attempt %d)."):format(
+          tostring(jlPassenger.seat), jlPassenger.tries or 1))
+      return
+    end
+    if not jlPassenger.deadline or now < jlPassenger.deadline then return end
+
+    -- The walk didn't land inside its window. Escalate rather than retry forever: one more honest
+    -- walk (the first attempt is often eaten by a door that was still opening or a hostile
+    -- pathfind), then teleport him in. Jackie standing in the road watching V drive away is worse
+    -- than Jackie appearing in the seat.
+    local tries = (jlPassenger.tries or 1)
+    if tries < (C.walkTries or 2) then
+      jlPassenger.tries = tries + 1
+      local cmd = Native.mount(h, veh, jlPassenger.seat, jlPassenger.cmd)
+      jlPassenger.cmd = cmd or jlPassenger.cmd
+      jlPassenger.deadline = now + (C.walkSeconds or 6.0)
+      log(("Passenger: not aboard after %.0fs — walk attempt %d."):format(C.walkSeconds or 6.0, jlPassenger.tries))
+    else
+      Native.forceMount(h, veh, jlPassenger.seat)
+      jlPassenger.mounted = Native.isMountedTo(h, veh)
+      jlPassenger.deadline = nil
+      if not jlPassenger.mounted then
+        log("Passenger: force-mount did not take either — Jackie stays on foot.")
+        jlPassenger.veh = nil                       -- release the gate; let him follow again
+      end
+    end
+    return
+  end
+
+  -- -------------------------------------------------------------------------------------------
+  -- FIRST SEND
+  -- -------------------------------------------------------------------------------------------
+  if now - (jlPassenger.sentAt or -999) < 2.0 then return end
+  jlPassenger.sentAt = now
+
+  local seat = Native.freeSeat(veh)
+  if not seat then return end
+
+  -- If the player hand-seated him ("Seat them here"), that latch has to come down BEFORE the mount.
+  -- Native.mount stops the workspot either way, but only jlManualUnseat also restores collision and
+  -- clears JL.puppet — and a stale puppet latch is what turns a later despawn into a hard crash.
+  if JL.puppet then pcall(function() jlManualUnseat("getting into V's car") end) end
+
+  -- DISTANCE. AIMountCommand is a walk. From across the street, with V already pulling away, it is a
+  -- walk to nowhere. Past `farDistance` skip straight to the teleport: it is the only thing that can
+  -- still put him in the car, and it is what AMM did for every mount anyway.
+  local far = false
+  local pp = playerPos()
+  local jp; pcall(function() jp = h:GetWorldPosition() end)
+  if pp and jp then
+    local okD, d = pcall(dist3, pp, jp)
+    if okD and type(d) == "number" then far = d > (C.farDistance or 18.0) end
+  end
+
+  jlPassenger.veh, jlPassenger.seat, jlPassenger.mounted = veh, seat, false
+  if far then
+    jlPassenger.tries = C.walkTries or 2            -- no walk left to try
+    Native.forceMount(h, veh, seat)
+    jlPassenger.mounted = Native.isMountedTo(h, veh)
+    jlPassenger.deadline = nil
+    if not jlPassenger.mounted then jlPassenger.veh = nil end
+    log("Passenger: Jackie too far to walk to the car -> placed directly.")
+  else
+    jlPassenger.tries = 1
+    jlPassenger.cmd = Native.mount(h, veh, seat, jlPassenger.cmd)
+    jlPassenger.deadline = now + (C.walkSeconds or 6.0)
+    if not jlPassenger.cmd then jlPassenger.deadline = now end   -- send failed -> escalate next tick
+  end
 end
 
 -- True only during a real locked cutscene (PlayerStateMachine SceneTier >= 4 = FPPCinematic/Cinematic).
@@ -9207,6 +9513,13 @@ function jlResetSessionState(id, why)
   JL.follow   = { lastAt = nil }
   JL.abreast  = { lastAt = nil }
   JL.persist  = { gapSince = nil, lastRespawn = nil, worldReadyAt = nil }
+  -- v1.90: the car-passenger latch holds a VEHICLE HANDLE and a live AI command from the world that
+  -- just died. Nothing here needs cancelling — that world is gone — but the refs must not survive, or
+  -- the first tick of the new session compares a fresh vehicle against a dead pointer and tries to
+  -- cancel a command on a corpse. It lives on a global rather than JL (200-cap), which is exactly why
+  -- it would otherwise be missed by this function.
+  jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
+                  mounted = false, seat = nil, armed = nil }
   -- dinner: clear only the in-flight outing, keep the cross-session offer schedule
   if JL.dinner then
     JL.dinner.phase, JL.dinner.dest, JL.dinner.destName, JL.dinner.destYaw = nil, nil, nil, nil
@@ -9374,8 +9687,10 @@ registerForEvent("onInit", function()
   getAMM()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
   pcall(setupDetachPurge)  -- v1.61: despawn a following Jackie at load-teardown START -> no cross-save load crash
+  pcall(setupPassengerHook) -- v1.90: start the walk to the car door when V reaches for it, not 2 s later
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
+  pcall(jlApplyTalkPrompt) -- v1.8.7: ...and how (or whether) the "look at Jackie" prompt is drawn
   pcall(jlDefaultHermano)  -- v1.54: Hermano for everyone unless the player explicitly flipped the switch
   -- v1.60: pick the language. AFTER jlLoadSettings so an explicit player choice beats autodetect;
   -- nil/"auto" (the default, and every existing jl_settings.txt) follows the game's own language.
@@ -10374,6 +10689,7 @@ registerForEvent("onUpdate", function(dt)
     pcall(jlMainExitTick)
   end
   pcall(jlCruiseTick)     -- v0.85: V on a BIKE -> Jackie trails on his Arch (gated before the foot ticks)
+  pcall(jlPassengerTick)  -- v1.90: V in a CAR -> Jackie gets in (AMM never seated a natively-spawned Jackie)
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(abreastTick)      -- v0.84: OR (when enabled) hold him beside/ahead of V instead of trailing
   pcall(jlWalkProbeTick)  -- v1.8.3: log WHICH gate is refusing walk-beside (self-guards; edge + heartbeat)

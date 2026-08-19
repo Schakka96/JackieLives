@@ -191,7 +191,11 @@ def _block_keys(code):
     block = body[m.end():i]
     keys = set()
     for k in re.finditer(r'\[\s*"((?:[^"\\]|\\.)*)"\s*\]\s*=', block):
-        keys.add(k.group(1).replace('\\"', '"').replace("\\\\", "\\"))
+        # AS WRITTEN, not unescaped. `harvest()` yields Lua-source-form strings, so a key
+        # unescaped here would never equal the source string it belongs to — every string
+        # containing \n or \" then reported MISSING while sitting right there in the file,
+        # and autotranslate re-translated it on every run.
+        keys.add(k.group(1))
     return keys
 
 

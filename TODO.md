@@ -13,6 +13,61 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 
 
 
+## 🌍 LANGUAGE IN THE ESC MENU, AND TWO BUGS THAT MADE TRANSLATION A NO-OP (2026-08-19)
+
+**The control.** The language picker had been CET-window-only — a debug overlay most players never
+open — which put the one setting a non-English player needs FIRST somewhere they would never find
+it. It is now the first subcategory of the Native Settings panel:
+**Settings → Mods → Jackie Lives → Language → Mod language**, Auto plus every entry in
+`Lang.LANGUAGES`, switching live. The list is built from `Lang.LANGUAGES`, so adding a language
+there puts it on the panel for free.
+
+Two things it deliberately does NOT claim: the panel's own labels stay English (Native Settings
+rows register once at load and are not routed through `Lang.t`, and re-registering is not offered
+by the API), and the audio is untouched. Jackie speaks the game's own recordings, which already follow the player's game language rather than this setting.
+
+`tools/loadsim.lua` gained the matching gate (+7 checks): the row registers, offers every language
+in `Lang.LANGUAGES`, defaults to Auto, and picking Chinese actually moves `Lang.code` — asserted on
+`Lang`, not on the settings table, because what matters is that the ACTIVE language changed.
+
+Player-facing copy for the Nexus page, hand-written in each of the ten languages:
+`docs/LANGUAGES.md`.
+
+### Problems & Resolutions
+
+**`tools/autotranslate.py` was writing keys the mod could never look up.** `harvest()` returns each
+key ALREADY in Lua source form, escapes and all, and both `lang_extract.write_template` and
+`autotranslate.insert` then ran it through `lua_quote` a second time. A key holding `\n` was filed
+as `\\n`; `Lang.t` looked up the real string, found nothing, and fell back to English — silently,
+and forever. Only long strings carry a newline or an inner quote, so it hit precisely the strings
+most worth translating: the how-to card, the seat card and the SUBTITLES MUST BE ON warning. Those
+had apparently never been translated in ANY language, including in the hand-written blocks, because
+the template generator shipped the same bug. `insert` no longer re-quotes either side, and the
+existing damage was repaired by peeling escape layers until each key matched the source again
+(36 in this repo; several had been quoted twice over). Every key in `translations.lua` now
+matches the English source — that is the check worth keeping, not "did the file get written".
+
+**`prune_stale` would have DELETED them.** It unescaped the key before comparing it against a set of
+source-form strings, so every key containing an escape looked stale. `--prune` was never run; the
+comparison is now made as-written. Worth remembering as the shape of the bug: two halves of one
+tool disagreeing about whether a string is escaped.
+
+**The machine translation corrupted strings, and a green exit code hid it.** The first full run
+reported `exit 0` and thousands of strings written, and the output contained: `%s` markers dropped
+or respaced past recognition (`Bitten Sie @ @ 0 @ @ zu kommen` — a live on-screen defect), a `⚠`
+rendered as its byte-fallback spelling `<0xE2><0x9A><0xA0>`, and model-invented `\"` escaped a
+second time into a visible stray backslash. Fixed by protecting pictographic symbols as slots the
+way format specifiers already were, matching mangled markers, stripping backslashes the model
+invents, and — the part that matters — **refusing a damaged translation and keeping the English**.
+A string that lost its `%s` is worse on screen than the line it replaced.
+
+⚠️ **What the gate does NOT catch is meaning.** Argos read `⚠ SUBTITLES MUST BE ON` into Chinese as
+`萨比特斯必须上` — phonetic gibberish for "subtitles" — and then inverted the sentence to say that
+*with* subtitles you will read nothing. It is refused now, but only because the ⚠ tripped the
+damage check. Machine translation is for UI text; character voice and anything instructional should
+be read by a human before it ships. `--skip` holds dialogue back.
+
+
 ## 📜 DESIGNED 2026-08-18 — "GHOST IN THE MACHINE": a real questline, now that WolvenKit CLI is on Windows
 
 Full design: **`docs/QUEST_ARASAKA.md`**. Nothing built yet — this is the design pass Antonia asked for.

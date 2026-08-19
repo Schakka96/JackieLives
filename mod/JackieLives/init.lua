@@ -2128,6 +2128,21 @@ local function updateTalkPrompt(dt)
   end
   if Branch.busy then return end   -- a conversation is running; don't fight / clear its choice box
   local j = lookedAtJackie()
+  -- v1.8.7 ⚠️ NEVER ADVERTISE A KEY THAT DOES NOTHING. Branch.kick already stands down on a body Night
+  -- City Allies owns (see the note there): our conversation reaches that companion through the `Talk`
+  -- row the bridge appends to THEIR menu, not through our own box. THE PROMPT NEVER LEARNED THAT. So
+  -- on an NCA-hired Jackie we kept pushing our "[F] Talk" hub anyway — which on a controller draws as a
+  -- permanent (X) hint sitting on top of NCA's own, and which, when pressed, opens THEIR menu rather
+  -- than ours. Reported against NCLucy on 2026-08-18 by a controller player; the engine is shared, so
+  -- the bug was here word for word.
+  -- Same gate, same body test as Branch.kick, so the two can never disagree: a Jackie WE summoned still
+  -- gets the prompt exactly as before, bridge attached or not.
+  if j and Allies and Allies.present and Allies.present() and not jlIsOurBody(j) then
+    if choiceBox.shown then hideJackieChoiceBox() end
+    talkUI.shown       = false
+    JL.talkPromptShown = false
+    return
+  end
   local within = false
   if j then
     within = true
@@ -2138,6 +2153,17 @@ local function updateTalkPrompt(dt)
     end
   end
   if within then
+    -- v1.8.7 ⚠️ "off" MEANS OFF — checked before anything is drawn, and it is the ONE state with no
+    -- exception clause. A player running a HUD-hider mod wants a clean screen; a player who knows the
+    -- key wants their reminder gone. Neither is served by a prompt that reappears "just this once".
+    -- The KEY ITSELF IS UNTOUCHED: look at him and press it and he talks exactly as before. This hides
+    -- the reminder, and only the reminder.
+    if Config.talk and Config.talk.prompt == "off" then
+      if choiceBox.shown then hideJackieChoiceBox() end
+      talkUI.shown       = true      -- we ARE in range and looking; only the DRAWING is suppressed
+      JL.talkPromptShown = true
+      return
+    end
     if Config.talk and Config.talk.useChoiceBox then
       -- Permanent look-driven box: push on first look, then re-assert on the heartbeat
       -- interval so it survives if the game's interaction system clears the blackboard.
@@ -8195,8 +8221,53 @@ local function nsTick()
   if JL.walkAbreast == nil then JL.walkAbreast = true end                         -- v1.61 (true = walk-abreast ON by default). RENAMED from customWalk (v1.57's opt-in flag) so every old `customWalk=...` line in jl_settings.txt simply stops being read — restoring default-ON for everyone, the same invalidate-by-rename trick v1.57 used to flip it OFF.
   if type(JL.followGap) ~= "number" then JL.followGap = Config.followDistanceDefault or 1.5 end  -- v1.55 slider
   if JL.vVoice == nil then JL.vVoice = "auto" end                                -- v1.70.1 V's voice
+  if JL.talkPrompt == nil then JL.talkPrompt = "native" end                      -- v1.8.7 talk-prompt style
   local ok, err = pcall(function()
     ns.addTab("/jackielives", "Jackie Lives")
+
+    -- LANGUAGE, in the Esc menu (2026-08-19). It had been CET-window-only, which put the one
+    -- setting a non-English player needs FIRST behind a debug overlay most of them never open.
+    -- First subcategory on purpose: it changes every other line the mod puts on screen.
+    -- ⚠️ TEXT ONLY, and the description says so — Jackie's voice is the game's own recording and stays in the game's language.
+    -- ⚠️ This panel's OWN labels stay English: Native Settings rows are registered once at load
+    -- and are not routed through Lang.t, so re-translating them would need a re-registration
+    -- the API does not offer. Don't claim otherwise in the description.
+    -- The list is built from Lang.LANGUAGES so a language added there shows up here for free.
+    -- Wrapped in do...end: the locals are released at the end of the block, so the registration
+    -- function's register budget is untouched (200-local cap, see the note at the top).
+    ns.addSubcategory("/jackielives/language", "Language")
+    do
+      local labels, codes = { "Auto (follow the game's language)" }, { "auto" }
+      for _, L in ipairs(Lang.LANGUAGES) do
+        labels[#labels + 1] = L.label
+        codes[#codes + 1]   = L.code
+      end
+      local cur = 1
+      for i, c in ipairs(codes) do if c == (JL.langChoice or "auto") then cur = i end end
+      ns.addSelectorString(
+        "/jackielives/language",
+        "Mod language",
+        "Which language this mod's own text appears in — the subtitles it writes, its notices " ..
+        "and its prompts. AUTO (default) follows the game's own language setting, which is " ..
+        "right for almost everyone; pick a language here only to override that. " ..
+        "⚠️ SUBTITLES, NOT AUDIO: Jackie's voice is the game's own recording and stays in the game's language. " ..
+        "Anything not translated yet falls back to English rather than going blank, and this " ..
+        "settings panel itself stays English.",
+        labels, cur, 1,
+        function(i)
+          JL.langChoice = codes[i] or "auto"
+          if JL.langChoice == "auto" then
+            Lang.auto = true;  Lang.load(Lang.detect())
+          else
+            Lang.auto = false; Lang.load(JL.langChoice)
+          end
+          pcall(jlSaveSettings)
+          JL.ui.status = "Language: " .. Lang.labelFor(Lang.code) .. (Lang.auto and " (auto)" or "")
+          log("Language -> " .. tostring(JL.langChoice) .. " (active " .. Lang.code .. ")")
+        end
+      )
+    end
+
 
     -- v1.70.1 — V'S VOICE. V speaks her own dialogue choices now, and this is the one control
     -- for it. ⚠️ It does NOT tell the game what sex V is: the game reads that from the save
@@ -8251,6 +8322,32 @@ local function nsTick()
     -- v1.68 COMPATIBILITY. AMM used to be REQUIRED; it is optional now, and this is where a player who
     -- already runs it can keep the old behaviour rather than being moved onto a new code path by an
     -- update. Default OFF = the native backend, which is the one that works with or without AMM.
+    -- v1.8.7 CONTROLS. New subcategory, placed to match NCLives/NCLucy so the three mods' panels read the
+    -- same way. Reported against NCLucy on 2026-08-18 by a controller player: with Night City Allies
+    -- installed the native box drew a permanent (X) hint that could not be turned off. The engine is
+    -- shared, so JackieLives had it too — and here it is worse, because this mod has no "release F to
+    -- another mod" switch, so before this there was no way to quieten the prompt at all.
+    -- ⚠️ This is a DISPLAY switch, not a control switch. Whichever state it is in, F still talks to him.
+    ns.addSubcategory("/jackielives/controls", "Controls")
+    ns.addSelectorString(
+      "/jackielives/controls",
+      "Talk prompt",
+      "What you see when you look at Jackie, close enough to talk. GAME PROMPT (default) = the game's " ..
+      "own interaction box, the one that reads [F] on a keyboard and draws the (X) glyph on a " ..
+      "controller. TEXT = a plain line on the left of the screen. NONE = no prompt at all, for " ..
+      "HUD-hider setups. F still talks to him in every setting — this only changes what is drawn.",
+      { "Game prompt ([F] / (X))", "Text on screen", "None" },
+      ({ native = 1, text = 2, off = 3 })[JL.talkPrompt] or 1,
+      1,             -- 'reset to default' = the game prompt
+      function(i)
+        JL.talkPrompt = ({ "native", "text", "off" })[i] or "native"
+        pcall(jlSaveSettings)
+        jlApplyTalkPrompt()   -- into the LIVE Config, now
+        JL.ui.status = "Talk prompt: " .. JL.talkPrompt .. " (F still works)."
+        log("Talk prompt -> " .. JL.talkPrompt)
+      end
+    )
+
     ns.addSubcategory("/jackielives/compat", "Compatibility")
     ns.addSwitch(
       "/jackielives/compat",
@@ -8431,6 +8528,8 @@ function jlSaveSettings()
   -- same reason voiceMode is — config.lua is re-required from disk on every reload, so a choice
   -- that lived only in Config would be silently reverted the next time the mod reloaded.
   f:write("vVoice=" .. tostring(JL.vVoice or "auto") .. "\n")
+  -- v1.8.7 talk prompt: also a STRING ("native" | "text" | "off"), same reason as vVoice above.
+  f:write("talkPrompt=" .. tostring(JL.talkPrompt or "native") .. "\n")
   -- v1.60 language: "auto" = follow the game's own language setting, else a code from Lang.LANGUAGES.
   f:write("lang=" .. tostring(JL.langChoice or "auto") .. "\n")
   f:close()
@@ -8451,6 +8550,9 @@ function jlLoadSettings()
       end
       if k == "vVoice" and (v == "auto" or v == "male" or v == "female") then
         JL.vVoice = v                                                            -- v1.70.1
+      end
+      if k == "talkPrompt" and (v == "native" or v == "text" or v == "off") then
+        JL.talkPrompt = v                                                        -- v1.8.7
       end
       for _, want in ipairs(JL_SETTINGS_KEYS) do
         if k == want then JL[k] = (v == "true") end
@@ -8591,6 +8693,25 @@ JL_SEATS_FILE = "jl_seats.txt"
 
 -- Re-apply one persisted override INTO the live Config, mirroring tunerPrint's in-memory patch so
 -- both the tuner and the normal scheduled sit path pick it up. Returns true if it landed on a seat.
+-- v1.8.7 — HOW THE "look at Jackie" PROMPT IS DRAWN, or whether it is drawn at all. Same
+-- config-is-re-required-from-disk reason as every other jlApply* here: the live value has to be
+-- copied back into Config after jlLoadSettings or a reload silently resets the player's choice.
+--   "native" (default) = the game's own interaction box, "[F] Talk". On a controller it draws the
+--                        (X) glyph, because that box hard-codes the Choice1 input action.
+--   "text"             = the plain on-screen line "Talk to Jackie [ <key> ]".
+--   "off"              = no prompt at all. For HUD-hider setups, and for players who already know
+--                        the key. The KEY STILL WORKS — this hides the reminder, nothing else.
+-- ⚠️ JackieLives has no "release F to another mod" hatch (NCLives/NCLucy v1.45 added one; here F is
+-- the only way in), which makes "off" the ONLY way to quieten this prompt — so it matters more here,
+-- not less. Global -> 200-cap safe.
+function jlApplyTalkPrompt()
+  Config.talk = Config.talk or {}
+  local pick = JL.talkPrompt or "native"
+  if pick ~= "native" and pick ~= "text" and pick ~= "off" then pick = "native" end
+  Config.talk.prompt       = pick
+  Config.talk.useChoiceBox = (pick == "native")
+end
+
 function jlApplySeatOverride(key, seatIdx, x, y, z, yaw)
   local loc = Config.locations and Config.locations[key]
   if not (loc and loc.waypoints) then return false end
@@ -9569,6 +9690,7 @@ registerForEvent("onInit", function()
   pcall(setupPassengerHook) -- v1.90: start the walk to the car door when V reaches for it, not 2 s later
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
+  pcall(jlApplyTalkPrompt) -- v1.8.7: ...and how (or whether) the "look at Jackie" prompt is drawn
   pcall(jlDefaultHermano)  -- v1.54: Hermano for everyone unless the player explicitly flipped the switch
   -- v1.60: pick the language. AFTER jlLoadSettings so an explicit player choice beats autodetect;
   -- nil/"auto" (the default, and every existing jl_settings.txt) follows the game's own language.

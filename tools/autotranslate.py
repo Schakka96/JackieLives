@@ -149,6 +149,11 @@ def to_plain(key):
         return "@@%d@@" % (len(slots) - 1)
 
     s = re.sub(r"%[-+ #0-9.]*[sdifgqxX%]", grab, s)
+    # ...and so do pictographic symbols. The models have no token for U+26A0 and emit their
+    # byte-fallback spelling instead — a literal "<0xE2><0x9A><0xA0>" landed in the German
+    # copy of the how-to card, which is the single most important string in the mod. Anything
+    # outside the Latin/CJK/Cyrillic ranges the models actually know rides through as a slot.
+    s = re.sub(r"[\u2190-\u2BFF\U0001F000-\U0001FAFF]", grab, s)
     # Lua's DECIMAL byte escapes (\226\154\160 = the warning sign). Left alone they reach the model
     # as literal backslash-digits, and it happily rewrites or drops them — which corrupts the string
     # for every language at once. Decode to the real character BEFORE translating: the model then
@@ -159,12 +164,30 @@ def to_plain(key):
     return s, slots
 
 
-def to_lua(text, slots):
-    """The translated sentence -> Lua source text, with the format specifiers put back."""
+def to_lua(text, slots, plain=""):
+    """The translated sentence -> Lua source text, with the protected tokens put back.
+
+    Returns None when the translation came back DAMAGED, and the caller then keeps English.
+    Refusing is the whole point: a string that lost its `%s` renders the companion's name as
+    nothing, and one that kept a marker renders it as "@ @ 0 @ @" — both are worse on screen
+    than the English line they replaced.
+    """
     for i, slot in enumerate(slots):
-        # The model sometimes spaces the marker out ("@@ 0 @@") — accept that too, or the
-        # specifier is silently lost and the .format() call throws in game.
-        text = re.sub(r"@@\s*%d\s*@@" % i, lambda _m, s=slot: s, text)
+        # The model respaces the marker in every way you can imagine — "@@ 0 @@", "@ @ 0 @ @",
+        # "@@0 @@". Match any of them rather than losing the token.
+        text = re.sub(r"@\s*@\s*%d\s*@\s*@" % i, lambda _m, s=slot: s, text)
+    if re.search(r"@\s*@\s*\d", text):
+        return None                      # a marker the model mangled past recognition
+    for slot in slots:
+        if slot not in text:
+            return None                  # a marker the model simply deleted
+    if "<0x" in text:
+        return None                      # byte-fallback debris for a token it does not know
+    # The models emit their own escaping — `\"tak\"` for a quoted word — and escaping that
+    # again yields `\\\"` in the Lua, which draws a visible backslash on screen. If the
+    # sentence we handed them had no backslash, neither may the one they hand back.
+    if "\\" not in plain:
+        text = text.replace("\\", "")
     out = text.replace("\\", "\\\\").replace('"', '\\"')
     return out.replace("\n", "\\n").replace("\t", "\\t")
 
@@ -182,7 +205,7 @@ def translate_key(key, target, translate):
         except Exception as exc:                  # a model hiccup must not lose the whole run
             print(f"    ! {target}: {exc} — left in English")
             done.append(seg)
-    return to_lua("\n".join(done), slots)
+    return to_lua("\n".join(done), slots, plain)
 
 
 # --------------------------------------------------------------------------------------------
@@ -209,7 +232,9 @@ def prune_stale(body, code, source):
     kept, dropped = [], 0
     for line in body[start:end].split("\n"):
         k = re.match(r'\s*\[\s*"((?:[^"\\]|\\.)*)"\s*\]\s*=', line)
-        if k and k.group(1).replace('\\"', '"').replace("\\\\", "\\") not in source:
+        # `source` holds Lua-source-form strings — that is what harvest returns — so the key is
+        # compared AS WRITTEN. Unescaping it first made every key with an escape look stale.
+        if k and k.group(1) not in source:
             dropped += 1
             continue
         kept.append(line)
@@ -222,7 +247,14 @@ def insert(body, code, pairs):
     if not span:
         sys.exit(f"no '{code}' block in translations.lua — add an empty one first")
     start, end = span
-    rows = "".join('    [%s] = %s,\n' % (LX.lua_quote(k), LX.lua_quote(v)) for k, v in pairs)
+    # ⚠️ NEITHER SIDE GETS QUOTED AGAIN. `harvest()` returns the key exactly as it appears in the
+    # Lua source — escapes and all — and `to_lua` returns the value in that same form. Running
+    # either through lua_quote here escapes it a SECOND time, so a key holding `\\n` was written as
+    # `\\\\n` and stopped matching the string the mod actually looks up. Those translations were
+    # dead on arrival: Lang.t found nothing and fell back to English, silently, forever. And it hit
+    # exactly the strings most worth translating — the how-to card, the seat card and the
+    # SUBTITLES MUST BE ON warning are the only ones long enough to contain a newline.
+    rows = "".join('    ["%s"] = "%s",\n' % (k, v) for k, v in pairs)
     tail = body[start:end].rstrip("\n ")
     return body[:start] + tail + "\n" + rows + "  " + body[end:]
 
@@ -275,16 +307,22 @@ def main():
             continue
 
         print(f"{code:<5} translating {len(missing)} string(s) via en->{target} ...")
-        pairs = []
+        pairs, refused = [], []
         for n, key in enumerate(missing, 1):
             value = translate_key(key, target, translate)
+            if value is None:
+                refused.append(key)      # damaged in transit — English is the better answer
+                continue
             pairs.append((key, value))
             if args.dry_run or n <= 2:
                 print(f"    {key[:64]!r}\n      -> {value[:64]!r}")
         if not args.dry_run:
             body = insert(body, code, pairs)
         total += len(pairs)
-        print(f"{code:<5} +{len(pairs)}" + (f", -{stale} stale" if stale else ""))
+        print(f"{code:<5} +{len(pairs)}" + (f", -{stale} stale" if stale else "")
+              + (f", {len(refused)} left in English (came back damaged)" if refused else ""))
+        for k in refused[:4]:
+            print(f"      kept English: {k[:70]!r}")
 
     if args.dry_run:
         print(f"\ndry run — {total} string(s) would be written. Nothing changed.")

@@ -878,6 +878,27 @@ Config.weaponMirror = {
 Config.follow = {
   enabled  = true,
 
+  -- ---- v1.90 CAR PASSENGER --------------------------------------------------------------------
+  -- V gets in a car -> Jackie walks over and gets in the passenger seat (jlPassengerTick +
+  -- Native.mount). ⚠️ Before v1.90 there was NO code for this at all: the only thing that ever
+  -- seated him was AMM's `Scan:AutoAssignSeats`, and that only knows about NPCs AMM itself spawned —
+  -- so once Jackie moved to the native spawn (v1.68) he simply stopped getting in. Set false if
+  -- you'd rather he stayed on foot. Bikes are NOT this switch — see Config.cruise.
+  passenger = true,
+
+  -- THE ESCALATION LADDER. `Native.mount` is a WALK: Jackie paths to the door and climbs in, which
+  -- looks right and is therefore what we always try first. It is also the thing that can fail — a
+  -- blocked door, a hostile pathfind, V pulling away, Jackie stood on the far pavement.
+  --
+  -- So: walk, check, walk again, and if it still hasn't taken, TELEPORT him into the seat. That last
+  -- step is not a new indignity — it is precisely what AMM did for every single mount, for years. A
+  -- companion in the seat by magic beats a companion standing in the road.
+  passengerTiming = {
+    walkSeconds = 6.0,   -- how long one walk-to-the-door gets before it counts as failed
+    walkTries   = 2,     -- honest walk attempts before the teleport
+    farDistance = 18.0,  -- beyond this when V gets in, skip the walk entirely — it will never land
+  },
+
   -- ---- v1.67 FOLLOWER-ROLE WATCHDOG ---------------------------------------------------------------
   -- Two things make Jackie move and they fail independently: our own AIFollowTargetCommand trail
   -- (sendWalkToPlayer / followTick) and the ENGINE's follower role (Native.setCompanion). A role

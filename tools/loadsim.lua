@@ -569,6 +569,53 @@ if events.onUpdate then
   --
   -- ⚠️ It cannot test what the engine DOES with a variant. That is audible-only and is what
   -- the in-game A/B button exists for. This proves the wiring, not the sound.
+  -- LANGUAGE (2026-08-19). The Esc menu is the only settings surface most players ever open,
+  -- and until now the language picker was not on it — it lived in the CET overlay, which is a
+  -- dev tool. This is the control a non-English player needs before any other, so it is worth a
+  -- gate: the two ways it breaks are both silent in a build (a throw here drops the rest of the
+  -- panel, and a picker that stores a code nothing reads looks like it simply does nothing).
+  -- Asserts on `Lang` rather than on the settings table: what matters is that the ACTIVE
+  -- language changed, not that a string was filed away somewhere.
+  local langsel
+  for _, s in ipairs(reg.selectors) do
+    if tostring(s.label):lower():find("language", 1, true) then langsel = s end
+  end
+  check("'Language' is on the Esc menu", langsel ~= nil,
+        "the picker was CET-window-only until now; the Esc menu is where players look")
+  if langsel and Lang then
+    check("...and it offers Auto plus every shipped language",
+          #langsel.options == #Lang.LANGUAGES + 1,
+          ("%d options for %d languages + Auto"):format(#langsel.options, #Lang.LANGUAGES))
+    check("...with Auto first, and as the default",
+          langsel.def == 1 and tostring(langsel.options[1]):lower():find("auto", 1, true) ~= nil,
+          tostring(langsel.options[1]))
+    -- Every language in Lang.LANGUAGES must be reachable from the panel, or shipping a
+    -- translation block silently does nothing for anyone who does not open the CET window.
+    local missing = {}
+    for _, L in ipairs(Lang.LANGUAGES) do
+      local seen = false
+      for _, o in ipairs(langsel.options) do if o == L.label then seen = true end end
+      if not seen then missing[#missing + 1] = L.label end
+    end
+    check("...and every language in Lang.LANGUAGES is one of them", #missing == 0,
+          "not offered: " .. table.concat(missing, ", "))
+    -- Pick one with a non-Latin script on purpose: it is the case a Latin-only font would
+    -- break, and the one Antonia was asked about.
+    local zh, wasCode, wasAuto = nil, Lang.code, Lang.auto
+    for i, o in ipairs(langsel.options) do if tostring(o):find("Chinese", 1, true) then zh = i end end
+    check("...Chinese among them", zh ~= nil)
+    if zh then
+      pcall(langsel.cb, zh)
+      check("...picking one actually switches the mod over",
+            Lang.code == "zhcn" and Lang.auto == false,
+            "code=" .. tostring(Lang.code) .. " auto=" .. tostring(Lang.auto))
+      pcall(langsel.cb, 1)
+      check("...and Auto hands it back to the game's own setting", Lang.auto == true,
+            "auto=" .. tostring(Lang.auto))
+    end
+    pcall(function() Lang.auto = wasAuto; Lang.load(wasCode) end)
+  end
+
   print("\n5b. V's voice control")
   local vSel
   for _, s in ipairs(reg.selectors) do
@@ -977,6 +1024,46 @@ do
   jlPassenger.veh = nil;   check("nobody boarding -> not busy", jlPassengerBusy() == false)
   jlPassenger.veh = "veh"; check("a latched vehicle -> busy",   jlPassengerBusy() == true)
   jlPassenger.veh = keep
+
+  -- ========================================================================
+  -- the talk prompt never advertises a key that does nothing (v1.8.7)
+  -- ========================================================================
+  -- Branch.kick stands down on a body Night City Allies owns: with the bridge attached, our
+  -- conversation reaches Jackie through the `Talk` row we append to THEIR menu, so opening our own
+  -- box would land on top of theirs. updateTalkPrompt never learned the same rule, so it kept pushing
+  -- our "[F] Talk" hub at an NCA-hired companion — a permanent (X) hint on a controller which, when
+  -- pressed, opened NCA's menu rather than ours. Reported against NCLucy 2026-08-18; engine is shared.
+  --
+  -- This is a SOURCE check because updateTalkPrompt is a file-local: nothing outside init.lua can call
+  -- it, so there is no behaviour to drive. What can be asserted is that the two sites cannot disagree —
+  -- both must consult Allies.present() and both must except a body we spawned ourselves (jlIsOurBody),
+  -- or a summoned companion loses their prompt the moment NCA is installed.
+  for _, name in ipairs({ "Branch.kick", "updateTalkPrompt" }) do
+    local body
+    if name == "Branch.kick" then
+      local s0 = src:find("\nBranch%.kick = function%(")
+      body = s0 and src:sub(s0, (src:find("\nend\n", s0 + 1) or 0) + 4) or nil
+    else
+      body = bodyOf(name)
+    end
+    check(name .. " exists (renamed? then fix this list)", body ~= nil)
+    if body then
+      local code = body:gsub("%-%-[^\n]*", "")   -- the essays above both gates name everything
+      check(name .. " stands down on a body Night City Allies owns",
+            code:find("Allies%.present") ~= nil,
+            "without this, our UI competes with NCA's for the same companion")
+      check("..." .. name .. " still serves a companion WE spawned",
+            code:find("jlIsOurBody") ~= nil,
+            "the gate must except our own summon, or the prompt vanishes whenever NCA is installed")
+    end
+  end
+  -- ...and "off" must be honoured at the draw site itself, not merely stored in the settings file.
+  do
+    local body = bodyOf("updateTalkPrompt")
+    check("the talk prompt honours the None setting where it draws",
+          body ~= nil and body:find('Config%.talk%.prompt == "off"') ~= nil,
+          "the apply helper writing Config.talk.prompt is no use if nothing reads it")
+  end
 end
 
 print(("\n%d checks, %d failed"):format(checks, fails))
