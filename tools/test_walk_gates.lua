@@ -33,6 +33,9 @@ Config = { abreast = { enabled = true, slopeRate = 0.45, maxZDelta = 1.0, slopeR
                        stopSustain = 0.60, goSustain = 0.35 },
            stealth = { enabled = true } }
 jlCruise = nil
+-- v1.90: Jackie walking to V's car door is a fourth thing that owns his movement, and jlAbreastWhy
+-- now asks about it. Empty latch = nobody boarding, which is the state every existing case assumes.
+jlPassenger = { veh = nil }
 
 VPOS, JPOS, SNEAK, COMBAT, TAKEDOWN = { x = 0, y = 0, z = 0 }, { x = 1, y = 0, z = 0 }, false, false, false
 
@@ -62,6 +65,9 @@ load(extract("jlVLoitering"))()   -- v1.57 gate, extracted (not stubbed) so it c
 -- not stubbed, for the same reason as jlVLoitering above: a stub would let the two drift, and the
 -- whole point of this harness is that it runs the shipped bytecode.
 load(extract("jlDinnerOwnsBody"))()
+-- v1.90: EXTRACTED, not stubbed, for the same reason as jlDinnerOwnsBody above — a stub would let
+-- the harness and the shipped gate drift apart, which is the one thing this file exists to prevent.
+load(extract("jlPassengerBusy"))()
 load(extract("jlAbreastWhy"))()
 load(extract("jlAbreastOn"))()
 
@@ -168,6 +174,17 @@ check("handoff: frames with NOBODY driving Jackie", gap, 0)
 check("handoff: frames with BOTH driving Jackie",   overlap, 0)
 check("handoff: climb really did hand over (trail frames > 0)", sawBoth[false] > 0, true)
 check("handoff: flat really did hand back (abreast frames > 0)", sawBoth[true] > 0, true)
+
+-- v1.90. GETTING INTO V'S CAR OWNS JACKIE, and abreast must yield to it — otherwise the walk-beside
+-- tick re-issues its own move over the AIMountCommand and he never reaches the door. This is the same
+-- shape as the cruise gate above it: a phase owns the body, every other movement tick stands down.
+run(40, 0.1, 0, 1.2)
+check("flat walk, nobody boarding -> abreast on", jlAbreastOn(), true)
+jlPassenger.veh = { "V's Caliburn" }
+check("Jackie is boarding -> abreast yields",     jlAbreastOn(), false)
+check("...and it says why",                       jlAbreastWhy(), "getting into V's car")
+jlPassenger.veh = nil
+check("V's car door shut behind him -> abreast resumes", jlAbreastOn(), true)
 
 print(fails == 0 and "\nALL PASS" or ("\n" .. fails .. " FAILURE(S)"))
 os.exit(fails == 0 and 0 or 1)
