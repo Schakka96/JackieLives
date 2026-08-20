@@ -8235,6 +8235,15 @@ local function nsTick()
     -- The list is built from Lang.LANGUAGES so a language added there shows up here for free.
     -- Wrapped in do...end: the locals are released at the end of the block, so the registration
     -- function's register budget is untouched (200-local cap, see the note at the top).
+    -- ⚠️ v1.8.8 — ISOLATED IN ITS OWN pcall, and it is the only block here that is. Everything below
+    -- registers fixed, hand-written rows; this one BUILDS its rows from Lang.LANGUAGES at load time,
+    -- which makes it the one block whose contents can change without anyone editing this function.
+    -- The whole registration shares a single pcall, so a throw ANYWHERE in it abandons the rest —
+    -- and since this block was moved to the FRONT of the panel (2026-08-19), a throw here would take
+    -- Voice, Relationship, Compatibility and Recovery down with it and leave the player with a tab
+    -- that isn't there. Reported against v1.91 (2026-08-20): "the settings for Jackie Lives isn't
+    -- showing up". Cost of being wrong about the cause: nothing. Cost of not isolating it: the page.
+    local okLang, errLang = pcall(function()
     ns.addSubcategory("/jackielives/language", "Language")
     do
       local labels, codes = { "Auto (follow the game's language)" }, { "auto" }
@@ -8266,6 +8275,11 @@ local function nsTick()
           log("Language -> " .. tostring(JL.langChoice) .. " (active " .. Lang.code .. ")")
         end
       )
+    end
+    end)
+    if not okLang then
+      log("Native Settings: the Language row could not be registered (" .. tostring(errLang)
+          .. ") — the REST of the panel is unaffected. Language is still selectable in the CET window.")
     end
 
 
@@ -9025,7 +9039,7 @@ end
 -- State lives on a GLOBAL rather than JL so a soft-reload can't strand a live command — and because
 -- init.lua is at Lua's 200-local cap and cannot afford another top-level local.
 jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
-                mounted = false, seat = nil, armed = nil }
+                mounted = false, seat = nil, armed = nil, forced = false }
 
 -- THE GATE THE WHOLE FIX HANGS ON.
 --
@@ -9092,6 +9106,7 @@ function jlPassengerTick()
     if h and jlPassenger.cmd then Native.cancelMount(h, jlPassenger.cmd) end
     jlPassenger.veh, jlPassenger.cmd, jlPassenger.deadline = nil, nil, nil
     jlPassenger.tries, jlPassenger.mounted, jlPassenger.seat = 0, false, nil
+    jlPassenger.forced = false                      -- v1.8.8: a new vehicle gets a fresh walk-then-teleport ladder
   end
   if not live then jlPassenger.armed = nil end
 
@@ -9133,14 +9148,27 @@ function jlPassengerTick()
       jlPassenger.cmd = cmd or jlPassenger.cmd
       jlPassenger.deadline = now + (C.walkSeconds or 6.0)
       log(("Passenger: not aboard after %.0fs — walk attempt %d."):format(C.walkSeconds or 6.0, jlPassenger.tries))
-    else
+    elseif not jlPassenger.forced then
+      -- ⚠️ v1.8.8 — THE TELEPORT IS A REQUEST, NOT A RESULT. Native.forceMount ends in
+      -- `Game.GetMountingFacility():Mount(req)`, which QUEUES a mounting request; the body is not in
+      -- the seat on the frame we asked. The first version of this ladder tested `Native.isMountedTo`
+      -- on that same frame, got the honest "no", declared the force-mount dead and cleared
+      -- `jlPassenger.veh` -- which releases the busy gate, so the follow/catch-up ticks immediately
+      -- push their own move command at a companion the engine was one frame from seating. They never
+      -- get in, and the log says the teleport failed when it had not even been tried yet. THIS is
+      -- "Jackie can't get inside a vehicle" (reported 2026-08-20).
+      -- So: ask, hold the gate, and judge on a LATER tick. The `isMountedTo` check at the top of this
+      -- verify half is what actually notices they made it.
+      jlPassenger.forced   = true
       Native.forceMount(h, veh, jlPassenger.seat)
-      jlPassenger.mounted = Native.isMountedTo(h, veh)
+      jlPassenger.deadline = now + (C.forceVerifySeconds or 1.5)
+      log(("Passenger: walk failed twice — placing Jackie in the seat; verifying in %.1fs.")
+          :format(C.forceVerifySeconds or 1.5))
+    else
+      -- The force-mount had its whole verify window and they still are not aboard. NOW it failed.
+      log("Passenger: force-mount did not take either — Jackie stays on foot.")
+      jlPassenger.veh, jlPassenger.forced = nil, false   -- release the gate; let them follow again
       jlPassenger.deadline = nil
-      if not jlPassenger.mounted then
-        log("Passenger: force-mount did not take either — Jackie stays on foot.")
-        jlPassenger.veh = nil                       -- release the gate; let him follow again
-      end
     end
     return
   end
@@ -9172,11 +9200,12 @@ function jlPassengerTick()
 
   jlPassenger.veh, jlPassenger.seat, jlPassenger.mounted = veh, seat, false
   if far then
-    jlPassenger.tries = C.walkTries or 2            -- no walk left to try
+    jlPassenger.tries  = C.walkTries or 2           -- no walk left to try
+    jlPassenger.forced = true                       -- ...and the teleport is now the attempt in flight
     Native.forceMount(h, veh, seat)
-    jlPassenger.mounted = Native.isMountedTo(h, veh)
-    jlPassenger.deadline = nil
-    if not jlPassenger.mounted then jlPassenger.veh = nil end
+    -- v1.8.8 — same asynchronous-mount rule as the escalation branch above: do NOT read the result
+    -- back on the frame we asked for it. Hold the gate and let the verify half see them arrive.
+    jlPassenger.deadline = now + (C.forceVerifySeconds or 1.5)
     log("Passenger: Jackie too far to walk to the car -> placed directly.")
   else
     jlPassenger.tries = 1
@@ -9519,7 +9548,7 @@ function jlResetSessionState(id, why)
   -- cancel a command on a corpse. It lives on a global rather than JL (200-cap), which is exactly why
   -- it would otherwise be missed by this function.
   jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
-                  mounted = false, seat = nil, armed = nil }
+                  mounted = false, seat = nil, armed = nil, forced = false }
   -- dinner: clear only the in-flight outing, keep the cross-session offer schedule
   if JL.dinner then
     JL.dinner.phase, JL.dinner.dest, JL.dinner.destName, JL.dinner.destYaw = nil, nil, nil, nil

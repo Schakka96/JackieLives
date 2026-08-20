@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.8.7"
+Config.version = "1.8.8"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -897,6 +897,11 @@ Config.follow = {
     walkSeconds = 6.0,   -- how long one walk-to-the-door gets before it counts as failed
     walkTries   = 2,     -- honest walk attempts before the teleport
     farDistance = 18.0,  -- beyond this when V gets in, skip the walk entirely — it will never land
+    -- v1.8.8 — HOW LONG THE TELEPORT GETS TO LAND. `Game.GetMountingFacility():Mount()` queues a
+    -- request; nobody is in a seat on the frame it is asked for. Read the result back immediately
+    -- and it always says "not aboard", which is what made the whole ladder give up one frame early
+    -- and hand the body straight back to the follow ticks. Wait this long, THEN judge.
+    forceVerifySeconds = 1.5,
   },
 
   -- ---- v1.67 FOLLOWER-ROLE WATCHDOG ---------------------------------------------------------------

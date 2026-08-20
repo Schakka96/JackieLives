@@ -35,6 +35,39 @@ Player-facing copy for the Nexus page, hand-written in each of the ten languages
 
 ### Problems & Resolutions
 
+**A queued mount was read back as a failed mount, so Jackie never got in the car.** (v1.8.8,
+2026-08-20 — the "just updated to 1.91 but Jackie cant get inside a vehicle" report. The engine is
+shared, so NCLives and NCLucy had it word for word and were fixed the same day.) `Native.forceMount`
+ends in `Game.GetMountingFacility():Mount(req)`, which **queues** a mounting request; nobody is in a
+seat on the frame it is asked for. v1.90's escalation ladder tested `Native.isMountedTo` on that same
+frame, got the honest "not aboard", declared the teleport dead and cleared `jlPassenger.veh`.
+Clearing that releases `jlPassengerBusy()` — the only thing holding `followKeepCloseTick` /
+`catchUpTick` off his body — so they pushed their own move command at a Jackie the engine was one
+frame from seating. Net effect: walk, walk, teleport, abandon, repeat, forever, with a log line
+blaming the teleport for a failure it had not been given the chance to have. Fix: a `forced` latch.
+Ask for the mount, **hold the gate**, and judge on a later tick
+(`Config.follow.passengerTiming.forceVerifySeconds`, 1.5 s); the `isMountedTo` check at the top of
+the verify half is what notices he made it. Only after the whole window expires is it a failure.
+`tools/test_passenger.lua` extracts the real `jlPassengerTick` and models the asynchronous engine
+timing — it fails 4 checks against the pre-fix code.
+
+**The Language row could take the whole settings panel down with it.** (v1.8.8, alongside the
+"Native Settings for Jackie Lives isn't showing up" report — *not* confirmed as its cause, see the
+open item below.) The entire Esc-menu registration shares one `pcall`, so a throw anywhere in it
+abandons every row after that point. Every block registers fixed, hand-written rows except one: the
+Language selector, which BUILDS its rows from `Lang.LANGUAGES` at load time — and on 2026-08-19 that
+block was moved to the FRONT of the panel, where a throw would take Voice, Relationship,
+Compatibility and Recovery with it and leave the player with a tab that isn't there. Now isolated in
+its own `pcall` with its own log line: worst case costs one row, not the page.
+
+**OPEN — "the settings for Jackie Lives isn't showing up" (2026-08-20).** Not reproduced. Antonia's
+own v1.8.7 run logs `Native Settings panel registered`, so it is not unconditional. `nsTick` already
+prints exactly one of three lines that settle it, so the reporter's `jackie_debug.log` answers it in
+one step: `Native Settings panel registered` (the panel is fine — it is their Native Settings install
+or a second copy of the mod folder), `Native Settings registration FAILED: <error>` (ours, and the
+error names the row), or `Native Settings UI not found after retries` (Native Settings UI itself is
+missing or loading late). Ask for the log before changing anything else here.
+
 **`tools/autotranslate.py` was writing keys the mod could never look up.** `harvest()` returns each
 key ALREADY in Lua source form, escapes and all, and both `lang_extract.write_template` and
 `autotranslate.insert` then ran it through `lua_quote` a second time. A key holding `\n` was filed
