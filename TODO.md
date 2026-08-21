@@ -35,6 +35,26 @@ Player-facing copy for the Nexus page, hand-written in each of the ten languages
 
 ### Problems & Resolutions
 
+**The venue body never resolved its handle, so it was never placed.** (v1.8.8, 2026-08-21 — *"Jackie
+doesn't spawn at Misty's or The Afterlife during his scheduled times"*.) This is the v1.68
+native-spawn trap a SECOND time, on the path nobody re-checked. `Native.spawn` returns
+`{ id = <EntityID>, handle = nil }`; the handle resolves a frame or two later via
+`Game.FindEntityByID`, and `resolveJackieHandle()` is what does that — but it only ever looks at
+`JL.summon.spawn`, the COMPANION body. **Nothing in the whole mod ever wrote `JL.idle.spawn.handle`.**
+So on the native backend (the default since v1.68) `wanderTick` returned at its first line forever,
+and wanderTick's placement step is the ONLY thing that teleports the body to a venue waypoint —
+`ammSpawn(0, ...)` passes no position at all, so `Native.spawn` falls back to `inFrontOfPlayer(1.0)`.
+The venue Jackie was being created one metre in front of V and left standing in the street. Fix:
+`jlResolveIdleHandle()`, mirroring `resolveJackieHandle` (AMM `entityID` shape included), called from
+`wanderTick`; it logs once when the body resolves and once if it still hasn't after 5 s, because that
+silence is how this survived from v1.68 to v1.8.8. `tools/test_idle_handle.lua` pins both the
+resolver and the call site — a "simplification" back to `sp and sp.handle` fails it.
+⚠️ NOT CONFIRMED IN GAME as the cause of that specific report; it is a real defect found while
+investigating it, and it would produce exactly that symptom. Ruled out on the way: the appearance
+name (`jackie_welles_default_collar_down` is real — verified against the local game install's
+`base\characters\appearances\main_npc\jackie_welles.app`), the Misty retirement (Husbando-only),
+and schedule rarity (Misty's is on 3 of 5 day-types, the Afterlife on 2 of 5).
+
 **A queued mount was read back as a failed mount, so Jackie never got in the car.** (v1.8.8,
 2026-08-20 — the "just updated to 1.91 but Jackie cant get inside a vehicle" report. The engine is
 shared, so NCLives and NCLucy had it word for word and were fixed the same day.) `Native.forceMount`

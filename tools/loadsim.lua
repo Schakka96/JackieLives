@@ -430,6 +430,62 @@ if events.onDraw then
   check("...and Begin/End are balanced", imguiDepth == 0,
         "depth left at " .. tostring(imguiDepth) .. " — an early return skipped an ImGui.End()")
 
+  -- v1.8.8 — AND AGAIN WITH THE FALLBACK MENU OPEN. `JL.fallbackMenu` is off by default, so the
+  -- two runs above walk right past jlDrawFallbackMenu and every control in it — which is the whole
+  -- settings surface for a player whose Native Settings panel never appeared. The only way in from
+  -- out here is to make the checkbox answer "ticked" once: ImGui.Checkbox returns the VALUE (house
+  -- idiom), so returning `true` for that one label is exactly what a player clicking it looks like.
+  -- ⚠️ If this ever fails with a nil-index, suspect a control here that reads a JL field the Esc
+  -- panel initialises but jlLoadSettings does not.
+  do
+    -- The call site pcall's jlDrawFallbackMenu (deliberately — a bad row must not take down the
+    -- window a stuck player opened to fix things), which means a throw in there would NOT surface
+    -- as a failed onDraw. So don't test for a throw: test that the menu's own rows were actually
+    -- reached. `seen` is the only thing here with teeth.
+    local seen = {}
+    local realCheckbox = ImGui.Checkbox
+    ImGui.Checkbox = function(label, v)
+      seen[tostring(label)] = true
+      if tostring(label):find("Bring the old menu back", 1, true) then return true end
+      return realCheckbox(label, v)
+    end
+    -- ⚠️ Ticking the box calls jlSaveSettings, which writes JL_SETTINGS_FILE relative to the CWD —
+    -- i.e. straight into the repo root. Point it at a temp file: a build gate must not leave
+    -- droppings in the working tree, and it must never overwrite the tester's own tuning. (Same
+    -- redirect §5 does for its switch presses; this pass needed its own because it runs first.)
+    local realSettingsFile = JL_SETTINGS_FILE
+    JL_SETTINGS_FILE = os.tmpname()
+
+    -- ⚠️ THE OVERLAY HAS TO BE OPEN. onDraw returns at its second line unless it is, so without
+    -- this the two calls below draw nothing at all and these checks pass on an empty window.
+    -- `drewWindow` is asserted for exactly that reason.
+    pcall(events.onOverlayOpen)
+    imguiDepth, drewWindow = 0, false
+    _G.print = quiet
+    pcall(events.onDraw)                       -- tick the box
+    local okFb, errFb = pcall(events.onDraw)   -- ...and now draw the menu it opened
+    _G.print = realprint
+    pcall(events.onOverlayClose)
+    ImGui.Checkbox = realCheckbox
+    os.remove(JL_SETTINGS_FILE); JL_SETTINGS_FILE = realSettingsFile
+    check("the fallback settings menu draws", okFb, errFb)
+    check("...the window was really drawn (not an early return)", drewWindow,
+          "onDraw returned before ImGui.Begin — these checks would be vacuous")
+    check("...and leaves ImGui balanced", imguiDepth == 0,
+          "depth left at " .. tostring(imguiDepth))
+    -- Every setting that has NO other home once the Esc panel is missing. If one of these stops
+    -- being drawn, a player in that situation simply cannot reach it any more.
+    local function drew(needle)
+      for label in pairs(seen) do if label:find(needle, 1, true) then return true end end
+      return false
+    end
+    for _, needle in ipairs({ "Husbando mode", "Walk beside me", "main missions",
+                              "vehicle arrivals", "AMM for spawning" }) do
+      check("...the fallback menu really drew '" .. needle .. "'", drew(needle),
+            "it threw before reaching this row — the call site pcall would have hidden that")
+    end
+  end
+
   -- ...and again with the overlay open, which is the state the panel is actually looked at in.
   if events.onOverlayOpen then
     imguiDepth, drewWindow = 0, false

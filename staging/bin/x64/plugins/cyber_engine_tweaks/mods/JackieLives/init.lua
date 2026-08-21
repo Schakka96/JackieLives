@@ -7829,13 +7829,54 @@ end
 -- (v0.64) The persistent ImGui "head to dinner" objective was replaced by a native neon-left
 -- on-screen flash fired once from startDinnerWalk (showOnscreenMsg). Map waypoint still guides.
 
+-- ⚠️ v1.8.8 — THE VENUE BODY HAD NO HANDLE, SO IT WAS NEVER PLACED. This is the v1.68 native-spawn
+-- trap for a SECOND time, on the path nobody re-checked. `Native.spawn` returns
+-- `{ id = <EntityID>, handle = nil }` and resolves a frame or two later; `resolveJackieHandle()` does
+-- that resolving, but it only ever looks at `JL.summon.spawn` — the COMPANION. Nothing in the whole
+-- mod ever wrote `JL.idle.spawn.handle`, so on the native backend (the default since v1.68) every
+-- reader of it saw nil forever, wanderTick returned at its first line, and the body was never
+-- teleported onto a waypoint, never posed, never wandered.
+--
+-- The visible symptom is NOT "no Jackie": ammSpawn(0, ...) passes no position, so Native.spawn falls
+-- back to `inFrontOfPlayer(1.0)` — the venue body is created 1 m in front of V and left standing
+-- there, because the thing that moves him to the venue is wanderTick's placement step. "He doesn't
+-- spawn at Misty's / the Afterlife" (reported 2026-08-21) is that.
+--
+-- Mirrors resolveJackieHandle's shape exactly, including the AMM `entityID` field, so an AMM-backend
+-- spawn (which already carries its handle) costs one nil-test. Global -> 200-cap safe.
+function jlResolveIdleHandle()
+  local sp = JL.idle.spawn
+  if not sp then return nil end
+  local h = sp.handle
+  if not h and sp.entityID then                        -- AMM shape
+    pcall(function() h = Game.FindEntityByID(sp.entityID) end)
+    if h then sp.handle = h end
+  end
+  if not h and sp.id then                              -- native shape
+    pcall(function() h = Game.FindEntityByID(sp.id) end)
+    if h then sp.handle = h end
+  end
+  -- Say it ONCE per spawn record, both ways. A venue body that never resolves is invisible in the
+  -- log otherwise — which is exactly how this survived from v1.68 to v1.8.8.
+  if h and not sp.idleResolved then
+    sp.idleResolved = true
+    log("Idle body resolved — placing him at " .. tostring(JL.idle.locationKey) .. ".")
+  elseif not h and not sp.idleWarned
+     and ((JL.clock or 0) - (JL.idle.spawnedAt or 0)) > 5.0 then
+    sp.idleWarned = true
+    log("⚠ Idle body never resolved 5 s after spawn (id=" .. tostring(sp.id) .. "). He cannot be "
+        .. "placed at " .. tostring(JL.idle.locationKey) .. " — report this with the log.")
+  end
+  return h
+end
+
 local function wanderTick()
   if jlPuppetHolds() then return end   -- v1.9: seat tuner owns this body (the venue wander walks him to the next waypoint)
   if not (Config.wander and Config.wander.enabled) then return end
   if JL.summon.active then return end                  -- following V -> not idle-wandering
   if JL.idle.leaving then return end                   -- walking off to despawn -> idleLeavingTick owns him
   local sp = JL.idle.spawn
-  local h  = sp and sp.handle
+  local h  = jlResolveIdleHandle()                     -- v1.8.8: nothing else ever filled this (see above)
   if not h then return end
   -- v1.77: same outfit re-assert for a VENUE body — they get a per-location appearance, so they have
   -- the same streaming race as a summoned one (see jlArmAppearanceFix).
@@ -8513,7 +8554,7 @@ end
 JL_VO_TESTLINE = "1790891785270616064"
 
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast", "seatTipDone" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
+JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast", "seatTipDone", "fallbackMenu" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
 
 -- v1.55: NUMERIC settings. The file used to serialize booleans only (plus the one `mode` string), which is
 -- precisely why a slider could never be added — its value didn't survive a reload. These keys round-trip as
@@ -10823,12 +10864,162 @@ end
 -- the same coordinates it is showing you. Git is the archive; a dead second path that still
 -- compiles is how a panel grows two ways to do one thing.)
 
+-- ---------------------------------------------------------------------------
+-- v1.8.8 THE FALLBACK SETTINGS MENU — every Esc-menu control, here in the CET window
+-- ---------------------------------------------------------------------------
+-- WHY THIS EXISTS. Every setting below lives in the Esc -> Settings -> Jackie Lives panel, which is
+-- drawn by Native Settings UI — a SEPARATE mod. When that panel doesn't appear (reported 2026-08-20)
+-- the player doesn't just lose a nicety: Husbando mode, the follow distance, the talk prompt, the
+-- spawn backend and "Go Home Jackie" have no other home, so the mod becomes unconfigurable and the
+-- one recovery button that unsticks him is unreachable. This is the way back in, and it is a plain
+-- checkbox at the TOP of this window because someone who is already lost will not go hunting.
+--
+-- ⚠️ EVERY ROW HERE MUST DO EXACTLY WHAT ITS ESC-MENU TWIN DOES — write the same JL field, call
+-- jlSaveSettings, and run the same side effect (jlApplyTalkPrompt, the re-armed AMM warning). Two
+-- controls for one setting that quietly disagree is worse than one control that is hard to find.
+--
+-- Global (no top-level local) -> 200-cap safe.
+function jlDrawFallbackMenu()
+  ImGui.Separator()
+  ImGui.TextColored(1.0, 0.85, 0.4, 1.0, "Settings — the same ones as Esc -> Settings -> Jackie Lives")
+  ImGui.TextDisabled("Saved immediately, exactly as in the Esc menu.")
+
+  -- ---- Relationship -------------------------------------------------------
+  -- ⚠️ ImGui.Checkbox returns the VALUE, not a "changed" flag — same idiom as the mourning
+  -- switches further down this window. Compare against what we had.
+  local was, now_ = JL.husbando and true or false, nil
+  now_ = ImGui.Checkbox("Husbando mode (off = Hermano, the canon default)", was)
+  if now_ ~= was then
+    JL.husbando   = now_
+    JL.modeChosen = true            -- an EXPLICIT player choice — jlDefaultHermano stops forcing Hermano
+    pcall(jlSaveSettings)
+    JL.ui.status = "Jackie mode: " .. (now_ and "Husbando" or "Hermano")
+    log("Jackie relationship mode -> " .. (now_ and "Husbando" or "Hermano") .. " (player choice; remembered)")
+  end
+
+  -- ---- Controls: the talk prompt ------------------------------------------
+  ImGui.Text("Talk prompt when you look at him:")
+  local pick = JL.talkPrompt or "native"
+  local function promptBtn(label, value, sameLine)
+    if sameLine then ImGui.SameLine() end
+    if pick == value then
+      ImGui.TextDisabled("[" .. label .. "]")
+    elseif ImGui.SmallButton(label) then
+      JL.talkPrompt = value
+      pcall(jlSaveSettings)
+      jlApplyTalkPrompt()           -- into the LIVE Config, now
+      JL.ui.status = "Talk prompt: " .. value .. " (F still works)."
+      log("Talk prompt -> " .. value)
+    end
+  end
+  promptBtn("Game prompt", "native")
+  promptBtn("Text", "text", true)
+  promptBtn("None", "off", true)
+  ImGui.SameLine(); ImGui.TextDisabled("(F always talks to him)")
+
+  -- ---- Gameplay -----------------------------------------------------------
+  was = JL.walkAbreast and true or false
+  now_ = ImGui.Checkbox("Walk beside me (off = he trails you)", was)
+  if now_ ~= was then
+    JL.walkAbreast = now_
+    pcall(jlSaveSettings)
+    JL.ui.status = "Walk-beside style: " .. (now_ and "ON (walk abreast)" or "OFF (default trailing follower)")
+    log("Custom walk-beside -> " .. (now_ and "ON" or "OFF (default follower)"))
+  end
+
+  was = JL.allowMainGigs and true or false
+  now_ = ImGui.Checkbox("Allow Jackie on main missions (not recommended)", was)
+  if now_ ~= was then
+    JL.allowMainGigs = now_
+    pcall(jlSaveSettings)
+    JL.ui.status = "Jackie on main missions: " .. (now_ and "ALLOWED (not recommended)" or "blocked (Quiet Life)")
+    log("Allow main-mission summons -> " .. tostring(now_))
+  end
+
+  -- Reads jlFollowDistance() exactly as the Esc-menu row does, so the two can never show a
+  -- different number for the same setting.
+  local gap, gapChg = ImGui.SliderFloat("Follow distance (m)", jlFollowDistance(),
+                                        Config.followDistanceMin or 1.2,
+                                        Config.followDistanceMax or 8.0, "%.1f")
+  if gapChg then
+    JL.followGap = gap
+    pcall(jlSaveSettings)
+    JL.ui.status = string.format("Jackie's follow distance: %.1f m", gap)
+    log(string.format("Follow distance -> %.1f m (trail + walk-abreast)", gap))
+  end
+
+  -- ---- Arrivals -----------------------------------------------------------
+  was = JL.disableVehicleArrivals and true or false
+  now_ = ImGui.Checkbox("Disable vehicle arrivals (he always walks in)", was)
+  if now_ ~= was then
+    JL.disableVehicleArrivals = now_
+    pcall(jlSaveSettings)
+    JL.ui.status = "Vehicle arrivals: " .. (now_ and "DISABLED (foot only)" or "allowed")
+    log("Vehicle arrivals -> " .. (now_ and "DISABLED (foot only)" or "allowed"))
+  end
+
+  -- ---- Compatibility ------------------------------------------------------
+  was = JL.useAMM and true or false
+  now_ = ImGui.Checkbox("Use AMM for spawning (off = the base game, no AMM needed)", was)
+  if now_ ~= was then
+    JL.useAMM = now_
+    JL.ammMissingWarned = nil       -- re-arm the "you asked for AMM but it isn't there" notice
+    pcall(jlSaveSettings)
+    JL.ui.status = "Spawn backend: " .. (now_ and "AMM" or "native (no AMM needed)")
+    log("Spawn backend -> " .. (now_ and "AMM (player choice)" or "native") ..
+        ". Takes effect on the next summon; re-summon Jackie to switch a body that's already out.")
+  end
+
+  -- ---- The two buttons with no other home ---------------------------------
+  -- The escape hatch for a questline that never started. It shipped unreachable once already
+  -- (found 2026-08-14); with the Esc panel missing it would be unreachable again.
+  if not Retrieval.isUnlocked() then
+    if ImGui.Button("Start the search for Jackie") then
+      local started = false
+      pcall(function() started = Retrieval.startSearch() end)
+      JL.ui.status = started and "The search for Jackie has begun — go see Vik."
+                              or "The search is already under way."
+    end
+    ImGui.SameLine(); ImGui.TextDisabled("(use if his questline never started)")
+  end
+  if ImGui.Button("Go Home Jackie") then pcall(hardReset) end
+  ImGui.SameLine(); ImGui.TextDisabled("(despawns every copy, sends a fresh one to his schedule)")
+  ImGui.Separator()
+end
+
 registerForEvent("onDraw", function()
   -- (v1.63: the choice box is drawn by the GAME now — see dialogui.lua. Nothing to render here.)
   pcall(drawBlazeFade)                      -- v1.02: fade-to-black overlay draws DURING gameplay (covers HUD, not the ESC menu)
   if not JL.ui.overlayOpen then return end   -- the debug window only draws while the overlay is open
   if not JL.ui.open then return end
   ImGui.Begin("Jackie Lives")
+
+  -- === THE WAY BACK IN (v1.8.8) — FIRST THING IN THE WINDOW ================
+  -- Deliberately above everything, including the reunion-quest line: a player reading this has
+  -- already failed to find the settings once, and making them scroll past the diagnostics to reach
+  -- the fix would be the same mistake twice. See jlDrawFallbackMenu for why it exists at all.
+  ImGui.TextColored(1.0, 0.85, 0.4, 1.0, "Can't see Esc -> Settings -> Jackie Lives? Tick this box:")
+  do
+    -- ⚠️ ImGui.Checkbox hands back the VALUE, not a "changed" flag (house idiom — see the mourning
+    -- switches further down). Read it, compare, and only then save.
+    local was = JL.fallbackMenu and true or false
+    local now_ = ImGui.Checkbox("Bring the old menu back (all settings here in this window)", was)
+    if now_ ~= was then
+      JL.fallbackMenu = now_
+      pcall(jlSaveSettings)
+      log("Fallback settings menu -> " .. (now_ and "ON (settings shown in the CET window)" or "OFF"))
+    end
+  end
+  if JL.fallbackMenu then
+    -- pcall'd because this is the EMERGENCY menu: a bad row here must not take down the window a
+    -- stuck player opened to fix things. But it says so once rather than just vanishing — a menu
+    -- that silently isn't there is the exact failure this whole feature exists to answer.
+    local okFb, errFb = pcall(jlDrawFallbackMenu)
+    if not okFb and not JL.fallbackMenuWarned then
+      JL.fallbackMenuWarned = true
+      log("Fallback settings menu failed to draw: " .. tostring(errFb))
+    end
+  end
 
   -- === MAIN INFO (top of window, v1.32) ==================================
   -- Reunion-quest status + the everyday "just unlock it" button, then the live diagnostics.
