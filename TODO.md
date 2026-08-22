@@ -35,6 +35,17 @@ Player-facing copy for the Nexus page, hand-written in each of the ten languages
 
 ### Problems & Resolutions
 
+**The text talk prompt also showed from across the room.** (v1.8.9, 2026-08-22 — reported by the
+same player who turned the F switch off: *"then I had a message 'Talk to <name> [F]' showing on the
+left of the screen whenever I'm looking at her, from a distance of several meters away as well."*)
+Both prompt styles share `Config.talk.range` (6 m), but they were never equally visible at it: the
+native "[F] Talk" box is an offer we push to the interaction blackboard, and the GAME filters it
+through its own, much shorter interaction range before drawing. Our banner has no such filter — we
+draw it ourselves — so switching styles moved the prompt from about 2 m to the full 6 m, and it read
+as a new bug rather than the same setting. Fix: `Config.talk.textRange` (3.0 m), applied to the
+banner only. ⚠️ THE KEY IS UNCHANGED — it still works out to `range`, and `talkUI.shown` still
+reports true out there, because other systems read it. `test_talk_prompt.lua` §7 pins all three.
+
 **The text talk prompt was a heartbeat, so it re-animated every 2.5 s.** (v1.8.9, 2026-08-22 —
 reported against NCLives and echoed in the Nexus comments; the engine is shared, so it was here word
 for word.) `updateTalkPrompt`'s plain-text branch re-pushed the banner every 2.5 s for as long as you

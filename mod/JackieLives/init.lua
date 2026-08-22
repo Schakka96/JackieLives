@@ -2143,13 +2143,16 @@ local function updateTalkPrompt(dt)
     JL.talkPromptShown = false
     return
   end
-  local within = false
+  local within, gap = false, nil
   if j then
     within = true
     local pp = playerPos()
     if pp then
       local jp; pcall(function() jp = j:GetWorldPosition() end)
-      if jp and dist3(pp, jp) > (Config.talk and Config.talk.range or 4.0) then within = false end
+      if jp then
+        gap = dist3(pp, jp)                              -- v1.8.9: kept — the TEXT prompt wants its own limit
+        if gap > (Config.talk and Config.talk.range or 4.0) then within = false end
+      end
     end
   end
   if within then
@@ -2183,6 +2186,24 @@ local function updateTalkPrompt(dt)
       -- every 2.5 s also stomps whatever the game was trying to tell you — a level-up, a quest update.
       -- A reminder is read once. Show it when the look BEGINS and then be quiet; the key keeps working
       -- whether the banner is up or not.
+      -- ⚠️ v1.8.9 — AND NOT FROM ACROSS THE ROOM. Reported 2026-08-22, by the same player who turned the
+      -- F switch off: *"then I had a message 'Talk to Jackie [F]' showing on the left of the screen
+      -- whenever I'm looking at her, from a distance of several meters away as well."*
+      -- Both prompt styles share `Config.talk.range` (6 m), but they were never equally visible at
+      -- it: the native box is a blackboard offer the GAME still filters through its own interaction
+      -- range before drawing, so it only ever appeared close up. Our banner has no such filter — we
+      -- draw it ourselves — so switching styles moved the prompt from ~2 m to the full 6 m, and it
+      -- read as a new bug rather than the same setting.
+      -- `textRange` gives the banner the close-up feel the box had. THE KEY IS UNCHANGED: it still
+      -- works out to `range`, and that asymmetry is fine — a reminder you have already read does not
+      -- need to follow you back across the room.
+      local textRange = (Config.talk and Config.talk.textRange) or 3.0
+      if gap and gap > textRange then
+        talkUI.shown  = true                             -- in talk range, just not in REMINDER range
+        talkUI.lostAt = nil
+        JL.talkPromptShown = true
+        return
+      end
       if not talkUI.promptArmed then
         local key = (Config.talk and Config.talk.keyLabel) or "="
         showOnscreenMsg(Lang.t("Talk to Jackie   [ ") .. key .. " ]", 3.0, true)  -- silent: a reminder, not an alert

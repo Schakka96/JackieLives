@@ -51,7 +51,8 @@ Config    = { talk = { range = 6.0, keyLabel = "F", useChoiceBox = false,
 function jlInCutscene() return false end
 function jlIsOurBody() return true end
 function playerPos() return { x = 0, y = 0, z = 0 } end
-function dist3() return 1.0 end
+GAP = 1.0
+function dist3() return GAP end
 function lookedAtJackie() return LOOKING and BODY or nil end
 function showOnscreenMsg() banners = banners + 1 end
 function showJackieChoiceBox() boxPushes = boxPushes + 1; choiceBox.shown = true; choiceBox.lastPush = JL.clock end
@@ -70,7 +71,7 @@ end
 local function reset()
   banners, boxPushes = 0, 0
   talkUI, choiceBox = {}, { shown = false }
-  JL.clock, LOOKING = 0, true
+  JL.clock, LOOKING, GAP = 0, true, 1.0
 end
 
 -- ---------------------------------------------------------------------------
@@ -126,6 +127,29 @@ Config.talk.useChoiceBox = false
 -- through to the text prompt; JackieLives has never had one (F is the only way in), so there is
 -- no nativeInteractKey gate in its updateTalkPrompt to exercise. Do not port that section back
 -- without porting the switch first.
+
+print("\n7. the banner is a CLOSE-UP reminder, not a room-wide one")
+-- Reported 2026-08-22 by the player who turned the F switch off: "then I had a message
+-- 'Talk to Jackie [F]' showing ... from a distance of several meters away as well." Both styles share
+-- Config.talk.range (6 m), but the native box is an offer the GAME filters through its own, much
+-- shorter interaction range before drawing — so switching styles moved the prompt from ~2 m to 6 m.
+reset()
+GAP = 5.0                                          -- inside talk range (6), outside textRange (3)
+frames(5.0)
+check("no banner from 5 m away", banners == 0,
+      ("%d banners — textRange is not being applied"):format(banners))
+GAP = 2.0                                          -- ...and now V walks up to her
+frames(1.0)
+check("...and it appears once you are close", banners == 1, banners)
+
+-- The KEY is deliberately still live at the full range; only the reminder is close-up. talkUI.shown
+-- is what the rest of the engine reads for "in talk range and looking", so it must stay TRUE out
+-- there — dropping it would be a silent behaviour change to everything that consults it.
+reset()
+GAP = 5.0
+frames(1.0)
+check("...but we still report being in talk range at 5 m", talkUI.shown == true,
+      "talkUI.shown must not be narrowed by the DRAW range — other systems read it")
 
 print("")
 if fails > 0 then print(fails .. " FAILED"); os.exit(1) end

@@ -88,6 +88,17 @@ Config.talk = {
   -- game can clear from under us, so it keeps its `boxRefresh` heartbeat — re-asserting a box that
   -- is already on screen changes nothing visually, unlike re-pushing a notification.
   textRearmSeconds = 2.0,
+  -- v1.8.9 — HOW CLOSE YOU HAVE TO BE FOR THE TEXT BANNER, as opposed to `range` above, which is how
+  -- close you have to be to TALK. They are deliberately different numbers.
+  -- The two prompt styles were never equally visible at `range`: the native "[F] Talk" box is an
+  -- offer we push to the interaction blackboard, and the GAME filters it through its own (much
+  -- shorter) interaction range before drawing it. Our banner has no such filter — we draw it
+  -- ourselves — so a player switching from the box to the text prompt saw the prompt jump from
+  -- ~2 m to the full 6 m and reported it as a bug ("showing ... from a distance of several meters
+  -- away as well", 2026-08-22). This gives the banner the close-up feel the box already had.
+  -- ⚠️ THE KEY IS UNCHANGED: it still works out to `range`. A reminder you have already read does
+  -- not need to follow you back across the room.
+  textRange        = 3.0,
 }
 -- On each talk: 95% -> a random 'common' event, 5% -> a random 'rare' event.
 Config.talkLines = {
