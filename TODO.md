@@ -35,6 +35,25 @@ Player-facing copy for the Nexus page, hand-written in each of the ten languages
 
 ### Problems & Resolutions
 
+**Jackie climbed in and out of a moving car for the whole journey.** (v1.8.10, 2026-08-22 — reported
+against NCLucy: *"keep enter the vehicle and get out vehicle while with V"*, and the same code is
+here.) `jlPlayerVehicleObj()` is `GetQuickSlotsManager():GetVehicleObject()`, and it answers nil for
+the odd frame while V is still very much driving. One such frame ran the whole teardown: the mount
+command was CANCELLED and `jlPassenger.veh` cleared, which releases `jlPassengerBusy()` — so the
+follow ticks pulled him out of a moving car. Next frame the read came back, the ladder started over,
+and he climbed in again. Measured on the shipped code: **9 mount commands and 4 teleports in 60 s.**
+Three defences, because one was not enough:
+1. the teardown needs the change to PERSIST (`Config.follow.passengerLostSeconds`, 1 s) — same rule
+   as the talk prompt's re-arm, and for the same reason: a reading taken from a moving world is not
+   a decision;
+2. a walk retry re-asks `Native.isMountedTo` FIRST, because `Native.mount` opens with
+   `WorkspotSystem:StopInDevice` and a vehicle seat is a workspot — re-issuing it at somebody who has
+   already climbed in throws them back out;
+3. `jlPassenger.gaveUp` — one ladder per car, ever. Whatever the underlying cause, a failed ladder
+   can no longer restart two seconds later. A companion on the pavement is a disappointment; a
+   companion strobing through the passenger door is a broken mod.
+`tools/test_passenger.lua` §6 and §7 pin all three; both fail against the shipped code.
+
 **The text talk prompt also showed from across the room.** (v1.8.9, 2026-08-22 — reported by the
 same player who turned the F switch off: *"then I had a message 'Talk to <name> [F]' showing on the
 left of the screen whenever I'm looking at her, from a distance of several meters away as well."*)

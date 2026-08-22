@@ -145,6 +145,60 @@ check("the gate is held, not released on the asking frame", jlPassengerBusy() ==
 frames(1.0)
 check("and he is aboard", jlPassenger.mounted == true)
 
+print("\n6. THE IN-OUT LOOP — a flickering vehicle read must not tear the mount down")
+-- Reported 2026-08-22: "Jackie will literally keep rolling in the car then rolling out the vehicle...
+-- like she's keep enter the vehicle and get out vehicle while with V."
+-- nclPlayerVehicleObj() is GetQuickSlotsManager():GetVehicleObject(), and it answers nil for the odd
+-- frame while V is still driving. One such frame used to run the whole teardown: cancel the mount,
+-- release the busy gate — so the follow ticks pull them out of a moving car — and the next frame the
+-- read comes back and the ladder puts them in again.
+JL.clock, ENGINE_SEATED, MOUNT_LANDS_AT = 0, false, nil
+walkCalls, forceCalls = 0, 0
+JDIST = 3.0
+jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
+                 mounted = false, seat = nil, armed = nil, forced = false, lostAt = nil, gaveUp = nil }
+Native.mount = function() walkCalls = walkCalls + 1; MOUNT_LANDS_AT = JL.clock + 0.4; return { cmd = true } end
+frames(1.0)
+check("aboard on the first walk", jlPassenger.mounted == true)
+check("...and the busy gate is held", jlPassengerBusy() == true)
+
+-- Now drop the vehicle read for a handful of frames, exactly as the engine does.
+VEH_LIVE = nil
+for _ = 1, 20 do JL.clock = JL.clock + 0.016; jlPassengerTick() end
+VEH_LIVE = CAR
+frames(0.5)
+check("a flickering vehicle read does NOT throw them out", jlPassengerBusy() == true,
+      "the teardown fired on a transient nil — this is the in-out loop")
+check("...and no second mount was issued", walkCalls == 1, ("walkCalls=%d"):format(walkCalls))
+
+-- ...but V really getting out still releases them, just not on the first frame.
+VEH_LIVE = nil
+frames(3.0)
+check("V really leaving the car does still release them", jlPassengerBusy() == false)
+
+print("\n7. a ladder that fails does not restart on the same car")
+-- Whatever the cause of a failure, restarting the ladder every 2 s is what turns one disappointment
+-- into a companion strobing through the passenger door for the whole drive.
+JL.clock, ENGINE_SEATED, MOUNT_LANDS_AT = 0, false, nil
+walkCalls, forceCalls = 0, 0
+VEH_LIVE = CAR
+jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
+                 mounted = false, seat = nil, armed = nil, forced = false, lostAt = nil, gaveUp = nil }
+Native.mount      = function() walkCalls = walkCalls + 1; return { cmd = true } end   -- never lands
+Native.forceMount = function() forceCalls = forceCalls + 1; return true end           -- never lands
+frames(60.0)
+check("the walk was tried its configured number of times", walkCalls == 2, ("walkCalls=%d"):format(walkCalls))
+check("...the teleport exactly once", forceCalls == 1, ("forceCalls=%d"):format(forceCalls))
+check("...and then it stays given up for this car", jlPassengerBusy() == false)
+
+-- A NEW car is a clean slate, though — giving up once must not mean giving up forever.
+local CAR2 = { name = "car2" }
+VEH_LIVE = CAR2
+Native.mount = function() walkCalls = walkCalls + 1; MOUNT_LANDS_AT = JL.clock + 0.4; return { cmd = true } end
+frames(3.0)
+check("a different car gets a fresh ladder", jlPassenger.mounted == true,
+      "giving up on one car must not disable the feature for the rest of the save")
+
 print("")
 if fails > 0 then print(fails .. " FAILED"); os.exit(1) end
 print("ALL PASS")

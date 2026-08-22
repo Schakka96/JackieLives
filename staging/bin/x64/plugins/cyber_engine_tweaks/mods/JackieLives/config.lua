@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.8.9"
+Config.version = "1.8.10"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -924,6 +924,13 @@ Config.follow = {
     -- and it always says "not aboard", which is what made the whole ladder give up one frame early
     -- and hand the body straight back to the follow ticks. Wait this long, THEN judge.
     forceVerifySeconds = 1.5,
+    -- v1.8.9 — HOW LONG "V IS NOT IN THAT CAR ANY MORE" HAS TO HOLD before we believe it.
+    -- The read behind it is `GetQuickSlotsManager():GetVehicleObject()`, which answers nil for the
+    -- odd frame while V is still very much driving. Acting on one such frame cancelled the mount and
+    -- released the busy gate, so the follow ticks pulled Jackie out of a moving car — and the next
+    -- frame the read came back and the ladder put him in again. In, out, in, out, for the whole
+    -- journey (reported 2026-08-22). A reading taken from a moving world is not a decision.
+    passengerLostSeconds = 1.0,
   },
 
   -- ---- v1.67 FOLLOWER-ROLE WATCHDOG ---------------------------------------------------------------

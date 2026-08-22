@@ -9121,7 +9121,10 @@ end
 -- State lives on a GLOBAL rather than JL so a soft-reload can't strand a live command — and because
 -- init.lua is at Lua's 200-local cap and cannot afford another top-level local.
 jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
-                mounted = false, seat = nil, armed = nil, forced = false }
+                -- v1.8.8 `forced` = the teleport has been ASKED for and is still in flight (Mount() queues).
+                -- v1.8.9 `lostAt` = when the vehicle read first disagreed (it flickers — see the teardown),
+                --        `gaveUp` = the car whose ladder is finished, so it can never restart mid-drive.
+                mounted = false, seat = nil, armed = nil, forced = false, lostAt = nil, gaveUp = nil }
 
 -- THE GATE THE WHOLE FIX HANGS ON.
 --
@@ -9183,12 +9186,27 @@ function jlPassengerTick()
 
   -- V got out (or swapped vehicles): drop the standing command so Jackie resumes following on foot
   -- instead of walking to a car that's driving away.
+  -- ⚠️ v1.8.9 — NOT ON THE FIRST FRAME. `jlPlayerVehicleObj()` is
+  -- `GetQuickSlotsManager():GetVehicleObject()`, and that answers nil for a frame here and there
+  -- while V is still very much driving. One nil frame used to run this whole teardown: the mount
+  -- command was CANCELLED and the busy gate released, so the follow ticks pulled Jackie straight
+  -- back out of a moving car — and the next frame the vehicle read came back, the ladder started
+  -- over, and Jackie climbed back in. In, out, in, out, for the length of the journey. Reported
+  -- 2026-08-22: *"keep enter the vehicle and get out vehicle while with V."*
+  -- So a change has to PERSIST before it counts. Same rule, same reason as the talk prompt's
+  -- re-arm: a reading taken from a moving world is not a decision.
   if jlPassenger.veh and veh ~= jlPassenger.veh then
+    jlPassenger.lostAt = jlPassenger.lostAt or (JL.clock or 0)
+  else
+    jlPassenger.lostAt = nil
+  end
+  if jlPassenger.veh and veh ~= jlPassenger.veh
+     and ((JL.clock or 0) - jlPassenger.lostAt) >= ((Config.follow or {}).passengerLostSeconds or 1.0) then
     local h = JL.summon.spawn and JL.summon.spawn.handle
     if h and jlPassenger.cmd then Native.cancelMount(h, jlPassenger.cmd) end
     jlPassenger.veh, jlPassenger.cmd, jlPassenger.deadline = nil, nil, nil
     jlPassenger.tries, jlPassenger.mounted, jlPassenger.seat = 0, false, nil
-    jlPassenger.forced = false                      -- v1.8.8: a new vehicle gets a fresh walk-then-teleport ladder
+    jlPassenger.forced, jlPassenger.lostAt, jlPassenger.gaveUp = false, nil, nil                      -- v1.8.8: a new vehicle gets a fresh walk-then-teleport ladder
   end
   if not live then jlPassenger.armed = nil end
 
@@ -9226,6 +9244,16 @@ function jlPassengerTick()
     local tries = (jlPassenger.tries or 1)
     if tries < (C.walkTries or 2) then
       jlPassenger.tries = tries + 1
+      -- ⚠️ v1.8.9 — Native.mount opens with `WorkspotSystem:StopInDevice`, and a vehicle seat IS a
+      -- workspot. Re-issuing it at somebody who has already climbed in THROWS THEM BACK OUT. The
+      -- isMountedTo check at the top of this verify half is what normally stops us getting here,
+      -- but it is one engine read away from being wrong, and the cost of it being wrong is the
+      -- in-out loop. Ask again, right now, before doing something that can only hurt.
+      if Native.isMountedTo(h, veh) then
+        jlPassenger.mounted = true
+        log("Passenger: already aboard after all — not re-issuing the mount.")
+        return
+      end
       local cmd = Native.mount(h, veh, jlPassenger.seat, jlPassenger.cmd)
       jlPassenger.cmd = cmd or jlPassenger.cmd
       jlPassenger.deadline = now + (C.walkSeconds or 6.0)
@@ -9248,7 +9276,8 @@ function jlPassengerTick()
           :format(C.forceVerifySeconds or 1.5))
     else
       -- The force-mount had its whole verify window and they still are not aboard. NOW it failed.
-      log("Passenger: force-mount did not take either — Jackie stays on foot.")
+      log("Passenger: force-mount did not take either — Jackie stays on foot, and this car is done.")
+      jlPassenger.gaveUp = veh                  -- v1.8.9: no restart for THIS vehicle (see the note at FIRST SEND)
       jlPassenger.veh, jlPassenger.forced = nil, false   -- release the gate; let them follow again
       jlPassenger.deadline = nil
     end
@@ -9258,6 +9287,14 @@ function jlPassengerTick()
   -- -------------------------------------------------------------------------------------------
   -- FIRST SEND
   -- -------------------------------------------------------------------------------------------
+  -- ⚠️ v1.8.9 — ONE LADDER PER VEHICLE, AND WHEN IT IS DONE IT IS DONE. Without this, a ladder that
+  -- fails simply starts again two seconds later, forever: walk, walk, teleport, give up, walk...
+  -- If ANY of that half-succeeds — and a teleport into a seat usually does — the player watches
+  -- their companion climb in and out of a moving car for the whole drive. A companion on the
+  -- pavement is a disappointment; a companion strobing through the passenger door is a broken mod.
+  -- Whatever the underlying cause, this is the backstop that makes the loop impossible: give up
+  -- for THIS vehicle and stay given up until V gets out or changes car.
+  if jlPassenger.gaveUp == veh then return end
   if now - (jlPassenger.sentAt or -999) < 2.0 then return end
   jlPassenger.sentAt = now
 
@@ -9630,7 +9667,7 @@ function jlResetSessionState(id, why)
   -- cancel a command on a corpse. It lives on a global rather than JL (200-cap), which is exactly why
   -- it would otherwise be missed by this function.
   jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
-                  mounted = false, seat = nil, armed = nil, forced = false }
+                  mounted = false, seat = nil, armed = nil, forced = false, lostAt = nil, gaveUp = nil }
   -- dinner: clear only the in-flight outing, keep the cross-session offer schedule
   if JL.dinner then
     JL.dinner.phase, JL.dinner.dest, JL.dinner.destName, JL.dinner.destYaw = nil, nil, nil, nil
