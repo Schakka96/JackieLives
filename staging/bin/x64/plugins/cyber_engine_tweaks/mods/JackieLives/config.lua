@@ -4,7 +4,7 @@
 local Config = {}
 
 -- Mod version. Bump on every deploy; deploy.ps1 prints it and init.lua logs it on load.
-Config.version = "1.8.8"
+Config.version = "1.8.9"
 
 -- ---- master toggles -------------------------------------------------------
 -- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
@@ -77,6 +77,17 @@ Config.talk = {
                        -- This makes the box a PERMANENT look-driven prompt, not the one-shot test button.
   boxRefresh   = 1.0,  -- seconds: re-assert the box while looking, so it survives if the game's own
                        -- interaction system clears the blackboard. 0 = push once only (no heartbeat).
+  -- v1.8.9 — THE TEXT PROMPT IS SHOWN ONCE PER LOOK, and this is how long you have to look AWAY
+  -- before it may show again. It is NOT a repeat interval: the banner used to be re-pushed every
+  -- 2.5 s while you looked, which replayed the game's notification animation over and over
+  -- ("spamming continuously every few seconds", reported 2026-08-22 and in the Nexus comments).
+  -- This knob only exists because the look test is a raycast at a MOVING body and flickers false for
+  -- a frame or two while they walk — re-arming on the first false frame would restore the spam with
+  -- extra steps.
+  -- ⚠️ Applies to the plain-text prompt only. The native "[F] Talk" box is a blackboard field the
+  -- game can clear from under us, so it keeps its `boxRefresh` heartbeat — re-asserting a box that
+  -- is already on screen changes nothing visually, unlike re-pushing a notification.
+  textRearmSeconds = 2.0,
 }
 -- On each talk: 95% -> a random 'common' event, 5% -> a random 'rare' event.
 Config.talkLines = {

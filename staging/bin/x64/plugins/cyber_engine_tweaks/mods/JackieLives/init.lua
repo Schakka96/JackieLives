@@ -2174,17 +2174,37 @@ local function updateTalkPrompt(dt)
         showJackieChoiceBox()
       end
     else
-      local now = JL.clock or 0
-      if (now - (talkUI.lastShow or -999)) > 2.5 then          -- heartbeat so it stays up while looking
+      -- ⚠️ v1.8.9 — ONE SHOWING PER LOOK, NOT A HEARTBEAT. This used to re-push the banner every 2.5 s
+      -- for as long as you kept looking, and `showOnscreenMsg` writes a FRESH SimpleScreenMessage to
+      -- the UI_Notifications blackboard every time — so the game replayed the slide-in animation over
+      -- and over. Reported 2026-08-22 (and in the Nexus comments): *"it's spamming continuously every
+      -- few seconds when you hover over the NPC."*
+      -- Worse than ugly: that blackboard slot is the game's OWN notice band, so a prompt re-pushed
+      -- every 2.5 s also stomps whatever the game was trying to tell you — a level-up, a quest update.
+      -- A reminder is read once. Show it when the look BEGINS and then be quiet; the key keeps working
+      -- whether the banner is up or not.
+      if not talkUI.promptArmed then
         local key = (Config.talk and Config.talk.keyLabel) or "="
-        showOnscreenMsg(Lang.t("Talk to Jackie   [ ") .. key .. " ]", 3.0, true)  -- silent: re-asserted every 2.5s while looking, don't beep
-        talkUI.lastShow = now
+        showOnscreenMsg(Lang.t("Talk to Jackie   [ ") .. key .. " ]", 3.0, true)  -- silent: a reminder, not an alert
+        talkUI.promptArmed = true
+        talkUI.lastShow    = JL.clock or 0
       end
     end
-    talkUI.shown = true
+    talkUI.shown  = true
+    talkUI.lostAt = nil          -- still looking: the re-arm countdown has not started
   else
     if choiceBox.shown then hideJackieChoiceBox() end
     talkUI.shown = false
+    -- RE-ARM ONLY AFTER A SUSTAINED LOOK-AWAY. `lookedAt...` is a raycast at a moving body, so it
+    -- flickers false for a frame or two while they walk. Re-arming on the first false frame would
+    -- put the spam straight back — with extra steps. Look away and MEAN it.
+    local now = JL.clock or 0
+    if talkUI.promptArmed then
+      talkUI.lostAt = talkUI.lostAt or now
+      if (now - talkUI.lostAt) >= ((Config.talk and Config.talk.textRearmSeconds) or 2.0) then
+        talkUI.promptArmed, talkUI.lostAt = false, nil
+      end
+    end
   end
   -- v1.8.6: mirror onto JL so jlPromptProbeTick (and loadsim) can read it — talkUI is a file-local.
   JL.talkPromptShown = talkUI.shown

@@ -35,6 +35,23 @@ Player-facing copy for the Nexus page, hand-written in each of the ten languages
 
 ### Problems & Resolutions
 
+**The text talk prompt was a heartbeat, so it re-animated every 2.5 s.** (v1.8.9, 2026-08-22 —
+reported against NCLives and echoed in the Nexus comments; the engine is shared, so it was here word
+for word.) `updateTalkPrompt`'s plain-text branch re-pushed the banner every 2.5 s for as long as you
+kept looking, and `showOnscreenMsg` writes a **fresh** `SimpleScreenMessage` to the
+`UI_Notifications` blackboard on every call — so the game replayed its slide-in animation each time.
+The old comment said *"heartbeat so it stays up while looking"*: the intent was to keep it visible,
+and the mechanism cannot do that without re-announcing it. Worse than ugly — that slot is the game's
+OWN notice band, so the re-push stomped level-ups and quest updates while you looked at him. Fix:
+show it on the RISING EDGE of the look (`talkUI.promptArmed`) and stay quiet; re-arm only after a
+sustained look-away (`Config.talk.textRearmSeconds`, 2.0 s) because the look test is a raycast at a
+moving body and flickers false for a frame or two while he walks. ⚠️ The native "[F] Talk" box KEEPS
+its `boxRefresh` heartbeat — it is a blackboard field the game can clear from under us, and
+re-asserting a box already on screen changes nothing visually. `tools/test_talk_prompt.lua` extracts
+the real `updateTalkPrompt` and drives it frame by frame: 12 banners in 30 s before, 1 after.
+⚠️ It has no "F released to another mod" section, because JackieLives has never had that switch —
+don't port that test section back without porting the switch first.
+
 **The venue body never resolved its handle, so it was never placed.** (v1.8.8, 2026-08-21 — *"Jackie
 doesn't spawn at Misty's or The Afterlife during his scheduled times"*.) This is the v1.68
 native-spawn trap a SECOND time, on the path nobody re-checked. `Native.spawn` returns
