@@ -73,6 +73,22 @@ never be the only way out of a node whose setup varies.
 ⚠️ Never rename the `JLVO_` prefix — NCLives ships the same shim as `NCLVO_`; a name collision breaks
 redscript compilation for both mods if a player installs both.
 
+## The story (v2.0) — data, not code
+`storyboard.lua` (the 5-part arc) and `sidequests.lua` (9 Heywood jobs) hold EVERY word, place,
+hour window, choice and consequence. `arc.lua` is a generic interpreter with no story in it: it
+walks those tables and hands each beat to whichever shipped system performs it, through one
+`bind{}` table (same shape as `retrieval.lua`, so it runs offline against a fake world).
+- **Never rename a beat id** — saves store them as facts (`jackielives_b_<id>`).
+- `docs/QUESTLINE.md` is **generated** (`lua tools/gen_storyboard_doc.lua`) — never hand-edit it.
+- A beat names a CASTING SLOT, never a String ID. `M.CASTING` maps slots to real recordings; the
+  audit behind them is `docs/research/arc_casting.md`. **There is no "I'm afraid" take and no
+  weighty farewell in the corpus** — the story is written around those absences on purpose.
+- Delivery: SMS → `messages.lua` (+ `tools/gen_messages.py`, content in `content/*.json`);
+  tracked objectives + shards → `journalquest.lua` (+ `tools/gen_journal_quests.py`). Both bake
+  into the archive; Lua only flips entry state.
+- Safety net: `Arc.debug()` names the exact condition holding every beat back, `Arc.force(id)`
+  fires any beat, and Esc → Mods → Jackie Lives → **Ghost in the Machine** starts it by hand.
+
 ## Traps in `init.lua` — read before editing
 1. **200-local cap.** Never add a top-level `local` — use a global or a module.
 2. **Never call a file-`local` helper from above its declaration** — silently compiles to a nil
@@ -84,7 +100,9 @@ redscript compilation for both mods if a player installs both.
 `lua tools/loadsim.lua` (loads init.lua for real, runs onInit, presses every hotkey, scans for the
 three traps above, 48 checks) · `tools/test_dialogui.lua` (48) · `tools/test_zengine.lua` (54) ·
 `tools/test_vo.lua` (132) · `test_familiarity.lua` / `test_follower.lua` / `test_spawn_backend.lua` /
-`test_walk_gates.lua` / `test_blaze_calm.lua`.
+`test_walk_gates.lua` / `test_blaze_calm.lua` · v2.0: `test_storyboard.lua` (48) ·
+`test_arc.lua` (43) · `test_journalquest.lua` (48) · `test_messages.lua` (128) ·
+`python3 tools/audit_messages.py` (diffs content/ against storyboard.lua).
 
 ## Files
 `docs/DESIGN.md` — lore, summon rules, retrieval quest. `TODO.md` — roadmap + Problems & Resolutions.
