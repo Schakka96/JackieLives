@@ -1,0 +1,257 @@
+{
+  "Header": {
+    "WolvenKitVersion": "8.18.0",
+    "WKitJsonVersion": "0.0.9",
+    "GameVersion": 2310,
+    "DataType": "CR2W",
+    "ArchiveFileName": "jackielives_questtext.json"
+  },
+  "Data": {
+    "Version": 195,
+    "BuildVersion": 0,
+    "RootChunk": {
+      "$type": "JsonResource",
+      "cookingPlatform": "PLATFORM_None",
+      "root": {
+        "HandleId": "0",
+        "Data": {
+          "$type": "localizationPersistenceOnScreenEntries",
+          "entries": [
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Ghost in the Machine",
+              "maleVariant": "Ghost in the Machine",
+              "primaryKey": "5639116457319489543",
+              "secondaryKey": "jl_j_q_ghost_title"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Something's wrong with Jackie, and it's been wrong for a while.\n\nThis is a story that plays out over in-game weeks, on its own schedule. It'll find you.\n\nIt gets dark in places. If you'd rather it didn't, the settings menu has switches for the two hardest scenes — turn them off and the story still works.",
+              "maleVariant": "Something's wrong with Jackie, and it's been wrong for a while.\n\nThis is a story that plays out over in-game weeks, on its own schedule. It'll find you.\n\nIt gets dark in places. If you'd rather it didn't, the settings menu has switches for the two hardest scenes — turn them off and the story still works.",
+              "primaryKey": "3801852421519812794",
+              "secondaryKey": "jl_j_q_ghost_desc"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Take Jackie to Vik",
+              "maleVariant": "Take Jackie to Vik",
+              "primaryKey": "5467049071191357045",
+              "secondaryKey": "jl_j_o_ghost_p1_take_jackie_to_vik"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Survive the Arasaka snatch team",
+              "maleVariant": "Survive the Arasaka snatch team",
+              "primaryKey": "10800971310805517123",
+              "secondaryKey": "jl_j_o_ghost_p2_survive_squad"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Find someone who can read corp telemetry — try the Afterlife",
+              "maleVariant": "Find someone who can read corp telemetry — try the Afterlife",
+              "primaryKey": "9725722831376430645",
+              "secondaryKey": "jl_j_o_ghost_p2_find_netrunner"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Plant Nix's jammer at the relay mast",
+              "maleVariant": "Plant Nix's jammer at the relay mast",
+              "primaryKey": "3354317879239266042",
+              "secondaryKey": "jl_j_o_ghost_p2_plant_jammer"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Raise €$15,000 for the operation",
+              "maleVariant": "Raise €$15,000 for the operation",
+              "primaryKey": "6080628665378228292",
+              "secondaryKey": "jl_j_o_ghost_p3_raise_money"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Be there — Vik's clinic, Thursday morning",
+              "maleVariant": "Be there — Vik's clinic, Thursday morning",
+              "primaryKey": "7957058602194011639",
+              "secondaryKey": "jl_j_o_ghost_p4_the_operation"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Padre's Favour",
+              "maleVariant": "Padre's Favour",
+              "primaryKey": "1313142049775575711",
+              "secondaryKey": "jl_j_q_side_rico_title"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "A Valentino kid owes money to people who break fingers. Jackie has been sent to break them.",
+              "maleVariant": "A Valentino kid owes money to people who break fingers. Jackie has been sent to break them.",
+              "primaryKey": "8055079437931474210",
+              "secondaryKey": "jl_j_q_side_rico_desc"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Find the debtor",
+              "maleVariant": "Find the debtor",
+              "primaryKey": "7615523982217305657",
+              "secondaryKey": "jl_j_o_side_rico_main_find_the_kid"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Mama's Errand",
+              "maleVariant": "Mama's Errand",
+              "primaryKey": "9775083929895391316",
+              "secondaryKey": "jl_j_q_side_dinner_title"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Nine items. One shopping list. Two grown men who cannot follow it.",
+              "maleVariant": "Nine items. One shopping list. Two grown men who cannot follow it.",
+              "primaryKey": "17767959778518932947",
+              "secondaryKey": "jl_j_q_side_dinner_desc"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Get the nine things",
+              "maleVariant": "Get the nine things",
+              "primaryKey": "5166389462374490242",
+              "secondaryKey": "jl_j_o_side_dinner_main_shopping"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Coyote's Cut",
+              "maleVariant": "Coyote's Cut",
+              "primaryKey": "931696300487465196",
+              "secondaryKey": "jl_j_q_side_shakedown_title"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Somebody has decided Mama Welles pays protection now.",
+              "maleVariant": "Somebody has decided Mama Welles pays protection now.",
+              "primaryKey": "17225321672303017531",
+              "secondaryKey": "jl_j_q_side_shakedown_desc"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Keep them out of the bar",
+              "maleVariant": "Keep them out of the bar",
+              "primaryKey": "1812206499519541325",
+              "secondaryKey": "jl_j_o_side_shakedown_main_hold_the_bar"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Ripperdoc scan — patient: J. Welles",
+              "maleVariant": "Ripperdoc scan — patient: J. Welles",
+              "primaryKey": "5025966226278087492",
+              "secondaryKey": "jl_j_s_arc_scan_title"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "PATIENT: Welles, J. — post-trauma review, 14 months.\n\nTwo foreign objects. Neither of them mine.\n\nOBJECT ONE. Militech-pattern housing, Arasaka firmware. Sits in the left shoulder assembly. It's a factory anti-theft telemetry unit — mil-spec parts phone home so the company knows where its property is. It has been transmitting, on a low duty cycle, since the night I put it in him. For most of that time nobody was listening.\n\nOBJECT TWO. Not hardware. There's a suppression daemon resident in his operating system — corp security payload, the kind a netrunner burns into you to shut your limbs off. It never finished executing. He flatlined halfway through the attack, and a dead man is a bad host, so it stalled. It has not stalled since. It has been learning his neural pattern for fourteen months.\n\nFor the record, because he won't ask and she will:\n\nI had a dying man on my table and four hours. What I put in him is what was in the room. It came off the same job that killed him. I'd do it again — he's breathing — but nobody should pretend I did surgery that night. I did salvage.\n\n— V.V.",
+              "maleVariant": "PATIENT: Welles, J. — post-trauma review, 14 months.\n\nTwo foreign objects. Neither of them mine.\n\nOBJECT ONE. Militech-pattern housing, Arasaka firmware. Sits in the left shoulder assembly. It's a factory anti-theft telemetry unit — mil-spec parts phone home so the company knows where its property is. It has been transmitting, on a low duty cycle, since the night I put it in him. For most of that time nobody was listening.\n\nOBJECT TWO. Not hardware. There's a suppression daemon resident in his operating system — corp security payload, the kind a netrunner burns into you to shut your limbs off. It never finished executing. He flatlined halfway through the attack, and a dead man is a bad host, so it stalled. It has not stalled since. It has been learning his neural pattern for fourteen months.\n\nFor the record, because he won't ask and she will:\n\nI had a dying man on my table and four hours. What I put in him is what was in the room. It came off the same job that killed him. I'd do it again — he's breathing — but nobody should pretend I did surgery that night. I did salvage.\n\n— V.V.",
+              "primaryKey": "8926220246405226694",
+              "secondaryKey": "jl_j_s_arc_scan_body"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Ripperdoc scan — patient: J. Welles",
+              "maleVariant": "Ripperdoc scan — patient: J. Welles",
+              "primaryKey": "5082982191483226969",
+              "secondaryKey": "jl_j_s_arc_scan_item"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Viktor Vektor",
+              "maleVariant": "Viktor Vektor",
+              "primaryKey": "12397715267528278747",
+              "secondaryKey": "jl_j_s_arc_scan_by"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "From Vik — read this alone",
+              "maleVariant": "From Vik — read this alone",
+              "primaryKey": "2829004899479432744",
+              "secondaryKey": "jl_j_s_arc_vik_taps_title"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "I've had two days with the scan and I'm going to tell you the part I didn't tell him.\n\nI can trap the daemon, or I can take the chrome out. I can't do both, and I can't do either alone.\n\nTrapping it means walling it off inside the hardware it's living in. The hardware stays. So does everything it's doing to him, just slower, and he comes to see me every few weeks for the rest of his life.\n\nTaking it out is cleaner and it's worse. That thing has been running on his neural pattern for fourteen months. It isn't sitting next to him any more. It's using his roads. Pull it and some of him comes with it — and before you ask me how much: I don't know. Nobody knows. There's no literature on this because nobody survives the part where you flatline mid-attack.\n\nWhatever you do, he needs replacement chrome that Arasaka never touched, and that's not a favour I can do you. That's money.\n\nOne more thing, and then I'll shut up.\n\nHe asked me, when he came round the first time, whether he was still him. I told him yes because he was on my table and it was the only useful thing to say. I've been carrying that answer around for over a year now and I'd like somebody else to have a turn.\n\n— Vik",
+              "maleVariant": "I've had two days with the scan and I'm going to tell you the part I didn't tell him.\n\nI can trap the daemon, or I can take the chrome out. I can't do both, and I can't do either alone.\n\nTrapping it means walling it off inside the hardware it's living in. The hardware stays. So does everything it's doing to him, just slower, and he comes to see me every few weeks for the rest of his life.\n\nTaking it out is cleaner and it's worse. That thing has been running on his neural pattern for fourteen months. It isn't sitting next to him any more. It's using his roads. Pull it and some of him comes with it — and before you ask me how much: I don't know. Nobody knows. There's no literature on this because nobody survives the part where you flatline mid-attack.\n\nWhatever you do, he needs replacement chrome that Arasaka never touched, and that's not a favour I can do you. That's money.\n\nOne more thing, and then I'll shut up.\n\nHe asked me, when he came round the first time, whether he was still him. I told him yes because he was on my table and it was the only useful thing to say. I've been carrying that answer around for over a year now and I'd like somebody else to have a turn.\n\n— Vik",
+              "primaryKey": "15359109782057164802",
+              "secondaryKey": "jl_j_s_arc_vik_taps_body"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "From Vik — read this alone",
+              "maleVariant": "From Vik — read this alone",
+              "primaryKey": "16302942479373028493",
+              "secondaryKey": "jl_j_s_arc_vik_taps_item"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Viktor Vektor",
+              "maleVariant": "Viktor Vektor",
+              "primaryKey": "10437776991018052711",
+              "secondaryKey": "jl_j_s_arc_vik_taps_by"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "A note, folded under a plate",
+              "maleVariant": "A note, folded under a plate",
+              "primaryKey": "648531557605719412",
+              "secondaryKey": "jl_j_s_arc_mama_note_title"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Jaquito.\n\nYou think I don't know my own son's hands.\n\nYou have been sitting at my bar for a year with your right hand under the table and your left one doing all the work, and every week I set your plate and every week you tell me you already ate.\n\nI am not going to ask you what it was. You would lie, and then I would have to decide whether to let you.\n\nEat something. You are too thin. Bring your friend.\n\n— Mamá",
+              "maleVariant": "Jaquito.\n\nYou think I don't know my own son's hands.\n\nYou have been sitting at my bar for a year with your right hand under the table and your left one doing all the work, and every week I set your plate and every week you tell me you already ate.\n\nI am not going to ask you what it was. You would lie, and then I would have to decide whether to let you.\n\nEat something. You are too thin. Bring your friend.\n\n— Mamá",
+              "primaryKey": "16467802151481521718",
+              "secondaryKey": "jl_j_s_arc_mama_note_body"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "A note, folded under a plate",
+              "maleVariant": "A note, folded under a plate",
+              "primaryKey": "4802093037219529417",
+              "secondaryKey": "jl_j_s_arc_mama_note_item"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Guadalupe Welles",
+              "maleVariant": "Guadalupe Welles",
+              "primaryKey": "4392927222244779851",
+              "secondaryKey": "jl_j_s_arc_mama_note_by"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Shard — Jackie Welles",
+              "maleVariant": "Shard — Jackie Welles",
+              "primaryKey": "6151027432805401582",
+              "secondaryKey": "jl_j_s_jl_shard_badlands_note_title"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "If you're readin' this, V, then the doc kept his word and you made it out here. It's me. I'm alive.\n\nVik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.\n\nMama Welles was so mad when she heard. Think she'd kill me if I went back runnin' the streets again — and this time, maybe she's right. I'm done with the merc life, V. For real. But I couldn't let you go on thinkin' you buried me.\n\nGive me a call when you read this. — Jackie",
+              "maleVariant": "If you're readin' this, V, then the doc kept his word and you made it out here. It's me. I'm alive.\n\nVik patched me up and smuggled me out before 'Saka could stamp my name on a slab. Been layin' low ever since.\n\nMama Welles was so mad when she heard. Think she'd kill me if I went back runnin' the streets again — and this time, maybe she's right. I'm done with the merc life, V. For real. But I couldn't let you go on thinkin' you buried me.\n\nGive me a call when you read this. — Jackie",
+              "primaryKey": "4186349793409373940",
+              "secondaryKey": "jl_j_s_jl_shard_badlands_note_body"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Shard: Jackie Welles",
+              "maleVariant": "Shard: Jackie Welles",
+              "primaryKey": "17961610597200936407",
+              "secondaryKey": "jl_j_s_jl_shard_badlands_note_item"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Jackie Welles",
+              "maleVariant": "Jackie Welles",
+              "primaryKey": "8664761513194127941",
+              "secondaryKey": "jl_j_s_jl_shard_badlands_note_by"
+            }
+          ]
+        }
+      }
+    },
+    "EmbeddedFiles": []
+  }
+}

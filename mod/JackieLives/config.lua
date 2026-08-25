@@ -314,6 +314,30 @@ Config.dialogue = {
 --     Close   (10) — ~10 conversations, or 2 dinners and a couple of chats. A few evenings.
 --     Trusted (30) — ~7 dinners, or weeks of dropping in. He starts saying things he doesn't say.
 --     Family  (65) — ~16 dinners. Everything, including what he won't tell Mama. A long relationship.
+-- ---- THE ARC (v2.0) --------------------------------------------------------
+-- "Ghost in the Machine" — the five-part questline and the nine side quests. The STORY lives in
+-- `storyboard.lua` / `sidequests.lua`; this block is only the switches a player is allowed to
+-- touch, and there are deliberately few of them.
+--
+-- The two content switches exist because the mod asks a player to watch a friend deteriorate.
+-- `takeover` is the twenty seconds where his chrome uses him; `raid` is the Part 5C set-piece.
+-- Both default ON and both are announced on the card that opens the arc — a player who would
+-- rather not see them should not have to find out by seeing them once.
+Config.arc = {
+  enabled      = true,
+  tickSeconds  = 5.0,    -- how often the arc asks "may anything happen yet". Never per-frame:
+                         -- a story has nothing to say sixty times a second, and this mod has
+                         -- measured what its tick costs (see the stutter research).
+  takeover     = true,   -- Part 3's takeover. false = the near-miss version, same information.
+  raid         = true,   -- Part 5C's raid. false = the epilogue is quiet instead.
+  sideQuests   = true,   -- the nine Heywood jobs
+  offerBySms   = true,   -- false = never texts an offer; the quests wait in his talk options
+  autoStart    = true,   -- false = the arc only ever begins from the settings button
+  -- Heat multiplier for Part 2. 1.0 = as designed (roughly a week of ordinary play from the
+  -- first text to the first snatch squad). Lower is slower, not safer — heat never decays.
+  heatScale    = 1.0,
+}
+
 Config.familiarity = {
   enabled = true,      -- false = every tier unlocked at once. Turning it OFF must never HIDE writing,
                        -- so Fam.tier() returns the TOP tier when disabled (debug / accessibility).

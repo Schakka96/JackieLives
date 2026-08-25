@@ -1,0 +1,55 @@
+{
+  "_comment": [
+    "unknown_messages.json — the number that isn't a number. VERBATIM from storyboard.lua's",
+    "p2_unknown_number beat (`sms.thread = \"unknown\"`). THE STORYBOARD WINS: edit it there, copy it",
+    "here, and tools/audit_messages.py fails the moment the two disagree.",
+    "",
+    "This contact is STORY-ONLY. It has no ambient beats and never appears in messages.lua's ticking",
+    "persona list — it exists solely so arc.lua can call Msg.sendStory(\"arc_p2_unknown\"). Giving it a",
+    "schedule would be actively wrong: the entire dramatic effect is that two lines arrive, nothing",
+    "follows for days, and the player keeps checking the phone."
+  ],
+
+  "contact": {
+    "_comment": [
+      "A PRIVATE contact, not a merge into anything vanilla, and deliberately anonymous:",
+      "  * `PhoneAvatars.Avatar_Unknown` is the game's OWN no-portrait record. It is not a portrait we",
+      "    invented for a character who has none — it is the blank the game already shows for a number",
+      "    it cannot identify, which is exactly what this is.",
+      "  * name \"Unknown\" — the label a real unlisted number gets in the messenger.",
+      "  * flatLayout TRUE, unlike Jackie's. Flat layout is right for a contact who is ONLY ours and",
+      "    has exactly one thread; the reason Jackie's is false is that he has five vanilla ones we",
+      "    must not restyle.",
+      "  * id is namespaced `jackielives_` because journal uniquePaths are SHARED state across mods."
+    ],
+    "id": "jackielives_unknown",
+    "conversation": "thread",
+    "name": "Unknown",
+    "avatar": "PhoneAvatars.Avatar_Unknown",
+    "type": "Texter",
+    "flatLayout": true
+  },
+
+  "beats": [
+    {
+      "_comment": [
+        "storyboard.lua, PART 2, beat p2_unknown_number — \"Unknown number\".",
+        "Two lines, no sender, no follow-up. `nothing` answers with silence ON PURPOSE: an empty",
+        "followups list means the thread simply stops, which is the whole beat. Do not 'fix' it by",
+        "writing him a reply."
+      ],
+      "id": "arc_p2_unknown", "kind": "story", "tier": 0, "once": true,
+      "bubbles": [
+        "Asset 7741-B.",
+        "Property of Arasaka Corporation. Recovery is in progress."
+      ],
+      "replies": [
+        { "id": "who",     "text": "Who is this?",   "fam": 0 },
+        { "id": "nothing", "text": "[Say nothing]",  "fam": 0 }
+      ],
+      "followups": {
+        "who": ["[The number no longer exists.]"]
+      }
+    }
+  ]
+}

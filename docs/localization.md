@@ -96,12 +96,19 @@ or broken file degrades to English with a log line — it can never break loadin
 
 The shipping language codes live in `Lang.LANGUAGES` in `lang.lua`.
 
-### The shard (separate, WolvenKit)
+### Shards and quest objectives (separate, generated)
 
-The Badlands shard's text is **not** Lua — it's the game's onscreen-localization
-system, imported through WolvenKit (see `mod/JackieLives_shards/SHARD_SHEET.md`).
-Each language is its own resource file: `jl_shards.json` (English) and
-`jl_shards.ja-jp.json` (Japanese) hold the same `secondaryKey`s with translated
-`femaleVariant`/`maleVariant`. To ship a translated shard, import the matching
-`jl_shards.<lang>.json` into the project's localization for that language group.
-This is a Windows/WolvenKit step and is independent of the Lua translation above.
+A readable shard's words and a tracked objective's tracker line are **not** Lua —
+they are the game's own onscreen-localization system, so they have to be baked into
+the archive. Both are GENERATED from the storyboard by
+`python3 tools/gen_journal_quests.py`, which writes one localization resource per
+language:
+
+    archive/source/mod/jackielives/questtext/<locale>/jackielives_questtext.json.json
+
+English comes straight out of `storyboard.lua`/`sidequests.lua`. Other languages are
+translated in `tools/journal_text/<locale>.txt` — one record per string, in the
+generator's order, separated by a line of `%%`; a blank record falls back to English,
+so a half-finished translation is always safe to ship. Re-run the generator after
+editing. Turning those sources into the archive is a Windows/WolvenKit step
+(`tools/build_archive.py`) and is independent of the Lua translation above.

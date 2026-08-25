@@ -104,6 +104,30 @@ do
   check("CAPTURE_LIST names every place that needs capturing", #missing == 0, table.concat(missing, ", "))
 end
 
+-- A beat's journal block must name the quest it actually lives in. This is not pedantry: the
+-- journal generator files the objective under whatever id the beat declares, so a typo here
+-- silently creates a second, empty quest in the player's journal and the real one never ticks.
+-- (Caught exactly that on `side_shakedown`, which declared `side_cut`.)
+do
+  local wrong = {}
+  for _, q in ipairs(Side.quests) do
+    for _, b in ipairs(q.beats or {}) do
+      if b.journal and b.journal.quest and b.journal.quest ~= q.id then
+        wrong[#wrong + 1] = ("%s declares quest '%s' but lives in '%s'"):format(b.id, b.journal.quest, q.id)
+      end
+    end
+  end
+  for _, part in ipairs(Story.arc.parts) do
+    for _, b in ipairs(part.beats or {}) do
+      if b.journal and b.journal.quest and b.journal.quest ~= Story.arc.id then
+        wrong[#wrong + 1] = ("%s declares quest '%s' but lives in the arc '%s'"):format(b.id, b.journal.quest, Story.arc.id)
+      end
+    end
+  end
+  check("every journal objective is filed under the quest it belongs to", #wrong == 0,
+        table.concat(wrong, "; "))
+end
+
 -- ---------------------------------------------------------------------------
 -- 2. Casting
 -- ---------------------------------------------------------------------------

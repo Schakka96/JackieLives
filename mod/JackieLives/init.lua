@@ -75,6 +75,24 @@ Fam       = require("familiarity") -- v1.65 GLOBAL (200-cap): Jackie opens up ov
 pcall(function() package.loaded["vo"] = nil; package.loaded["vo_durations"] = nil end)  -- re-read on CET soft-reload, like blaze/lang
 VO        = require("vo")          -- v1.66 GLOBAL (200-cap): the game's OWN voice-over, no shipped audio (see vo.lua)
 Native    = require("native")      -- v1.67 GLOBAL (200-cap): the follower role done the engine's way (see native.lua)
+pcall(function() package.loaded["journalquest"] = nil; package.loaded["journalquest_index"] = nil end)  -- re-read on CET soft-reload, like blaze/lang
+JQuest    = require("journalquest") -- GLOBAL (200-cap): REAL quest objectives in the game's top-right
+                                   -- tracker + readable shards in V's Shards tab (see journalquest.lua).
+                                   -- Needs the archive; without it every call degrades to the on-screen
+                                   -- band the mod used before, never to a break.
+-- v2.0 GLOBAL (200-cap): "Ghost in the Machine" — the five-part questline + the nine Heywood side
+-- quests. `storyboard.lua` and `sidequests.lua` hold the STORY (every word, place, hour and
+-- consequence); `arc.lua` is a generic interpreter that walks them and hands each beat to whichever
+-- shipped system performs it. It never calls a Game API itself — the bind table below is the only
+-- place this feature touches the engine, which is why the whole arc is testable offline
+-- (tools/test_storyboard.lua + tools/test_arc.lua, 88 checks, no game required).
+Arc       = require("arc")
+-- v1.92 GLOBAL (200-cap): Jackie TEXTS you. The WORDS live in JackieLives.archive as a cooked
+-- .journal (there is no runtime create-a-message API — JournalManager only has ChangeEntryState);
+-- this module owns only WHEN each authored beat fires and what a reply does. Ported from NCLives
+-- v1.91, traps and all. See docs/research/messages_port_spec.md and ../NCLives/docs/MESSAGES.md.
+-- ⚠️ Fails soft with no archive: a player with only the CET folder gets exactly the mod they had.
+Msg       = require("messages")
 -- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
 -- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
 -- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
@@ -8563,6 +8581,103 @@ local function nsTick()
       end
     )
 
+    -- v2.0 THE STORY ARC. Same reasoning as the manual start above, one level up: the arc paces
+    -- itself off in-game days and familiarity, which means a player can legitimately go a week of
+    -- play without seeing it and be unable to tell "not yet" from "broken". This subcategory is the
+    -- answer to that, and the two content switches are the promise the opening card makes.
+    ns.addSubcategory("/jackielives/arc", "Ghost in the Machine")
+    ns.addButton(
+      "/jackielives/arc",
+      "Begin the story",
+      "Starts \"Ghost in the Machine\" by hand. Normally it finds you a few days after Jackie comes " ..
+      "home, once you've spent some time together — it opens with a text from him, late at night. " ..
+      "Press this if you'd rather not wait, or if nothing has happened after a week of play.",
+      "Begin",
+      18,
+      function()
+        local started = false
+        pcall(function() started = Arc.start() end)
+        JL.ui.status = started and "It's begun. He'll text you."
+                                or "The story is already under way."
+      end
+    )
+
+    -- THE JOURNAL PROBE. One press, one verdict line in jackie_debug.log — the whole of the
+    -- in-game test for real tracked objectives. It activates the FIRST objective of the first
+    -- quest, reads the states back, checks the game is tracking OUR entry, then puts everything
+    -- back the way it found it, so it is safe to press on a save you care about.
+    -- Step-by-step instructions: docs/research/journal_probe.md.
+    ns.addButton(
+      "/jackielives/arc",
+      "Check the quest journal",
+      "Diagnostic. Tests whether the mod's own quest objectives can reach the game's quest " ..
+      "tracker (top right of the screen). Press it, close the menu, look at the top right, then " ..
+      "read the last line of jackie_debug.log. It undoes itself afterwards.",
+      "Check",
+      18,          -- font size (addButton takes textSize BEFORE the callback)
+      function()
+        -- Clear FIRST, probe second, and LEAVE the objective up: the answer to "did it work" is
+        -- something you look at on screen, so undoing it here would erase the evidence. Pressing
+        -- the button again starts from a clean slate; "Clear" below removes it for good.
+        local verdict = "probe failed to run"
+        pcall(function() JQuest.probeReset() end)
+        pcall(function() verdict = JQuest.probe() end)
+        JL.ui.status = tostring(verdict)
+      end
+    )
+    ns.addButton(
+      "/jackielives/arc",
+      "Clear the test objective",
+      "Removes the objective the check above put in the tracker. Nothing else in the story is " ..
+      "affected either way.",
+      "Clear",
+      18,
+      function()
+        pcall(function() JQuest.probeReset() end)
+        JL.ui.status = "Test objective cleared."
+      end
+    )
+    ns.addSwitch(
+      "/jackielives/arc",
+      "The hardest scene",
+      "There is one scene where Jackie's own chrome takes his hands for about twenty seconds. If " ..
+      "you'd rather not watch that happen to him, turn this off: he fights it back down instead, " ..
+      "and the story continues exactly the same way.",
+      Config.arc.takeover,
+      true,
+      function(value)
+        Config.arc.takeover = value
+        JL.arcTakeover = value
+        pcall(jlSaveSettings)
+      end
+    )
+    ns.addSwitch(
+      "/jackielives/arc",
+      "The final raid",
+      "One of the three endings finishes with Arasaka coming for Jackie in force — the hardest " ..
+      "fight in the mod. Turn this off for a quiet epilogue instead.",
+      Config.arc.raid,
+      true,
+      function(value)
+        Config.arc.raid = value
+        JL.arcRaid = value
+        pcall(jlSaveSettings)
+      end
+    )
+    ns.addSwitch(
+      "/jackielives/arc",
+      "Side jobs",
+      "The nine small Heywood jobs — his bike, his mother's shopping list, an argument about " ..
+      "noodles. Turn off to keep Jackie to his schedule and the main story only.",
+      Config.arc.sideQuests,
+      true,
+      function(value)
+        Config.arc.sideQuests = value
+        JL.arcSide = value
+        pcall(jlSaveSettings)
+      end
+    )
+
     ns.addSubcategory("/jackielives/recovery", "Recovery")
     ns.addButton(
       "/jackielives/recovery",
@@ -8595,7 +8710,7 @@ end
 JL_VO_TESTLINE = "1790891785270616064"
 
 JL_SETTINGS_FILE = "jl_settings.txt"
-JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast", "seatTipDone", "fallbackMenu" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
+JL_SETTINGS_KEYS = { "useAMM", "husbando", "disableVehicleArrivals", "mourningSuppress", "keepBarOpen", "modeChosen", "allowMainGigs", "walkAbreast", "seatTipDone", "fallbackMenu", "arcTakeover", "arcRaid", "arcSide" }  -- persisted JL.* boolean flags (walkAbreast v1.61: walk-abreast is DEFAULT-ON again. Renamed from customWalk (v1.57's opt-in flag) so any old `customWalk=...` line stops being read and re-defaults to ON for everyone — same invalidate-by-rename trick v1.57 used, now reversed. The v1.57 chain was: pre-v1.57 `disableCustomWalk` (default-on) → v1.57 `customWalk` (opt-in/off) → v1.61 `walkAbreast` (default-on again)) (modeChosen v1.54: did the player EXPLICITLY flip the Husbando switch? until they do, jlDefaultHermano forces Hermano on every load. Replaces the old `genderLock`, whose auto-detect is gone — an old save carrying genderLock just stops being read, so it re-defaults to Hermano exactly as intended)
 
 -- v1.55: NUMERIC settings. The file used to serialize booleans only (plus the one `mode` string), which is
 -- precisely why a slider could never be added — its value didn't survive a reload. These keys round-trip as
@@ -9823,6 +9938,115 @@ function companionPersistTick()
   respawnCompanionAtV()
 end
 
+-- ---------------------------------------------------------------------------
+-- v2.0 ARC GLUE. The five game-touching helpers the story engine needs, kept here rather than in
+-- arc.lua so that arc.lua stays pure Lua and testable offline. They are GLOBALS on purpose
+-- (200-local cap) and they live HERE, below spawnDynEntity/playerPos, on purpose too: a top-level
+-- function that names a file-local declared further down compiles to a nil global and throws on
+-- first call. That exact mistake once shipped as a total no-spawn (CLAUDE.md, trap 2).
+-- ---------------------------------------------------------------------------
+
+-- Where is a storyboard place, in world coordinates? Places name themselves against data that
+-- already exists — a Config.locations venue, a retrieval.lua capture, or a Config path — and a
+-- place still awaiting capture falls back to the one it declares. Returns {x,y,z} or nil.
+function jlArcPlacePos(key)
+  if not key or key == "any" then return nil end
+  local Story = Arc and Arc.Story
+  local place = Story and Story.PLACES and Story.PLACES[key]
+  if not place then return nil end
+
+  if place.configKey and Config.locations and Config.locations[place.configKey] then
+    local L = Config.locations[place.configKey]
+    local p = L.pos or L.position
+    if p then return { p[1] or p.x, p[2] or p.y, p[3] or p.z } end
+  end
+  if place.retrievalKey and Retrieval and Retrieval.Config then
+    local p = Retrieval.Config[place.retrievalKey]
+    if p then return { p[1], p[2], p[3] } end
+  end
+  if place.cfgPath then
+    local node = Config
+    for part in tostring(place.cfgPath):gmatch("[^.]+") do
+      node = (type(node) == "table") and node[part] or nil
+    end
+    if type(node) == "table" then return { node[1] or node.x, node[2] or node.y, node[3] or node.z } end
+  end
+  if place.fallbackKey then
+    -- One log line, once, so "the scene happened in the wrong place" is diagnosable rather than
+    -- mysterious. The list of what still needs capturing is in storyboard.lua's CAPTURE_LIST.
+    JL.arcFellBack = JL.arcFellBack or {}
+    if not JL.arcFellBack[key] then
+      JL.arcFellBack[key] = true
+      log("[Arc] place '" .. key .. "' has no captured coordinate yet — using '" .. place.fallbackKey .. "'")
+    end
+    return jlArcPlacePos(place.fallbackKey)
+  end
+  return nil
+end
+
+-- Pick one recording from a casting slot's candidates, avoiding an immediate repeat so a beat
+-- replayed on a second save does not sound identical. Ids stay STRINGS, always.
+function jlArcPickId(ids)
+  if type(ids) ~= "table" or #ids == 0 then return nil end
+  if #ids == 1 then return ids[1] end
+  JL.arcLastLine = JL.arcLastLine or {}
+  for _ = 1, 6 do
+    local pick = ids[math.random(1, #ids)]
+    if pick ~= JL.arcLastLine.id then JL.arcLastLine.id = pick; return pick end
+  end
+  return ids[1]
+end
+
+-- A story choice, rendered in the GAME's own dialogue widget (the same one the talk hub uses),
+-- so an arc choice looks exactly like every other conversation in Cyberpunk.
+function jlArcDialogue(node)
+  if not node or type(node.choices) ~= "table" then return false end
+  local labels = {}
+  for _, c in ipairs(node.choices) do labels[#labels + 1] = Lang.t(c.text or "...") end
+  local ok = DialogUI.show(Lang.t(node.prompt or ""), labels, function(idx)
+    local chosen = node.choices[idx]
+    if chosen and node.onPick then pcall(node.onPick, chosen.id) end
+    pcall(function() DialogUI.hide() end)
+  end)
+  if not ok then
+    -- The widget is unavailable (no controller this frame). Never drop the beat on the floor:
+    -- take the first choice's consequence and say so in the log, so the story cannot deadlock.
+    log("[Arc] dialogue widget unavailable for '" .. tostring(node.beat) .. "' — defaulting")
+    local first = node.choices[1]
+    if first and node.onPick then pcall(node.onPick, first.id) end
+  end
+  return true
+end
+
+-- Hostiles for the arc's fights, using the same Dynamic Entity System path blaze.lua proved.
+-- Spawns behind/around V, makes them mutually hostile with V AND with companion Jackie (a boss
+-- hostile only to V leaves Jackie a bystander — the Blaze lesson).
+function jlArcSpawnHostiles(spec)
+  if type(spec) ~= "table" then return end
+  local p = playerPos(); if not p then return end
+  local made = 0
+  for _, row in ipairs(spec) do
+    for i = 1, (row.count or 1) do
+      local ang = math.random() * 6.2832
+      local dist = 14.0 + math.random() * 8.0
+      local pos = Vector4.new(p.x + math.cos(ang) * dist, p.y + math.sin(ang) * dist, p.z, 1.0)
+      local id = spawnDynEntity(row.record, pos, math.deg(ang) + 180.0, "arc_hostile")
+      if id then
+        made = made + 1
+        JL.arcHostiles = JL.arcHostiles or {}
+        JL.arcHostiles[#JL.arcHostiles + 1] = id
+      end
+    end
+  end
+  log("[Arc] spawned " .. made .. " hostile(s)")
+end
+
+-- The story's card renderer — the same tutorial-style popup Vik's reveal and the shard text use,
+-- so nothing in the arc invents a new piece of UI.
+function jlTutorialCard(title, text, duration)
+  return Retrieval.showTip(title, text, duration or 16.0)
+end
+
 registerForEvent("onInit", function()
   -- v1.52: ROTATE, don't truncate. The old `io.open("...","w")` here destroyed the log of the run that
   -- crashed, on the very next launch — i.e. exactly when you went looking for it. The crashing run now
@@ -9948,6 +10172,59 @@ registerForEvent("onInit", function()
     log("Voice: " .. VO.status())
   end)
 
+  -- v1.92 SMS. ⚠️ EVERY KEY LISTED IN Msg.bind()'s ALLOW-LIST MUST BE PASSED HERE. NCLives shipped
+  -- this whole feature inert in its v1.72 because two bindings were named in the allow-list and never
+  -- passed from init.lua — the log was clean and 83 offline checks went green over it, because the
+  -- test harness binds them itself. Msg.diagnose() now prints the missing ones by name, which is the
+  -- only check that can actually see this mistake. Same closure rule as Fam/VO above: `Config` is
+  -- handed over as the live table reference and read through Msg.DEFAULTS, so config.lua being
+  -- re-required from disk on reload cannot pin stale tuning.
+  pcall(function()
+    Msg.bind{
+      log         = log,
+      Config      = Config,
+      gameSeconds = getGameSeconds,
+      clock       = function() return JL.clock or 0 end,
+      -- Facts are Int32 in game; jlFactNum/jlSetFactNum are the same pair Fam uses, so SMS state
+      -- persists per save exactly the way familiarity does.
+      factGet     = jlFactNum,
+      factSet     = jlSetFactNum,
+      -- THE STORY GATE, and the one genuine design decision in the port. He texts once V has
+      -- actually got him back (retrieval stage >= REUNITED) — retro-compatible for free, since an
+      -- old save passes on the next load, and it reads no journal entries so it works with no
+      -- archive installed. Fails CLOSED if this ever goes missing: silence, never a spoiler.
+      gate        = function() return Retrieval.isUnlocked() end,
+      -- Keyless in this mod (NCLives passes a roster key; we have one character).
+      famTier     = function() return Fam.tier() end,
+      famAdd      = function(_key, why, n) Fam.add(why, n) end,
+      busy        = function()
+        local shown = false
+        pcall(function() shown = DialogUI.isShown() and true or false end)
+        return shown
+      end,
+      inCombat    = function() return jlInCombat() end,
+      spawned     = function() return (JL.summon and JL.summon.spawn and JL.summon.spawn.handle) ~= nil end,
+      -- An invite for a venue this build doesn't actually place him at would send V somewhere he
+      -- will never be. Config.approach.venues is the list the venue walk/snap/sit machinery knows.
+      venueKnown  = function(v)
+        for _, k in ipairs((Config.approach and Config.approach.venues) or {}) do
+          if k == v then return true end
+        end
+        return false
+      end,
+    }
+    Msg.onInit()          -- ⚠️ drops ALL per-session scratch INCLUDING the throttles: they hold
+                          -- clock values and JL.clock restarts at 0 on a CET soft reload, so a
+                          -- stale "next poll at 2000" would mean the gate never polls again.
+  end)
+
+  -- Real journal objectives + readable shards. `showObjective` is the DEGRADATION path, not a
+  -- decoration: with no archive installed every JQuest call falls through to this band, which is
+  -- exactly the behaviour the mod had before the feature existed.
+  pcall(function()
+    JQuest.bind{ log = log, showObjective = showOnscreenMsg }
+  end)
+
   pcall(function()
     Retrieval.bind{
       log = log, isHermano = jlHermano, showObjective = showOnscreenMsg,
@@ -9958,6 +10235,85 @@ registerForEvent("onInit", function()
     -- v1.55: the Reverend Flash easter egg is authored in config.lua (with all the other content), but it RUNS in
     -- retrieval.lua, which owns the proximity/popup machinery and does not require config.lua. Hand it over.
     Retrieval.Config.revflash = Config.revflash
+  end)
+
+  -- v2.0 THE ARC. Everything the story engine can see about Night City arrives here and nowhere
+  -- else. Two rules govern this table, both learned the expensive way:
+  --   * every getter is DEFENSIVE — an unreadable answer must read as "no", never as "yes".
+  --     A fact we cannot confirm is not permission to fire a beat (v1.56 shipped the opposite and
+  --     spoiled Jackie's survival to pre-heist players).
+  --   * `config` is a CLOSURE, not the table — config.lua is re-required on every CET reload, so
+  --     handing over the table itself would pin a stale copy (the config-reload trap).
+  pcall(function()
+    Arc.bind{
+      log      = log,
+      factGet  = jlFactNum,
+      factSet  = jlSetFactNum,
+      config   = function() return Config.arc end,
+      famTier  = function() return Fam.tier() end,
+      famAdd   = function(n, why) Fam.setPoints(Fam.points() + (n or 0)); log("[Arc] familiarity " .. tostring(n) .. " (" .. tostring(why) .. ")") end,
+      gameHour = function() return getGameHour() end,
+      gameDay  = function() return jlGameDay() end,
+      stage    = function() local v = jlFactNum("jackielives_stage"); return v end,
+      stageDay = function() return jlFactNum("jackielives_stage_day") end,
+      unlocked = function() return Retrieval.isUnlocked() end,
+      jackieSpawned   = function() return (JL.spawn and JL.spawn.handle) ~= nil or (JL.summon and JL.summon.spawn and JL.summon.spawn.handle) ~= nil end,
+      jackieFollowing = function() return (JL.summon and JL.summon.active) == true end,
+      playerInCombat  = function() return jlInCombat() end,
+      playerOutdoors  = function() return true end,   -- no reliable interior test in CET; the beats
+                                                      -- that care also gate on `following`, which is
+                                                      -- the condition that actually matters.
+      mainQuestActive = function() return isMainQuestActive() end,
+      -- District, for Part 2's heat. There is no district API in CET, so this is a nearest-anchor
+      -- guess over coordinates the mod has ALREADY captured (docs/research/quest_atlas.md). It only
+      -- ever decides how fast a hidden counter moves, so an approximation is honest here — and it
+      -- degrades to the Heywood rate rather than to nothing.
+      playerDistrict  = function()
+        local p = playerPos(); if not p then return "heywood" end
+        local anchors = {
+          { "watson",     -1500,  1200 },
+          { "citycentre",  -400,   700 },
+          { "heywood",    -1262, -1002 },
+          { "badlands",    2575,     0 },
+        }
+        local best, bestD = "heywood", 1e18
+        for _, a in ipairs(anchors) do
+          local dx, dy = p.x - a[2], p.y - a[3]
+          local d = dx * dx + dy * dy
+          if d < bestD then best, bestD = a[1], d end
+        end
+        return best
+      end,
+      nearPlace = function(key, radius)
+        local pos = jlArcPlacePos(key)
+        if not pos then return false end
+        local p = playerPos(); if not p then return false end
+        local dx, dy = p.x - pos[1], p.y - pos[2]
+        return (dx * dx + dy * dy) <= ((radius or 6.0) ^ 2)
+      end,
+      showTip       = function(t, x, d) pcall(function() jlTutorialCard(t, x, d) end) end,
+      showObjective = showOnscreenMsg,
+      money         = function() local v = 0; pcall(function() v = Game.GetTransactionSystem():GetItemQuantity(Game.GetPlayer(), MarketSystem.Money()) end); return v end,
+      spend         = function(n)
+        local ok = false
+        pcall(function() ok = Game.GetTransactionSystem():RemoveMoney(Game.GetPlayer(), n, "money") end)
+        return ok ~= false
+      end,
+      dialogue = function(node) pcall(function() jlArcDialogue(node) end) end,
+      vo       = function(ids, opts) pcall(function() VO.play(jlArcPickId(ids), opts) end) end,
+      sms      = function(block) if Msg and Msg.deliver then pcall(Msg.deliver, block) end end,
+      journal  = function(op, spec) if JQuest and JQuest.apply then pcall(JQuest.apply, op, spec) end end,
+      shard    = function(block) if JQuest and JQuest.shard then pcall(JQuest.shard, block) else pcall(function() jlTutorialCard(block.title, table.concat(block.body or {}, "\n\n"), 20.0) end) end end,
+      spawnHostiles = function(spec) pcall(function() jlArcSpawnHostiles(spec) end) end,
+    }
+    -- Re-apply the player's persisted switches. config.lua comes fresh off disk on every CET
+    -- reload carrying its shipped defaults, so without this a player who turned the takeover off
+    -- would silently have it back on after the next reload — the config-reload-wipes-tuning trap
+    -- that has already cost this repo a tuning session.
+    if JL.arcTakeover ~= nil then Config.arc.takeover   = JL.arcTakeover end
+    if JL.arcRaid     ~= nil then Config.arc.raid       = JL.arcRaid end
+    if JL.arcSide     ~= nil then Config.arc.sideQuests = JL.arcSide end
+    log("Arc: " .. tostring(Config.arc and Config.arc.enabled))
   end)
   -- v0.96 BLAZE: inject every game-touching primitive the set-piece needs, built from the
   -- proven helpers in this file. blaze.lua stays pure Lua; ONLY this table calls Game.*.
@@ -10726,8 +11082,21 @@ registerForEvent("onUpdate", function(dt)
   -- Retrieval questline (Vik reveal tip, Badlands shard, Misty/Mama post-reunion shards) is a QUIET-LIFE
   -- thing — in Blaze mode Jackie is handed to you by the set-piece, so none of those custom shards should
   -- fire (Antonia 2026-07-08). Blaze's finale calls Retrieval.forceReunion() directly for the unlock.
+  -- v1.92 SMS: one line, and it self-guards on Config.messages.enabled and on the story gate. Safe
+  -- below the session guard because it touches no world handle — only the journal and game facts.
+  --
+  -- ⚠️ NOT WIRED YET: the rendezvous PLACER. Msg.pendingVenue() / Msg.rendezvousMet() are live and
+  -- tested, but nothing yet asks them each tick and puts Jackie at the venue V agreed to. Until that
+  -- lands, accepting an invite arms a rendezvous that quietly expires after Config.messages
+  -- .rendezvousHours and he texts the "standup" beat — which is a graceful degradation, not a bug,
+  -- but it does mean a player can be stood up by the mod. The hook is a few lines against the venue
+  -- walk/snap/sit machinery this file already has; see docs/research/messages_port_spec.md §5.
+  pcall(function() Msg.tick(dt) end)
   if JL.mode ~= "blaze" then
     pcall(function() Retrieval.tick(dt) end)   -- retrieval questline: gate + Vik tip + Badlands shard + call/arrival/reunion sequence
+    if Config.arc and Config.arc.enabled ~= false then
+      pcall(function() Arc.tick(dt) end)      -- v2.0 the story arc: paces itself, one beat per tick
+    end
   end
   if JL.mode == "blaze" then
     pcall(function() Blaze.tick(JL.clock, dt) end)   -- v0.96: Heist set-piece state machine (self-guards when idle)

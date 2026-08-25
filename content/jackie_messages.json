@@ -1,0 +1,309 @@
+{
+  "_comment": [
+    "jackie_messages.json — the WORDS Jackie texts. Single source of truth for the SMS pipeline:",
+    "tools/gen_messages.py writes the .journal, the localization and mod/JackieLives/messages_index.lua",
+    "from this file, and asserts that the three can never disagree (check_parity).",
+    "",
+    "Schema + field rules: docs/research/messages_port_spec.md §7. Traps: §8.",
+    "",
+    "TWO KINDS OF BEAT LIVE HERE.",
+    "  * AMBIENT beats (opener/checkin/question/invite/standup/afterdate/outgoing) are drawn at random",
+    "    by the scheduler in messages.lua. Their words are authored here and nowhere else.",
+    "  * STORY beats (kind: \"story\") belong to the questline in mod/JackieLives/storyboard.lua. Their",
+    "    words live THERE, verbatim, inside the arc beat's `sms = { ... }` block, and are copied here so",
+    "    the generator can bake them into the archive. THE STORYBOARD WINS: if the two ever disagree,",
+    "    tools/audit_messages.py fails and the storyboard is the side to copy FROM. The scheduler never",
+    "    draws a story beat — arc.lua fires it by name with Msg.sendStory(id).",
+    "",
+    "⚠️ Editing this file alone changes NOTHING in game. python3 tools/gen_messages.py, then",
+    "   `python tools\\build_archive.py` ON WINDOWS. The text is baked into JackieLives.archive."
+  ],
+
+  "contact": {
+    "_comment": [
+      "Jackie is ALREADY a vanilla journal contact (id `jackie`, 5 prologue conversations), and",
+      "ArchiveXL MERGES a journal by id chain rather than replacing it — proven by the Panam Romance",
+      "Messages mod, which hangs new conversations under vanilla `panam`/`mitch`/`saul` and leaves the",
+      "vanilla threads working. So we hang ONE new conversation, `jackielives`, under his real contact:",
+      "his real face, his real name, one thread. `jackielives` is not among his five vanilla",
+      "conversation ids (q001_waiting_after_victor, q003_all_foods_come_back, q004_status_update,",
+      "q003_all_foods_before, q001_left_jackie_car), which is the one id that must never collide.",
+      "",
+      "avatar 121253599929 is his own portrait, stored by the engine as a bare uint64.",
+      "flatLayout false ON PURPOSE: vanilla `jackie` has it unset and five real conversations, and flat",
+      "layout would restyle his prologue threads. Flat is right only for a contact who is ONLY ours.",
+      "",
+      "If merging into vanilla `jackie` ever misbehaves in game, the fallback is one line of content —",
+      "{ \"id\": \"jackielives_jackie\", \"conversation\": \"thread\", \"flatLayout\": true } — and everything",
+      "downstream (journal, index, Lua) regenerates from it."
+    ],
+    "id": "jackie",
+    "conversation": "jackielives",
+    "name": "Jackie",
+    "avatar": 121253599929,
+    "type": "Texter",
+    "flatLayout": false
+  },
+
+  "beats": [
+    {
+      "_comment": "The first text after the reunion. Once per save, and it jumps the queue.",
+      "id": "open01", "kind": "opener", "tier": 0, "once": true,
+      "bubbles": [
+        "hey chica",
+        "misty put a number back in this thing. figured i'd use it",
+        "so. this is me. textin you"
+      ],
+      "replies": [
+        { "id": "glad",   "text": "Good to hear from you, Jackie.", "fam": 1 },
+        { "id": "tease",  "text": "Took you long enough.",          "fam": 1 },
+        { "id": "quiet",  "text": "[Don't answer]",                 "fam": -1 }
+      ],
+      "followups": {
+        "glad":  ["yeah", "you too, mano", "go on, i know you're busy"],
+        "tease": ["hah", "i had to learn the little buttons again", "don't laugh"],
+        "quiet": ["…alright", "s'okay. i'll be around"]
+      }
+    },
+
+    {
+      "id": "chk01", "kind": "checkin", "tier": 0,
+      "bubbles": ["you still breathin out there"],
+      "replies": [
+        { "id": "fine", "text": "Still breathing.",        "fam": 1 },
+        { "id": "rough", "text": "It's been a long one.",  "fam": 1 }
+      ],
+      "followups": {
+        "fine":  ["bien. keep it that way"],
+        "rough": ["come eat somethin. that's a prescription, chica"]
+      }
+    },
+
+    {
+      "id": "chk02", "kind": "checkin", "tier": 1,
+      "bubbles": [
+        "mama made too much again",
+        "there's a plate here with your name on it and i am not the one tellin her you didn't come"
+      ],
+      "replies": [
+        { "id": "coming", "text": "Tell her I'm on my way.", "fam": 1 },
+        { "id": "later",  "text": "Save me some.",           "fam": 0 }
+      ],
+      "followups": {
+        "coming": ["she already knew", "she set the plate before i texted you"],
+        "later":  ["no promises", "…fine. i'll hide one"]
+      }
+    },
+
+    {
+      "id": "chk03", "kind": "checkin", "tier": 2,
+      "bubbles": [
+        "couldn't sleep",
+        "kept thinkin about konpeki",
+        "not the bad part. the elevator. you talkin trash the whole way up"
+      ],
+      "replies": [
+        { "id": "same",  "text": "I think about it too.",        "fam": 2 },
+        { "id": "here",  "text": "You want me to come over?",    "fam": 2 },
+        { "id": "drop",  "text": "Get some sleep, Jackie.",      "fam": 0 }
+      ],
+      "followups": {
+        "same": ["figured", "we were good that day", "before"],
+        "here": ["nah", "…yeah", "bring the bad coffee"],
+        "drop": ["yeah yeah", "you too, chica"]
+      }
+    },
+
+    {
+      "id": "q01", "kind": "question", "tier": 1,
+      "bubbles": ["settle somethin for me", "am i the one who's changed or is this city just louder now"],
+      "replies": [
+        { "id": "you",   "text": "It's you. And that's not a bad thing.", "fam": 1 },
+        { "id": "city",  "text": "It's the city. It always was.",         "fam": 1 }
+      ],
+      "followups": {
+        "you":  ["huh", "gonna have to sit with that one"],
+        "city": ["hah", "that's the answer i wanted so i'm takin it"]
+      }
+    },
+
+    {
+      "_comment": "One invite PER VENUE — the text is baked into the archive and cannot be interpolated.",
+      "id": "inv_noodle", "kind": "invite", "tier": 2, "venue": "noodle",
+      "bubbles": ["you eaten", "the noodle place. the good one, not the one that made you sick"],
+      "replies": [
+        { "id": "yes",  "text": "I'll be there.",     "fam": 1, "accept": true },
+        { "id": "no",   "text": "Can't tonight.",     "fam": 0 }
+      ],
+      "followups": {
+        "yes": ["bien. don't be late, chica"],
+        "no":  ["s'alright. another night"]
+      }
+    },
+
+    {
+      "id": "inv_coyote", "kind": "invite", "tier": 2, "venue": "coyote",
+      "bubbles": ["coyote. tonight", "pepe owes me a drink and i'm makin it two"],
+      "replies": [
+        { "id": "yes", "text": "I'll be there.",              "fam": 1, "accept": true },
+        { "id": "no",  "text": "Not tonight, Jackie.",        "fam": 0 }
+      ],
+      "followups": {
+        "yes": ["that's my girl. corner table's ours"],
+        "no":  ["your loss. i'll drink both"]
+      }
+    },
+
+    {
+      "id": "su01", "kind": "standup", "tier": 0,
+      "bubbles": ["waited a while", "no worries, chica. city's got teeth", "next time"],
+      "replies": [
+        { "id": "sorry", "text": "I'm sorry. Something came up.", "fam": 1 },
+        { "id": "nothing", "text": "[Don't answer]",              "fam": -1 }
+      ],
+      "followups": {
+        "sorry":   ["always does. just say so next time — i'd rather know"],
+        "nothing": ["yeah"]
+      }
+    },
+
+    {
+      "id": "aft01", "kind": "afterdate", "tier": 1,
+      "bubbles": ["that was good", "i needed that more than i said"],
+      "replies": [
+        { "id": "again", "text": "Same time next week.",  "fam": 1 },
+        { "id": "warm",  "text": "So did I, mano.",       "fam": 1 }
+      ],
+      "followups": {
+        "again": ["deal", "night, chica"],
+        "warm":  ["yeah?", "…good", "get home safe"]
+      }
+    },
+
+    {
+      "_comment": "OUTGOING: V starts it. No bubbles — the group is left armed on the thread.",
+      "id": "out01", "kind": "outgoing", "tier": 0,
+      "replies": [
+        { "id": "around", "text": "You around?",              "fam": 0 },
+        { "id": "check",  "text": "How's the arm today?",     "fam": 1 },
+        { "id": "miss",   "text": "Been thinking about you.", "fam": 2 }
+      ],
+      "followups": {
+        "around": ["always", "what's up"],
+        "check":  ["fine", "…mostly fine", "don't make a thing of it, chica"],
+        "miss":   ["hah", "you gone soft on me", "…me too, mano"]
+      }
+    },
+
+    {
+      "_comment": [
+        "TIER 0 ON PURPOSE, and there must always be at least two of these. The outgoing pool is the",
+        "only part of the thread a player can reach on demand, and when it empties the bag refills and",
+        "immediately re-offers the beat V just used — which reads as the thread not responding. Two at",
+        "tier 0 is the floor; tools/test_messages.lua section 13 fails the moment it drops below."
+      ],
+      "id": "out02", "kind": "outgoing", "tier": 0,
+      "replies": [
+        { "id": "food",  "text": "You eaten today?",        "fam": 1 },
+        { "id": "gig",   "text": "Got work if you want it.", "fam": 0 },
+        { "id": "night", "text": "Night, Jackie.",           "fam": 1 }
+      ],
+      "followups": {
+        "food":  ["mama'd like you askin that", "yeah. twice"],
+        "gig":   ["what kind", "…don't answer that. i'm out. you know i'm out"],
+        "night": ["night chica", "lock the door"]
+      }
+    },
+
+    {
+      "id": "out03", "kind": "outgoing", "tier": 0,
+      "replies": [
+        { "id": "misty", "text": "Have you told Misty?",     "fam": 1 },
+        { "id": "mama",  "text": "How's Mama holding up?",   "fam": 1 },
+        { "id": "truth", "text": "You'd tell me, right?",    "fam": 2 }
+      ],
+      "followups": {
+        "misty": ["she knows more than i say out loud", "she always did"],
+        "mama":  ["she's mama", "she'll bury us all and cook after"],
+        "truth": ["…", "yeah", "yeah, chica. i would"]
+      }
+    },
+
+    {
+      "_comment": [
+        "==================== STORY BEATS ====================",
+        "Verbatim from mod/JackieLives/storyboard.lua. DO NOT EDIT HERE — edit the storyboard, re-copy,",
+        "and tools/audit_messages.py will tell you the moment the two disagree. Ids match the",
+        "storyboard's `sms.id` exactly, because arc.lua fires them by that name.",
+        "",
+        "PART 1 — beat p1_sms_night, \"The text\". Four in the morning, and the ask that makes V complicit."
+      ],
+      "id": "arc_p1_night", "kind": "story", "tier": 0, "once": true,
+      "bubbles": [
+        "you awake",
+        "that thing earlier. my hand.",
+        "it wasn't the first time",
+        "third time this month",
+        "don't tell Misty"
+      ],
+      "replies": [
+        { "id": "worried", "text": "How long, Jackie?",             "fam": 1 },
+        { "id": "vik",     "text": "We're going to Vik. Tomorrow.", "fam": 1 },
+        { "id": "respect", "text": "Okay. I won't.",                "fam": 1 }
+      ],
+      "followups": {
+        "worried": ["since the badlands. maybe before.", "go to sleep, chica. it's late."],
+        "vik":     ["figured you'd say that", "fine. tomorrow."],
+        "respect": ["thanks", "…we're still going to vik though right", "yeah. figured."]
+      }
+    },
+
+    {
+      "_comment": [
+        "PART 3 — beat p3_blackout, \"Ten minutes\". No replies BY DESIGN: the two texts are twelve",
+        "minutes apart and he has no memory of the first. The player is meant to notice the timestamps,",
+        "not to answer. p3_timestamps pays it off in dialogue."
+      ],
+      "id": "arc_p3_blackout", "kind": "story", "tier": 0, "once": true,
+      "bubbles": [
+        "at mistys. come by when you're done",
+        "you coming or what"
+      ]
+    },
+
+    {
+      "_comment": "PART 3 — beat p3_ask, \"The ask\". The point of no return, at four in the morning.",
+      "id": "arc_p3_ask", "kind": "story", "tier": 0, "once": true,
+      "bubbles": [
+        "vik's got a table free thursday",
+        "he says it's my call which way we go",
+        "it isn't though",
+        "i've been sat here four hours and i can't do it. i keep pickin the one that keeps me useful to you and then i think that's not me thinkin, that's the thing in my head, and then i'm back at the start",
+        "so you do it",
+        "whatever you pick i'll sign it. no hard feelins. i mean that",
+        "thursday. don't be late, chica"
+      ],
+      "replies": [
+        { "id": "accept", "text": "Okay. I'll decide.",   "fam": 0 },
+        { "id": "refuse", "text": "No. This one's yours.", "fam": 0 }
+      ],
+      "followups": {
+        "accept": ["thank you"],
+        "refuse": ["…", "we'll see thursday", "go to sleep"]
+      }
+    },
+
+    {
+      "_comment": [
+        "PART 5, ending B — beat p5b_ritual, \"Maintenance\". RECURRING every ~10 in-game days, forever,",
+        "so it is deliberately NOT `once`. No replies: it is a thing you do now, not a crisis."
+      ],
+      "id": "arc_p5_flare", "kind": "story", "tier": 0,
+      "bubbles": [
+        "it's doin the thing again",
+        "no rush. thursday's fine",
+        "bring coffee, viks is terrible"
+      ]
+    }
+  ]
+}

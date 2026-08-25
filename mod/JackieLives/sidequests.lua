@@ -306,7 +306,7 @@ M.quests = {
     { id = "cut_fight", kind = "fight", place = "coyote", window = { 20.0, 24.0 },
       spawn = { note = "four gang-tier hostiles outside the bar; interior must stay safe — Mama is inside" },
       vo = { onSpawn = "angry_corp", during = "combat_joy", after = "thanks_v" },
-      journal = { quest = "side_cut", phase = "main", objective = "hold_the_bar", text = "Keep them out of the bar" },
+      journal = { quest = "side_shakedown", phase = "main", objective = "hold_the_bar", text = "Keep them out of the bar" },
       sets = { jackielives_side_shakedown = 1 } },
   },
 },

@@ -1,0 +1,1124 @@
+{
+  "Header": {
+    "WolvenKitVersion": "8.18.0",
+    "WKitJsonVersion": "0.0.9",
+    "GameVersion": 2310,
+    "DataType": "CR2W",
+    "ArchiveFileName": "jackielives_msgs.json"
+  },
+  "Data": {
+    "Version": 195,
+    "BuildVersion": 0,
+    "RootChunk": {
+      "$type": "JsonResource",
+      "cookingPlatform": "PLATFORM_None",
+      "root": {
+        "HandleId": "0",
+        "Data": {
+          "$type": "localizationPersistenceOnScreenEntries",
+          "entries": [
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "",
+              "maleVariant": "",
+              "primaryKey": "13830110100527229880",
+              "secondaryKey": "jackielives_msg_blank"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Jackie",
+              "maleVariant": "Jackie",
+              "primaryKey": "9413078945611703219",
+              "secondaryKey": "jackielives_msg_jackie_name"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "hey chica",
+              "maleVariant": "hey chica",
+              "primaryKey": "8015373867091316625",
+              "secondaryKey": "jackielives_msg_jackie_open01_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "misty put a number back in this thing. figured i'd use it",
+              "maleVariant": "misty put a number back in this thing. figured i'd use it",
+              "primaryKey": "8015370568556431992",
+              "secondaryKey": "jackielives_msg_jackie_open01_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "so. this is me. textin you",
+              "maleVariant": "so. this is me. textin you",
+              "primaryKey": "8015371668068060203",
+              "secondaryKey": "jackielives_msg_jackie_open01_b3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Good to hear from you, Jackie.",
+              "maleVariant": "Good to hear from you, Jackie.",
+              "primaryKey": "13599007201413133340",
+              "secondaryKey": "jackielives_msg_jackie_open01_g_glad"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Took you long enough.",
+              "maleVariant": "Took you long enough.",
+              "primaryKey": "1862695999294173120",
+              "secondaryKey": "jackielives_msg_jackie_open01_g_tease"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "[Don't answer]",
+              "maleVariant": "[Don't answer]",
+              "primaryKey": "3366289863692586190",
+              "secondaryKey": "jackielives_msg_jackie_open01_g_quiet"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "yeah",
+              "maleVariant": "yeah",
+              "primaryKey": "7302980226536632278",
+              "secondaryKey": "jackielives_msg_jackie_open01_glad_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "you too, mano",
+              "maleVariant": "you too, mano",
+              "primaryKey": "7302979127025004067",
+              "secondaryKey": "jackielives_msg_jackie_open01_glad_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "go on, i know you're busy",
+              "maleVariant": "go on, i know you're busy",
+              "primaryKey": "7302978027513375856",
+              "secondaryKey": "jackielives_msg_jackie_open01_glad_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "hah",
+              "maleVariant": "hah",
+              "primaryKey": "1194794385521676934",
+              "secondaryKey": "jackielives_msg_jackie_open01_tease_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "i had to learn the little buttons again",
+              "maleVariant": "i had to learn the little buttons again",
+              "primaryKey": "1194793286010048723",
+              "secondaryKey": "jackielives_msg_jackie_open01_tease_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "don't laugh",
+              "maleVariant": "don't laugh",
+              "primaryKey": "1194792186498420512",
+              "secondaryKey": "jackielives_msg_jackie_open01_tease_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…alright",
+              "maleVariant": "…alright",
+              "primaryKey": "4868972524266175116",
+              "secondaryKey": "jackielives_msg_jackie_open01_quiet_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "s'okay. i'll be around",
+              "maleVariant": "s'okay. i'll be around",
+              "primaryKey": "4868975822801059749",
+              "secondaryKey": "jackielives_msg_jackie_open01_quiet_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "you still breathin out there",
+              "maleVariant": "you still breathin out there",
+              "primaryKey": "4410779432045371617",
+              "secondaryKey": "jackielives_msg_jackie_chk01_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Still breathing.",
+              "maleVariant": "Still breathing.",
+              "primaryKey": "35689594205563066",
+              "secondaryKey": "jackielives_msg_jackie_chk01_g_fine"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "It's been a long one.",
+              "maleVariant": "It's been a long one.",
+              "primaryKey": "18016858698922961063",
+              "secondaryKey": "jackielives_msg_jackie_chk01_g_rough"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "bien. keep it that way",
+              "maleVariant": "bien. keep it that way",
+              "primaryKey": "10587129329381059588",
+              "secondaryKey": "jackielives_msg_jackie_chk01_fine_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "come eat somethin. that's a prescription, chica",
+              "maleVariant": "come eat somethin. that's a prescription, chica",
+              "primaryKey": "13151019822799785111",
+              "secondaryKey": "jackielives_msg_jackie_chk01_rough_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "mama made too much again",
+              "maleVariant": "mama made too much again",
+              "primaryKey": "1436838021916513318",
+              "secondaryKey": "jackielives_msg_jackie_chk02_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "there's a plate here with your name on it and i am not the one tellin her you didn't come",
+              "maleVariant": "there's a plate here with your name on it and i am not the one tellin her you didn't come",
+              "primaryKey": "1436836922404885107",
+              "secondaryKey": "jackielives_msg_jackie_chk02_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Tell her I'm on my way.",
+              "maleVariant": "Tell her I'm on my way.",
+              "primaryKey": "17430025454603985750",
+              "secondaryKey": "jackielives_msg_jackie_chk02_g_coming"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Save me some.",
+              "maleVariant": "Save me some.",
+              "primaryKey": "8885514392149980413",
+              "secondaryKey": "jackielives_msg_jackie_chk02_g_later"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "she already knew",
+              "maleVariant": "she already knew",
+              "primaryKey": "9064142432896404824",
+              "secondaryKey": "jackielives_msg_jackie_chk02_coming_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "she set the plate before i texted you",
+              "maleVariant": "she set the plate before i texted you",
+              "primaryKey": "9064145731431289457",
+              "secondaryKey": "jackielives_msg_jackie_chk02_coming_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "no promises",
+              "maleVariant": "no promises",
+              "primaryKey": "8575719963961937617",
+              "secondaryKey": "jackielives_msg_jackie_chk02_later_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…fine. i'll hide one",
+              "maleVariant": "…fine. i'll hide one",
+              "primaryKey": "8575716665427052984",
+              "secondaryKey": "jackielives_msg_jackie_chk02_later_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "couldn't sleep",
+              "maleVariant": "couldn't sleep",
+              "primaryKey": "4517594863540185755",
+              "secondaryKey": "jackielives_msg_jackie_chk03_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "kept thinkin about konpeki",
+              "maleVariant": "kept thinkin about konpeki",
+              "primaryKey": "4517595963051813966",
+              "secondaryKey": "jackielives_msg_jackie_chk03_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "not the bad part. the elevator. you talkin trash the whole way up",
+              "maleVariant": "not the bad part. the elevator. you talkin trash the whole way up",
+              "primaryKey": "4517597062563442177",
+              "secondaryKey": "jackielives_msg_jackie_chk03_b3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "I think about it too.",
+              "maleVariant": "I think about it too.",
+              "primaryKey": "4293008160556940470",
+              "secondaryKey": "jackielives_msg_jackie_chk03_g_same"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "You want me to come over?",
+              "maleVariant": "You want me to come over?",
+              "primaryKey": "7301592060002657462",
+              "secondaryKey": "jackielives_msg_jackie_chk03_g_here"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Get some sleep, Jackie.",
+              "maleVariant": "Get some sleep, Jackie.",
+              "primaryKey": "9316199064303108581",
+              "secondaryKey": "jackielives_msg_jackie_chk03_g_drop"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "figured",
+              "maleVariant": "figured",
+              "primaryKey": "9096819445894092380",
+              "secondaryKey": "jackielives_msg_jackie_chk03_same_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "we were good that day",
+              "maleVariant": "we were good that day",
+              "primaryKey": "9096822744428977013",
+              "secondaryKey": "jackielives_msg_jackie_chk03_same_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "before",
+              "maleVariant": "before",
+              "primaryKey": "9096821644917348802",
+              "secondaryKey": "jackielives_msg_jackie_chk03_same_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "nah",
+              "maleVariant": "nah",
+              "primaryKey": "7341618392461816068",
+              "secondaryKey": "jackielives_msg_jackie_chk03_here_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…yeah",
+              "maleVariant": "…yeah",
+              "primaryKey": "7341621690996700701",
+              "secondaryKey": "jackielives_msg_jackie_chk03_here_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "bring the bad coffee",
+              "maleVariant": "bring the bad coffee",
+              "primaryKey": "7341620591485072490",
+              "secondaryKey": "jackielives_msg_jackie_chk03_here_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "yeah yeah",
+              "maleVariant": "yeah yeah",
+              "primaryKey": "323893698639946457",
+              "secondaryKey": "jackielives_msg_jackie_chk03_drop_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "you too, chica",
+              "maleVariant": "you too, chica",
+              "primaryKey": "323890400105061824",
+              "secondaryKey": "jackielives_msg_jackie_chk03_drop_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "settle somethin for me",
+              "maleVariant": "settle somethin for me",
+              "primaryKey": "14793562884535125532",
+              "secondaryKey": "jackielives_msg_jackie_q01_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "am i the one who's changed or is this city just louder now",
+              "maleVariant": "am i the one who's changed or is this city just louder now",
+              "primaryKey": "14793566183070010165",
+              "secondaryKey": "jackielives_msg_jackie_q01_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "It's you. And that's not a bad thing.",
+              "maleVariant": "It's you. And that's not a bad thing.",
+              "primaryKey": "885630400450693594",
+              "secondaryKey": "jackielives_msg_jackie_q01_g_you"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "It's the city. It always was.",
+              "maleVariant": "It's the city. It always was.",
+              "primaryKey": "11351008388300605108",
+              "secondaryKey": "jackielives_msg_jackie_q01_g_city"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "huh",
+              "maleVariant": "huh",
+              "primaryKey": "16347761611217439124",
+              "secondaryKey": "jackielives_msg_jackie_q01_you_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "gonna have to sit with that one",
+              "maleVariant": "gonna have to sit with that one",
+              "primaryKey": "16347764909752323757",
+              "secondaryKey": "jackielives_msg_jackie_q01_you_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "hah",
+              "maleVariant": "hah",
+              "primaryKey": "8144452417727227974",
+              "secondaryKey": "jackielives_msg_jackie_q01_city_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "that's the answer i wanted so i'm takin it",
+              "maleVariant": "that's the answer i wanted so i'm takin it",
+              "primaryKey": "8144451318215599763",
+              "secondaryKey": "jackielives_msg_jackie_q01_city_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "you eaten",
+              "maleVariant": "you eaten",
+              "primaryKey": "11207287127172575713",
+              "secondaryKey": "jackielives_msg_jackie_inv_noodle_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "the noodle place. the good one, not the one that made you sick",
+              "maleVariant": "the noodle place. the good one, not the one that made you sick",
+              "primaryKey": "11207283828637691080",
+              "secondaryKey": "jackielives_msg_jackie_inv_noodle_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "I'll be there.",
+              "maleVariant": "I'll be there.",
+              "primaryKey": "5455435384950683285",
+              "secondaryKey": "jackielives_msg_jackie_inv_noodle_g_yes"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Can't tonight.",
+              "maleVariant": "Can't tonight.",
+              "primaryKey": "12178530461443280665",
+              "secondaryKey": "jackielives_msg_jackie_inv_noodle_g_no"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "bien. don't be late, chica",
+              "maleVariant": "bien. don't be late, chica",
+              "primaryKey": "7276823886164200625",
+              "secondaryKey": "jackielives_msg_jackie_inv_noodle_yes_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "s'alright. another night",
+              "maleVariant": "s'alright. another night",
+              "primaryKey": "9852682081581325773",
+              "secondaryKey": "jackielives_msg_jackie_inv_noodle_no_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "coyote. tonight",
+              "maleVariant": "coyote. tonight",
+              "primaryKey": "12671192090971278323",
+              "secondaryKey": "jackielives_msg_jackie_inv_coyote_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "pepe owes me a drink and i'm makin it two",
+              "maleVariant": "pepe owes me a drink and i'm makin it two",
+              "primaryKey": "12671193190482906534",
+              "secondaryKey": "jackielives_msg_jackie_inv_coyote_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "I'll be there.",
+              "maleVariant": "I'll be there.",
+              "primaryKey": "2858876536318805723",
+              "secondaryKey": "jackielives_msg_jackie_inv_coyote_g_yes"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Not tonight, Jackie.",
+              "maleVariant": "Not tonight, Jackie.",
+              "primaryKey": "645314015755001167",
+              "secondaryKey": "jackielives_msg_jackie_inv_coyote_g_no"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "that's my girl. corner table's ours",
+              "maleVariant": "that's my girl. corner table's ours",
+              "primaryKey": "11575841929723419043",
+              "secondaryKey": "jackielives_msg_jackie_inv_coyote_yes_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "your loss. i'll drink both",
+              "maleVariant": "your loss. i'll drink both",
+              "primaryKey": "977189258055854303",
+              "secondaryKey": "jackielives_msg_jackie_inv_coyote_no_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "waited a while",
+              "maleVariant": "waited a while",
+              "primaryKey": "17372848408720494829",
+              "secondaryKey": "jackielives_msg_jackie_su01_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "no worries, chica. city's got teeth",
+              "maleVariant": "no worries, chica. city's got teeth",
+              "primaryKey": "17372845110185610196",
+              "secondaryKey": "jackielives_msg_jackie_su01_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "next time",
+              "maleVariant": "next time",
+              "primaryKey": "17372846209697238407",
+              "secondaryKey": "jackielives_msg_jackie_su01_b3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "I'm sorry. Something came up.",
+              "maleVariant": "I'm sorry. Something came up.",
+              "primaryKey": "9744513328239020607",
+              "secondaryKey": "jackielives_msg_jackie_su01_g_sorry"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "[Don't answer]",
+              "maleVariant": "[Don't answer]",
+              "primaryKey": "17721736552941943535",
+              "secondaryKey": "jackielives_msg_jackie_su01_g_nothing"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "always does. just say so next time — i'd rather know",
+              "maleVariant": "always does. just say so next time — i'd rather know",
+              "primaryKey": "16084567003837867",
+              "secondaryKey": "jackielives_msg_jackie_su01_sorry_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "yeah",
+              "maleVariant": "yeah",
+              "primaryKey": "6449944320443629211",
+              "secondaryKey": "jackielives_msg_jackie_su01_nothing_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "that was good",
+              "maleVariant": "that was good",
+              "primaryKey": "18180507895554162334",
+              "secondaryKey": "jackielives_msg_jackie_aft01_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "i needed that more than i said",
+              "maleVariant": "i needed that more than i said",
+              "primaryKey": "18180506796042534123",
+              "secondaryKey": "jackielives_msg_jackie_aft01_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Same time next week.",
+              "maleVariant": "Same time next week.",
+              "primaryKey": "5542097065176253171",
+              "secondaryKey": "jackielives_msg_jackie_aft01_g_again"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "So did I, mano.",
+              "maleVariant": "So did I, mano.",
+              "primaryKey": "6716478031338613924",
+              "secondaryKey": "jackielives_msg_jackie_aft01_g_warm"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "deal",
+              "maleVariant": "deal",
+              "primaryKey": "2027204772735192351",
+              "secondaryKey": "jackielives_msg_jackie_aft01_again_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "night, chica",
+              "maleVariant": "night, chica",
+              "primaryKey": "2027205872246820562",
+              "secondaryKey": "jackielives_msg_jackie_aft01_again_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "yeah?",
+              "maleVariant": "yeah?",
+              "primaryKey": "722745672287141290",
+              "secondaryKey": "jackielives_msg_jackie_aft01_warm_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…good",
+              "maleVariant": "…good",
+              "primaryKey": "722744572775513079",
+              "secondaryKey": "jackielives_msg_jackie_aft01_warm_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "get home safe",
+              "maleVariant": "get home safe",
+              "primaryKey": "722743473263884868",
+              "secondaryKey": "jackielives_msg_jackie_aft01_warm_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "You around?",
+              "maleVariant": "You around?",
+              "primaryKey": "3653908694885072123",
+              "secondaryKey": "jackielives_msg_jackie_out01_g_around"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "How's the arm today?",
+              "maleVariant": "How's the arm today?",
+              "primaryKey": "5983564747721678662",
+              "secondaryKey": "jackielives_msg_jackie_out01_g_check"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Been thinking about you.",
+              "maleVariant": "Been thinking about you.",
+              "primaryKey": "8721660495069184982",
+              "secondaryKey": "jackielives_msg_jackie_out01_g_miss"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "always",
+              "maleVariant": "always",
+              "primaryKey": "16874896040671069631",
+              "secondaryKey": "jackielives_msg_jackie_out01_around_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "what's up",
+              "maleVariant": "what's up",
+              "primaryKey": "16874897140182697842",
+              "secondaryKey": "jackielives_msg_jackie_out01_around_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "fine",
+              "maleVariant": "fine",
+              "primaryKey": "2863821433138013072",
+              "secondaryKey": "jackielives_msg_jackie_out01_check_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…mostly fine",
+              "maleVariant": "…mostly fine",
+              "primaryKey": "2863824731672897705",
+              "secondaryKey": "jackielives_msg_jackie_out01_check_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "don't make a thing of it, chica",
+              "maleVariant": "don't make a thing of it, chica",
+              "primaryKey": "2863823632161269494",
+              "secondaryKey": "jackielives_msg_jackie_out01_check_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "hah",
+              "maleVariant": "hah",
+              "primaryKey": "3572125123045610448",
+              "secondaryKey": "jackielives_msg_jackie_out01_miss_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "you gone soft on me",
+              "maleVariant": "you gone soft on me",
+              "primaryKey": "3572128421580495081",
+              "secondaryKey": "jackielives_msg_jackie_out01_miss_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…me too, mano",
+              "maleVariant": "…me too, mano",
+              "primaryKey": "3572127322068866870",
+              "secondaryKey": "jackielives_msg_jackie_out01_miss_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "You eaten today?",
+              "maleVariant": "You eaten today?",
+              "primaryKey": "8087414311836587385",
+              "secondaryKey": "jackielives_msg_jackie_out02_g_food"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Got work if you want it.",
+              "maleVariant": "Got work if you want it.",
+              "primaryKey": "11510894377777205950",
+              "secondaryKey": "jackielives_msg_jackie_out02_g_gig"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Night, Jackie.",
+              "maleVariant": "Night, Jackie.",
+              "primaryKey": "12194243659201339505",
+              "secondaryKey": "jackielives_msg_jackie_out02_g_night"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "mama'd like you askin that",
+              "maleVariant": "mama'd like you askin that",
+              "primaryKey": "2107441645983966001",
+              "secondaryKey": "jackielives_msg_jackie_out02_food_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "yeah. twice",
+              "maleVariant": "yeah. twice",
+              "primaryKey": "2107438347449081368",
+              "secondaryKey": "jackielives_msg_jackie_out02_food_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "what kind",
+              "maleVariant": "what kind",
+              "primaryKey": "15230693691008388148",
+              "secondaryKey": "jackielives_msg_jackie_out02_gig_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…don't answer that. i'm out. you know i'm out",
+              "maleVariant": "…don't answer that. i'm out. you know i'm out",
+              "primaryKey": "15230696989543272781",
+              "secondaryKey": "jackielives_msg_jackie_out02_gig_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "night chica",
+              "maleVariant": "night chica",
+              "primaryKey": "17292862214259085761",
+              "secondaryKey": "jackielives_msg_jackie_out02_night_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "lock the door",
+              "maleVariant": "lock the door",
+              "primaryKey": "17292858915724201128",
+              "secondaryKey": "jackielives_msg_jackie_out02_night_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Have you told Misty?",
+              "maleVariant": "Have you told Misty?",
+              "primaryKey": "9494866442929286360",
+              "secondaryKey": "jackielives_msg_jackie_out03_g_misty"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "How's Mama holding up?",
+              "maleVariant": "How's Mama holding up?",
+              "primaryKey": "10882227664770983048",
+              "secondaryKey": "jackielives_msg_jackie_out03_g_mama"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "You'd tell me, right?",
+              "maleVariant": "You'd tell me, right?",
+              "primaryKey": "10884295823328635149",
+              "secondaryKey": "jackielives_msg_jackie_out03_g_truth"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "she knows more than i say out loud",
+              "maleVariant": "she knows more than i say out loud",
+              "primaryKey": "13277592016775521686",
+              "secondaryKey": "jackielives_msg_jackie_out03_misty_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "she always did",
+              "maleVariant": "she always did",
+              "primaryKey": "13277590917263893475",
+              "secondaryKey": "jackielives_msg_jackie_out03_misty_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "she's mama",
+              "maleVariant": "she's mama",
+              "primaryKey": "9863599556506755782",
+              "secondaryKey": "jackielives_msg_jackie_out03_mama_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "she'll bury us all and cook after",
+              "maleVariant": "she'll bury us all and cook after",
+              "primaryKey": "9863598456995127571",
+              "secondaryKey": "jackielives_msg_jackie_out03_mama_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…",
+              "maleVariant": "…",
+              "primaryKey": "7125857960434779481",
+              "secondaryKey": "jackielives_msg_jackie_out03_truth_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "yeah",
+              "maleVariant": "yeah",
+              "primaryKey": "7125854661899894848",
+              "secondaryKey": "jackielives_msg_jackie_out03_truth_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "yeah, chica. i would",
+              "maleVariant": "yeah, chica. i would",
+              "primaryKey": "7125855761411523059",
+              "secondaryKey": "jackielives_msg_jackie_out03_truth_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "you awake",
+              "maleVariant": "you awake",
+              "primaryKey": "1565650420950567525",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "that thing earlier. my hand.",
+              "maleVariant": "that thing earlier. my hand.",
+              "primaryKey": "1565647122415682892",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "it wasn't the first time",
+              "maleVariant": "it wasn't the first time",
+              "primaryKey": "1565648221927311103",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_b3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "third time this month",
+              "maleVariant": "third time this month",
+              "primaryKey": "1565644923392426470",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_b4"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "don't tell Misty",
+              "maleVariant": "don't tell Misty",
+              "primaryKey": "1565646022904054681",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_b5"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "How long, Jackie?",
+              "maleVariant": "How long, Jackie?",
+              "primaryKey": "6738730961606615458",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_g_worried"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "We're going to Vik. Tomorrow.",
+              "maleVariant": "We're going to Vik. Tomorrow.",
+              "primaryKey": "5050500487836462936",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_g_vik"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Okay. I won't.",
+              "maleVariant": "Okay. I won't.",
+              "primaryKey": "13300356328562821936",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_g_respect"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "since the badlands. maybe before.",
+              "maleVariant": "since the badlands. maybe before.",
+              "primaryKey": "7197124120281943976",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_worried_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "go to sleep, chica. it's late.",
+              "maleVariant": "go to sleep, chica. it's late.",
+              "primaryKey": "7197127418816828609",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_worried_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "figured you'd say that",
+              "maleVariant": "figured you'd say that",
+              "primaryKey": "9291025049284204346",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_vik_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "fine. tomorrow.",
+              "maleVariant": "fine. tomorrow.",
+              "primaryKey": "9291023949772576135",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_vik_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "thanks",
+              "maleVariant": "thanks",
+              "primaryKey": "13016361886585092718",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_respect_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…we're still going to vik though right",
+              "maleVariant": "…we're still going to vik though right",
+              "primaryKey": "13016360787073464507",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_respect_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "yeah. figured.",
+              "maleVariant": "yeah. figured.",
+              "primaryKey": "13016359687561836296",
+              "secondaryKey": "jackielives_msg_jackie_arc_p1_night_respect_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "at mistys. come by when you're done",
+              "maleVariant": "at mistys. come by when you're done",
+              "primaryKey": "17168034552345352192",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_blackout_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "you coming or what",
+              "maleVariant": "you coming or what",
+              "primaryKey": "17168037850880236825",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_blackout_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "vik's got a table free thursday",
+              "maleVariant": "vik's got a table free thursday",
+              "primaryKey": "14688211300890634422",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "he says it's my call which way we go",
+              "maleVariant": "he says it's my call which way we go",
+              "primaryKey": "14688210201379006211",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "it isn't though",
+              "maleVariant": "it isn't though",
+              "primaryKey": "14688209101867378000",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_b3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "i've been sat here four hours and i can't do it. i keep pickin the one that keeps me useful to you and then i think that's not me thinkin, that's the thing in my head, and then i'm back at the start",
+              "maleVariant": "i've been sat here four hours and i can't do it. i keep pickin the one that keeps me useful to you and then i think that's not me thinkin, that's the thing in my head, and then i'm back at the start",
+              "primaryKey": "14688216798448775477",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_b4"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "so you do it",
+              "maleVariant": "so you do it",
+              "primaryKey": "14688215698937147266",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_b5"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "whatever you pick i'll sign it. no hard feelins. i mean that",
+              "maleVariant": "whatever you pick i'll sign it. no hard feelins. i mean that",
+              "primaryKey": "14688214599425519055",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_b6"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "thursday. don't be late, chica",
+              "maleVariant": "thursday. don't be late, chica",
+              "primaryKey": "14688213499913890844",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_b7"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Okay. I'll decide.",
+              "maleVariant": "Okay. I'll decide.",
+              "primaryKey": "7217724156646887101",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_g_accept"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "No. This one's yours.",
+              "maleVariant": "No. This one's yours.",
+              "primaryKey": "6761959945843751305",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_g_refuse"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "thank you",
+              "maleVariant": "thank you",
+              "primaryKey": "4531807503569941937",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_accept_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "…",
+              "maleVariant": "…",
+              "primaryKey": "1463502391689897281",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_refuse_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "we'll see thursday",
+              "maleVariant": "we'll see thursday",
+              "primaryKey": "1463499093155012648",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_refuse_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "go to sleep",
+              "maleVariant": "go to sleep",
+              "primaryKey": "1463500192666640859",
+              "secondaryKey": "jackielives_msg_jackie_arc_p3_ask_refuse_f3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "it's doin the thing again",
+              "maleVariant": "it's doin the thing again",
+              "primaryKey": "3596976311251965027",
+              "secondaryKey": "jackielives_msg_jackie_arc_p5_flare_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "no rush. thursday's fine",
+              "maleVariant": "no rush. thursday's fine",
+              "primaryKey": "3596977410763593238",
+              "secondaryKey": "jackielives_msg_jackie_arc_p5_flare_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "bring coffee, viks is terrible",
+              "maleVariant": "bring coffee, viks is terrible",
+              "primaryKey": "3596978510275221449",
+              "secondaryKey": "jackielives_msg_jackie_arc_p5_flare_b3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Nix",
+              "maleVariant": "Nix",
+              "primaryKey": "11290563610413627116",
+              "secondaryKey": "jackielives_msg_jackielives_nix_name"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Heard you were asking.",
+              "maleVariant": "Heard you were asking.",
+              "primaryKey": "5134718031120463568",
+              "secondaryKey": "jackielives_msg_jackielives_nix_arc_p2_nix_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "A mil-spec tracker doesn't talk to Arasaka Tower. It talks to whatever mast it can see, and the mast talks to the tower. That's the seam.",
+              "maleVariant": "A mil-spec tracker doesn't talk to Arasaka Tower. It talks to whatever mast it can see, and the mast talks to the tower. That's the seam.",
+              "primaryKey": "5134721329655348201",
+              "secondaryKey": "jackielives_msg_jackielives_nix_arc_p2_nix_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "I can build you something that sits in that seam. Two grand, and I don't want to know whose shoulder it's in.",
+              "maleVariant": "I can build you something that sits in that seam. Two grand, and I don't want to know whose shoulder it's in.",
+              "primaryKey": "5134720230143719990",
+              "secondaryKey": "jackielives_msg_jackielives_nix_arc_p2_nix_b3"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Done. [€$2000]",
+              "maleVariant": "Done. [€$2000]",
+              "primaryKey": "5560825235697163063",
+              "secondaryKey": "jackielives_msg_jackielives_nix_arc_p2_nix_g_pay"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Two grand's steep for a box.",
+              "maleVariant": "Two grand's steep for a box.",
+              "primaryKey": "5949380782128427917",
+              "secondaryKey": "jackielives_msg_jackielives_nix_arc_p2_nix_g_haggle"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Pickup's at the Afterlife. Don't bring him with you.",
+              "maleVariant": "Pickup's at the Afterlife. Don't bring him with you.",
+              "primaryKey": "5681727323107532171",
+              "secondaryKey": "jackielives_msg_jackielives_nix_arc_p2_nix_pay_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "It's steep for a box. It's cheap for a man.",
+              "maleVariant": "It's steep for a box. It's cheap for a man.",
+              "primaryKey": "1966070026026604425",
+              "secondaryKey": "jackielives_msg_jackielives_nix_arc_p2_nix_haggle_f1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Two grand.",
+              "maleVariant": "Two grand.",
+              "primaryKey": "1966066727491719792",
+              "secondaryKey": "jackielives_msg_jackielives_nix_arc_p2_nix_haggle_f2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Unknown",
+              "maleVariant": "Unknown",
+              "primaryKey": "7048911622201040995",
+              "secondaryKey": "jackielives_msg_jackielives_unknown_name"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Asset 7741-B.",
+              "maleVariant": "Asset 7741-B.",
+              "primaryKey": "8033101928301197666",
+              "secondaryKey": "jackielives_msg_jackielives_unknown_arc_p2_unknown_b1"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Property of Arasaka Corporation. Recovery is in progress.",
+              "maleVariant": "Property of Arasaka Corporation. Recovery is in progress.",
+              "primaryKey": "8033100828789569455",
+              "secondaryKey": "jackielives_msg_jackielives_unknown_arc_p2_unknown_b2"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "Who is this?",
+              "maleVariant": "Who is this?",
+              "primaryKey": "11535132050584533663",
+              "secondaryKey": "jackielives_msg_jackielives_unknown_arc_p2_unknown_g_who"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "[Say nothing]",
+              "maleVariant": "[Say nothing]",
+              "primaryKey": "7650335844488071706",
+              "secondaryKey": "jackielives_msg_jackielives_unknown_arc_p2_unknown_g_nothing"
+            },
+            {
+              "$type": "localizationPersistenceOnScreenEntry",
+              "femaleVariant": "[The number no longer exists.]",
+              "maleVariant": "[The number no longer exists.]",
+              "primaryKey": "6699242099568339251",
+              "secondaryKey": "jackielives_msg_jackielives_unknown_arc_p2_unknown_who_f1"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

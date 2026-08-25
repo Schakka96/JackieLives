@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "nix_messages.json — the netrunner at the Afterlife. VERBATIM from storyboard.lua's p2_nix beat",
+    "(`sms.thread = \"nix\"`). THE STORYBOARD WINS; tools/audit_messages.py enforces it.",
+    "",
+    "Nix is a real character with no VO in this mod, so text is his ONLY channel — which is why his",
+    "half of Part 2 is written as SMS rather than as a dialogue node. Story-only, like the unknown",
+    "number: no ambient schedule, fired by name from arc.lua."
+  ],
+
+  "contact": {
+    "_comment": [
+      "A PRIVATE contact rather than a merge into vanilla `nix`. Jackie is merged because his vanilla",
+      "contact and portrait were VERIFIED out of the shipped cooked_journal.journal on this Mac; Nix's",
+      "were not, and guessing an avatarID would either render blank or point at somebody else's face.",
+      "No portrait is the honest answer, so this uses the game's own no-portrait record.",
+      "If his real contact id and avatarID are ever read out of the game the same way, switching is",
+      "one line here and everything downstream regenerates."
+    ],
+    "id": "jackielives_nix",
+    "conversation": "thread",
+    "name": "Nix",
+    "avatar": "PhoneAvatars.Avatar_Unknown",
+    "type": "Texter",
+    "flatLayout": true
+  },
+
+  "beats": [
+    {
+      "_comment": [
+        "storyboard.lua, PART 2, beat p2_nix — \"The netrunner\".",
+        "⚠️ `cost` is carried through to messages_index.lua for arc.lua to charge. This module never",
+        "touches the player's eddies itself — it only reports which reply was tapped."
+      ],
+      "id": "arc_p2_nix", "kind": "story", "tier": 0, "once": true,
+      "bubbles": [
+        "Heard you were asking.",
+        "A mil-spec tracker doesn't talk to Arasaka Tower. It talks to whatever mast it can see, and the mast talks to the tower. That's the seam.",
+        "I can build you something that sits in that seam. Two grand, and I don't want to know whose shoulder it's in."
+      ],
+      "replies": [
+        { "id": "pay",    "text": "Done. [€$2000]",                 "fam": 0, "cost": 2000 },
+        { "id": "haggle", "text": "Two grand's steep for a box.",   "fam": 0 }
+      ],
+      "followups": {
+        "pay":    ["Pickup's at the Afterlife. Don't bring him with you."],
+        "haggle": ["It's steep for a box. It's cheap for a man.", "Two grand."]
+      }
+    }
+  ]
+}

@@ -13,6 +13,132 @@ _Update after every major change. See `docs/DESIGN.md` for rationale, `docs/SETU
 
 
 
+## 🎬 JACKIE LIVES 2.0 — "GHOST IN THE MACHINE": THE STORY, AS DATA (2026-08-25)
+
+**What landed.** The questline designed in `docs/QUEST_ARASAKA.md` on 2026-08-18 existed as a
+document and nothing else. It is now content the runtime actually reads: five parts, nine side
+quests, every word, place, in-game hour, choice and consequence.
+
+- `mod/JackieLives/storyboard.lua` — the arc. Every beat carries an `intent` (what it is FOR,
+  dramatically), its arming conditions, its place and hour window, its verbatim SMS text, its
+  shard text, its choices and what each one permanently sets.
+- `mod/JackieLives/sidequests.lua` — nine Heywood jobs. Five of them exist to PLANT something the
+  arc later detonates (the bike, the kid, the plate, the card, the wall); the rest are the only
+  place this mod is funny, which is load-bearing — a player who has argued with him about noodles
+  has more to lose in Part 4 than one who has only watched him deteriorate.
+- `mod/JackieLives/arc.lua` — a generic interpreter with NO story in it. It walks the tables and
+  hands each beat to whichever shipped system performs it, through one `bind{}` table, exactly the
+  way `retrieval.lua` is built and for the same reason: it can then be run offline against a fake
+  Night City.
+- `docs/QUESTLINE.md` — **generated** by `tools/gen_storyboard_doc.lua`, never hand-written. A
+  design doc and an implementation drift apart the moment they are two files.
+- Settings: **Esc → Mods → Jackie Lives → Ghost in the Machine** — "Begin the story" (the manual
+  way in, same safety net as "Start the search for Jackie"), plus switches for the two hardest
+  scenes and for the side jobs. All three persist through `JL_SETTINGS_KEYS` and are re-applied on
+  `onInit` (the config-reload-wipes-tuning trap).
+
+**The casting audit changed the story, for the better.** All 1101 of Jackie's recordings were
+bucketed against the planned beats — `docs/research/arc_casting.md`:
+1. **There is no "I'm afraid" take.** Zero hits for afraid/scared/terrified/frightened in the whole
+   corpus. `QUEST_ARASAKA.md` §3 promised the fear admission would be "in his own voice, because
+   the library has that take". It does not. The beat is now a 4am text, with
+   *"Worried 'bout me. Been for a while."* beside it — him naming it at one remove, which is his
+   entire range. A man whose flaw is that he cannot say things does not get to say the biggest one.
+2. **No farewell carries any weight**, and six of the eight are already spent by `retrieval.lua`.
+   So no epilogue hangs on a closing line, and Part 4's climax plays in **silence** rather than
+   borrowing a casual "Ahí luego" for the biggest moment in the mod.
+3. **Nothing names the threat** — no beacon, daemon, netrunner or snatch squad anywhere in the
+   corpus. Every act of naming happens in text, as the design assumed.
+
+**Offline checks (Mac, no game):** `tools/test_storyboard.lua` (47) · `tools/test_arc.lua` (43) ·
+`tools/loadsim.lua` (140). The two harnesses assert the two failure modes this repo has actually
+shipped: content that SPOILS (v1.56) and content that NEVER FIRES (v1.64).
+
+### The three delivery systems the story needed, all built the same night
+
+**1. Jackie texts you (v1.92, ported from NCLives).** Custom phone messages can never be made at
+runtime — `JournalManager` has no create-entry API — so the words are baked into the archive as a
+cooked `.journal` and Lua only flips entry state. The whole pipeline is ported: `gen_messages.py`,
+`audit_messages.py`, `messages.lua`, `test_messages.lua` (111 checks), and the messages hang off
+Jackie's **real** vanilla phone contact (`contacts/jackie` exists — verified by parsing the
+vanilla `cooked_journal` on the Mac), so he keeps his own photo.
+- `audit_messages.py` gained a **storyboard differ**: it lifts the `sms = { … }` blocks out of
+  `storyboard.lua` and fails loudly if the JSON has drifted from them. The storyboard stays the
+  single source of truth for wording, mechanically rather than by discipline.
+- The silent risk that was avoided: `jackielives_onscreens.json.json` is already owned by
+  `gen_vomap.py` (it is the `jl_vomap_token` presence beacon). Message text goes to
+  `jackielives_msgs.json` instead — overwriting the beacon would have turned off all 47 female-take
+  substitutions with no error anywhere.
+- One real bug found in the ported code: `armOutgoing`'s bag refill could immediately re-offer the
+  set V had just answered. NCLives only escapes it by pool size.
+
+**2. Real tracked journal quests (`journalquest.lua`).** Verified against the vanilla journal
+parsed locally: `gameJournalQuest → gameJournalQuestPhase → gameJournalQuestObjective`, no
+`gameJournalQuestGroup`, and you **track the objective, never the quest** (`quest_tracker.script`
+casts the tracked entry to a JournalQuestObjective). `TrackEntry` is the setter; there is no
+`SetTrackedEntry`. `tools/gen_journal_quests.py` generates the tree from `storyboard.lua` and
+`sidequests.lua` **using the real Lua interpreter** — their strings are `..`-concatenated across
+many lines, so regex parsing was never going to work — and refuses to finish if the Lua index and
+the archive would disagree on any path. 4 quests, 7 phases, 9 objectives, 37 nodes.
+- **The one residual unknown:** nobody has been seen driving a journal-merged quest from Lua
+  alone. Every ingredient is separately verified; the shipped mod that does it also ships a quest
+  graph, so its journal was never exercised without one. `docs/research/journal_probe.md` settles
+  it in a single save load — and there are **Check** and **Clear** buttons in the Esc menu for it.
+
+**3. Readable shards, with no WolvenKit GUI step at all.** The "one WolvenKit action" in
+`SHARD_SHEET.md` is retired: a hand-written `.journal` CR2W-JSON packs via the CLI, which the SMS
+work proves. Four real bugs in the existing shard files were found and fixed — `displayName` was a
+`LocKey#…` (renders raw), the localization JSON lacked its CR2W envelope, `tag: articles` is the
+collectible shelf rather than a quest shard, and `removeAfterUse` is not a field on that record at
+all. Four shards now ship: Vik's scan, Vik tapping out, Mama's note, and the retrieval questline's
+Badlands note.
+
+### Still open
+- [ ] **ANTONIA — four coordinates to capture in-game.** The whole ask is in `M.CAPTURE_LIST` at
+      the bottom of `storyboard.lua`, and until then each scene falls back to a captured place and
+      logs one line: El Coyote's back room (Part 3's takeover), a Badlands comms mast (Part 2's
+      jammer), a Heywood memorial wall (side quest "Last Rites"), an industrial lot (Part 3's gig).
+- [ ] **ANTONIA — run `docs/research/journal_probe.md` once on Windows.** One save load. It answers
+      the only unknown left in the whole feature: whether a mod-added quest can drive real tracked
+      HUD objectives from Lua alone.
+- [ ] **`.stamp` is stale, correctly.** `package_nexus.sh` will refuse a release zip until
+      `python tools\build_archive.py` runs on Windows and all three `archive/pc/mod/` files are
+      committed together. That is the gate working, not a bug.
+- [ ] **The rendezvous placer is not wired.** `Msg.pendingVenue()`/`Msg.rendezvousMet()` are live
+      and tested, but nothing yet puts Jackie at the venue V accepted in a text — so a player can
+      be stood up by the mod. It degrades gracefully (the rendezvous expires and he sends the
+      stand-up message) but it needs the venue walk/snap machinery.
+- [ ] **TEST on Windows:** press "Begin the story", then `Arc.debug()` in the CET console — it
+      prints every beat and the exact condition holding it back. That output is the whole diagnosis
+      if anything reads as "nothing happens".
+- [ ] Part 5B's recurring maintenance ritual needs its own timer path (it is the mod's first
+      ongoing obligation rather than a completed quest).
+- [ ] The heat system's district guess is a nearest-anchor approximation over four captured
+      coordinates — fine for a hidden counter, but worth revisiting if a district API turns up.
+
+### Problems & Resolutions
+
+**A player's Audioware log was full of "cannot load audio: jackie_…Wav" errors.** (2026-08-25,
+user report.) Since v1.66 Jackie speaks through the game's own recordings and nobody needs a voice
+bank — but `staging/` still shipped `r6/audioware/JackieLives/JackieLives.yml`, a 2331-key manifest
+naming 1200 `.Wav` files. A player who never built a bank does not have any of them, so Audioware
+logged a validation error per file at every startup. Harmless (it never touched his voice) but
+noisy, and worse: the shipped file **overwrote the correct manifest of anyone who HAD built a
+bank**, since `rebuild_bank_yml.py` writes to that same path. Fix: stop shipping the manifest
+entirely. `rebuild_bank_yml.py` still ships for the few who built a bank, and
+`HOW_TO_ADD_JACKIE_VOICES.txt` now names the one file to delete to clear the spam.
+
+**The reunion has no date, so "3 days after the reunion" had nothing to count from.** The shipped
+questline stores only `jackielives_stage`. The arc now stamps `jackielives_stage_day` the first
+time it looks and counts from there, which means an existing save waits the same three days as a
+new one. That is the correct trade: the alternative is the arc opening the moment the player
+installs the update, which is exactly the "it fired immediately and felt cheap" failure.
+
+**Two arming conditions asked for inventory items that do not exist.** `side_bike` wanted
+"bike_keys" and `p2_mast` wanted a jammer — but vanilla 2.x has no bike-key object (it is why
+`Config.bikeReturn.keyItem` is commented out), and Nix's jammer is a fiction. Both now gate on
+facts, which is where this mod's world state actually lives.
+
 ## 🌍 LANGUAGE IN THE ESC MENU, AND TWO BUGS THAT MADE TRANSLATION A NO-OP (2026-08-19)
 
 **The control.** The language picker had been CET-window-only — a debug overlay most players never

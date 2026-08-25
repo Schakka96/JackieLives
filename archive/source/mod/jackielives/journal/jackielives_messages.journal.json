@@ -1,0 +1,3258 @@
+{
+  "Header": {
+    "WolvenKitVersion": "8.18.0",
+    "WKitJsonVersion": "0.0.9",
+    "GameVersion": 2310,
+    "DataType": "CR2W",
+    "ArchiveFileName": "jackielives_messages.journal"
+  },
+  "Data": {
+    "Version": 195,
+    "BuildVersion": 0,
+    "RootChunk": {
+      "$type": "gameJournalResource",
+      "cookingPlatform": "PLATFORM_None",
+      "entry": {
+        "HandleId": "0",
+        "Data": {
+          "$type": "gameJournalRootFolderEntry",
+          "descriptor": {
+            "DepotPath": {
+              "$type": "ResourcePath",
+              "$storage": "uint64",
+              "$value": "0"
+            },
+            "Flags": "Soft"
+          },
+          "entries": [
+            {
+              "HandleId": "1",
+              "Data": {
+                "$type": "gameJournalPrimaryFolderEntry",
+                "id": "contacts",
+                "journalEntryOverrideDataList": [],
+                "entries": [
+                  {
+                    "HandleId": "2",
+                    "Data": {
+                      "$type": "gameJournalContact",
+                      "id": "jackie",
+                      "journalEntryOverrideDataList": [],
+                      "avatarID": {
+                        "$type": "TweakDBID",
+                        "$storage": "uint64",
+                        "$value": "121253599929"
+                      },
+                      "isCallableDefault": 0,
+                      "name": {
+                        "unk1": "9413078945611703219",
+                        "value": "jackielives_msg_jackie_name"
+                      },
+                      "type": "Texter",
+                      "useFlatMessageLayout": 0,
+                      "entries": [
+                        {
+                          "HandleId": "3",
+                          "Data": {
+                            "$type": "gameJournalPhoneConversation",
+                            "id": "jackielives",
+                            "journalEntryOverrideDataList": [],
+                            "title": {
+                              "unk1": "13830110100527229880",
+                              "value": "jackielives_msg_blank"
+                            },
+                            "entries": [
+                              {
+                                "HandleId": "4",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "8015373867091316625",
+                                    "value": "jackielives_msg_jackie_open01_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "5",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "8015370568556431992",
+                                    "value": "jackielives_msg_jackie_open01_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "6",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_b3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "8015371668068060203",
+                                    "value": "jackielives_msg_jackie_open01_b3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "10",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "7",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "glad",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "13599007201413133340",
+                                          "value": "jackielives_msg_jackie_open01_g_glad"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "8",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "tease",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "1862695999294173120",
+                                          "value": "jackielives_msg_jackie_open01_g_tease"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "9",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "quiet",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "3366289863692586190",
+                                          "value": "jackielives_msg_jackie_open01_g_quiet"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "open01_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "11",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_glad_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7302980226536632278",
+                                    "value": "jackielives_msg_jackie_open01_glad_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "12",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_glad_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7302979127025004067",
+                                    "value": "jackielives_msg_jackie_open01_glad_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "13",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_glad_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7302978027513375856",
+                                    "value": "jackielives_msg_jackie_open01_glad_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "14",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_tease_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1194794385521676934",
+                                    "value": "jackielives_msg_jackie_open01_tease_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "15",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_tease_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1194793286010048723",
+                                    "value": "jackielives_msg_jackie_open01_tease_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "16",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_tease_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1194792186498420512",
+                                    "value": "jackielives_msg_jackie_open01_tease_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "17",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_quiet_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "4868972524266175116",
+                                    "value": "jackielives_msg_jackie_open01_quiet_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "18",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "open01_quiet_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "4868975822801059749",
+                                    "value": "jackielives_msg_jackie_open01_quiet_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "19",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk01_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "4410779432045371617",
+                                    "value": "jackielives_msg_jackie_chk01_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "22",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "20",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "fine",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "35689594205563066",
+                                          "value": "jackielives_msg_jackie_chk01_g_fine"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "21",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "rough",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "18016858698922961063",
+                                          "value": "jackielives_msg_jackie_chk01_g_rough"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "chk01_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "23",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk01_fine_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "10587129329381059588",
+                                    "value": "jackielives_msg_jackie_chk01_fine_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "24",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk01_rough_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "13151019822799785111",
+                                    "value": "jackielives_msg_jackie_chk01_rough_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "25",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk02_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1436838021916513318",
+                                    "value": "jackielives_msg_jackie_chk02_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "26",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk02_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1436836922404885107",
+                                    "value": "jackielives_msg_jackie_chk02_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "29",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "27",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "coming",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "17430025454603985750",
+                                          "value": "jackielives_msg_jackie_chk02_g_coming"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "28",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "later",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "8885514392149980413",
+                                          "value": "jackielives_msg_jackie_chk02_g_later"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "chk02_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "30",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk02_coming_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9064142432896404824",
+                                    "value": "jackielives_msg_jackie_chk02_coming_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "31",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk02_coming_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9064145731431289457",
+                                    "value": "jackielives_msg_jackie_chk02_coming_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "32",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk02_later_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "8575719963961937617",
+                                    "value": "jackielives_msg_jackie_chk02_later_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "33",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk02_later_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "8575716665427052984",
+                                    "value": "jackielives_msg_jackie_chk02_later_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "34",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "4517594863540185755",
+                                    "value": "jackielives_msg_jackie_chk03_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "35",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "4517595963051813966",
+                                    "value": "jackielives_msg_jackie_chk03_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "36",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_b3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "4517597062563442177",
+                                    "value": "jackielives_msg_jackie_chk03_b3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "40",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "37",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "same",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "4293008160556940470",
+                                          "value": "jackielives_msg_jackie_chk03_g_same"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "38",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "here",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "7301592060002657462",
+                                          "value": "jackielives_msg_jackie_chk03_g_here"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "39",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "drop",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "9316199064303108581",
+                                          "value": "jackielives_msg_jackie_chk03_g_drop"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "chk03_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "41",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_same_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9096819445894092380",
+                                    "value": "jackielives_msg_jackie_chk03_same_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "42",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_same_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9096822744428977013",
+                                    "value": "jackielives_msg_jackie_chk03_same_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "43",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_same_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9096821644917348802",
+                                    "value": "jackielives_msg_jackie_chk03_same_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "44",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_here_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7341618392461816068",
+                                    "value": "jackielives_msg_jackie_chk03_here_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "45",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_here_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7341621690996700701",
+                                    "value": "jackielives_msg_jackie_chk03_here_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "46",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_here_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7341620591485072490",
+                                    "value": "jackielives_msg_jackie_chk03_here_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "47",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_drop_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "323893698639946457",
+                                    "value": "jackielives_msg_jackie_chk03_drop_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "48",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "chk03_drop_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "323890400105061824",
+                                    "value": "jackielives_msg_jackie_chk03_drop_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "49",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "q01_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "14793562884535125532",
+                                    "value": "jackielives_msg_jackie_q01_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "50",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "q01_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "14793566183070010165",
+                                    "value": "jackielives_msg_jackie_q01_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "53",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "51",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "you",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "885630400450693594",
+                                          "value": "jackielives_msg_jackie_q01_g_you"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "52",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "city",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "11351008388300605108",
+                                          "value": "jackielives_msg_jackie_q01_g_city"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "q01_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "54",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "q01_you_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "16347761611217439124",
+                                    "value": "jackielives_msg_jackie_q01_you_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "55",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "q01_you_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "16347764909752323757",
+                                    "value": "jackielives_msg_jackie_q01_you_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "56",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "q01_city_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "8144452417727227974",
+                                    "value": "jackielives_msg_jackie_q01_city_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "57",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "q01_city_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "8144451318215599763",
+                                    "value": "jackielives_msg_jackie_q01_city_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "58",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "inv_noodle_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "11207287127172575713",
+                                    "value": "jackielives_msg_jackie_inv_noodle_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "59",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "inv_noodle_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "11207283828637691080",
+                                    "value": "jackielives_msg_jackie_inv_noodle_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "62",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "60",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "yes",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "5455435384950683285",
+                                          "value": "jackielives_msg_jackie_inv_noodle_g_yes"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "61",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "no",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "12178530461443280665",
+                                          "value": "jackielives_msg_jackie_inv_noodle_g_no"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "inv_noodle_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "63",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "inv_noodle_yes_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7276823886164200625",
+                                    "value": "jackielives_msg_jackie_inv_noodle_yes_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "64",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "inv_noodle_no_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9852682081581325773",
+                                    "value": "jackielives_msg_jackie_inv_noodle_no_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "65",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "inv_coyote_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "12671192090971278323",
+                                    "value": "jackielives_msg_jackie_inv_coyote_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "66",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "inv_coyote_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "12671193190482906534",
+                                    "value": "jackielives_msg_jackie_inv_coyote_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "69",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "67",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "yes",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "2858876536318805723",
+                                          "value": "jackielives_msg_jackie_inv_coyote_g_yes"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "68",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "no",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "645314015755001167",
+                                          "value": "jackielives_msg_jackie_inv_coyote_g_no"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "inv_coyote_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "70",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "inv_coyote_yes_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "11575841929723419043",
+                                    "value": "jackielives_msg_jackie_inv_coyote_yes_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "71",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "inv_coyote_no_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "977189258055854303",
+                                    "value": "jackielives_msg_jackie_inv_coyote_no_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "72",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "su01_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "17372848408720494829",
+                                    "value": "jackielives_msg_jackie_su01_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "73",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "su01_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "17372845110185610196",
+                                    "value": "jackielives_msg_jackie_su01_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "74",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "su01_b3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "17372846209697238407",
+                                    "value": "jackielives_msg_jackie_su01_b3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "77",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "75",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "sorry",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "9744513328239020607",
+                                          "value": "jackielives_msg_jackie_su01_g_sorry"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "76",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "nothing",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "17721736552941943535",
+                                          "value": "jackielives_msg_jackie_su01_g_nothing"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "su01_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "78",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "su01_sorry_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "16084567003837867",
+                                    "value": "jackielives_msg_jackie_su01_sorry_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "79",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "su01_nothing_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "6449944320443629211",
+                                    "value": "jackielives_msg_jackie_su01_nothing_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "80",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "aft01_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "18180507895554162334",
+                                    "value": "jackielives_msg_jackie_aft01_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "81",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "aft01_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "18180506796042534123",
+                                    "value": "jackielives_msg_jackie_aft01_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "84",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "82",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "again",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "5542097065176253171",
+                                          "value": "jackielives_msg_jackie_aft01_g_again"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "83",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "warm",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "6716478031338613924",
+                                          "value": "jackielives_msg_jackie_aft01_g_warm"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "aft01_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "85",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "aft01_again_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "2027204772735192351",
+                                    "value": "jackielives_msg_jackie_aft01_again_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "86",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "aft01_again_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "2027205872246820562",
+                                    "value": "jackielives_msg_jackie_aft01_again_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "87",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "aft01_warm_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "722745672287141290",
+                                    "value": "jackielives_msg_jackie_aft01_warm_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "88",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "aft01_warm_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "722744572775513079",
+                                    "value": "jackielives_msg_jackie_aft01_warm_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "89",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "aft01_warm_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "722743473263884868",
+                                    "value": "jackielives_msg_jackie_aft01_warm_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "93",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "90",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "around",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "3653908694885072123",
+                                          "value": "jackielives_msg_jackie_out01_g_around"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "91",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "check",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "5983564747721678662",
+                                          "value": "jackielives_msg_jackie_out01_g_check"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "92",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "miss",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "8721660495069184982",
+                                          "value": "jackielives_msg_jackie_out01_g_miss"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "out01_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "94",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out01_around_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "16874896040671069631",
+                                    "value": "jackielives_msg_jackie_out01_around_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "95",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out01_around_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "16874897140182697842",
+                                    "value": "jackielives_msg_jackie_out01_around_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "96",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out01_check_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "2863821433138013072",
+                                    "value": "jackielives_msg_jackie_out01_check_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "97",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out01_check_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "2863824731672897705",
+                                    "value": "jackielives_msg_jackie_out01_check_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "98",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out01_check_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "2863823632161269494",
+                                    "value": "jackielives_msg_jackie_out01_check_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "99",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out01_miss_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "3572125123045610448",
+                                    "value": "jackielives_msg_jackie_out01_miss_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "100",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out01_miss_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "3572128421580495081",
+                                    "value": "jackielives_msg_jackie_out01_miss_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "101",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out01_miss_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "3572127322068866870",
+                                    "value": "jackielives_msg_jackie_out01_miss_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "105",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "102",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "food",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "8087414311836587385",
+                                          "value": "jackielives_msg_jackie_out02_g_food"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "103",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "gig",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "11510894377777205950",
+                                          "value": "jackielives_msg_jackie_out02_g_gig"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "104",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "night",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "12194243659201339505",
+                                          "value": "jackielives_msg_jackie_out02_g_night"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "out02_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "106",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out02_food_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "2107441645983966001",
+                                    "value": "jackielives_msg_jackie_out02_food_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "107",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out02_food_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "2107438347449081368",
+                                    "value": "jackielives_msg_jackie_out02_food_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "108",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out02_gig_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "15230693691008388148",
+                                    "value": "jackielives_msg_jackie_out02_gig_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "109",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out02_gig_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "15230696989543272781",
+                                    "value": "jackielives_msg_jackie_out02_gig_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "110",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out02_night_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "17292862214259085761",
+                                    "value": "jackielives_msg_jackie_out02_night_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "111",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out02_night_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "17292858915724201128",
+                                    "value": "jackielives_msg_jackie_out02_night_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "115",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "112",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "misty",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "9494866442929286360",
+                                          "value": "jackielives_msg_jackie_out03_g_misty"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "113",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "mama",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "10882227664770983048",
+                                          "value": "jackielives_msg_jackie_out03_g_mama"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "114",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "truth",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "10884295823328635149",
+                                          "value": "jackielives_msg_jackie_out03_g_truth"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "out03_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "116",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out03_misty_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "13277592016775521686",
+                                    "value": "jackielives_msg_jackie_out03_misty_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "117",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out03_misty_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "13277590917263893475",
+                                    "value": "jackielives_msg_jackie_out03_misty_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "118",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out03_mama_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9863599556506755782",
+                                    "value": "jackielives_msg_jackie_out03_mama_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "119",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out03_mama_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9863598456995127571",
+                                    "value": "jackielives_msg_jackie_out03_mama_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "120",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out03_truth_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7125857960434779481",
+                                    "value": "jackielives_msg_jackie_out03_truth_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "121",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out03_truth_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7125854661899894848",
+                                    "value": "jackielives_msg_jackie_out03_truth_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "122",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "out03_truth_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7125855761411523059",
+                                    "value": "jackielives_msg_jackie_out03_truth_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "123",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1565650420950567525",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "124",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1565647122415682892",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "125",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_b3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1565648221927311103",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_b3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "126",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_b4",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1565644923392426470",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_b4"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "127",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_b5",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1565646022904054681",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_b5"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "131",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "128",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "worried",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "6738730961606615458",
+                                          "value": "jackielives_msg_jackie_arc_p1_night_g_worried"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "129",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "vik",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "5050500487836462936",
+                                          "value": "jackielives_msg_jackie_arc_p1_night_g_vik"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "130",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "respect",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "13300356328562821936",
+                                          "value": "jackielives_msg_jackie_arc_p1_night_g_respect"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "arc_p1_night_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "132",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_worried_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7197124120281943976",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_worried_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "133",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_worried_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "7197127418816828609",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_worried_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "134",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_vik_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9291025049284204346",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_vik_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "135",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_vik_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "9291023949772576135",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_vik_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "136",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_respect_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "13016361886585092718",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_respect_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "137",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_respect_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "13016360787073464507",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_respect_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "138",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p1_night_respect_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "13016359687561836296",
+                                    "value": "jackielives_msg_jackie_arc_p1_night_respect_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "139",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_blackout_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "17168034552345352192",
+                                    "value": "jackielives_msg_jackie_arc_p3_blackout_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "140",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_blackout_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "17168037850880236825",
+                                    "value": "jackielives_msg_jackie_arc_p3_blackout_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "141",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "14688211300890634422",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "142",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "14688210201379006211",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "143",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_b3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "14688209101867378000",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_b3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "144",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_b4",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "14688216798448775477",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_b4"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "145",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_b5",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "14688215698937147266",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_b5"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "146",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_b6",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "14688214599425519055",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_b6"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "147",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_b7",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "14688213499913890844",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_b7"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "150",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "148",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "accept",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "7217724156646887101",
+                                          "value": "jackielives_msg_jackie_arc_p3_ask_g_accept"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "149",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "refuse",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "6761959945843751305",
+                                          "value": "jackielives_msg_jackie_arc_p3_ask_g_refuse"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "arc_p3_ask_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "151",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_accept_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "4531807503569941937",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_accept_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "152",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_refuse_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1463502391689897281",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_refuse_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "153",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_refuse_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1463499093155012648",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_refuse_f2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "154",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p3_ask_refuse_f3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1463500192666640859",
+                                    "value": "jackielives_msg_jackie_arc_p3_ask_refuse_f3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "155",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p5_flare_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "3596976311251965027",
+                                    "value": "jackielives_msg_jackie_arc_p5_flare_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "156",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p5_flare_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "3596977410763593238",
+                                    "value": "jackielives_msg_jackie_arc_p5_flare_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "157",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p5_flare_b3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "3596978510275221449",
+                                    "value": "jackielives_msg_jackie_arc_p5_flare_b3"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "HandleId": "158",
+                    "Data": {
+                      "$type": "gameJournalContact",
+                      "id": "jackielives_nix",
+                      "journalEntryOverrideDataList": [],
+                      "avatarID": {
+                        "$type": "TweakDBID",
+                        "$storage": "string",
+                        "$value": "PhoneAvatars.Avatar_Unknown"
+                      },
+                      "isCallableDefault": 0,
+                      "name": {
+                        "unk1": "11290563610413627116",
+                        "value": "jackielives_msg_jackielives_nix_name"
+                      },
+                      "type": "Texter",
+                      "useFlatMessageLayout": 1,
+                      "entries": [
+                        {
+                          "HandleId": "159",
+                          "Data": {
+                            "$type": "gameJournalPhoneConversation",
+                            "id": "thread",
+                            "journalEntryOverrideDataList": [],
+                            "title": {
+                              "unk1": "13830110100527229880",
+                              "value": "jackielives_msg_blank"
+                            },
+                            "entries": [
+                              {
+                                "HandleId": "160",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p2_nix_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "5134718031120463568",
+                                    "value": "jackielives_msg_jackielives_nix_arc_p2_nix_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "161",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p2_nix_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "5134721329655348201",
+                                    "value": "jackielives_msg_jackielives_nix_arc_p2_nix_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "162",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p2_nix_b3",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "5134720230143719990",
+                                    "value": "jackielives_msg_jackielives_nix_arc_p2_nix_b3"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "165",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "163",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "pay",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "5560825235697163063",
+                                          "value": "jackielives_msg_jackielives_nix_arc_p2_nix_g_pay"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "164",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "haggle",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "5949380782128427917",
+                                          "value": "jackielives_msg_jackielives_nix_arc_p2_nix_g_haggle"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "arc_p2_nix_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "166",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p2_nix_pay_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "5681727323107532171",
+                                    "value": "jackielives_msg_jackielives_nix_arc_p2_nix_pay_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "167",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p2_nix_haggle_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1966070026026604425",
+                                    "value": "jackielives_msg_jackielives_nix_arc_p2_nix_haggle_f1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "168",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p2_nix_haggle_f2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "1966066727491719792",
+                                    "value": "jackielives_msg_jackielives_nix_arc_p2_nix_haggle_f2"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "HandleId": "169",
+                    "Data": {
+                      "$type": "gameJournalContact",
+                      "id": "jackielives_unknown",
+                      "journalEntryOverrideDataList": [],
+                      "avatarID": {
+                        "$type": "TweakDBID",
+                        "$storage": "string",
+                        "$value": "PhoneAvatars.Avatar_Unknown"
+                      },
+                      "isCallableDefault": 0,
+                      "name": {
+                        "unk1": "7048911622201040995",
+                        "value": "jackielives_msg_jackielives_unknown_name"
+                      },
+                      "type": "Texter",
+                      "useFlatMessageLayout": 1,
+                      "entries": [
+                        {
+                          "HandleId": "170",
+                          "Data": {
+                            "$type": "gameJournalPhoneConversation",
+                            "id": "thread",
+                            "journalEntryOverrideDataList": [],
+                            "title": {
+                              "unk1": "13830110100527229880",
+                              "value": "jackielives_msg_blank"
+                            },
+                            "entries": [
+                              {
+                                "HandleId": "171",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p2_unknown_b1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "8033101928301197666",
+                                    "value": "jackielives_msg_jackielives_unknown_arc_p2_unknown_b1"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "172",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p2_unknown_b2",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "8033100828789569455",
+                                    "value": "jackielives_msg_jackielives_unknown_arc_p2_unknown_b2"
+                                  }
+                                }
+                              },
+                              {
+                                "HandleId": "175",
+                                "Data": {
+                                  "$type": "gameJournalPhoneChoiceGroup",
+                                  "entries": [
+                                    {
+                                      "HandleId": "173",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "who",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "11535132050584533663",
+                                          "value": "jackielives_msg_jackielives_unknown_arc_p2_unknown_g_who"
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "174",
+                                      "Data": {
+                                        "$type": "gameJournalPhoneChoiceEntry",
+                                        "id": "nothing",
+                                        "isQuestImportant": 0,
+                                        "journalEntryOverrideDataList": [],
+                                        "questCondition": null,
+                                        "text": {
+                                          "unk1": "7650335844488071706",
+                                          "value": "jackielives_msg_jackielives_unknown_arc_p2_unknown_g_nothing"
+                                        }
+                                      }
+                                    }
+                                  ],
+                                  "id": "arc_p2_unknown_g",
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "176",
+                                "Data": {
+                                  "$type": "gameJournalPhoneMessage",
+                                  "attachment": null,
+                                  "delay": 0,
+                                  "id": "arc_p2_unknown_who_f1",
+                                  "imageId": {
+                                    "$type": "TweakDBID",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "isQuestImportant": 0,
+                                  "journalEntryOverrideDataList": [],
+                                  "sender": "NPC",
+                                  "text": {
+                                    "unk1": "6699242099568339251",
+                                    "value": "jackielives_msg_jackielives_unknown_arc_p2_unknown_who_f1"
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

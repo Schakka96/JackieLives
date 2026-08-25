@@ -6,20 +6,25 @@ r"""build_archive.py — build JackieLives.archive from the generated CR2W-JSON 
 This is the only step in the whole project that needs Windows, because it shells out to WolvenKit's
 CLI. Everything upstream of it runs on the Mac.
 
-WHAT IS IN THE ARCHIVE, AND WHY THERE IS ONE AT ALL
-  Exactly two files, and neither is content:
+WHAT IS IN THE ARCHIVE
+    vomaps\en-us\jackielives_vomap.json          47 rows that make a female V audible
+    onscreens\en-us\jackielives_onscreens.json   ONE string, the archive-presence beacon
+    onscreens\<locale>\jackielives_msgs.json     the text of every SMS Jackie sends   (v1.92)
+    journal\jackielives_messages.journal         the phone thread those strings hang on (v1.92)
 
-    vomaps\en-us\jackielives_vomap.json     47 rows that make a female V audible
-    onscreens\en-us\jackielives_onscreens.json  ONE string, the archive-presence beacon
+  ⚠️ jackielives_onscreens.json and jackielives_msgs.json are DIFFERENT FILES ON PURPOSE. The first
+  is the beacon (written by gen_vomap.py); generating message text into that name would silently
+  overwrite it and kill all 47 female voice takes with no error anywhere. See the .archive.xl.
 
   A line's male and female takes share ONE String ID and the ENGINE picks the column natively, so no
   Lua and no redscript can ask for a take (../NCLives/docs/research/vo_gender.md). The only lever is
   to put the female recording behind a String ID of our own and let ArchiveXL MERGE it into the
   game's voiceover index. The rows carry ids and depot paths only — no audio, nothing of CDPR's.
 
-  ⚠️ This script does NOT regenerate the sources. `tools/gen_vomap.py` does, and it only runs on the
-  MAC because it reads the installed game through redlib (which needs a macOS Oodle dylib). The
-  generated files are COMMITTED precisely so this box can build without the game.
+  ⚠️ This script regenerates the SMS sources (tools/gen_messages.py — pure Python, safe anywhere) but
+  NOT the voice map. `tools/gen_vomap.py` only runs on the MAC, because it reads the installed game
+  through redlib (which needs a macOS Oodle dylib). Its output is COMMITTED precisely so this box can
+  build without the game.
 
 ⚠️ WolvenKit.CLI.exe is a SEPARATE download — the normal WolvenKit app ships only WolvenKit.exe.
 Get "WolvenKit.Console-<version>.zip" from https://github.com/WolvenKit/WolvenKit/releases and unzip
@@ -31,6 +36,7 @@ it; the exe is at the top level. Then set it in a .env file at the repo root:
 ⚠️ Cyberpunk locks installed archives while it is running. Close the game before deploying.
 """
 
+import glob
 import hashlib
 import os
 import shutil
@@ -40,8 +46,12 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJ = os.path.normpath(os.path.join(HERE, ".."))
 ARCH_SRC = os.path.join(PROJ, "archive", "source", "mod", "jackielives")
-VOMAP_SRC = os.path.join(ARCH_SRC, "vomaps")
-ONSCREEN_SRC = os.path.join(ARCH_SRC, "onscreens")
+# ⚠️ THERE ARE DELIBERATELY NO PER-RESOURCE PATH CONSTANTS HERE ANY MORE. all_sources() walks
+# ARCH_SRC and takes whatever it finds, because every hard-coded name this file used to carry became
+# a resource that got silently left out of the archive AND out of the staleness digest. The folder
+# names it discovers today are vomaps, onscreens, journal and questtext; adding a fifth needs no edit
+# to this file, only a line in JackieLives.archive.xl telling the game the resource exists.
+GEN_MESSAGES = os.path.join(HERE, "gen_messages.py")
 XL = os.path.join(PROJ, "archive", "pc", "mod", "JackieLives.archive.xl")
 BUILD = os.path.join(PROJ, ".build")
 
@@ -75,21 +85,69 @@ def load_env():
     return cfg
 
 
-def locale_sources(root, stem):
-    """[(locale, path-to-the-.json.json)] under `root`, sorted so the digest is stable."""
+def locale_sources(root, stem="*.json.json"):
+    """[(locale, path-to-the-.json.json)] under `root`, sorted so the digest is stable.
+
+    ⚠️ v1.92 — `stem` NOW DEFAULTS TO A GLOB, and that is a bug fix, not a convenience. This used to
+    take one hard-coded filename per root, so the moment a second resource appeared beside the first
+    in the same folder it was SILENTLY SKIPPED: not converted, not packed, and — worse — not in
+    source_digest() either, so the .stamp staleness gate went blind to exactly the file it was
+    supposed to be guarding. `archive/source/.../onscreens/en-us/` now holds two files (the vomap
+    beacon and the SMS text) and will hold more. Globbing means adding a resource needs no edit here.
+    """
     if not os.path.isdir(root):
         return []
     out = []
     for loc in sorted(os.listdir(root)):
-        p = os.path.join(root, loc, stem)
-        if os.path.isfile(p):
+        d = os.path.join(root, loc)
+        if not os.path.isdir(d):
+            continue
+        for p in sorted(glob.glob(os.path.join(d, stem))):
             out.append((loc, p))
     return out
 
 
+def flat_sources(root, stem="*.json"):
+    """A source with NO locale folder: <root>/<file>. Journals live here.
+
+    ⚠️ The old all_sources() assumed every source was shaped <root>/<locale>/<stem>, so a .journal —
+    which has no locale subfolder, because it holds LocKeys and not text — could never be found at
+    all. Same silent-skip failure as above, and the reason this exists.
+    """
+    if not os.path.isdir(root):
+        return []
+    return [("", p) for p in sorted(glob.glob(os.path.join(root, stem)))]
+
+
 def all_sources():
-    return locale_sources(VOMAP_SRC, "jackielives_vomap.json.json") + \
-           locale_sources(ONSCREEN_SRC, "jackielives_onscreens.json.json")
+    """EVERY generated CR2W-JSON under archive/source/mod/jackielives/, DISCOVERED, not listed.
+
+    ⚠️ THIS IS DELIBERATELY NOT A HAND-MAINTAINED LIST, and that is the whole point of the v1.92 fix.
+    The old version named two hard-coded filenames; every time someone added a resource — a second
+    onscreens file, a journal, a questtext folder — it was silently skipped: not converted, not
+    packed, and (worse) not hashed by source_digest(), so the .stamp staleness gate went blind to
+    exactly the file it was guarding. Three different features hit that in one week. Nothing is
+    "added to the build" any more; a file that exists under archive/source/ IS in the build.
+
+    Returns [(kind, locale, path)]. `locale` is "" for a non-localized resource such as a .journal.
+    """
+    out = []
+    if not os.path.isdir(ARCH_SRC):
+        return out
+    for kind in sorted(os.listdir(ARCH_SRC)):
+        root = os.path.join(ARCH_SRC, kind)
+        if not os.path.isdir(root):
+            continue
+        # A resource is LOCALIZED if it sits in a locale subfolder (onscreens/en-us/x.json.json), and
+        # FLAT if it sits directly in the kind folder (journal/x.journal.json). Both shapes exist, so
+        # detect rather than assume — a .journal carries only LocKeys and has no locale.
+        flat = flat_sources(root)
+        loc = locale_sources(root)
+        for _l, f in flat:
+            out.append((kind, "", f))
+        for l, f in loc:
+            out.append((kind, l, f))
+    return out
 
 
 def source_digest():
@@ -100,7 +158,7 @@ def source_digest():
     its packaging script and the two silently drifted, leaving its staleness gate permanently red.
     """
     h = hashlib.sha256()
-    for _loc, f in all_sources():
+    for _kind, _loc, f in all_sources():
         with open(f, "rb") as fh:
             # normalise CRLF -> LF: the same content must hash the same whether the sources were
             # generated on Windows or on the Mac
@@ -141,17 +199,25 @@ def main():
         print("       https://github.com/WolvenKit/WolvenKit/releases and unzip it.")
         sys.exit(1)
 
+    # STEP 0 — regenerate the SMS sources from content/*_messages.json. Pure Python and JSON: it
+    # reads no game files, so unlike gen_vomap.py it runs perfectly well on this box, and running it
+    # here is what makes "I edited the words and rebuilt" actually mean something. gen_vomap.py is
+    # deliberately NOT run — its sources are Mac-generated and committed on purpose (see the header).
+    if os.path.isfile(GEN_MESSAGES):
+        print("[0/3] regenerating SMS sources from content/ ...")
+        subprocess.run([sys.executable, GEN_MESSAGES], check=True)
+
     sources = all_sources()
     if not sources:
         print("ERROR: no generated sources under archive/source/.")
         print("       Run `python3 tools/gen_vomap.py` on the MAC and commit what it writes —")
         print("       it reads the installed game, so this box cannot produce it.")
         sys.exit(1)
-    print("[1/3] sources:", ", ".join(os.path.basename(p) for _l, p in sources))
+    print("[1/3] sources:", ", ".join(os.path.basename(p) for _k, _l, p in sources))
 
     # CR2W-JSON -> CR2W. WolvenKit writes the binary next to the source, dropping the outer .json.
     print("[2/3] converting to CR2W ...")
-    for _loc, src in sources:
+    for _kind, _loc, src in sources:
         subprocess.run([wk, "convert", "deserialize", src], check=True)
 
     # Pack a CLEAN staging tree holding ONLY the CR2W binaries — the .json sources must not end up
@@ -160,12 +226,13 @@ def main():
     if os.path.isdir(BUILD):
         shutil.rmtree(BUILD)
     stage = os.path.join(BUILD, "JackieLives")
-    for kind, root, stem in (("vomaps", VOMAP_SRC, "jackielives_vomap.json.json"),
-                             ("onscreens", ONSCREEN_SRC, "jackielives_onscreens.json.json")):
-        for loc, src in locale_sources(root, stem):
-            dst = os.path.join(stage, "mod", "jackielives", kind, loc)
-            os.makedirs(dst, exist_ok=True)
-            shutil.copy(src[: -len(".json")], dst)
+    # The staging tree mirrors archive/source/ exactly, which is also the depot layout the .archive.xl
+    # names — so a new resource needs no edit here either. `loc` is "" for a flat resource, and
+    # os.path.join with "" is a no-op, which is what makes one loop cover both shapes.
+    for kind, loc, src in sources:
+        dst = os.path.join(stage, "mod", "jackielives", kind, loc)
+        os.makedirs(dst, exist_ok=True)
+        shutil.copy(src[: -len(".json")], dst)              # drop the outer .json
     subprocess.run([wk, "pack", stage, "-o", BUILD], check=True)
 
     archive = os.path.join(BUILD, "JackieLives.archive")

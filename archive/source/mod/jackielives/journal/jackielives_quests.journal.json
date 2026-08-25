@@ -1,0 +1,623 @@
+{
+  "Header": {
+    "WolvenKitVersion": "8.18.0",
+    "WKitJsonVersion": "0.0.9",
+    "GameVersion": 2310,
+    "DataType": "CR2W",
+    "ArchiveFileName": "jackielives_quests.journal"
+  },
+  "Data": {
+    "Version": 195,
+    "BuildVersion": 0,
+    "RootChunk": {
+      "$type": "gameJournalResource",
+      "cookingPlatform": "PLATFORM_None",
+      "entry": {
+        "HandleId": "0",
+        "Data": {
+          "$type": "gameJournalRootFolderEntry",
+          "descriptor": {
+            "DepotPath": {
+              "$type": "ResourcePath",
+              "$storage": "uint64",
+              "$value": "0"
+            },
+            "Flags": "Soft"
+          },
+          "entries": [
+            {
+              "HandleId": "36",
+              "Data": {
+                "$type": "gameJournalPrimaryFolderEntry",
+                "id": "quests",
+                "journalEntryOverrideDataList": [],
+                "entries": [
+                  {
+                    "HandleId": "25",
+                    "Data": {
+                      "$type": "gameJournalFolderEntry",
+                      "id": "side_quest",
+                      "journalEntryOverrideDataList": [],
+                      "entries": [
+                        {
+                          "HandleId": "12",
+                          "Data": {
+                            "$type": "gameJournalQuest",
+                            "id": "ghost",
+                            "title": {
+                              "unk1": "5639116457319489543",
+                              "value": "jl_j_q_ghost_title"
+                            },
+                            "type": "SideQuest",
+                            "recommendedLevelID": {
+                              "$type": "TweakDBID",
+                              "$storage": "uint64",
+                              "$value": "0"
+                            },
+                            "journalEntryOverrideDataList": [],
+                            "entries": [
+                              {
+                                "HandleId": "1",
+                                "Data": {
+                                  "$type": "gameJournalQuestDescription",
+                                  "id": "desc",
+                                  "description": {
+                                    "unk1": "3801852421519812794",
+                                    "value": "jl_j_q_ghost_desc"
+                                  },
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "3",
+                                "Data": {
+                                  "$type": "gameJournalQuestPhase",
+                                  "id": "p1",
+                                  "locationPrefabRef": {
+                                    "$type": "NodeRef",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "journalEntryOverrideDataList": [],
+                                  "entries": [
+                                    {
+                                      "HandleId": "2",
+                                      "Data": {
+                                        "$type": "gameJournalQuestObjective",
+                                        "id": "take_jackie_to_vik",
+                                        "description": {
+                                          "unk1": "5467049071191357045",
+                                          "value": "jl_j_o_ghost_p1_take_jackie_to_vik"
+                                        },
+                                        "locationPrefabRef": {
+                                          "$type": "NodeRef",
+                                          "$storage": "uint64",
+                                          "$value": "0"
+                                        },
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": []
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "HandleId": "7",
+                                "Data": {
+                                  "$type": "gameJournalQuestPhase",
+                                  "id": "p2",
+                                  "locationPrefabRef": {
+                                    "$type": "NodeRef",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "journalEntryOverrideDataList": [],
+                                  "entries": [
+                                    {
+                                      "HandleId": "4",
+                                      "Data": {
+                                        "$type": "gameJournalQuestObjective",
+                                        "id": "survive_squad",
+                                        "description": {
+                                          "unk1": "10800971310805517123",
+                                          "value": "jl_j_o_ghost_p2_survive_squad"
+                                        },
+                                        "locationPrefabRef": {
+                                          "$type": "NodeRef",
+                                          "$storage": "uint64",
+                                          "$value": "0"
+                                        },
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": []
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "5",
+                                      "Data": {
+                                        "$type": "gameJournalQuestObjective",
+                                        "id": "find_netrunner",
+                                        "description": {
+                                          "unk1": "9725722831376430645",
+                                          "value": "jl_j_o_ghost_p2_find_netrunner"
+                                        },
+                                        "locationPrefabRef": {
+                                          "$type": "NodeRef",
+                                          "$storage": "uint64",
+                                          "$value": "0"
+                                        },
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": []
+                                      }
+                                    },
+                                    {
+                                      "HandleId": "6",
+                                      "Data": {
+                                        "$type": "gameJournalQuestObjective",
+                                        "id": "plant_jammer",
+                                        "description": {
+                                          "unk1": "3354317879239266042",
+                                          "value": "jl_j_o_ghost_p2_plant_jammer"
+                                        },
+                                        "locationPrefabRef": {
+                                          "$type": "NodeRef",
+                                          "$storage": "uint64",
+                                          "$value": "0"
+                                        },
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": []
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "HandleId": "9",
+                                "Data": {
+                                  "$type": "gameJournalQuestPhase",
+                                  "id": "p3",
+                                  "locationPrefabRef": {
+                                    "$type": "NodeRef",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "journalEntryOverrideDataList": [],
+                                  "entries": [
+                                    {
+                                      "HandleId": "8",
+                                      "Data": {
+                                        "$type": "gameJournalQuestObjective",
+                                        "id": "raise_money",
+                                        "description": {
+                                          "unk1": "6080628665378228292",
+                                          "value": "jl_j_o_ghost_p3_raise_money"
+                                        },
+                                        "locationPrefabRef": {
+                                          "$type": "NodeRef",
+                                          "$storage": "uint64",
+                                          "$value": "0"
+                                        },
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": []
+                                      }
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "HandleId": "11",
+                                "Data": {
+                                  "$type": "gameJournalQuestPhase",
+                                  "id": "p4",
+                                  "locationPrefabRef": {
+                                    "$type": "NodeRef",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "journalEntryOverrideDataList": [],
+                                  "entries": [
+                                    {
+                                      "HandleId": "10",
+                                      "Data": {
+                                        "$type": "gameJournalQuestObjective",
+                                        "id": "the_operation",
+                                        "description": {
+                                          "unk1": "7957058602194011639",
+                                          "value": "jl_j_o_ghost_p4_the_operation"
+                                        },
+                                        "locationPrefabRef": {
+                                          "$type": "NodeRef",
+                                          "$storage": "uint64",
+                                          "$value": "0"
+                                        },
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": []
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "HandleId": "26",
+                    "Data": {
+                      "$type": "gameJournalFolderEntry",
+                      "id": "minor_quest",
+                      "journalEntryOverrideDataList": [],
+                      "entries": [
+                        {
+                          "HandleId": "16",
+                          "Data": {
+                            "$type": "gameJournalQuest",
+                            "id": "side_rico",
+                            "title": {
+                              "unk1": "1313142049775575711",
+                              "value": "jl_j_q_side_rico_title"
+                            },
+                            "type": "MinorQuest",
+                            "recommendedLevelID": {
+                              "$type": "TweakDBID",
+                              "$storage": "uint64",
+                              "$value": "0"
+                            },
+                            "journalEntryOverrideDataList": [],
+                            "entries": [
+                              {
+                                "HandleId": "13",
+                                "Data": {
+                                  "$type": "gameJournalQuestDescription",
+                                  "id": "desc",
+                                  "description": {
+                                    "unk1": "8055079437931474210",
+                                    "value": "jl_j_q_side_rico_desc"
+                                  },
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "15",
+                                "Data": {
+                                  "$type": "gameJournalQuestPhase",
+                                  "id": "main",
+                                  "locationPrefabRef": {
+                                    "$type": "NodeRef",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "journalEntryOverrideDataList": [],
+                                  "entries": [
+                                    {
+                                      "HandleId": "14",
+                                      "Data": {
+                                        "$type": "gameJournalQuestObjective",
+                                        "id": "find_the_kid",
+                                        "description": {
+                                          "unk1": "7615523982217305657",
+                                          "value": "jl_j_o_side_rico_main_find_the_kid"
+                                        },
+                                        "locationPrefabRef": {
+                                          "$type": "NodeRef",
+                                          "$storage": "uint64",
+                                          "$value": "0"
+                                        },
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": []
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "HandleId": "20",
+                          "Data": {
+                            "$type": "gameJournalQuest",
+                            "id": "side_dinner",
+                            "title": {
+                              "unk1": "9775083929895391316",
+                              "value": "jl_j_q_side_dinner_title"
+                            },
+                            "type": "MinorQuest",
+                            "recommendedLevelID": {
+                              "$type": "TweakDBID",
+                              "$storage": "uint64",
+                              "$value": "0"
+                            },
+                            "journalEntryOverrideDataList": [],
+                            "entries": [
+                              {
+                                "HandleId": "17",
+                                "Data": {
+                                  "$type": "gameJournalQuestDescription",
+                                  "id": "desc",
+                                  "description": {
+                                    "unk1": "17767959778518932947",
+                                    "value": "jl_j_q_side_dinner_desc"
+                                  },
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "19",
+                                "Data": {
+                                  "$type": "gameJournalQuestPhase",
+                                  "id": "main",
+                                  "locationPrefabRef": {
+                                    "$type": "NodeRef",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "journalEntryOverrideDataList": [],
+                                  "entries": [
+                                    {
+                                      "HandleId": "18",
+                                      "Data": {
+                                        "$type": "gameJournalQuestObjective",
+                                        "id": "shopping",
+                                        "description": {
+                                          "unk1": "5166389462374490242",
+                                          "value": "jl_j_o_side_dinner_main_shopping"
+                                        },
+                                        "locationPrefabRef": {
+                                          "$type": "NodeRef",
+                                          "$storage": "uint64",
+                                          "$value": "0"
+                                        },
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": []
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "HandleId": "24",
+                          "Data": {
+                            "$type": "gameJournalQuest",
+                            "id": "side_shakedown",
+                            "title": {
+                              "unk1": "931696300487465196",
+                              "value": "jl_j_q_side_shakedown_title"
+                            },
+                            "type": "MinorQuest",
+                            "recommendedLevelID": {
+                              "$type": "TweakDBID",
+                              "$storage": "uint64",
+                              "$value": "0"
+                            },
+                            "journalEntryOverrideDataList": [],
+                            "entries": [
+                              {
+                                "HandleId": "21",
+                                "Data": {
+                                  "$type": "gameJournalQuestDescription",
+                                  "id": "desc",
+                                  "description": {
+                                    "unk1": "17225321672303017531",
+                                    "value": "jl_j_q_side_shakedown_desc"
+                                  },
+                                  "journalEntryOverrideDataList": []
+                                }
+                              },
+                              {
+                                "HandleId": "23",
+                                "Data": {
+                                  "$type": "gameJournalQuestPhase",
+                                  "id": "main",
+                                  "locationPrefabRef": {
+                                    "$type": "NodeRef",
+                                    "$storage": "uint64",
+                                    "$value": "0"
+                                  },
+                                  "journalEntryOverrideDataList": [],
+                                  "entries": [
+                                    {
+                                      "HandleId": "22",
+                                      "Data": {
+                                        "$type": "gameJournalQuestObjective",
+                                        "id": "hold_the_bar",
+                                        "description": {
+                                          "unk1": "1812206499519541325",
+                                          "value": "jl_j_o_side_shakedown_main_hold_the_bar"
+                                        },
+                                        "locationPrefabRef": {
+                                          "$type": "NodeRef",
+                                          "$storage": "uint64",
+                                          "$value": "0"
+                                        },
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": []
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "HandleId": "37",
+              "Data": {
+                "$type": "gameJournalPrimaryFolderEntry",
+                "id": "onscreens",
+                "journalEntryOverrideDataList": [],
+                "entries": [
+                  {
+                    "HandleId": "35",
+                    "Data": {
+                      "$type": "gameJournalFolderEntry",
+                      "id": "emails",
+                      "journalEntryOverrideDataList": [],
+                      "entries": [
+                        {
+                          "HandleId": "34",
+                          "Data": {
+                            "$type": "gameJournalFolderEntry",
+                            "id": "quests",
+                            "journalEntryOverrideDataList": [],
+                            "entries": [
+                              {
+                                "HandleId": "33",
+                                "Data": {
+                                  "$type": "gameJournalFolderEntry",
+                                  "id": "minor_quest",
+                                  "journalEntryOverrideDataList": [],
+                                  "entries": [
+                                    {
+                                      "HandleId": "32",
+                                      "Data": {
+                                        "$type": "gameJournalFolderEntry",
+                                        "id": "jl_shards",
+                                        "journalEntryOverrideDataList": [],
+                                        "entries": [
+                                          {
+                                            "HandleId": "31",
+                                            "Data": {
+                                              "$type": "gameJournalOnscreenGroup",
+                                              "id": "shards",
+                                              "journalEntryOverrideDataList": [],
+                                              "entries": [
+                                                {
+                                                  "HandleId": "27",
+                                                  "Data": {
+                                                    "$type": "gameJournalOnscreen",
+                                                    "id": "arc_scan",
+                                                    "title": {
+                                                      "unk1": "5025966226278087492",
+                                                      "value": "jl_j_s_arc_scan_title"
+                                                    },
+                                                    "description": {
+                                                      "unk1": "8926220246405226694",
+                                                      "value": "jl_j_s_arc_scan_body"
+                                                    },
+                                                    "tag": {
+                                                      "$type": "CName",
+                                                      "$storage": "string",
+                                                      "$value": "None"
+                                                    },
+                                                    "iconID": {
+                                                      "$type": "TweakDBID",
+                                                      "$storage": "uint64",
+                                                      "$value": "0"
+                                                    },
+                                                    "journalEntryOverrideDataList": []
+                                                  }
+                                                },
+                                                {
+                                                  "HandleId": "28",
+                                                  "Data": {
+                                                    "$type": "gameJournalOnscreen",
+                                                    "id": "arc_vik_taps",
+                                                    "title": {
+                                                      "unk1": "2829004899479432744",
+                                                      "value": "jl_j_s_arc_vik_taps_title"
+                                                    },
+                                                    "description": {
+                                                      "unk1": "15359109782057164802",
+                                                      "value": "jl_j_s_arc_vik_taps_body"
+                                                    },
+                                                    "tag": {
+                                                      "$type": "CName",
+                                                      "$storage": "string",
+                                                      "$value": "None"
+                                                    },
+                                                    "iconID": {
+                                                      "$type": "TweakDBID",
+                                                      "$storage": "uint64",
+                                                      "$value": "0"
+                                                    },
+                                                    "journalEntryOverrideDataList": []
+                                                  }
+                                                },
+                                                {
+                                                  "HandleId": "29",
+                                                  "Data": {
+                                                    "$type": "gameJournalOnscreen",
+                                                    "id": "arc_mama_note",
+                                                    "title": {
+                                                      "unk1": "648531557605719412",
+                                                      "value": "jl_j_s_arc_mama_note_title"
+                                                    },
+                                                    "description": {
+                                                      "unk1": "16467802151481521718",
+                                                      "value": "jl_j_s_arc_mama_note_body"
+                                                    },
+                                                    "tag": {
+                                                      "$type": "CName",
+                                                      "$storage": "string",
+                                                      "$value": "None"
+                                                    },
+                                                    "iconID": {
+                                                      "$type": "TweakDBID",
+                                                      "$storage": "uint64",
+                                                      "$value": "0"
+                                                    },
+                                                    "journalEntryOverrideDataList": []
+                                                  }
+                                                },
+                                                {
+                                                  "HandleId": "30",
+                                                  "Data": {
+                                                    "$type": "gameJournalOnscreen",
+                                                    "id": "jl_shard_badlands_note",
+                                                    "title": {
+                                                      "unk1": "6151027432805401582",
+                                                      "value": "jl_j_s_jl_shard_badlands_note_title"
+                                                    },
+                                                    "description": {
+                                                      "unk1": "4186349793409373940",
+                                                      "value": "jl_j_s_jl_shard_badlands_note_body"
+                                                    },
+                                                    "tag": {
+                                                      "$type": "CName",
+                                                      "$storage": "string",
+                                                      "$value": "None"
+                                                    },
+                                                    "iconID": {
+                                                      "$type": "TweakDBID",
+                                                      "$storage": "uint64",
+                                                      "$value": "0"
+                                                    },
+                                                    "journalEntryOverrideDataList": []
+                                                  }
+                                                }
+                                              ]
+                                            }
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "EmbeddedFiles": []
+  }
+}

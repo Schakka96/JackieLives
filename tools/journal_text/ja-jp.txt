@@ -1,0 +1,117 @@
+-- ja-jp translations for tools/gen_journal_quests.py.
+-- One record per key, in this exact order, separated by a line of `%%`.
+-- A blank record falls back to English. Do not reorder or delete records:
+-- they are matched by POSITION. Re-run the generator after editing.
+%%
+
+Ghost in the Machine
+%%
+Something's wrong with Jackie, and it's been wrong for a while.
+
+This is a story that plays out over in-game weeks, on its own schedule. It'll find you.
+
+It gets dark in places. If you'd rather it didn't, the settings menu has switches for the two hardest scenes — turn them off and the story still works.
+%%
+Take Jackie to Vik
+%%
+Survive the Arasaka snatch team
+%%
+Find someone who can read corp telemetry — try the Afterlife
+%%
+Plant Nix's jammer at the relay mast
+%%
+Raise €$15,000 for the operation
+%%
+Be there — Vik's clinic, Thursday morning
+%%
+Padre's Favour
+%%
+A Valentino kid owes money to people who break fingers. Jackie has been sent to break them.
+%%
+Find the debtor
+%%
+Mama's Errand
+%%
+Nine items. One shopping list. Two grown men who cannot follow it.
+%%
+Get the nine things
+%%
+Coyote's Cut
+%%
+Somebody has decided Mama Welles pays protection now.
+%%
+Keep them out of the bar
+%%
+Ripperdoc scan — patient: J. Welles
+%%
+PATIENT: Welles, J. — post-trauma review, 14 months.
+
+Two foreign objects. Neither of them mine.
+
+OBJECT ONE. Militech-pattern housing, Arasaka firmware. Sits in the left shoulder assembly. It's a factory anti-theft telemetry unit — mil-spec parts phone home so the company knows where its property is. It has been transmitting, on a low duty cycle, since the night I put it in him. For most of that time nobody was listening.
+
+OBJECT TWO. Not hardware. There's a suppression daemon resident in his operating system — corp security payload, the kind a netrunner burns into you to shut your limbs off. It never finished executing. He flatlined halfway through the attack, and a dead man is a bad host, so it stalled. It has not stalled since. It has been learning his neural pattern for fourteen months.
+
+For the record, because he won't ask and she will:
+
+I had a dying man on my table and four hours. What I put in him is what was in the room. It came off the same job that killed him. I'd do it again — he's breathing — but nobody should pretend I did surgery that night. I did salvage.
+
+— V.V.
+%%
+Ripperdoc scan — patient: J. Welles
+%%
+Viktor Vektor
+%%
+From Vik — read this alone
+%%
+I've had two days with the scan and I'm going to tell you the part I didn't tell him.
+
+I can trap the daemon, or I can take the chrome out. I can't do both, and I can't do either alone.
+
+Trapping it means walling it off inside the hardware it's living in. The hardware stays. So does everything it's doing to him, just slower, and he comes to see me every few weeks for the rest of his life.
+
+Taking it out is cleaner and it's worse. That thing has been running on his neural pattern for fourteen months. It isn't sitting next to him any more. It's using his roads. Pull it and some of him comes with it — and before you ask me how much: I don't know. Nobody knows. There's no literature on this because nobody survives the part where you flatline mid-attack.
+
+Whatever you do, he needs replacement chrome that Arasaka never touched, and that's not a favour I can do you. That's money.
+
+One more thing, and then I'll shut up.
+
+He asked me, when he came round the first time, whether he was still him. I told him yes because he was on my table and it was the only useful thing to say. I've been carrying that answer around for over a year now and I'd like somebody else to have a turn.
+
+— Vik
+%%
+From Vik — read this alone
+%%
+Viktor Vektor
+%%
+A note, folded under a plate
+%%
+Jaquito.
+
+You think I don't know my own son's hands.
+
+You have been sitting at my bar for a year with your right hand under the table and your left one doing all the work, and every week I set your plate and every week you tell me you already ate.
+
+I am not going to ask you what it was. You would lie, and then I would have to decide whether to let you.
+
+Eat something. You are too thin. Bring your friend.
+
+— Mamá
+%%
+A note, folded under a plate
+%%
+Guadalupe Welles
+%%
+シャード — ジャッキー・ウェルズ
+%%
+これを読んでるってことは、V、ドクは約束を守って、あんたはここまで来たんだな。オレだ。生きてるぜ。
+
+ヴィクがオレを繕って、サカがオレの名を石板に刻む前に、こっそり運び出してくれた。それからずっと身を潜めてる。
+
+ママ・ウェルズは聞いてカンカンだった。またストリートで走り出したら殺されるだろうな——今度ばかりは、それが正しいのかもしれん。オレは傭兵稼業とはおさらばだ、V。本気でな。だが、あんたにオレを埋めたままにさせとくわけにはいかなかった。
+
+これを読んだら、電話をくれ。 — ジャッキー
+%%
+シャード：ジャッキー・ウェルズ
+%%
+Jackie Welles
