@@ -43,6 +43,34 @@ He is never *broken* when silent — subtitles always work, and he still
 makes his own vocal efforts. It just isn't the good version.
 
 
+AUDIOWARE LOG FULL OF "cannot load audio: jackie_..." ERRORS?
+-------------------------------------------------------------
+That is this folder's fault, and v2.0 fixes it.
+
+Up to v1.8.10 the mod shipped a manifest (JackieLives.yml) that listed all
+1200-odd of Jackie's clips by name. If you never built a voice bank — and
+since v1.66 nobody needs to — those .Wav files aren't on your disk, so
+Audioware logged a validation error for every single one of them at every
+startup. Noisy, and completely harmless: it never affected Jackie's voice,
+which comes from the game's own recordings via redscript.
+
+The manifest is no longer shipped. To clear the spam for good, delete:
+
+    ...\Cyberpunk 2077\r6\audioware\JackieLives\JackieLives.yml
+
+(If that file is gone already, you're done — nothing else in this folder
+talks to Audioware.)
+
+Deleting it costs you nothing unless you personally built a voice bank.
+If you DID build one, keep your .Wav files where they are and regenerate a
+manifest that matches exactly what you have:
+
+    python rebuild_bank_yml.py
+
+(that script is in this folder). It only ever lists files that are really
+there, so it can't produce these errors.
+
+
 ABOUT THIS FOLDER (r6\audioware\JackieLives)
 --------------------------------------------
 This is the old voice system. It still works, so nobody who built a bank
