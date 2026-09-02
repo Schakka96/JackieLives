@@ -1096,6 +1096,17 @@ do
   S.clock = 200; pcall(jlPassengerTick)
   check("V leaving the car drops the latch", jlPassenger.veh == nil)
 
+  -- AMM installed -> the tick must do NOTHING; AMM's own AutoAssignSeats owns the seat.
+  jlPlayerVehicleObj = function() return car end
+  jlPassenger = { veh = nil, cmd = nil, sentAt = -999, probeAt = nil }
+  local realAmm = Native.ammPresent
+  Native.ammPresent = function() return true end
+  sent = 0
+  for i = 1, 50 do S.clock = 300 + i * 0.5; pcall(jlPassengerTick) end
+  check("AMM installed -> we never touch the seat", sent == 0 and jlPassenger.veh == nil,
+        ("sent %d — AMM and this tick would be fighting over one body"):format(sent))
+  Native.ammPresent = realAmm
+
   Native.mount, Native.isMountedTo = realMount, realIs
   jlPlayerVehicleObj = realVeh
   jlPassenger = { veh = nil, cmd = nil, sentAt = -999, probeAt = nil }

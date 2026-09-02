@@ -9139,6 +9139,25 @@ jlPassenger = { veh = nil, cmd = nil, sentAt = -999, probeAt = nil }
 
 function jlPassengerTick()
   if (Config.follow or {}).passenger == false then return end   -- opt-out; default is on
+  -- ⚠️ AMM OWNS THE SEAT WHEN IT IS INSTALLED. Its Scan:AutoAssignSeats has done this for years and
+  -- players report it working perfectly; two systems mounting one body is how the in-out loop starts.
+  -- So with AMM present we do nothing at all. See Config.follow.passengerOnlyWithoutAMM.
+  -- ⚠️ Note the one case this costs: AMM only seats bodies AMM ITSELF spawned, so an AMM user running
+  -- the NATIVE spawn backend gets nobody in the passenger seat. Flip the config switch if that is you.
+  if (Config.follow or {}).passengerOnlyWithoutAMM ~= false and Native.ammPresent() then
+    if not JL.passengerAMMLogged then
+      JL.passengerAMMLogged = true
+      log("Passenger: AMM is installed — leaving the car seat to AMM's own AutoAssignSeats.")
+    end
+    return
+  end
+  if jlCruise and jlCruise.active then return end               -- bikes belong to the cruise system
+
+  -- ⚠️ The early-out has to survive a STANDING command: if V is driving with Jackie aboard and he is
+  -- then dismissed, `jlPassenger.veh` is still set and needs clearing. So bail only when there is
+  -- nothing to clean up either.
+  if not (JL.summon.active and JL.summon.companionSet) and not jlPassenger.veh then return end
+
   if jlCruise and jlCruise.active then return end               -- bikes belong to the cruise system
 
   -- ⚠️ The early-out has to survive a STANDING command: if V is driving with Jackie aboard and he is

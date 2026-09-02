@@ -1,218 +1,168 @@
 --[[
-  Jackie Lives — CET prototype mod (MVP)  v0.2
-  ----------------------------------------------------------------------------
-  v0.2 changes:
-    * Robust Jackie lookup (handles AMM list whether it's an array or a map, and
-      whatever field holds the name/record).
-    * "Run diagnostics" button — dumps AMM's character list + the time API to the
-      console so we can see the exact shapes. (Paste the [JackieLives] lines to Claude.)
-    * Robust game-hour read (handles GameTime object OR numeric form).
-    * "Hide window" button + a toggle hotkey, so the panel can be dismissed without
-      closing the whole CET overlay.
-
-  Depends on: Cyber Engine Tweaks, AppearanceMenuMod (AMM), Codeware.
-  Console lines are prefixed [JackieLives]. Red errors → send to Claude.
+  Jackie Lives — Jackie Welles as a living, scheduled companion NPC (CET).
+  Requires: Cyber Engine Tweaks, Codeware. Optional: AMM, ArchiveXL, Native Settings UI.
+  Console lines are prefixed [JackieLives]; red errors → send the log.
 
   ============================================================================
-  ARCHITECTURE MAP (v0.44) — what each subsystem owns. There is only ever ONE
-  Jackie ENTITY; "idle" and "companion" are two SYSTEMS that hand the same entity
-  back and forth. Keep edits inside ONE subsystem; they share a few helpers (noted).
+  ARCHITECTURE MAP — what each subsystem owns. There is only ever ONE Jackie ENTITY;
+  "idle" and "companion" are two SYSTEMS that hand the same entity back and forth.
+  Keep edits inside ONE subsystem; they share a few helpers (noted).
 
-   • IDLE / SCHEDULE  (state: JL.idle)  — scheduleTick spawns him at his scheduled
-     venue when V is near; wanderTick free-roams him between that venue's waypoints
-     (dwell → walk → sit/lean pose). returnToPost hands a dismissed companion back here.
-   • COMPANION        (state: JL.summon) — summonJackie (instant) / promoteToCompanion
-     (after an arrival). Follower role = AMM SetNPCAsCompanion. dismissJackie removes him.
-   • ARRIVAL (v0.50)  (state: JL.varrival) — vehicleArrivalTick is the ONE arrival machine, TWO modes
-     (Config.call.arrivalMethod): "foot" DES-spawns Jackie at `Config.vehicle.spawnDistance` (50 m) and
-     SPRINTS him in (-> WALK last 14 m); "bike" spawns his Arch + Jackie at `bikeSpawnDistance` (60 m),
-     mounts, rides in, slows at 30 m, PARKS on the road at 20 m, then WALKS the rest. Both end at
-     COMPANION via `Config.call.companionDistance` (5 m, small so AMM's catch-up teleport can't yank him
-     into V), then say a GREETING LINE within `arrivalGruntDistance` (4 m; v0.52). Spawn point obeys: same level as V
-     (`maxSpawnZDelta`), on a SIDE of V (`spawnSides`), and a STUCK->respawn-closer ladder (`respawnRungs`)
-     if he can't path in. NOTE: the old AMM-spawn+hide+teleport "safe walk-in" + invisibility hack were
-     DELETED in v0.50 — DES spawns out at distance, never pops near V.
-   • DINNER OUTING    (state: JL.dinner)  — dinnerTick: companion Jackie walks to a
-     restaurant, sits, resets his companion clock, re-follows. Owns its own collision.
-   • DIALOGUE/CALL    (Branch.*, dlg, callTick) — the voiced choice-box + holocall convo.
-   • POSES            (tryWorkspotPose/stopWorkspotPose/applyIdlePose) — AMM workspot
-     sit/lean. SHARED by idle + dinner; it does NOT touch collision (callers do).
+   • IDLE / SCHEDULE  (state: JL.idle)  — scheduleTick spawns him at his scheduled venue when V is
+     near; wanderTick free-roams him between that venue's waypoints (dwell → walk → sit/lean pose).
+     returnToPost hands a dismissed companion back here.
+   • COMPANION        (state: JL.summon) — summonJackie (instant) / promoteToCompanion (after an
+     arrival). Follower role via Native.setCompanion. dismissJackie removes him.
+   • ARRIVAL          (state: JL.varrival) — vehicleArrivalTick is the ONE arrival machine, TWO modes
+     (Config.call.arrivalMethod): "foot" DES-spawns him at Config.vehicle.spawnDistance and sprints
+     him in (→ walk for the last stretch); "bike" spawns his Arch too, rides in, parks, then walks.
+     Both end at COMPANION via Config.call.companionDistance, then a greeting line within
+     arrivalGruntDistance. Spawn obeys: same level as V (maxSpawnZDelta), a SIDE of V (spawnSides),
+     and a stuck→respawn-closer ladder (respawnRungs).
+   • DINNER OUTING    (state: JL.dinner)  — dinnerTick: he walks to a restaurant, sits, resets his
+     companion clock, re-follows. Owns its own collision.
+   • DIALOGUE/CALL    (Branch.*, dlg, callTick) — the voiced choice-box + holocall conversation.
+   • POSES            (tryWorkspotPose/stopWorkspotPose/applyIdlePose) — workspot sit/lean. SHARED by
+     idle + dinner; it does NOT touch collision (callers do).
    • UI               (onDraw) — the debug window (Force venue, seat tuner, toggles).
 
-  COLLISION OWNERSHIP (the v0.43 bug was two systems fighting over this):
+  COLLISION OWNERSHIP (two systems fighting over this is a recurring bug):
      setNpcCollision(handle, on) is the only low-level toggle.
    • IDLE     -> applyIdleCollision() at placement, driven by Config.idleNoCollision.
    • DINNER   -> dinnerTick drops it on `seating`, restores it when he stands.
    • COMPANION-> promoteToCompanion() FORCES it on (a follower must collide / not clip V).
-     The shared pose helpers must NEVER toggle collision — that caused the cross-talk.
+     The shared pose helpers must NEVER toggle collision — that is the cross-talk.
   ============================================================================
 --]]
 
 local Config = require("config")
--- ⚠️ GLOBAL (not `local`) ON PURPOSE — see the "200-LOCAL CEILING" note below. init.lua's main chunk
--- is at Lua's hard 200-local-per-function limit; a new top-level `local` here would make the WHOLE file
--- fail to load in CET. Globals don't count toward that limit. (The CET debug window calls Retrieval.*)
-Retrieval = require("retrieval")   -- "Where's Jackie?" questline + master mod gate (see retrieval.lua)
-pcall(function() package.loaded["blaze"] = nil end)   -- v0.98: force a FRESH read on CET soft-reload; else the cached old module sticks (stale startYorinobu/diagnose)
-Blaze     = require("blaze")       -- v0.96 GLOBAL (200-cap): "Blaze of Glory" Heist set-piece (see blaze.lua)
-Session   = require("session")     -- v1.52 GLOBAL (200-cap): session guard + crash log (see session.lua)
-pcall(function() package.loaded["lang"] = nil; package.loaded["translations"] = nil end)  -- like blaze: re-read on CET soft-reload so a language/text edit takes effect
-Lang      = require("lang")        -- v1.60 GLOBAL (200-cap): localization; Lang.t(s) at the text chokepoints (see lang.lua + translations.lua)
-pcall(function() package.loaded["dialogui"] = nil end)   -- re-read on CET soft-reload, like blaze/lang
-DialogUI  = require("dialogui")    -- v1.63 GLOBAL (200-cap): V's choices in the GAME's own dialogue widget (see dialogui.lua)
-Allies    = require("nca")         -- OPTIONAL Night City Allies bridge (see nca.lua + NCLucy's
-                                   -- docs/research/nca_integration.md). GLOBAL for the 200-local cap.
-                                   -- Does nothing unless NCA is installed, which is the normal case.
-pcall(function() package.loaded["zengine"] = nil end)     -- re-read on CET soft-reload, like blaze/lang
-ZEngine   = require("zengine")     -- OPTIONAL 0-Engine integration (see zengine.lua + NCLives'
-                                   -- docs/research/zero_engine.md). GLOBAL for the 200-local cap —
-                                   -- ⚠️ this file is AT Lua's 200-local ceiling, so never make it a
-                                   -- `local`. Automatic: if 0-Engine is installed we take its
-                                   -- once-per-frame state instead of polling the same blackboard
-                                   -- again; if it isn't, every reader falls back to ours and nothing
-                                   -- changes. No user switch.
-Fam       = require("familiarity") -- v1.65 GLOBAL (200-cap): Jackie opens up over time (see familiarity.lua)
-pcall(function() package.loaded["vo"] = nil; package.loaded["vo_durations"] = nil end)  -- re-read on CET soft-reload, like blaze/lang
-VO        = require("vo")          -- v1.66 GLOBAL (200-cap): the game's OWN voice-over, no shipped audio (see vo.lua)
-Native    = require("native")      -- v1.67 GLOBAL (200-cap): the follower role done the engine's way (see native.lua)
-pcall(function() package.loaded["journalquest"] = nil; package.loaded["journalquest_index"] = nil end)  -- re-read on CET soft-reload, like blaze/lang
-JQuest    = require("journalquest") -- GLOBAL (200-cap): REAL quest objectives in the game's top-right
-                                   -- tracker + readable shards in V's Shards tab (see journalquest.lua).
-                                   -- Needs the archive; without it every call degrades to the on-screen
-                                   -- band the mod used before, never to a break.
--- v2.0 GLOBAL (200-cap): "Ghost in the Machine" — the five-part questline + the nine Heywood side
--- quests. `storyboard.lua` and `sidequests.lua` hold the STORY (every word, place, hour and
--- consequence); `arc.lua` is a generic interpreter that walks them and hands each beat to whichever
--- shipped system performs it. It never calls a Game API itself — the bind table below is the only
--- place this feature touches the engine, which is why the whole arc is testable offline
--- (tools/test_storyboard.lua + tools/test_arc.lua, 88 checks, no game required).
-Arc       = require("arc")
--- v1.92 GLOBAL (200-cap): Jackie TEXTS you. The WORDS live in JackieLives.archive as a cooked
--- .journal (there is no runtime create-a-message API — JournalManager only has ChangeEntryState);
--- this module owns only WHEN each authored beat fires and what a reply does. Ported from NCLives
--- v1.91, traps and all. See docs/research/messages_port_spec.md and ../NCLives/docs/MESSAGES.md.
--- ⚠️ Fails soft with no archive: a player with only the CET folder gets exactly the mod they had.
-Msg       = require("messages")
--- 200-LOCAL CEILING (added with the retrieval feature, 2026-07-01): v0.66 silently crossed Lua's
--- 200-locals-per-function cap, so v0.66/v0.67 init.lua FAILED TO LOAD (`main function has more than
--- 200 local variables`). To get back under it, six ancient leaf helpers below were changed from
--- `local function` to plain `function` (globals): getAMMCharacters, discoverJackieFromSpawned,
--- diagnostics, dismissAllJackies, capturePosition, probeChoiceBoxAPI. If you add more top-level
--- locals, convert a few stable functions to globals OR extract a module (see retrieval.lua) to stay safe.
 
+-- ⚠️ 200-LOCAL CEILING. init.lua's main chunk is AT Lua's hard 200-locals-per-function limit, so
+-- every module below is a GLOBAL on purpose — a new top-level `local` here makes the WHOLE file fail
+-- to load in CET ("main function has more than 200 local variables"). If you need another name:
+-- make it a global, or extract a module. Six old leaf helpers are globals for this reason too
+-- (getAMMCharacters, discoverJackieFromSpawned, diagnostics, dismissAllJackies, capturePosition,
+-- probeChoiceBoxAPI).
+--
+-- The `package.loaded[...] = nil` lines force a FRESH read on a CET soft-reload; without them the
+-- cached old module sticks and an edit appears not to take.
+pcall(function()
+  package.loaded["blaze"], package.loaded["lang"], package.loaded["translations"] = nil, nil, nil
+  package.loaded["dialogui"], package.loaded["zengine"] = nil, nil
+  package.loaded["vo"], package.loaded["vo_durations"] = nil, nil
+  package.loaded["journalquest"], package.loaded["journalquest_index"] = nil, nil
+end)
+
+Retrieval = require("retrieval")    -- "Where's Jackie?" questline + master mod gate
+Blaze     = require("blaze")        -- "Blaze of Glory" heist set-piece
+Session   = require("session")      -- session guard + crash log
+Lang      = require("lang")         -- localization; Lang.t(s) at the text chokepoints
+DialogUI  = require("dialogui")     -- V's choices in the GAME's own dialogue widget
+Allies    = require("nca")          -- OPTIONAL Night City Allies bridge; inert unless NCA is installed
+ZEngine   = require("zengine")      -- OPTIONAL 0-Engine integration; automatic, no user switch. If it
+                                    -- is installed we reuse its once-per-frame state instead of
+                                    -- polling the same blackboard again; if not, we poll as before.
+Fam       = require("familiarity")  -- Jackie opens up over time
+VO        = require("vo")           -- the game's OWN voice-over, no shipped audio
+Native    = require("native")       -- spawn / follower role / car seat, done the engine's way
+JQuest    = require("journalquest") -- real quest objectives + shards. Needs the archive; without it
+                                    -- every call degrades to the on-screen band, never to a break.
+Arc       = require("arc")          -- "Ghost in the Machine": storyboard.lua/sidequests.lua hold the
+                                    -- STORY, arc.lua walks it and hands each beat to a shipped system.
+                                    -- It never calls a Game API itself — the bind table below is the
+                                    -- only place this feature touches the engine.
+Msg       = require("messages")     -- Jackie TEXTS you. The WORDS live in the archive as a cooked
+                                    -- .journal (there is no runtime create-a-message API); this module
+                                    -- owns only WHEN a beat fires and what a reply does. Fails soft
+                                    -- with no archive.
 local JL = {
   amm    = nil,
   jackie = { record = nil, name = nil },
   ui     = { open = true, overlayOpen = false, lastCapture = nil, forceMainQuest = false, status = "",
              voIndex = 0, voText = "", forceVenue = nil },
   summon = { spawn = nil, active = false, companionSet = false, walkIn = false },
-  -- v0.66 companion catch-up: while he's a confirmed, undismissed companion, if V gets far
-  -- (fast-travel / ran off / he got left behind) he teleports back to V's SIDE (never onto V).
-  -- v1.59 lastDist/graceSince back the progress grace: lastDist is the previous check's gap (is it closing?),
-  -- graceSince caps how long "he's still closing" may keep deferring the rescue.
+  -- catch-up: if V gets far (fast travel / ran off) he teleports back to V's SIDE, never onto V.
+  -- lastDist/graceSince back the progress grace — "he's still closing" may defer the rescue, but not forever.
   catchUp = { farSince = nil, lastAt = nil, teleTries = nil, lastDist = nil, graceSince = nil },
-  -- v1.61 weapon mirror: since = when V first went unarmed+calm this episode; reasserts = holster tries so
-  -- far; lastAt = throttle. Reset whenever V draws again or combat starts.
+  -- weapon mirror: since = when V first went unarmed+calm this episode; reasserts = holster tries.
   weaponMirror = { since = nil, reasserts = nil, lastAt = nil },
-  -- v0.82 respawn-settle: after a respawn-at-V (catch-up FT recovery / persist) hide Jackie + drop his
-  -- collision briefly so he doesn't visibly POP in or spawn into a wall, then reveal + re-collide by clock.
-  -- v1.40 reposePending/reposeAt/reposeLast: one-shot "move him off AMM's drop spot to V's front/side" latch.
+  -- respawn-settle: after a respawn-at-V, hide him + drop collision briefly so he doesn't POP in or
+  -- land in a wall. repose* = the one-shot "move him off the drop spot to V's front/side" latch.
   settle  = { hideUntil = nil, collideUntil = nil, handle = nil, reposePending = nil, reposeAt = nil, reposeLast = nil },
-  -- v0.67 keep-close: periodically re-assert our tight follow so AMM's long leash can't let him
-  -- trail far behind V. Just a throttle timestamp.
-  follow  = { lastAt = nil },
-  -- v0.72 companion PERSISTENCE: "is companion" is saved per-slot as the game fact
-  -- jackielives_companion. On a fresh load (Lua state wiped) or a load-screen fast-travel that
-  -- culled his entity, this re-spawns + re-promotes him at V. gapSince/lastRespawn are throttles.
+  follow  = { lastAt = nil },   -- keep-close: re-assert our tight follow. Throttle timestamp only.
+  -- persistence: "is companion" is the per-slot game fact jackielives_companion, so a fresh load or a
+  -- culled entity re-spawns + re-promotes him at V. gapSince/lastRespawn are throttles.
   persist = { gapSince = nil, lastRespawn = nil, worldReadyAt = nil },
-  -- v0.84 walk-abreast: keep-close variant that holds Jackie BESIDE/AHEAD of V (offset from V's
-  -- forward vector) instead of trailing behind. lastAt is the re-issue throttle.
-  abreast = { lastAt = nil },
-  -- v1.57 loiter halt: `still` is the latched "V is basically standing" state (jlVLoitering); slowSince /
-  -- fastSince are the two sustain timers that flip it; lastHoldAt throttles the re-issued hold command.
+  abreast = { lastAt = nil },   -- walk-abreast: hold him BESIDE/AHEAD of V instead of trailing.
+  -- loiter halt: `still` = latched "V is basically standing" (jlVLoitering); slow/fastSince are the
+  -- sustain timers that flip it; lastHoldAt throttles the re-issued hold.
   loiter  = { still = false, slowSince = nil, fastSince = nil, frame = nil, lastHoldAt = nil },
-  -- v0.35 free-roam wander: placed=on a waypoint yet; phase=dwelling|walking; cur/tgtIdx=waypoints.
-  -- v0.38 walk-away: leaving=true while he's strolling to a venue exit before despawning.
+  -- free-roam wander: placed = on a waypoint yet; phase = dwelling|walking; cur/tgtIdx = waypoints.
+  -- leaving = strolling to a venue exit before despawning.
   idle   = { spawn = nil, locationKey = nil, placed = false, phase = nil, curIdx = nil, tgtIdx = nil,
              spawnedAt = 0, dwellUntil = 0, arriveBy = 0, lastReissue = 0,
              leaving = false, leaveTarget = nil, leaveDeadline = 0, leaveReissue = 0,
-             collisionOff = false },   -- v0.44: idle collision state (driven by Config.idleNoCollision)
-  -- v0.43 seat tuner: live X/Y/Z/yaw OFFSETS from a location's captured seat, so a sit spot can be
-  -- nudged in-game until perfect, then printed for config.lua. Targets Config.locations[key].
+             collisionOff = false },   -- driven by Config.idleNoCollision
+  -- seat tuner: live X/Y/Z/yaw OFFSETS from a location's captured seat, nudged in-game until perfect,
+  -- then printed for config.lua. Targets Config.locations[key].
   tuner  = { init = false, key = "noodle", seatIdx = 1, live = true, pendingApplyAt = nil,
              baseX = 0, baseY = 0, baseZ = 0, baseYaw = 0,
              dx = 0, dy = 0, dz = 0, dyaw = 0,
              prevX = 0, prevY = 0, prevZ = 0, prevYaw = 0 },
-  -- v0.36 day rotation: a shuffle bag of Config.dayBag; one day-type per in-game day. Rollover
-  -- is detected by the game hour WRAPPING (current < last), since time only ever moves forward.
+  -- day rotation: a shuffle bag of Config.dayBag, one day-type per in-game day. Rollover is detected
+  -- by the game hour WRAPPING (current < last), since time only ever moves forward.
   day    = { lastHour = nil, count = 0, template = nil, bag = {}, bagPos = 0 },
-  -- v0.41 secret sleeping-hours cameo: decided=rolled this night yet; active=he shows at the spot.
-  secret = { decided = false, active = false },
-  -- v1.3 approach cameo: V getting within Config.approach.radius of a venue can force Jackie to
-  -- show there. day = in-game day we last reset on; premiumUsed = the one premium appearance has
-  -- already landed today (rate drops after); forcedKey = the venue V's approach pinned him to for
-  -- the day; near = per-venue edge-trigger state (each venue only re-rolls after V has left its
-  -- radius and come back, so it can't roll every tick).
+  secret = { decided = false, active = false },   -- sleeping-hours cameo: rolled tonight / showing
+  -- approach cameo: V nearing a venue can force him to show there. premiumUsed = today's one premium
+  -- appearance is spent; forcedKey = the venue V's approach pinned him to; near = per-venue edge
+  -- trigger, so a venue only re-rolls after V has left its radius and come back.
   approach = { day = -1, premiumUsed = false, forcedKey = nil, near = {} },
   -- holocall arrival state machine: spawn far (passive) -> walk in -> hand off to companion.
   arrival = { at = nil, phase = nil, pt = nil, placeAt = nil, moveAt = nil, deadline = nil, lastReissue = 0 },
-  -- v0.33 "send Jackie off": drop follower role -> walk away -> despawn once far enough.
-  -- v1.62 paused: talking to him mid-walk-off halts the retreat (leavingTick skips re-issuing) until
-  -- the conversation resolves — resume() clears it, dinner/accept leaves it cleared for good.
+  -- "send Jackie off": drop follower role -> walk away -> despawn once far enough. `paused` = talking
+  -- to him mid-walk-off halts the retreat until the conversation resolves.
   leaving = { phase = nil, deadline = nil, lastReissue = 0, paused = false },
-  -- v1.62 main-quest GRACE: when a main quest goes active he WARNS and waits Config.mainExitGrace.seconds
-  -- instead of leaving at once; if V drops it he stays. activeSince = when main FIRST went active this
-  -- episode (debounces a transient auto-track before we warn); until_ = real-clock leave deadline;
-  -- warned/reminded gate the one-shot beats.
+  -- main-quest GRACE: a main quest going active makes him WARN and wait Config.mainExitGrace.seconds
+  -- instead of leaving at once. activeSince debounces a transient auto-track; until_ is the real-clock
+  -- deadline; warned/reminded gate the one-shot beats.
   mainExit = { activeSince = nil, until_ = nil, warned = false, reminded = false },
-  -- v0.53 catch-his-eye smile: until_=hold-smile deadline; nextRoll=next gaze roll; nextApply=re-assert
-  -- facial; cooldownUntil=earliest next smile; handle=who's smiling (to reset the right face).
+  -- catch-his-eye smile: until_ = hold deadline; nextRoll/nextApply = next gaze roll / facial
+  -- re-assert; handle = who is smiling. reunion* = the forced-smile window during reunionMeetTree,
+  -- with a hard safety expiry so an aborted meet can't leave him grinning forever.
   smile  = { until_ = 0, nextRoll = 0, nextApply = 0, cooldownUntil = 0, handle = nil,
-             -- v0.93 reunion boost: on during reunionMeetTree; forceUntil = end of the forced-smile
-             -- window; safety = hard expiry so an aborted meet can't leave him smiling forever; idle =
-             -- which happy face is currently applied.
              reunionActive = false, reunionForceUntil = 0, reunionSafety = 0, idle = nil },
-  -- v0.34 VEHICLE ARRIVAL: spawn on bike behind V -> drive in -> dismount -> jog/walk -> companion.
+  -- VEHICLE ARRIVAL: spawn on his bike behind V -> ride in -> dismount -> jog/walk -> companion.
   varrival = { at = nil, phase = nil, pt = nil, bikeId = nil, bikeHandle = nil,
                placeAt = nil, driveAt = nil, sprintAt = nil, lastReissue = 0, deadline = nil, driveCmd = nil },
   call    = { ringingAt = nil },  -- holocall: clock time he "picks up" after the ring
-  -- v0.55 ambient "feel alive" grunts: nextRoll = clock time of the next chance-to-grunt.
-  ambient = { nextRoll = 0 },
-  -- v0.41 dinner outing: walk to a chosen restaurant -> linger -> full companion-clock reset.
+  ambient = { nextRoll = 0 },     -- ambient "feel alive" grunts: next chance-to-grunt
+  -- dinner outing: walk to a chosen restaurant -> linger -> full companion-clock reset.
   dinner  = { phase = nil, dest = nil, destName = nil, destYaw = nil, mappinId = nil, satAt = nil,
-              lastResetGame = nil, collisionOff = false, seatDeadline = nil, sitFireAt = nil,  -- v0.44 seat rework
-              nextOfferGame = nil, offerSession = nil },  -- v0.48: Jackie's self-initiated dinner offer schedule
-  -- v0.95 STORY MODE selector: "quietlife" (default, non-invasive layer) vs "blaze" (Blaze of Glory —
-  -- the alternate-timeline route that rewrites the Heist ending + disables the main plot). Blaze
-  -- MACHINERY IS WIP (pending the JLFactDump spike + WolvenKit q005 edits); the toggle persists the
-  -- choice and sets the jl_mode_blaze quest fact that the future questphase edit reads. Field on JL
-  -- (not a new top-level local) to respect the 200-locals cap.
-  mode   = "quietlife",   -- "quietlife" | "blaze"
-  -- v0.97 QUIET-LIFE MOURNING SUPPRESSION: hold the "Jackie is dead" grief facts down so a living
-  -- Jackie doesn't collide with the ofrenda / grief calls. SAFE-BY-DEFAULT (off until confirmed) —
-  -- persisted via JL_SETTINGS_KEYS; the actual fact list lives in JL_MOURNING_FACTS (below).
+              lastResetGame = nil, collisionOff = false, seatDeadline = nil, sitFireAt = nil,
+              nextOfferGame = nil, offerSession = nil },   -- his self-initiated dinner offer schedule
+  -- STORY MODE: "quietlife" (default, non-invasive) vs "blaze" (Blaze of Glory — the alternate
+  -- timeline that rewrites the Heist ending and disables the main plot). Blaze machinery is WIP; the
+  -- toggle persists the choice and sets the jl_mode_blaze quest fact a future questphase edit reads.
+  mode   = "quietlife",
+  -- QUIET-LIFE MOURNING SUPPRESSION: hold the "Jackie is dead" grief facts down so a living Jackie
+  -- doesn't collide with the ofrenda / grief calls. Off by default; fact list in JL_MOURNING_FACTS.
   mourningSuppress = false,
-  keepBarOpen      = false,   -- v0.97b: force El Coyote / Mama's bar open (compensates for blocking sq018)
+  keepBarOpen      = false,   -- force El Coyote / Mama's bar open (compensates for blocking sq018)
   mourningTimer    = 0,
   timer  = 0,
   clock  = 0,        -- accumulated game seconds (for talk cooldowns)
   lastTalk = -999,
   lastSeen = -999,
-  talkDone = {},     -- v0.32: [treeKey] = clock time a cooldown'd talk tree was finished
+  talkDone = {},     -- [treeKey] = clock time a cooldown'd talk tree was finished
 }
 
--- v1.8.3 OFFLINE TEST HOOK. `JL` is a file-local, which is correct for the mod and is also why
--- tools/loadsim.lua here is a fraction of the size of NCLives' — that harness reaches the state table
--- through `NCL.env.NCS` and can therefore drive the actual state machines (catch-up, respawn, the
--- appearance verify); this one could only ever call functions with no state behind them. NCLives has
--- twice shipped a bug that its own tests caught and this repo's could not even express, so: one global
--- alias to the SAME table. No copy, no behaviour, no local slot spent.
+-- OFFLINE TEST HOOK. `JL` is a file-local, which is correct for the mod — but it also means the
+-- harness cannot drive the real state machines. One global alias to the SAME table: no copy, no
+-- behaviour, no local slot spent.
 JL_ENV = JL
 
-
--- v0.76: log to the CET console AND append to jackie_debug.log in the mod folder (CET sandboxes io to
--- the mod dir → .../mods/JackieLives/jackie_debug.log). Commit that file to share full logs — no more
--- OCR'ing the console. Truncated fresh each load (see onInit). pcall'd so io being unavailable never breaks logging.
+-- Log to the CET console AND append to jackie_debug.log in the mod folder (CET sandboxes io to the
+-- mod dir). Commit that file to share full logs. Truncated fresh each load (see onInit).
 local function log(msg)
   local line = "[JackieLives] " .. tostring(msg)
   print(line)
@@ -3491,62 +3441,21 @@ end
 
 -- act on a choice (idx optional -> highlighted). Shows the player's chosen line as a
 -- subtitle for ~1s, THEN advances to Jackie's reply / ends (handled in branchTick).
--- ---------------------------------------------------------------------------
--- v1.70 — V SPEAKS TOO. A choice row (or a callFarewells entry, or a textPool
--- row) may carry `sfx = "jl_<String ID>"` naming one of **V's own** recordings.
--- It plays out of V's body the moment the player picks it, under the subtitle we
--- were already showing.
 --
--- ⚠️ WHY THIS DOES NOT GO THROUGH VO.play. That path exists to make JACKIE speak,
--- and it honours Config.voice.voiceTag — which would inject Jackie's voice tag
--- into whatever entity it is handed. Hand it the player and V answers Jackie in
--- Jackie's voice. V's body already carries V's own tag and the game picks the
--- male or female take from it, so the correct call is the one with NO tag
--- injection, which is exactly what JLVO_SpeakAsPlayer is and why it has no tag
--- argument to get wrong.
---
--- ⚠️ A GLOBAL, not a `local`. init.lua sits on Lua's 200-local ceiling (see
--- CLAUDE.md), and a global also resolves at CALL time, so Branch.confirm below
--- may reference it regardless of where in the file it ends up.
---
--- Returns how long to hold the subtitle (the recording's real length), or nil if
--- nothing played — no shim installed, no player, or not a line id. Every failure
--- is silent by design: the subtitle is the content, the voice is the bonus.
--- ---------------------------------------------------------------------------
--- v1.70.1 — WHICH EVENT SHAPE V'S LINE IS SENT AS, AND WHY IT IS NOT A FIXED NUMBER.
---
--- ⚠️ READ THIS BEFORE "FIXING" THE V-VOICE GENDER. The Esc-menu control does NOT tell
--- the game what sex V is. The game already knows — it is in the save, and
--- `GetResolvedGenderName()` reports it. There is exactly ONE String ID per line and the
--- ENGINE picks the male or female take from V's BODY before a mod gets a vote
--- (locVoiceoverMap: of 15,187 genuinely gendered pairs, zero differ in the id). So the
--- only thing any of this can change is the SHAPE of the DialogLineEvent, in the hope
--- that a differently-shaped event makes the engine resolve the take differently:
---     0  isPlayer = true,  no voice tag       <- what NCLives shipped and heard
---     1  isPlayer = false, inject V's tag n"v"   (how V Voice Framework speaks)
---     2  isPlayer = true,  inject V's tag
---
--- "auto" is the default and it routes on V's BODY, not on a preference:
---     male body   -> 0   the shape with in-game evidence behind it
---     female body -> 1   because 0 is the shape a female-V player was reported hearing
---                        MALE audio from (NCLives, 2026-08-13)
--- ⚠️ The female half is a HYPOTHESIS and has not been heard yet. That is exactly what
--- the "Test V's voice (A/B)" button in the CET window is for — it plays one line both
--- ways, back to back, and names each in the log. Whatever wins goes in the Esc switch.
---
--- ⚠️ NEVER read jlHermano() near this. The Husbando/Hermano switch picks which authored
--- set of JACKIE's lines plays — a story preference. It says nothing about V's body, and
--- wiring the two together is exactly how v1.69 shipped male audio under a female
--- subtitle. Voice follows the body; the body is the save's to report.
--- ---------------------------------------------------------------------------
+-- V SPEAKS TOO: a choice row (or callFarewells / textPool entry) may carry `sfx = "jl_<String ID>"`
+-- naming one of V's OWN recordings, played out of V's body under that subtitle.
+-- ⚠️ NOT via VO.play — that path injects Config.voice.voiceTag, so V would answer in Jackie's voice.
+--    JLVO_SpeakAsPlayer has no tag argument for exactly this reason.
+-- ⚠️ A GLOBAL, not a local: init.lua is on Lua's 200-local ceiling, and a global resolves at call
+--    time so Branch.confirm may reference it wherever it lands in the file.
+-- Returns the recording's real length to hold the subtitle for, or nil if nothing played. Every
+-- failure is silent by design: the subtitle is the content, the voice is the bonus.
+-- ⚠️ DEAD LEVER, PINNED. This used to map the Esc-menu choice onto a different SHAPE of the
+-- DialogLineEvent (isPlayer / voice-tag combinations), hoping the engine would pick the other take.
+-- It cannot: the shape carries no gender, and all three were confirmed male against a female V
+-- (../NCLives/docs/research/vo_gender.md §6.5). The real lever is VO.femaleTakeId. Kept as a
+-- function so no caller changes and nobody re-derives the dead theory.
 function jlPlayerVariant()
-  -- ⚠️ v1.71 — DEAD LEVER, PINNED. This used to map the Esc-menu choice onto a different SHAPE of
-  -- the DialogLineEvent (isPlayer / voice-tag combinations) in the hope the engine would pick the
-  -- other take. It cannot: the shape carries no gender at all, and all three shapes were confirmed
-  -- male in game against a female V (../NCLives/docs/research/vo_gender.md §6.5). The player's
-  -- choice now reaches a REAL lever — VO.femaleTakeId, which substitutes a String ID of our own
-  -- whose voiceover-map row points at the female recording. Kept as a function, returning the one
-  -- shape we know works, so no caller has to change and nobody re-derives the dead theory.
   return 0
 end
 
@@ -9254,6 +9163,18 @@ jlPassenger = { veh = nil, cmd = nil, sentAt = -999, probeAt = nil }
 
 function jlPassengerTick()
   if (Config.follow or {}).passenger == false then return end   -- opt-out; default is on
+  -- ⚠️ AMM OWNS THE SEAT WHEN IT IS INSTALLED. Its Scan:AutoAssignSeats has done this for years and
+  -- players report it working perfectly; two systems mounting one body is how the in-out loop starts.
+  -- So with AMM present we do nothing at all. See Config.follow.passengerOnlyWithoutAMM.
+  -- ⚠️ Note the one case this costs: AMM only seats bodies AMM ITSELF spawned, so an AMM user running
+  -- the NATIVE spawn backend gets nobody in the passenger seat. Flip the config switch if that is you.
+  if (Config.follow or {}).passengerOnlyWithoutAMM ~= false and Native.ammPresent() then
+    if not JL.passengerAMMLogged then
+      JL.passengerAMMLogged = true
+      log("Passenger: AMM is installed — leaving the car seat to AMM's own AutoAssignSeats.")
+    end
+    return
+  end
   if jlCruise and jlCruise.active then return end               -- bikes belong to the cruise system
 
   -- ⚠️ The early-out has to survive a STANDING command: if V is driving with Jackie aboard and he is

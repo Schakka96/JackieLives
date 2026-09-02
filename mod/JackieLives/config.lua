@@ -938,6 +938,12 @@ Config.follow = {
   -- Set false if you'd rather he stayed on foot entirely.
   passenger = true,
 
+  -- ⚠️ AMM DOES THIS BETTER — SO WE STAND DOWN FOR IT. With AppearanceMenuMod installed, its own
+  -- `Scan:AutoAssignSeats` has seated companions for years and players report it working perfectly.
+  -- Our tick would only be a second opinion fighting a proven one, so it does not run at all when AMM
+  -- is present. Set false to run ours anyway (it is the only option without AMM).
+  passengerOnlyWithoutAMM = true,
+
   -- ---- v1.67 FOLLOWER-ROLE WATCHDOG ---------------------------------------------------------------
   -- Two things make Jackie move and they fail independently: our own AIFollowTargetCommand trail
   -- (sendWalkToPlayer / followTick) and the ENGINE's follower role (Native.setCompanion). A role

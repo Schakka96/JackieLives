@@ -300,7 +300,8 @@ do
   check("vo.lua is required as a GLOBAL", src:match("\nVO%s*=%s*require%(\"vo\"%)") ~= nil,
         "a `local VO` would break the 200-local ceiling AND be invisible to the other modules")
   check("the module cache is cleared first, so a CET soft-reload re-reads it",
-        src:match('package%.loaded%["vo"%]%s*=%s*nil') ~= nil)
+        -- Either form: one clear per line, or several names cleared in one statement.
+        src:match('package%.loaded%["vo"%][^\n]-nil') ~= nil)
   check("VO.bind is called at onInit", src:match("VO%.bind%s*{") ~= nil)
 
   local bindAt   = src:find("VO%.bind%s*{")
