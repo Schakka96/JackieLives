@@ -152,40 +152,26 @@ Config.voice = {
   -- 1.0 = the old always-grunt behaviour · 0 = never, without emptying gruntPool.
   gruntChance = 0.15,
 
-  -- ---- V'S OWN VOICE, AND ITS GENDER (v1.70) -------------------------------
-  -- Everything above is about JACKIE. This is about V, who speaks now too: a choice
-  -- row carrying `sfx` plays one of V's own recordings out of V's body when the
-  -- player picks it (jlSpeakPlayerLine + JLVO_SpeakAsPlayer).
+  -- ---- V'S OWN VOICE, AND ITS GENDER ----------------------------------------
+  -- Everything above is about JACKIE. This is about V, who speaks too: a choice row carrying `sfx`
+  -- plays one of V's own recordings out of V's body when the player picks it.
   --
-  -- ⚠️ FIRST, THE THING IT IS NOT: this is never wired to Config.hermanoLines /
-  -- the Husbando-Hermano switch. That switch picks which authored set of JACKIE's
-  -- lines plays — a story preference, and the player's to make. V's voice follows
-  -- V's BODY, which is the save file's to report. Mixing the two is exactly how
-  -- v1.69 shipped male audio under a female subtitle; see vo_gender.lua.
-  --
-  -- Nor can it be fixed in content: a line's male and female takes share ONE String
-  -- ID (checked against the engine's own locVoiceoverMap — of 15,187 genuinely
-  -- gendered pairs, zero differ in the id). The ENGINE picks the take. All a mod
-  -- controls is the SHAPE of the event, which is what the variant selects:
+  -- ⚠️ NEVER wire this to the Husbando/Hermano switch. That switch picks which authored set of
+  -- JACKIE's lines plays — a story preference, the player's to make. V's voice follows V's BODY,
+  -- which is the save file's to report. Mixing the two is how male audio shipped under a female
+  -- subtitle.
+  -- ⚠️ Nor can it be fixed in content: a line's male and female takes share ONE String ID (of 15,187
+  -- genuinely gendered pairs in the engine's locVoiceoverMap, zero differ in the id). The ENGINE picks
+  -- the take. All a mod controls is the SHAPE of the event:
   --   0  isPlayer = true,  no voice tag     <- the default, and the evidenced one
   --   1  isPlayer = false, inject V's tag      (how V Voice Framework speaks)
   --   2  isPlayer = true,  inject V's tag
-  --
-  -- ⚠️ v1.70.1 — THE VARIANT IS NO LONGER CHOSEN HERE. `jlPlayerVariant()` in init.lua
-  -- owns it, driven by the Esc-menu control (Esc > Settings > Jackie Lives > Voice >
-  -- "V's voice") and persisted to jl_settings.txt as `vVoice`:
-  --     auto (default) -> V's BODY decides: male body = 0, female body = femaleVariant
-  --     male           -> pinned to 0
-  --     female         -> pinned to femaleVariant
-  -- A number left here would be read on load and then ignored, so there is no
-  -- `playerVariant` key any more — better a missing setting than a dead one that looks
-  -- live. Only `femaleVariant` survives, because it names WHICH shape "female" means and
-  -- that is the one number still worth being able to change without touching code.
-  --
-  -- ⚠️ The female shape is a HYPOTHESIS: nobody has heard variant 1 yet. The CET window's
-  -- "Test V's voice (A/B)" button plays one line both ways to settle it in a single press.
-  -- If both takes sound identical, the engine is reading V's body and ignoring the event
-  -- shape — in which case this whole switch should be RETIRED, not retuned.
+  -- `jlPlayerVariant()` owns the choice, driven by Esc > Settings > Voice > "V's voice" and persisted
+  -- as `vVoice`. Only `femaleVariant` survives here, naming WHICH shape "female" means — a number left
+  -- here would be read on load and then ignored, and a dead setting that looks live is worse than none.
+  -- ⚠️ The female shape is a HYPOTHESIS: nobody has heard variant 1. The CET "Test V's voice (A/B)"
+  -- button settles it in one press. If both takes sound identical the engine is reading V's body and
+  -- ignoring the shape — in which case RETIRE this switch, don't retune it.
   femaleVariant = 1,   -- isPlayer = false + inject V's own tag n"v"
 }
 
@@ -292,37 +278,29 @@ Config.dialogue = {
 }
 
 -- ===========================================================================
--- FAMILIARITY (v1.65) — Jackie opens up over time
+-- FAMILIARITY — Jackie opens up over time
 -- ===========================================================================
--- Runtime: familiarity.lua (global `Fam`). Content opts in with `minFam = <tier>` on a choice or on a
--- jackiePool line. TUNING ONLY lives here: every number can change without touching a line of dialogue,
--- because content is written against TIERS, never raw points.
+-- Runtime: familiarity.lua (`Fam`). Content opts in with `minFam = <tier>` on a choice or a jackiePool
+-- line. TUNING ONLY lives here: every number can change without touching dialogue, because content is
+-- written against TIERS, never raw points.
 --
--- ⚠️ THIS CURVE IS DELIBERATELY HARSHER THAN NCLIVES' (Antonia, 2026-08-01: "the progression should be
--- slow though, you really have to know jackie and spend a lot of time with him... think the first
--- proposal you made for Lucy, or even a bit harder").
+-- ⚠️ THIS CURVE IS DELIBERATELY HARSHER THAN NCLIVES'. NCLives pays a point per TOPIC and tops out in
+-- about six conversations — right for meeting Panam, wrong for Jackie. He isn't a stranger: the
+-- distance being closed is not "do we know each other" but "will you tell me the truth about what
+-- happened to you", and the deep tiers ARE the mod's payoff, not an early-game convenience. So a point
+-- per CONVERSATION (walking six topics in one sitting is still one), and a much higher bar.
 --
--- NCLives landed on { 0, 5, 14, 28 } with a topic paying 1 point EACH — so one good conversation could
--- be worth five, and you could reach the top in about six. Right for meeting Panam; wrong for Jackie:
---   * he isn't a stranger. The distance the player is closing is not "do we know each other", it's
---     "will you tell me the truth about what happened to you" — and that should cost real time;
---   * the deep tiers ARE the mod's payoff, not an early-game convenience.
--- So this takes the FIRST shape NCLives tried (one point per CONVERSATION, not per topic — walking six
--- topics in one sitting is still one conversation) and then puts the bar substantially higher.
---
--- The intended shape, asserted in tools/test_familiarity.lua so it can't silently drift:
+-- The intended shape, asserted in tools/test_familiarity.lua so it cannot silently drift:
 --     Close   (10) — ~10 conversations, or 2 dinners and a couple of chats. A few evenings.
 --     Trusted (30) — ~7 dinners, or weeks of dropping in. He starts saying things he doesn't say.
---     Family  (65) — ~16 dinners. Everything, including what he won't tell Mama. A long relationship.
--- ---- THE ARC (v2.0) --------------------------------------------------------
+--     Family  (65) — ~16 dinners. Everything, including what he won't tell Mama.
+-- ---- THE ARC --------------------------------------------------------------
 -- "Ghost in the Machine" — the five-part questline and the nine side quests. The STORY lives in
--- `storyboard.lua` / `sidequests.lua`; this block is only the switches a player is allowed to
--- touch, and there are deliberately few of them.
---
--- The two content switches exist because the mod asks a player to watch a friend deteriorate.
--- `takeover` is the twenty seconds where his chrome uses him; `raid` is the Part 5C set-piece.
--- Both default ON and both are announced on the card that opens the arc — a player who would
--- rather not see them should not have to find out by seeing them once.
+-- storyboard.lua / sidequests.lua; this block is only the switches a player may touch.
+-- The two content switches exist because the mod asks a player to watch a friend deteriorate:
+-- `takeover` is the twenty seconds where his chrome uses him, `raid` is the Part 5C set-piece. Both
+-- default ON and both are announced on the card that opens the arc — a player who would rather not
+-- see them should not find out by seeing them once.
 Config.arc = {
   enabled      = true,
   tickSeconds  = 5.0,    -- how often the arc asks "may anything happen yet". Never per-frame:
@@ -396,20 +374,13 @@ Config.dismiss = {
   choiceSfx       = "jl_2036084339811217408",
   partingSfx      = "jl_1155727714874494976",   -- Jackie VO: "Time we were on our way, mamita."
   partingText     = "Time we were on our way, mamita.",
-  -- v0.94 (Antonia 2026-07-06): Jackie's parting line is a POOL — startLeaving() picks one at random each
-  -- dismiss (partingText/partingSfx above stay as the safe fallback if the pool is empty). Antonia's
-  -- signature walk-away line "Ahí luego, V." lives here.
-  --
-  -- v1.69 — IT FINALLY SPEAKS. Antonia, 2026-08-13: *"jackie has ahi luego V lines but they don't play
-  -- with vo after dismissing - why?"* Because it sat here as `sfx = nil` behind a TODO that asked for a
-  -- WolvenKit scrape into the Audioware bank — a job v1.66 made unnecessary and nobody came back to
-  -- delete. There was never anything to scrape: the line is in the game, and naming its String ID is
-  -- all it ever needed. There are FOUR clean takes of it (plus "Hasta luego."), so the send-off now
-  -- varies in delivery, not just in words — the picker avoids the last-used `sfx`, so consecutive
-  -- dismissals sound different even when he says the same thing.
-  --
-  -- All six are addressed to "V", not to a pet name, so they are the same for either V. That is why
-  -- there is no male duplicate of this pool any more (see below).
+  -- His parting line is a POOL — startLeaving() picks one at random each dismiss (partingText/
+  -- partingSfx above stay as the safe fallback if the pool is empty). His signature walk-away line
+  -- "Ahí luego, V." lives here, and there are FOUR clean takes of it (plus "Hasta luego."), so the
+  -- send-off varies in delivery, not just in words — the picker avoids the last-used `sfx`, so
+  -- consecutive dismissals sound different even when he says the same thing.
+  -- All six are addressed to "V", not to a pet name, so they are the same for either V — which is why
+  -- there is no male duplicate of this pool.
   partingPool     = {
     { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },  -- male V: "...carnal."
     { text = "Ahí luego, V.",                    sfx = "jl_1697051347046326288" },
@@ -428,26 +399,17 @@ Config.dismiss = {
   despawnDistance = 30.0,    -- metres from V he must reach before he vanishes
   movement        = "Walk",  -- "Walk" | "Run" | "Sprint" - how he leaves
   maxSeconds      = 30.0,    -- safety: despawn anyway if he hasn't reached the distance by now
-  -- v1.8.2 IDLE COOLDOWN — Antonia, 2026-08-17: *"Jackie after I've dismissed him walks away,
-  -- despawns, and then a DIFFERENT Jackie puppet spawns in my face."*
-  --
-  -- Not a spawn bug: it is scheduleTick doing exactly what it is told. That tick keeps an IDLE
-  -- Jackie standing at whatever venue the schedule (or the CET "Force venue" override, or the
-  -- v1.3 approach cameo) wants him at, for as long as V is within Config.proximityRadius (45 m)
-  -- of it. While he is a COMPANION that tick is gated off (`JL.summon.active` -> clearIdle). The
-  -- instant leavingTick despawns him, the gate opens — V is still standing at the venue — and a
-  -- second, freshly-spawned Jackie appears wearing that venue's outfit. Antonia had Lizzie's
-  -- force-pinned and got the tank-top Jackie back in her face within a second of sending him off.
-  --
-  -- NCLives/NCLucy never showed this because `Config.enableSchedule` ships FALSE there (no
-  -- per-persona daily schedule yet), so they have no idle body to re-spawn at all.
-  --
-  -- The fix is a plain cooldown: a send-off means "not right now", so the schedule may not put a
-  -- body back in front of V until this many REAL seconds have passed. Long enough that V has
-  -- either walked out of the venue's radius or clearly changed their mind, short enough that
-  -- coming back to El Coyote half an hour later still finds him there. It is stamped in
-  -- leavingTick (and in the instant-despawn path) and read at the top of scheduleTick.
-  -- Set to 0 to go back to the old behaviour.
+  -- IDLE COOLDOWN — "he walks away, despawns, and then a DIFFERENT Jackie spawns in my face."
+  -- Not a spawn bug: scheduleTick keeps an IDLE Jackie standing at whatever venue the schedule (or
+  -- the Force-venue override, or the approach cameo) wants, for as long as V is within
+  -- Config.proximityRadius of it. While he is a COMPANION that tick is gated off. The instant
+  -- leavingTick despawns him the gate opens — V is still standing at the venue — and a second,
+  -- freshly-spawned Jackie appears in that venue's outfit.
+  -- (NCLives/NCLucy never showed this: Config.enableSchedule ships FALSE there, so they have no idle
+  -- body to re-spawn at all.)
+  -- The fix is a plain cooldown: a send-off means "not right now". Long enough that V has walked out
+  -- of the venue's radius or changed their mind, short enough that coming back half an hour later
+  -- still finds him there. Stamped in leavingTick, read at the top of scheduleTick. 0 = old behaviour.
   idleCooldown    = 180.0,   -- REAL seconds after a send-off before the schedule may re-spawn him
 }
 
@@ -497,26 +459,23 @@ Config.companion = {
   autoLeaveOnExpiry = true,  -- when the clock runs out he walks off (reuses the send-off exit)
 }
 
--- ---- companion PERSISTENCE (v0.72) ----------------------------------------
+-- ---- companion PERSISTENCE -------------------------------------------------
 -- "Is Jackie your companion right now?" is saved INSIDE each save slot as the game fact
--- jackielives_companion (the same per-save fact mechanism the retrieval quest uses for its stage).
--- Because it lives in the save (not a global file), loading an OLD save where Jackie WASN'T with you
--- simply finds the fact unset -> he is NOT wrongly restored. companionPersistTick watches that fact:
--- if it says "companion" but no live Jackie exists — a fresh load wiped the runtime state, or a
--- load-screen fast-travel culled his body (the case Config.catchUp can't recover) — it re-spawns and
--- re-promotes him at V's side. Set enabled=false to go back to "he's gone after a reload".
--- ✅ v1.61: ENABLED. Phase 3 of the cross-save work — a save whose companion fact is set brings Jackie
--- back at V's side on load. The v0.84b crash ("Jackie in V's face on frame 1, then crash") had exactly the
--- root cause the old warning here predicted: worldReadyAt was a STALE pre-load stamp because the session
--- reset that nils it NEVER FIRED (the guard's 1ULL hash was dead). Both halves of the predicted fix now
--- exist: (1) a GENUINE load event — the native game_was_loaded fact (session.lua) — fires jlResetSessionState,
--- which nils JL.persist (worldReadyAt included), so the 8 s startupGrace always restarts from real world-entry;
--- and (2) respawnCompanionAtV already spawns him HIDDEN + no-collision (settleTick) and repositions him to V's
--- front/side before revealing, so no pop-in / wall-clip. Plus OnDetach purges the prior body first, so there's
--- never a stale companion to collide with. If a load ever DOES crash, the last jackie_debug.log.prev [MARK]
--- names the call; raise startupGrace before anything else.
--- NOTE: the duration timer still re-arms fresh on respawn (a 5 h-in companion gets a full 6 h) — that's
--- Phase 4 (persist jackielives_companion_expires), a separate, smaller follow-up.
+-- jackielives_companion. Because it lives in the save, loading an OLD save where he WASN'T with you
+-- finds the fact unset, so he is not wrongly restored. companionPersistTick watches it: if it says
+-- "companion" but no live Jackie exists — a fresh load wiped the runtime state, or a load-screen fast
+-- travel culled his body — it re-spawns and re-promotes him at V's side. enabled=false goes back to
+-- "he's gone after a reload".
+--
+-- ⚠️ The v0.84b crash ("Jackie in V's face on frame 1, then crash") was a STALE worldReadyAt, because
+-- the session reset that nils it never fired. Both halves of the fix are in place: a GENUINE load event
+-- (the native game_was_loaded fact, session.lua) fires jlResetSessionState so the startupGrace always
+-- restarts from real world-entry; and respawnCompanionAtV spawns him HIDDEN + no-collision and
+-- repositions him before revealing, so no pop-in or wall-clip. OnDetach purges the prior body first.
+-- If a load ever DOES crash, the last jackie_debug.log.prev [MARK] names the call; raise startupGrace
+-- before anything else.
+-- NOTE: the duration timer re-arms fresh on respawn (a 5 h-in companion gets a full 6 h) — persisting
+-- the expiry is a separate, smaller follow-up.
 Config.persist = {
   enabled       = true,   -- v1.61: safe now that the session boundary is really detected (see above)
   startupGrace  = 8.0,    -- s of settled, in-world time (from when the player appears) before we spawn
@@ -524,34 +483,28 @@ Config.persist = {
   cooldown      = 5.0,    -- s between respawn attempts (also covers the spawn->promote resolve window)
 }
 
--- ---- walk-abreast (v0.85b) — OPT-IN companion behaviour --------------------
--- A settled companion Jackie holds a spot BESIDE / slightly AHEAD of V instead of trailing — the "walk
--- next to me" feel, everywhere (not just the dinner outing).
--- v1.57: this is now **OFF by default**. Out of the box Jackie is the plain trailing follower; walk-beside
--- is a switch the player turns on in Esc -> Settings -> Jackie Lives -> Gameplay -> "Walk beside me".
--- (`Config.abreast.enabled` below is the FEATURE master, not the default: it stays true so the switch has
--- something to turn on. The per-player default lives in `JL.walkAbreast`, which defaults to true (v1.61).)
--- How it behaves:
---  * WALK-ONLY. Only active while V WALKS (her slow toggle). At jog/sprint he falls back to the normal
---    trail (V has 3 speeds, Jackie 2 — he can't out-pace a jogging V). Thresholds: walkMaxSpeed/jogMinSpeed.
---  * CLOSEST SIDE. `angleRight` / `angleLeft` are the two near-front anchors; he takes whichever is closer
---    to him (with `sideHysteresis` stickiness) so he doesn't cut across in front of V.
+-- ---- walk-abreast — OPT-IN companion behaviour -----------------------------
+-- A settled companion holds a spot BESIDE / slightly AHEAD of V instead of trailing — the "walk next
+-- to me" feel, everywhere, not just the dinner outing. OFF by default: out of the box he is the plain
+-- trailing follower, and the player turns it on in Esc -> Settings -> Gameplay -> "Walk beside me".
+-- (`Config.abreast.enabled` is the FEATURE master, not the default — it stays true so the switch has
+-- something to turn on. The per-player default is `JL.walkAbreast`.)
+--  * WALK-ONLY. Active only while V walks; at jog/sprint he falls back to the trail (V has 3 speeds,
+--    Jackie 2 — he cannot out-pace a jogging V). Thresholds: walkMaxSpeed / jogMinSpeed.
+--  * CLOSEST SIDE. `angleRight`/`angleLeft` are the two near-front anchors; he takes whichever is
+--    closer, with `sideHysteresis` stickiness, so he does not cut across in front of V.
 --  * SMOOTH heading (EMA over `smoothSeconds`) so the anchor drifts, never snaps on a camera twitch.
---  * ANGULAR LEASH (v1.36 — replaces the old chase-an-exact-point model that jittered). Jackie ambles
---    inside a WIDE zone (`zoneRadius`) around his side anchor, walking FORWARD with V (target led ahead by
---    `leadDistance`) at walk pace — no fighting for a precise spot. His hurdle to SPRINT is deliberately
---    high: he only sprints when he drifts into the REAR ARC behind V (`rearArcFrac` of the full circle,
---    centred directly behind her). Then he sprints up to the set angle and, once back inside `zoneRadius`,
---    CALMS to a walk again — and stays walking until he falls behind into the rear arc once more.
--- Angle values are FRACTIONAL dial steps (of `positions`). Pace + zone knobs live in the CET pace tuner.
--- ---- v1.8.3 WALK PROBE — why is walk-beside not running RIGHT NOW? ------------------------------
--- The diagnostic behind jlWalkProbeTick (read its header). Ships ON: the bugs it exists for are
--- intermittent, and a probe you have to switch on before the bug happens is a probe you never have the
--- log for. Costs one string per heartbeat.
--- ---- v1.8.6 PROMPT PROBE — where does the [F] overlay go when NCA is installed? ------------------
--- The diagnostic behind jlPromptProbeTick (read its header — it names three candidate causes with
--- three different fixes). Reads the blackboard back a beat after we write it and prints what actually
--- survived. Logs only when the picture changes, and only while the prompt should be up.
+--  * ANGULAR LEASH. He ambles inside a WIDE zone (`zoneRadius`) around his anchor, walking forward with
+--    V (led ahead by `leadDistance`) — no fighting for a precise spot. His hurdle to SPRINT is
+--    deliberately high: only on drifting into the REAR ARC behind V (`rearArcFrac`), then he sprints up
+--    and CALMS to a walk once back inside `zoneRadius`. (This replaced a chase-an-exact-point model
+--    that jittered.)
+-- Angles are FRACTIONAL dial steps (of `positions`). Pace + zone knobs live in the CET pace tuner.
+-- ---- THE TWO PROBES --------------------------------------------------------
+-- WALK PROBE (jlWalkProbeTick) — why is walk-beside not running RIGHT NOW? PROMPT PROBE
+-- (jlPromptProbeTick) — where does the [F] overlay go when NCA is installed? Read their headers.
+-- Both ship ON: the bugs they exist for are intermittent, and a probe you have to switch on before the
+-- bug happens is a probe you never have the log for. They cost one string per heartbeat.
 Config.promptProbe = {
   enabled  = true,
   interval = 1.0,   -- s between read-backs; matches Config.talk.boxRefresh so it samples one full cycle
@@ -643,36 +596,29 @@ Config.abreast = {
   maxAnchorZDelta   = 2.5,  -- m the navmesh-snapped anchor may differ from V's height before we distrust it
 }
 
--- ---- v1.57 LOITER HALT — "if V is barely moving, Jackie stands still" ------
--- Antonia, in-game: "when V is very slow (close to standing) he should stand still. Only after some
--- inertia he should start moving."
+-- ---- LOITER HALT — "if V is barely moving, Jackie stands still" ------------
+-- AIFollowTargetCommand has no concept of "close enough, stop". When V nudges around at 0.2 m/s —
+-- lining up a shot, reading a shard, poking at a vendor — the follow keeps micro-correcting and Jackie
+-- shuffles endlessly around her. It reads as fidgeting, not as a person standing with you.
 --
--- The problem: AIFollowTargetCommand has no concept of "close enough, stop". When V nudges around at
--- 0.2 m/s — lining up a shot, reading a shard, poking at a vendor — the follow keeps micro-correcting and
--- Jackie shuffles endlessly around her. It reads as fidgeting, not as a person standing with you.
+-- The fix is a HYSTERETIC gate on V's own smoothed speed (the signal jlVWalking already computes):
+--   * below `stopSpeed` for `stopSustain` -> he HALTS where he stands;
+--   * he only follows again once V EXCEEDS `goSpeed` for `goSustain`. ⚠️ goSpeed > stopSpeed is what
+--     stops him flickering between halt and follow on a single footstep.
+-- `holdSlack` is the safety valve: he only stands still if he is ALREADY reasonably close (the follow
+-- slider + this many metres). Further out he closes the gap first — otherwise a V who stops while he
+-- is 15 m behind would strand him there forever.
 --
--- The fix is a HYSTERETIC gate on V's own smoothed speed (the same signal jlVWalking already computes, so
--- this costs nothing extra):
---   * V's speed drops below `stopSpeed` and STAYS there for `stopSustain` -> Jackie HALTS where he stands.
---   * He only starts following again once V EXCEEDS `goSpeed` for `goSustain` — the "inertia" Antonia asked
---     for. goSpeed > stopSpeed is what stops him flickering between halt and follow on a single footstep.
--- `holdSlack` is the safety valve: he only stands still if he's ALREADY reasonably close (within the
--- follow-distance slider + this many metres). Further out he closes the gap first, then halts — otherwise a
--- V who stops the instant Jackie is 15 m behind would strand him there forever.
---
--- HOW HE IS HALTED (`useHoldCommand`) — two implementations, switchable live in the CET walk tuner:
---   * false (DEFAULT) -> an AIMoveToCommand to the point he is ALREADY standing on. It completes on arrival
---              (he has arrived), which replaces the standing follow command and leaves him idle. Chosen as
---              the default purely because it is PROVEN: the whole follow/abreast system already runs on
---              AIMoveToCommand, so we know it takes on a follower-role puppet on this game build.
---   * true   -> AIHoldPositionCommand (aiCommand.script:646), consumed by HoldPositionCommandTask in
---              ai/commands/aiIdleCommand.script, which just holds the command slot for `duration` so
---              nothing else can move him. Semantically the RIGHT command — the base game stands roadblock
---              NPCs up with it (preventionSystem.script:4457) — but ⚠️ UNVERIFIED on a FOLLOWER puppet:
---              the dump proves the command and its handler exist, not that the follower behaviour tree
---              includes that task. Try it in-game; if he stands more convincingly, make it the default.
--- `duration` is short and re-issued on `holdInterval` rather than infinite, so nothing can leave him frozen
--- in place permanently. If the hold command errors outright we fall back to the move-to automatically.
+-- HOW HE IS HALTED (`useHoldCommand`), switchable live in the CET walk tuner:
+--   * false (DEFAULT) -> an AIMoveToCommand to the point he is already on. It completes on arrival,
+--              which replaces the standing follow command and leaves him idle. The default purely
+--              because it is PROVEN on a follower-role puppet on this build.
+--   * true  -> AIHoldPositionCommand, which just holds the command slot for `duration`. Semantically
+--              the RIGHT command (the base game stands roadblock NPCs up with it) but ⚠️ UNVERIFIED on
+--              a FOLLOWER puppet: the dump proves the command and its handler exist, not that the
+--              follower behaviour tree includes that task.
+-- `duration` is short and re-issued on `holdInterval` rather than infinite, so nothing can leave him
+-- frozen. If the hold command errors we fall back to the move-to automatically.
 Config.loiter = {
   enabled     = true,
   stopSpeed   = 0.55,   -- m/s — V at or below this counts as "basically standing"
@@ -725,52 +671,39 @@ Config.blazeCalm = {
   maxHolsterReasserts = 3,     -- re-queue the holster at most this many times (the state we land in can re-draw)
 }
 
--- ---- follower takedown (v1.47, MVP) ---------------------------------------
--- The Heist's "Jackie takes down the second guard while V takes the first" is NOT a cutscene. It is one
--- parameterised AI command issued to Jackie, confirmed in the decompiled scripts:
+-- ---- follower takedown -----------------------------------------------------
+-- The Heist's "Jackie takes down the second guard" is NOT a cutscene. It is one parameterised AI
+-- command, confirmed in the decompiled scripts:
 --
 --   class AIFollowerTakedownCommand extends AIFollowerCommand   -- core/ai/aiCommand.script:761
---     targetRef                      : EntityReference
---     approachBeforeTakedown         : Bool
---     doNotTeleportIfTargetIsVisible : Bool
---     target                         : weak<GameObject>
+--     targetRef, approachBeforeTakedown, doNotTeleportIfTargetIsVisible, target
 --
--- AIFollowerTakedownCommandHandler.Update (ai/Tasks/FollowerTasks.script:146) checks `target` FIRST and only
--- falls back to resolving the quest-authored `targetRef` NodeRef. So from Lua we set `.target` to any live
--- NPC handle and never touch targetRef. The handler then sets the `CombatTarget` behaviour arg and calls
--- NPCPuppet.ChangeHighLevelState(jackie, Stealth) — the follower behaviour tree's takedown subtree plays the
--- real grapple. We never script the animation. (That is why q005 waits on `BaseStatusEffect.Grappled`.)
+-- The handler (ai/Tasks/FollowerTasks.script:146) checks `target` FIRST and only falls back to the
+-- quest-authored `targetRef`, so from Lua we set `.target` to a live NPC handle and never touch
+-- targetRef. It then sets the CombatTarget behaviour arg and calls ChangeHighLevelState(Stealth) — the
+-- follower tree's takedown subtree plays the real grapple. We never script the animation.
 --
--- ⚠️ PREREQUISITE: the takedown task only EXISTS inside the Follower role's behaviour tree. Jackie must be a
--- genuine player companion (AI role Follower + FriendlyTarget = player) — exactly what AMM's companion
--- promotion sets, and what jlCompanionCheck() verifies. Same prerequisite as the enemy-perception immunity.
+-- ⚠️ PREREQUISITE: the takedown task only EXISTS inside the Follower role's behaviour tree. He must be
+-- a genuine player companion (AI role Follower + FriendlyTarget = player), which jlCompanionCheck()
+-- verifies. Same prerequisite as the enemy-perception immunity.
+-- ⚠️ NOVEL: no CET mod anywhere is known to construct this command. It is RTTI-registered and the send
+-- route is the SendCommand we already use, so it *should* work — but it is UNPROVEN in Lua. Hence
+-- `auto = false`: the manual look-at test button only, until it is confirmed in game.
+-- The only target gates in the handler are IsActive(target) and not IsBeingGrappled(target) — there is
+-- NO "must be unaware" check in script, but the grapple that plays is a stealth takedown, so an alerted
+-- target may fall through to normal combat. Test on an unaware guard first.
 --
--- ⚠️ NOVEL: no CET mod anywhere is known to construct this command. The class is RTTI-registered and the
--- send route is the same native SendCommand we already use, so it *should* work — but it is UNPROVEN in Lua.
--- Hence `auto = false`: v1.47 ships the manual look-at test button ONLY. Once Antonia confirms in-game that
--- Jackie really grapples the target, the opportunistic trigger gets built on top of this exact call.
+-- ⚠️ TWO THINGS MADE THE FIRST ATTEMPT DO NOTHING:
+--  1. `combatCommand` was left FALSE. The game's own takedown order (player.script:3744) sets it true
+--     before broadcasting. IsCombatCommand() has NO script callers, so the flag is read NATIVELY to
+--     route the command into the combat/takedown subtree; without it the command is accepted and
+--     quietly ignored. (The sibling class AIFollowerCombatCommand exists ONLY to default it true.)
+--  2. WE were cancelling it. followKeepCloseTick re-asserts a follow every Config.follow.interval and
+--     abreastTick a move every 0.3 s, and a takedown needs several seconds to walk over and grapple —
+--     so our own leash clobbered it mid-approach. `holdCommands` freezes those ticks for the duration.
 --
--- The only target gates in the handler are ScriptedPuppet.IsActive(target) and not IsBeingGrappled(target).
--- There is NO "must be unaware" check in script — but the grapple that plays is a stealth takedown, so an
--- alerted target may fall through to normal combat instead. Test on an unaware guard first.
---
--- v1.48 — WHY THE FIRST ATTEMPT DID NOTHING (Antonia: "the NPC survived"). Two independent bugs:
---
---  1. `combatCommand` was left FALSE. The game's own takedown order — PlayerPuppet.OnTakedownOrder
---     (player.script:3744) — builds the very same class and sets `takedownCommand.combatCommand = true`
---     before broadcasting it. `AIFollowerCommand.IsCombatCommand()` has NO script callers, so the flag is
---     read natively by the follower behaviour tree to route the command into its combat/takedown subtree.
---     Without it the command is accepted and then quietly ignored — exactly the observed symptom.
---     (Note the sibling class `AIFollowerCombatCommand` exists ONLY to `default combatCommand = true`.)
---
---  2. WE were cancelling it. followKeepCloseTick re-asserts an AIFollowTargetCommand every
---     `Config.follow.interval` (1.5 s) and abreastTick an AIMoveToCommand every 0.3 s. A takedown needs
---     several seconds to walk over and play the grapple, so our own leash clobbered it mid-approach.
---     `holdCommands` now freezes the follow/abreast/catch-up ticks for the duration.
---
--- The game delivers this through PlayerSquadInterface.BroadcastCommand, but that only fans the command out
--- to each squad member via GiveCommandToSquadMember -> the same SendCommand we already call. Sending it
--- straight to Jackie is equivalent and does not require him to be in V's combat squad.
+-- The game delivers this via PlayerSquadInterface.BroadcastCommand, but that only fans out to the same
+-- SendCommand per member, so sending it straight to Jackie is equivalent and needs no squad.
 Config.takedown = {
   auto = false,             -- v1.47: opportunistic auto-takedown NOT built yet — prove the command first
   approachBeforeTakedown         = true,  -- he walks up to the victim; false = snap straight behind them
@@ -784,40 +717,31 @@ Config.takedown = {
   timeoutSeconds   = 15.0,  -- give up (and hand him back to the leash) if no grapple/kill lands by then
 }
 
--- ---- companion catch-up teleport (v0.66) ----------------------------------
--- Once Jackie is a SETTLED companion (arrived, role applied, not dismissed/expired), if V gets far
--- away — FAST-TRAVEL, a long sprint, or he just got left behind — he teleports back to V's SIDE.
--- This is the immersive "a companion never gets lost" behaviour. It is DELIBERATELY off during the
--- arrival walk-in / dinner / walk-off (those own his movement and must not be yanked). He always lands
--- a few metres to V's side on the navmesh, never on top of her. Set enabled=false to turn it off.
--- NOTE: this only works while his runtime body still EXISTS. A load-screen fast-travel can cull a
--- spawned NPC entirely — that case is now handled by Config.persist (companionPersistTick re-spawns him).
--- ⚠️ v0.79: the AITeleportCommand aiTeleport() uses can only relocate his body while it's still STREAMED
--- and its AI is live. A load-screen fast-travel across DISTRICTS leaves his body stranded/unstreamed far
--- away (his handle still resolves — that's how we read "1994 m" — but the teleport silently no-ops, so the
--- old build logged "teleported to her side" while he stayed put; travelling back never recovered him).
--- So: beyond respawnDistance, OR if a teleport already fired but failed to close the gap (maxTeleTries),
--- catchUpTick DESPAWNS the stranded body and RESPAWNS a fresh Jackie at V (respawnCompanionAtV). This runs
--- 2 s+ AFTER the fast-travel with V fully in-world, so it does NOT hit the persist-on-LOAD crash (Config.persist).
--- ---------------------------------------------------------------------------
--- v1.59 PATIENCE PASS (Antonia: "he is spawning in front of V rather often because of a low tolerance to
--- getting stuck / not reaching his target spot... he should easily be able to be outside of his target zone
--- for 4 s, but if his zone is in reach he should try to sprint to it — just don't fall back to the teleport
--- so much. Or if teleport, do teleport to BEHIND V on a valid spot.")
--- Four things changed, in the order they bite:
---   1. `sustainSeconds` 2 -> 4. This is THE tolerance knob: how long he may be beyond `distance` before we
---      intervene at all.
---   2. `progressGrace` — the real fix. A plain timer can't tell "stuck behind a fence" from "sprinting back
---      and 8 m closer than last check". Now, while the gap is CLOSING by at least `progressEpsilon` per
---      check, the timer is pushed back and he is left to run — up to `maxGraceSeconds`, so a genuinely
---      stuck Jackie still gets rescued. Paired with the trail now SPRINTING him home while he's beyond
---      `distance` (before v1.59 nobody commanded him out there: the trail stood down for catch-up and
---      catch-up only ever teleported, so he coasted on a stale order — which is what made the teleport look
---      necessary so often).
---   3. `maxTeleTries` 1 -> 2. One failed teleport used to escalate straight to a full despawn+respawn, the
---      most visible recovery of the lot.
---   4. WHERE he lands. See `preferBehindWhenStill` + `requirePath` below.
--- ---------------------------------------------------------------------------
+-- ---- companion catch-up teleport -------------------------------------------
+-- Once Jackie is a SETTLED companion, if V gets far away — fast travel, a long sprint, or he was left
+-- behind — he teleports back to V's SIDE, a few metres away on the navmesh, never on top of her. It is
+-- DELIBERATELY off during the arrival walk-in / dinner / walk-off, which own his movement.
+--
+-- ⚠️ AITeleportCommand can only relocate his body while it is still STREAMED and its AI is live. A
+-- load-screen fast travel across DISTRICTS leaves the body stranded and unstreamed: the handle still
+-- resolves (that is how we read "1994 m") but the teleport silently no-ops, so the old build logged
+-- "teleported to her side" while he stayed put, and travelling back never recovered him.
+-- So beyond `respawnDistance`, or after `maxTeleTries` failed teleports, catchUpTick DESPAWNS the
+-- stranded body and RESPAWNS a fresh Jackie at V. That runs 2 s+ after the travel with V fully
+-- in-world, so it does not hit the persist-on-LOAD crash (Config.persist).
+-- ⚠️ If the body was CULLED outright there is nothing to measure — that case is Config.persist's.
+--
+-- PATIENCE. "He spawns in front of V rather often because of a low tolerance to getting stuck." Four
+-- knobs, in the order they bite:
+--   1. `sustainSeconds` — THE tolerance knob: how long he may be beyond `distance` before we act.
+--   2. `progressGrace` — the real fix. A plain timer cannot tell "stuck behind a fence" from
+--      "sprinting back and 8 m closer than last check". While the gap CLOSES by at least
+--      `progressEpsilon` per check the timer is pushed back and he is left to run, up to
+--      `maxGraceSeconds`. Paired with the trail now SPRINTING him home while he is beyond `distance` —
+--      before that nobody commanded him out there, so he coasted on a stale order, which is what made
+--      the teleport look necessary so often.
+--   3. `maxTeleTries` — one failed teleport used to escalate straight to a full despawn+respawn.
+--   4. WHERE he lands: see `preferBehindWhenStill` + `requirePath`.
 Config.catchUp = {
   enabled         = true,
   distance        = 25.0,   -- metres from V beyond which he's considered "left behind"
@@ -890,23 +814,18 @@ Config.respawnSettle = {
   collideSeconds = 4.0,   -- keep his collision OFF this long (so he can't spawn stuck in a wall)
 }
 
--- ---- v1.61 WEAPON MIRROR — Jackie holsters when V does --------------------
--- Antonia: "Jack should reliably put away his guns when V does. After combat (though he had exited combat
--- mode) he still carried them for too long."
---
--- Jackie's weapon state is otherwise driven by AMM's follower combat AI, which re-holsters only on its OWN
--- threat assessment — so after a fight it lags V's holster by a long, immersion-breaking beat. This ticks
--- the intent V actually expresses: if V has put her weapon AWAY and neither of them is in combat, Jackie is
--- told to put his away too, and we keep re-issuing until his hands are actually observed empty.
---
--- "Weapon drawn" for BOTH of them is read the game's own way — GameObject.GetActiveWeapon() over the
--- WeaponRight/WeaponLeft attachment slots (gameObject.script:757), non-nil and not fists => a weapon is out.
---
--- ⚠️ HOLSTER MECHANISM: the lever is AIUnequipCommand (aiCommand.script:383, slotId=AttachmentSlots.Weapon*),
--- the game's documented "put this slot away" command. As with the loiter hold command, the dump proves it
--- EXISTS but not that the follower behaviour tree consumes it — so it is the in-game unknown here. If it
--- proves inert, the fallback to research is an UpperBody "ForceEmptyHands" animation event; it isn't cleanly
--- constructible from CET yet, so it's deliberately NOT shipped as fake code.
+-- ---- WEAPON MIRROR — Jackie holsters when V does ---------------------------
+-- His weapon state is otherwise driven by the follower combat AI, which re-holsters only on its OWN
+-- threat assessment, so after a fight it lags V's holster by a long, immersion-breaking beat. This
+-- ticks the intent V actually expresses: if V has put her weapon away and neither is in combat, he is
+-- told to put his away too, and we re-issue until his hands are observed empty.
+-- "Weapon drawn" for both is read the game's own way — GetActiveWeapon() over the WeaponRight/Left
+-- attachment slots (gameObject.script:757): non-nil and not fists => a weapon is out.
+-- ⚠️ HOLSTER MECHANISM: AIUnequipCommand (aiCommand.script:383), the documented "put this slot away"
+-- command. As with the loiter hold, the dump proves it EXISTS but not that the follower behaviour tree
+-- consumes it — the in-game unknown here. If it proves inert, the fallback to research is an UpperBody
+-- "ForceEmptyHands" animation event; it is not cleanly constructible from CET, so it is deliberately
+-- NOT shipped as fake code.
 Config.weaponMirror = {
   enabled     = true,
   interval    = 0.5,        -- s between holster re-issues while V is away but Jackie still armed
@@ -964,30 +883,22 @@ Config.follow = {
 }
 
 -- ============================================================================
--- EASTER EGG (v1.55) — REVEREND FLASH's refund, in the bar at Rocky Ridge
+-- EASTER EGG — REVEREND FLASH's refund, in the bar at Rocky Ridge
 -- ============================================================================
--- Reverend Flash is a YouTuber who play-tested the mod and, with no fast-travel out there, paid **3,847
--- eddies** of his own to get himself to Rocky Ridge. If he (or anyone) plays it again, the bar beside the
--- garage pays him back TENFOLD — and hands Jackie's Arch back on top.
+-- Reverend Flash play-tested the mod and, with no fast travel out there, paid 3,847 eddies of his own
+-- to get to Rocky Ridge. The bar beside the garage pays him back TENFOLD, and hands Jackie's Arch back.
+-- WHERE: behind the bar, in the BD shack next to the gas station (where Jackie's note is found) —
+-- ~42 m south-west of the note and 1.7 m higher. Fires on PROXIMITY, once per save, independent of the
+-- questline. Two separately-latched triggers on the same spot, so collecting the money does not spend
+-- the hidden thank-you.
 --
--- WHERE (Antonia, captured in-game): **behind the bar, in the BD shack next to the gas station** — the gas
--- station being where Jackie's note is found. It sits ~42 m south-west of the note and 1.7 m higher.
---
--- Fires on PROXIMITY, once per save, and is INDEPENDENT of the questline (it works at any stage). Two
--- separately-latched triggers on the same spot, so collecting the money doesn't spend the hidden thank-you.
---
--- ⚠️ WHY `radius` IS SMALL (5 m, not the 20 m first drafted). The payout is 38,470 eddies — a serious sum.
--- At 20 m the zone covered the whole shack, so ANY player poking around Rocky Ridge (which the questline
--- sends them to) would have collected it, and "the mod hands you 38k eddies" is the kind of thing Nexus
--- reviewers call game-breaking. Antonia's answer: keep it exactly where she stood — BEHIND the bar — because
--- "the other mod players will never go to that exact spot". 5 m honours that: you have to actually walk
--- behind the bar, but you don't have to stand on a precise pixel. Reverend Flash gets his refund; a passer-by
--- doesn't trip over it.
---
--- ⚠️ WHAT IT ACTUALLY GIVES: **eddies straight into your inventory** (`Items.money`) — NOT a lootable
--- world item and NOT a shard you pick up. A physical money shard means spawning a world entity and wiring
--- its loot table, which is fragile from CET; Antonia okayed cash if the shard wasn't easy. So it's cash:
--- instant, safe, and impossible to miss or lose.
+-- ⚠️ `radius` IS SMALL (5 m, not the 20 m first drafted). The payout is 38,470 eddies. At 20 m the zone
+-- covered the whole shack, so any player poking around Rocky Ridge — which the questline sends them to
+-- — would have collected it, and "the mod hands you 38k eddies" is what reviewers call game-breaking.
+-- 5 m means you have to actually walk behind the bar, without standing on a precise pixel.
+-- ⚠️ IT GIVES EDDIES STRAIGHT INTO THE INVENTORY (`Items.money`) — not a lootable world item and not a
+-- shard. A physical money shard means spawning a world entity and wiring its loot table, which is
+-- fragile from CET.
 Config.revflash = {
   enabled      = true,
   pos          = { 2548.57, -31.076, 82.609 },   -- behind the bar, in the BD shack by the gas station
@@ -1039,33 +950,26 @@ Config.followDistanceDefault = 1.5   -- m — the slider's default + reset value
 Config.followDistanceMin     = 1.2   -- m — slider floor
 Config.followDistanceMax     = 8.0   -- m — slider ceiling
 
--- ---- ask Jackie to dinner / a date (v0.41 - restaurant walk) -------------
--- While Jackie is your COMPANION, the talk menu offers a dinner invite. V then picks a specific
--- restaurant; the mod sets a MAP WAYPOINT there (white dot) + a blue on-screen OBJECTIVE, keeps
--- Jackie following, and when V ARRIVES (<seatTriggerRadius) Jackie walks to HIS seat, plays the
--- sit anim, waits, says one line, and the companion clock FULLY RESETS (once per 24 in-game hours).
--- When V walks off (>getUpRadius) Jackie gets up, says a line, and re-follows. He stays our
--- companion (never despawns) the whole time. No quest/WolvenKit - a Lua state machine (dinnerTick).
+-- ---- ask Jackie to dinner / a date -----------------------------------------
+-- While he is your COMPANION the talk menu offers a dinner invite. V picks a restaurant; the mod sets a
+-- MAP WAYPOINT (white dot) + a blue on-screen objective, keeps him following, and when V ARRIVES
+-- (< seatTriggerRadius) he walks to HIS seat, sits, waits, says one line, and the companion clock FULLY
+-- RESETS (once per 24 in-game hours). When V walks off (> getUpRadius) he gets up, says a line and
+-- re-follows. He never despawns. No quest/WolvenKit — a Lua state machine (dinnerTick).
 -- ---------------------------------------------------------------------------
--- LETS_GO — the way V ends a meal (v1.77). Replaces the written "Let's get moving." on every
--- seatedTree exit row, in Jackie's seatedTree.
+-- LETS_GO — the way V ends a meal, in his seatedTree. This row does more than any other in the dinner:
+-- it stands them up, re-arms their clock and puts them back on follow (`action = "dinner_leave"`). It
+-- was the only unvoiced beat left in an otherwise spoken outing, and V has recorded exactly this line.
 --
--- This row does more than any other in the dinner: it is the one that stands them up, re-arms their
--- clock and puts them back on follow (`action = "dinner_leave"` on the node it leads to). It was the
--- only unvoiced beat left in an otherwise spoken outing, and V has recorded exactly this line.
---
--- Three takes rather than one because a player eats with a companion often, and hearing the same
--- 1.2 seconds every time is what makes a pool feel like a menu. Two are the same words in different
--- reads; the third is different words, which is why it carries its own `text` — the RECORDING owns
--- the words, always (the "recording owns the words" rule in CLAUDE.md).
---
--- Verified against the local install (tools/v_index.py): all three are STANDALONE — sayable on any
--- day of the story — and name nobody. The second take is filed against Rogue in CDPR's data, which
--- is bookkeeping about the scene it was recorded for, not something audible in two words.
---
--- ⚠️ Gendered, one String ID per line with a male and a female take, and a female V
--- only gets hers through the voiceover-map fix (../NCLives/docs/research/vo_gender.md). Re-run
--- `python3 tools/gen_vomap.py` after touching this table.
+-- Three takes rather than one because a player eats with a companion often, and hearing the same 1.2
+-- seconds every time is what makes a pool feel like a menu. Two are the same words in different reads;
+-- the third is different words, which is why it carries its own `text` — the RECORDING owns the words,
+-- always (CLAUDE.md).
+-- Verified against the local install (tools/v_index.py): all three are STANDALONE and name nobody. The
+-- second take is filed against Rogue in CDPR's data, which is bookkeeping about the scene it was
+-- recorded for, not something audible in two words.
+-- ⚠️ Gendered — one String ID per line with a male and a female take, and a female V only gets hers
+-- through the voiceover-map fix. Re-run `python3 tools/gen_vomap.py` after touching this table.
 JL_LETS_GO = {
   { text = "Let's go.",  sfx = "jl_1624186312695238656" },  -- 1.22s — neutral, clean
   { text = "Let's go.",  sfx = "jl_1750374823966236672" },  -- 1.25s — same words, different read
@@ -1252,43 +1156,29 @@ Config.date = {
 }
 
 -- ============================================================================
--- GENDERED VOICED LINES — v1.69. THE MAP THAT USED TO LIVE HERE WAS THE WRONG AXIS.
+-- GENDERED VOICED LINES — the map that used to live here was THE WRONG AXIS.
 -- ============================================================================
--- Antonia, 2026-08-13: *"he does not apply the correct male/female V versions, the subtitles now
--- say chica (husbando mode) but his voice says mano often."* She was hearing a real bug, and the
--- cause was this table.
+-- ⚠️ Some Jackie lines were recorded TWICE under ONE String ID — one take addressed to a female V
+-- ("chica"), one to a male V ("mano") — and the game picks the take from V's BODY GENDER, on its own,
+-- before we get a say. Husbando/Hermano is a RELATIONSHIP track the player chooses and has never had
+-- any influence on which recording plays. So the old `Config.hermanoLines` (keyed on the Hermano
+-- switch) gave a male-bodied V in Husbando mode the male AUDIO with the female SUBTITLE — the reported
+-- bug — and no amount of editing replacement text here could have fixed it.
+-- ⚠️ Those `sfx` overrides could not play at all either: they pointed at `jackie_*_m_*` WEM STEMS, and
+-- a stem is not a String ID. vo.lua's `lineId` only accepts `jl_<digits>`, so the native path refused
+-- them and the male "mirror" lines were the only lines in the mod that never spoke.
 --
--- WHAT WE HAD WRONG. `Config.hermanoLines` mapped a handful of female-coded clips to male
--- replacements and swapped them in when the mod's HERMANO switch was on. Two things are wrong
--- with that, and they compound:
+-- WHAT REPLACES IT: `vo_gender.lua` — generated by tools/gen_vo_gender.py out of the game's own
+-- subtitle table — holds, per String ID, the exact words of BOTH takes, and speakJackieLine shows the
+-- one matching V's body. The audio is left alone, because the game was already getting it right.
 --
---   1. THE SWITCH IS NOT THE AXIS. Some Jackie lines were recorded TWICE under ONE String ID —
---      one take addressed to a female V ("chica"), one to a male V ("mano") — and the game picks
---      the take from V's BODY GENDER, on its own, before we get a say (docs/research/
---      native_vo_dialogline.md, Q6). Husbando/Hermano is a RELATIONSHIP track the player chooses;
---      it has never had any influence on which recording plays. So a male-bodied V in Husbando
---      mode got the male AUDIO with the female SUBTITLE — exactly what Antonia heard — and no
---      amount of editing the replacement text here could have fixed it.
---
---   2. THE `sfx` OVERRIDES COULD NOT PLAY AT ALL. They pointed at `jackie_*_m_*` WEM STEMS, and a
---      stem is not a String ID: vo.lua's `lineId` only accepts `jl_<digits>`, so the native path
---      refused them and the male "mirror" lines were the only lines in the whole mod that never
---      spoke. They fell through to a grunt.
---
--- WHAT REPLACES IT. `vo_gender.lua` — generated by `tools/gen_vo_gender.py` straight out of the
--- game's own subtitle table — holds, per String ID, the exact words of BOTH takes. speakJackieLine
--- reads V's body gender and shows the matching one. The audio is left alone, because the game was
--- already getting it right. Same id, matching subtitle, nothing to verify by ear.
---
---   ⚠️ Do not reintroduce an sfx-keyed override table. Keying on a clip means keying on a VOICED
---   line, and a voiced line is precisely the case where the game, not the mod, chooses the words.
---   Inline `m = {...}` is still correct and still supported — for TEXT-ONLY lines, which have no
---   recording and so are genuinely ours to word. That is the whole rule: if it has an `sfx`, the
---   game owns the words; if it doesn't, we do.
---
+-- ⚠️ THE RULE: if a line has an `sfx`, the GAME owns the words; if it doesn't, we do. So never
+-- reintroduce an sfx-keyed override table — keying on a clip means keying on a VOICED line, which is
+-- exactly the case where the mod does not choose the words. Inline `m = {...}` is still correct for
+-- TEXT-ONLY lines.
 -- Regenerate after adding voiced lines:  python3 tools/gen_vo_gender.py
--- pcall'd exactly like vo.lua loads vo_durations: a missing generated file must degrade to
--- "show the authored subtitle", never to a mod that won't load.
+-- pcall'd exactly like vo_durations: a missing generated file must degrade to "show the authored
+-- subtitle", never to a mod that will not load.
 Config.voGender = nil
 pcall(function() Config.voGender = require("vo_gender") end)
 
@@ -1333,20 +1223,16 @@ Config.dialogueTree = {
   },
 }
 
--- ---- location-based talk trees (v0.32) -----------------------------------
--- When you press F on Jackie, the mod picks the tree for WHERE HE CURRENTLY IS
--- (his idle-spawn location key). Same node format as Config.dialogueTree above.
--- Keys must match Config.locations keys (noodle/coyote/afterlife/misty/...).
+-- ---- location-based talk trees ---------------------------------------------
+-- Pressing F on Jackie picks the tree for WHERE HE CURRENTLY IS (his idle-spawn location key). Same
+-- node format as Config.dialogueTree above; keys must match Config.locations keys.
 --
--- `everywhere` is the BACKUP: used whenever he's NOT at one of these named places
--- (e.g. summoned/following you, or idling somewhere with no tree of its own). It is
--- deliberately SHORT — 2 choices, short voice lines — and carries `cooldownSeconds`:
--- once you finish it, it's marked DONE and goes on that cooldown. Press F again within
--- the cooldown and Jackie just GRUNTS (no dialogue). After it expires, the short
--- exchange is available again. Named-location trees have NO cooldown (repeatable).
---
--- jackiePool = pick one of these at random for variety (real voice + subtitle).
--- Choices are SILENT V text, so they can say anything location-flavored for free.
+-- `everywhere` is the BACKUP: used whenever he is NOT at one of these named places (summoned,
+-- following you, or idling somewhere with no tree). It is deliberately SHORT and carries
+-- `cooldownSeconds` — finish it and it is marked DONE, and pressing F again within the cooldown gets
+-- a GRUNT. Named-location trees have NO cooldown (repeatable).
+-- jackiePool = pick one at random for variety (real voice + subtitle). Choices are SILENT V text, so
+-- they can say anything location-flavoured for free.
 Config.locationDialogue = {
 
   -- NOODLE BAR (daytime, casual, food) ---------------------------------------
@@ -1555,31 +1441,27 @@ Config.locationDialogue = {
     },
   },
 
-  -- EVERYWHERE (BACKUP: short 2-option exchange; DONE -> 60s grunt-only cooldown)
+  -- EVERYWHERE (BACKUP: short 2-option exchange; DONE -> 60 s grunt-only cooldown)
   -- ==========================================================================
-  -- v1.65 — THE HUB. Jackie opens up over time (see Config.familiarity).
-  -- ==========================================================================
-  -- This is the tree V sees most: it's the backup used whenever he isn't at a named location, which
-  -- means it's every conversation with him as a companion. It used to be one greeting and a send-off.
+  -- THE HUB. Jackie opens up over time (see Config.familiarity). This is the tree V sees most: the
+  -- backup used whenever he isn't at a named location, i.e. every conversation with him as a companion.
   --
   -- HOW TO READ IT:
   --   `minFam = N`   on a CHOICE — the topic doesn't exist until he's opened up to tier N.
   --   `minFam = N`   on a jackiePool LINE — the SAME question, answered at more length once he has.
-  --                  Highest earned tier wins (pickPoolLine), so growth reads as growth, not randomness.
+  --                  Highest earned tier wins, so growth reads as growth, not randomness.
   --   `pin = true`   — always shown, never sampled. The way OUT must be pinned.
   --   `pick = {a,b}` — offer this many topics per draw, re-rolled every hubRefresh seconds.
   --   `once = "k"`   — one visit per conversation, so the hub doesn't repeat itself in one sitting.
   --   `fam = -N`     — V said the wrong thing.
   --   `m = {...}`    — the Hermano (male-V) wording; base text is Husbando.
   --
-  -- ⚠️ VOICE: `muteFallback = true` on the tree. Jackie's real clips only exist for his shipped game
-  -- lines, so those keep their `sfx` and play for real; everything written new here is SUBTITLE-ONLY and
-  -- must NOT drop a stray grunt under it. Do not add `sfx` to a line unless the id is really in the bank
-  -- (tools/rebuild_bank_yml.py) — a missing wav makes Audioware reject the WHOLE bank and he goes silent.
-  --
+  -- ⚠️ VOICE: `muteFallback = true` on the tree. His real clips only exist for his shipped game lines,
+  -- so those keep their `sfx`; everything written new here is SUBTITLE-ONLY and must NOT drop a stray
+  -- grunt under it. Never add `sfx` unless the id is really in the bank (tools/rebuild_bank_yml.py) — a
+  -- missing wav makes Audioware reject the WHOLE bank and he goes silent.
   -- ⚠️ CHARACTER: he chose OUT (docs/DESIGN.md). Near-death scared him straight, the injury is real, and
-  -- Mama won't have it. He is not itching to get back on a gig, and he must never be written as pining.
-  -- The arc across tiers is NOT "does he like V" — it's "will he stop protecting V from how bad it was".
+  -- Mama won't have it. He is not itching to get back on a gig, and must never be written as pining.
   everywhere = {
     start = "open",
     muteFallback = true,    -- unvoiced lines are silent subtitles, not a grunt (see above)
@@ -1811,30 +1693,27 @@ Config.locationDialogue = {
       },
 
       -- ======================================================================
-      -- SMALL TALK (v1.69) — eleven topics, and most of them Jackie SPEAKS.
+      -- SMALL TALK — eleven topics, and most of them Jackie SPEAKS.
       -- ======================================================================
-      -- Antonia: *"there's not much small talk rn, can you author something from the existing
-      -- library?"* — and "from the library" is the important half. Everything above this line is
-      -- written text, which is honest but silent (`muteFallback`), so a long chat with him was a
-      -- long chat with subtitles. Every `sfx` below is a real CDPR recording, found in the local
-      -- install with NCLives' tools/build_line_library.py and quoted VERBATIM, so the subtitle is
-      -- the audio. That is the rule for a voiced line: we choose WHICH line he says, never the
-      -- words. Where a topic needs depth we still write it — but written lines sit at the higher
-      -- tiers, so the first answer to a new question is nearly always his real voice.
+      -- Everything above this line is written text, which is honest but silent (`muteFallback`), so a
+      -- long chat with him was a long chat with subtitles. Every `sfx` below is a real CDPR recording
+      -- found in the local install and quoted VERBATIM, so the subtitle IS the audio. That is the rule
+      -- for a voiced line: we choose WHICH line he says, never the words. Written lines still exist,
+      -- but they sit at the higher tiers, so the first answer to a new question is nearly always his
+      -- real voice.
       --
       -- HOW TO ADD MORE. Build the library once (~100 s, no game running, Mac is fine):
       --     python3 ../NCLives/tools/build_line_library.py build --persona jackie
-      -- then open vo_library/jackie.html and search it. Take the `id` as `sfx = "jl_<id>"` and
-      -- the text exactly as shown. Afterwards run BOTH generators, or he'll speak with the wrong
-      -- pacing and the wrong subtitle for a male V:
+      -- then search vo_library/jackie.html. Take the `id` as `sfx = "jl_<id>"` and the text exactly as
+      -- shown. Afterwards run BOTH generators, or he speaks with the wrong pacing and the wrong
+      -- subtitle for a male V:
       --     python3 tools/gen_vo_durations.py && python3 tools/gen_vo_gender.py
       --
-      -- ⚠️ CASTING, not writing. A line has to work with NO scene around it, and it has to be the
-      -- Jackie of DESIGN.md — the one who chose OUT. Half the good-sounding lines in the library
-      -- are him pitching a gig in 2077, and putting those in his mouth here would quietly rewrite
-      -- the character back into the man who died. Rejected on those grounds, for the record:
-      -- "We got a new job lined up", "Gonna be up to our necks in juicy contracts", "Then maybe
-      -- we'll make some heavy money". Anything that reads as itching to get back in is wrong.
+      -- ⚠️ CASTING, not writing. A line must work with NO scene around it, and it must be the Jackie of
+      -- DESIGN.md — the one who chose OUT. Half the good-sounding lines in the library are him pitching
+      -- a gig in 2077, and those would quietly rewrite the character back into the man who died.
+      -- Rejected on those grounds, for the record: "We got a new job lined up", "Gonna be up to our
+      -- necks in juicy contracts", "Then maybe we'll make some heavy money".
 
       -- ---- TIER 0 — he'd tell anyone ---------------------------------------
       -- He works a bar now. Asking what he's pouring is the single most in-character question in
@@ -1986,17 +1865,14 @@ Config.call = {
   ringEvent     = "ono_jackie_phone",  -- extra WWise ring SFX layered on ("" = silent)
   spawnDelay    = 5.0,   -- seconds after the call ends before Jackie spawns (v0.55: 2x back to 5.0)
   -- ============================================================================
-  -- ARRIVAL METHOD — v0.50: TWO modes only (down from 3). Cycled live in the CET window.
-  --   "foot" = ON-FOOT (the default). DES-spawn Jackie DIRECTLY at `Config.vehicle.spawnDistance`
-  --            (50 m), SPRINT in, swap to a WALK for the last `Config.vehicle.sprintToWalk` m,
-  --            promote to COMPANION at `companionDistance`, then he holds `followDistance` + stops.
-  --   "bike" = his Arch + Jackie spawn at `Config.vehicle.bikeSpawnDistance` (60 m), he mounts, rides in,
-  --            slows at `slowDownDistance` (30 m), PARKS on the road + dismounts at `dismountDistance`
-  --            (20 m), then WALKS the rest to companion.
-  -- BOTH go through vehicleArrivalTick + the shared promoteToCompanion. v0.50 DELETED the old
-  -- "safe" AMM-spawn-near-V + hide + teleport walk-in entirely — DES needs no invisibility hack
-  -- (Jackie spawns out at distance, never pops near V), and the slow all-the-way "walk" mode is gone
-  -- (too slow). This is the big complexity collapse: one spawn backend (DES), one arrival tail.
+  -- ARRIVAL METHOD — two modes, cycled live in the CET window.
+  --   "foot" (default) = spawn him DIRECTLY at Config.vehicle.spawnDistance, SPRINT in, swap to a WALK
+  --            for the last `sprintToWalk` m, promote to COMPANION at `companionDistance`, then he
+  --            holds `followDistance`.
+  --   "bike" = his Arch + Jackie spawn at `bikeSpawnDistance`, he mounts, rides in, slows at
+  --            `slowDownDistance`, PARKS and dismounts at `dismountDistance`, then walks the rest.
+  -- Both go through vehicleArrivalTick + the shared promoteToCompanion. The old "safe" spawn-near-V +
+  -- hide + teleport walk-in is gone: spawning out at distance needs no invisibility hack.
   -- ============================================================================
   arrivalMethod        = "bike",   -- "foot" | "bike" (default = bike, per Antonia)
   vehicleSpawnDelay    = 2.0,   -- seconds after the call ends before the foot / bike Jackie spawns (back to 2.0 per Antonia)
@@ -2131,21 +2007,17 @@ Config.vehicle = {
   fallbackDistance = 40.0,   -- metres from V the fresh Jackie spawns at, then sprints/walks in
 }
 
--- V's hang-up sign-offs. At the end of any call strand one of these is shown as V's last line
--- (text only — V has no voice, so these are free to add) then the call hangs up. Add freely.
--- v1.70 — VOICED. These were twelve written sign-offs; V has a large farewell bank of her own,
--- so every one of them is now a real recording. An entry may still be a bare STRING (pickFarewell
--- accepts both), which is what keeps this list easy to extend when no recording fits.
+-- V's hang-up sign-offs: at the end of any call strand one of these is shown as V's last line, then
+-- the call hangs up. An entry may be a bare STRING (pickFarewell accepts both), which keeps the list
+-- easy to extend when no recording fits.
 --
--- ⚠️ The hang-up is the LAST thing the player hears on a call, which makes it the single most
--- noticeable line in the mod — a silent subtitle here read as the call being cut off. It is also
--- the easiest bank to fill, because a sign-off is by definition standalone: it names nobody,
--- points at nothing, and works on any day of the story. Rebuild it any time with
+-- ⚠️ The hang-up is the LAST thing the player hears on a call, which makes it the most noticeable line
+-- in the mod — a silent subtitle here reads as the call being cut off. It is also the easiest bank to
+-- fill, because a sign-off is by definition standalone. Rebuild it any time with
 --     python3 tools/v_index.py find --intent farewell --to jackie,- --standalone --max-secs 3
---
--- "See ya in the major leagues, Jack." and "G'bye, old friend." are the two spoken TO Jackie.
--- The second is deliberately rare-feeling material — it is what V says to him at his worst
--- moment — so it earns its place here precisely because in this mod it is no longer goodbye.
+-- "See ya in the major leagues, Jack." and "G'bye, old friend." are the two spoken TO Jackie; the
+-- second is what V says to him at his worst moment, which is why it earns its place here — in this
+-- mod it is no longer goodbye.
 Config.callFarewells = {
   { text = "Later.",                             sfx = "jl_1949070128143765504" },
   { text = "Talk later.",                        sfx = "jl_1956127435714916352" },
@@ -2196,19 +2068,18 @@ Config.nativeCall = {
                                    --   transparent window) -> our branching voice convo runs over it ->
                                    --   random V farewell -> hang up (EndCall). false = text "Calling..." only.
 
-  -- v1.33 "temporarily unavailable" FIX (live-tunable in the CET "Call fix" section; these are the
-  -- persisted DEFAULTS). When the player dials Jackie, the game rings the DEAD contact (jackie_dead),
-  -- which flashes the "number temporarily unavailable" card before we take over. hijackMode picks how
-  -- we kill it:
+  -- "temporarily unavailable" FIX (live-tunable in the CET "Call fix" section; these are the persisted
+  -- DEFAULTS). Dialling Jackie rings the DEAD contact (jackie_dead), which flashes the "number
+  -- temporarily unavailable" card before we take over. hijackMode picks how we kill it:
   --   "quick"   = let the dead ring play `hijackHangupDelay` s, then EndCall -> connect (short card).
-  --   "instant" = EndCall the dead ring immediately, then connect — no ring, no unavailable card.
-  --   "alive"   = EndCall the dead card, ring the ALIVE `jackie` avatar instead, then connect. <- DEFAULT.
-  --   "vanilla" = don't hijack (A/B baseline — you hear the game's own call).
-  -- v1.37 (Antonia in-game test): "alive" is the WINNER — RING/CONNECT on the live `jackie` contact
-  -- shows the see-through holo and NEVER triggers the "temporarily unavailable" card (only the DEAD
-  -- contact does). The dead/disconnected call is INTENTIONALLY kept for early game: the hijack only
-  -- engages once the retrieval quest reaches the shard-read stage (AWAITING), so before that V really
-  -- does get "number disconnected" (immersive — Jackie's still believed dead). See setupCallHijack.
+  --   "instant" = EndCall the dead ring immediately, then connect — no ring, no card.
+  --   "alive"   = EndCall the dead card, ring the ALIVE `jackie` avatar instead, then connect. DEFAULT,
+  --               and the in-game winner: RING/CONNECT on the live contact shows the see-through holo
+  --               and NEVER triggers the unavailable card (only the DEAD contact does).
+  --   "vanilla" = don't hijack (A/B baseline).
+  -- ⚠️ The dead/disconnected call is INTENTIONALLY kept for early game: the hijack only engages once the
+  -- retrieval quest reaches the shard-read stage, so before that V really does get "number
+  -- disconnected" — immersive, because Jackie is still believed dead. See setupCallHijack.
   hijackMode        = "alive",
   hijackHangupDelay = 0.75,           -- seconds (quick mode): how long the dead ring plays before connect
   hijackOurRingSfx  = false,          -- quick/instant: ALSO play our ring SFX? false avoids "rings twice"
@@ -2333,25 +2204,23 @@ Config.cruise = {
   reissue        = 5.0,     -- re-issue the follow command every N seconds (keeps him locked on)
 }
 
--- ---- BIKE PHYSICS / ANTI-CRASH (v1.41) -------------------------------------
--- "Jackie crashes a lot." Users assume the fix is turning the bike's collisions off. It isn't, and it
--- can't be: the real collider is `entColliderComponent` (branch entIPlacedComponent), which exposes NO
--- scriptable disable. The only runtime `ToggleCollision(Bool)` lives on `entPhysicalMeshComponent`, a
--- VISUAL mesh sub-component that a vehicle chassis does not inherit from. Verified against the CDPR
--- script decompile; see docs/research/bike_cruise_research.md §3.
+-- ---- BIKE PHYSICS / ANTI-CRASH ---------------------------------------------
+-- "Jackie crashes a lot." ⚠️ The fix is NOT turning the bike's collisions off, and it cannot be: the
+-- real collider is `entColliderComponent`, which exposes NO scriptable disable. The only runtime
+-- ToggleCollision(Bool) lives on `entPhysicalMeshComponent`, a VISUAL sub-component a vehicle chassis
+-- does not inherit from. (docs/research/bike_cruise_research.md §3.)
 --
--- The ACTUAL cause is a dedicated engine mechanic, not damage. `vehicleComponent.script`'s
--- `HandleBikeCollisionReaction()` does:
+-- The ACTUAL cause is a dedicated engine mechanic, not damage. vehicleComponent.script's
+-- HandleBikeCollisionReaction():
 --     knockOffForce = vehicleDataPackage.KnockOffForce() * aiBikeKnockOffModifier   -- NPC drivers only
 --     if impactVelocityChange > knockOffForce or IsBeingDragged() then
 --         ForceRagdollEvent -> UnmountFromVehicle('Bumped') -> KnockOverBikeEvent -> AIEvent 'NoDriver'
--- i.e. any bump over a force threshold RAGDOLLS the NPC off his bike. Two consequences:
---   * That code path contains NO god-mode check, so invulnerability alone does NOT stop the toppling.
---   * The threshold is a plain TweakDB float we can raise -> he stops being thrown off.
---
--- `aiBikeKnockOffModifier` is GLOBAL (it governs every NPC bike rider in the city), so we only raise it
--- while Jackie is actually on a bike and restore the original the moment he's off. Ref-counted, because
--- the arrival ride-in and the cruise-follow can both want it.
+-- Any bump over a force threshold RAGDOLLS the NPC off. Two consequences: that path contains NO
+-- god-mode check, so invulnerability alone does not stop the toppling; and the threshold is a plain
+-- TweakDB float we can raise.
+-- ⚠️ `aiBikeKnockOffModifier` is GLOBAL (every NPC bike rider in the city), so we raise it only while
+-- Jackie is actually on a bike and restore the original the moment he is off. Ref-counted, because the
+-- arrival ride-in and the cruise-follow can both want it.
 Config.bikePhysics = {
   enabled = true,
 
@@ -2770,31 +2639,26 @@ Config.wander = {
   faceYawOnArrive = true,     -- snap onto the waypoint's exact spot + yaw on arrival (lean/sit framing)
 }
 
--- ---- FIRST DINNER: the seating card (v1.74) --------------------------------
--- Antonia, 2026-08-17: the first time a player walks a companion to a dinner venue and reaches the
--- marker, tell them seating is a work in progress and hand them the manual control.
+-- ---- FIRST DINNER: the seating card ----------------------------------------
+-- The first time a player walks a companion to a dinner venue and reaches the marker, tell them
+-- seating is a work in progress and hand them the manual control.
 --
--- WHY IT EXISTS. `Config.poses.enabled` ships false (see that block), so a companion STANDS at the
--- table. Without a word of explanation that reads as a missing feature — the player booked a dinner
--- and nobody sat down. One card turns "this mod is broken" into "this bit isn't finished, and here
--- is the knob", which is a completely different experience of the same behaviour.
---
--- WHEN IT FIRES. On the walking -> seating transition in dinnerTick — the moment V reaches the seat
--- marker, which is exactly when the player is looking at the table wondering what happens next.
--- Not on the invite, not on arrival at the district: at the marker.
---
--- HOW OFTEN. ONCE, ever. Two gates, deliberately different lifetimes, copied from NCLives' Config.welcome:
+-- WHY. Config.poses.enabled ships false, so a companion STANDS at the table. Without a word of
+-- explanation that reads as a missing feature — the player booked a dinner and nobody sat down. One
+-- card turns "this mod is broken" into "this bit isn't finished, and here is the knob".
+-- WHEN. On the walking -> seating transition in dinnerTick — the moment V reaches the seat marker and
+-- is looking at the table wondering what happens next. Not on the invite, not on arrival at the district.
+-- HOW OFTEN. ONCE, ever, via two gates with deliberately different lifetimes:
 --   * `fact` is a numeric quest fact -> lives in the SAVE, so it survives reloads. ⚠️ The NAME is
 --     per-mod on purpose: quest facts are SHARED game state, so a player running JackieLives and
---     NCLives together must be taught by each mod once, not taught once and silently skipped
---     by the other;
---   * `JL.seatTipDone` is in jl_settings.txt -> lives on the INSTALL, so a second playthrough
---     doesn't re-teach something the player already knows.
--- ⚠️ The card itself is rendered by `Retrieval.showTip` — the SAME lower-left popup Vik's
--- message and Jackie's note use. Do not grow a second popup implementation for it.
--- The settings flag is written the instant the card fires, not on the next settings change — the
+--     NCLives together must be taught by each mod once, not taught once and silently skipped by the other;
+--   * `JL.seatTipDone` is in jl_settings.txt -> lives on the INSTALL, so a second playthrough does not
+--     re-teach something the player already knows.
+-- ⚠️ Rendered by `Retrieval.showTip` — the SAME lower-left popup Vik's message and Jackie's note use.
+-- Do not grow a second popup implementation for it.
+-- ⚠️ The settings flag is written the instant the card fires, not on the next settings change: the
 -- welcome card shipped that bug once (a "shown" record that only reached disk if the player later
--- saved the game), and this is the same shape, so it gets the same fix.
+-- saved the game).
 Config.seatTip = {
   fact  = "jackielives_seat_tip",
   -- v1.8.2 - SHORT. Antonia, 2026-08-17: *"the tutorial notice about seat tuning should be MUCH
@@ -2818,35 +2682,29 @@ Config.seatTip = {
   radius = 3.0,
 }
 
--- ---- sit / lean poses (v0.39) ---------------------------------------------
--- Real sit/lean ANIMATIONS, via AMM's own workspot system (the exact path AMM's Poses tab uses:
--- Game.GetWorkspotSystem():PlayInDeviceSimple + SendJumpToAnimEnt). When Jackie dwells at a
--- waypoint whose pose is "sit" or "lean", we call AMM.Poses:PlayAnimationOnTarget(target, anim)
--- with the records below; when he leaves the spot we StopInDevice so he gets up. All guarded —
--- if AMM's Poses module isn't reachable it silently falls back to just standing on the spot.
--- anim names are AMM `workspots` rows (rig "Man Average", comp "amm_workspot_base"). Swap the
--- `name` for any other from AMM's Poses tab to change the look (e.g. sit_chair_table__2h_cup__02).
--- IMPORTANT: AMM's sit/lean are FREESTANDING anims (invisible chair) rooted at the waypoint spot —
--- they do NOT snap onto a real chair. So (a) we DEFER the play by `delay` s so the snap-teleport
--- lands first (else the pose spawns where he WAS = floating), and (b) you align him to a real chair
--- by tuning the waypoint: re-capture standing where his SEATED body goes, and/or set a per-waypoint
--- `poseOffset = { x=, y=, z= }` (world-space metres) to nudge him onto the seat (z down = lower him).
--- A waypoint can override the anim with `poseAnim = "<name>"` — e.g. most of Jackie's chairs are
--- BARSTOOLS (default below), but Misty's is a deep low chair, so that waypoint sets the low-chair anim.
+-- ---- sit / lean poses ------------------------------------------------------
+-- Real sit/lean ANIMATIONS via the workspot system (the path AMM's Poses tab uses:
+-- PlayInDeviceSimple + SendJumpToAnimEnt). When Jackie dwells at a waypoint whose pose is "sit" or
+-- "lean" we play the records below, and StopInDevice when he leaves. All guarded: if AMM's Poses
+-- module is unreachable it silently falls back to standing. anim names are AMM `workspots` rows (rig
+-- "Man Average"); a waypoint can override with `poseAnim = "<name>"` — most of his chairs are
+-- BARSTOOLS, but Misty's is a deep low chair.
 --
--- ⚠️ v1.77 — `enabled` SHIPS FALSE. AUTOMATIC SITTING IS OFF.
--- Antonia, 2026-08-17: *"sitting at dinner venues is not tuned (aka they sit in the air)"*. That is
--- the freestanding-anim problem above, and it is not a bug we can fix from Lua: the pose is rooted at
--- whatever point we drop the NPC on, so landing it ON a real chair means tuning that venue's seat to
--- the centimetre, per venue, per seat, per chair model. Until every venue is tuned, an NPC standing
--- at the table reads as normal and an NPC hovering 40 cm above a stool reads as a broken mod.
+-- ⚠️ THE SIT IS FREESTANDING (an invisible chair) rooted at the waypoint spot — it does NOT snap onto
+-- a real chair. So (a) we DEFER the play by `delay` s so the snap-teleport lands first, else the pose
+-- spawns where he WAS and he floats; and (b) you align him to a real chair by tuning the waypoint:
+-- re-capture standing where his SEATED body goes, and/or set a per-waypoint
+-- `poseOffset = { x=, y=, z= }` in world metres (z down = lower him).
 --
--- So the sit is now something the PLAYER asks for, in a spot they can see is right:
---   • `enabled = false` -> nothing plays a sit or lean by itself. Idle NPCs stand at their waypoint,
---     and the dinner companion walks to the table and stands there (see dinnerTick).
---   • `manual = true`   -> the CET window's "Sitting" section can still play it on demand
---     ("Seat them here"), which is the only path that passes `force` to tryWorkspotPose.
--- Flip `enabled` back to true once the venue seats are tuned and automatic sitting looks right.
+-- ⚠️ `enabled` SHIPS FALSE — AUTOMATIC SITTING IS OFF, because of that freestanding-anim problem, and
+-- it is not fixable from Lua: landing the pose ON a real chair means tuning that venue's seat to the
+-- centimetre, per venue, per seat, per chair model. Until every venue is tuned, an NPC standing at the
+-- table reads as normal and an NPC hovering 40 cm above a stool reads as a broken mod. So the sit is
+-- something the PLAYER asks for, in a spot they can see is right:
+--   • `enabled = false` -> nothing plays a sit or lean by itself.
+--   • `manual = true`   -> the CET window's "Seat them here" can still play it on demand, and it is the
+--     only path that passes `force` to tryWorkspotPose.
+-- Flip `enabled` back to true once the venue seats are tuned.
 Config.poses = {
   enabled = false,  -- v1.77: automatic sit/lean OFF (see the note above) — they stand instead
   manual  = true,   -- v1.77: ...but the player's "Seat them here" button may still play it
@@ -2879,23 +2737,18 @@ Config.poses = {
 -- scales, colours, fonts and animates itself exactly as it does in every vanilla conversation.
 -- There is nothing left to tune. The one knob that survives is below.
 
--- ---- LOOK-AT / head tracking (v1.41) ---------------------------------------
--- As a COMPANION Jackie already head-tracks V, because sendWalkToPlayer's AIFollowTargetCommand carries
--- `lookAtTarget = Game.GetPlayer()`. A venue Jackie has no follow command, so he was frozen at whatever
--- yaw the seat/waypoint baked in — staring through you.
---
--- The engine's own head/eye tracking is `entLookAtAddEvent` (REDscript `LookAtAddEvent`), an ANIMATION
--- GRAPH OVERLAY. Two properties make it exactly what we want:
---   * `SetEntityTarget(player, ...)` makes the engine follow the live entity itself — we queue it ONCE
---     and it tracks V as she walks around. No per-frame teleport, no yaw math, no jitter.
---   * It layers on top of the base animation, so it composes with the AMM sit workspot. It turns his
---     HEAD, not his body, so it can't eject him from the barstool.
--- Vanilla uses precisely this in reactionComponent.script (bodyPart 'Eyes', slot 'pla_default_tgt',
--- soft/hard/back limits 360/270/210). See docs/research/lookat_research.md.
---
--- ⚠️ The CET-Lua marshalling of this event is UNVERIFIED (no shipped Lua mod constructs it). jlLookAtStart
--- tries every construction form and logs which one took; if all fail it degrades to "no look-at" and
--- Jackie behaves exactly as he did before. It can't break him.
+-- ---- LOOK-AT / head tracking -----------------------------------------------
+-- As a COMPANION he already head-tracks V, because sendWalkToPlayer's AIFollowTargetCommand carries
+-- `lookAtTarget`. A venue Jackie has no follow command, so he was frozen at whatever yaw the waypoint
+-- baked in — staring through you.
+-- The engine's own head/eye tracking is `entLookAtAddEvent`, an ANIMATION GRAPH OVERLAY, and two
+-- properties make it exactly right: SetEntityTarget(player, ...) follows the live entity, so we queue
+-- it ONCE and it tracks her as she walks (no per-frame teleport, no yaw math, no jitter); and it layers
+-- on top of the base animation, so it composes with the sit workspot and turns his HEAD, not his body,
+-- so it cannot eject him from the barstool. Vanilla uses precisely this in reactionComponent.script.
+-- ⚠️ The CET-Lua marshalling of this event is UNVERIFIED (no shipped Lua mod constructs it).
+-- jlLookAtStart tries every construction form and logs which one took; if all fail it degrades to "no
+-- look-at" and he behaves exactly as before.
 Config.lookAt = {
   enabled    = true,
   range      = 12.0,   -- m: start tracking V once she's this close
@@ -2921,27 +2774,20 @@ Config.lookAt = {
 -- ("Idle Jackie: collisions OFF"). Companion/dinner Jackie unaffected.
 Config.idleNoCollision = true
 
--- ---- locations ------------------------------------------------------------
--- Capture coords in-game with the "Capture current position" button, then paste the
--- printed line into the matching entry below. Each location has an ANCHOR (`pos`/`yaw` —
--- where he first appears / falls back to) and an optional `waypoints` list he free-roams
--- between. Per-waypoint: pos = {x,y,z}, yaw = deg, pose = "stand"|"sit"|"lean",
--- dwell = {min,max} (optional, overrides Config.wander.dwell*).
--- NOTE: pose "sit"/"lean" currently just plants him on the spot facing `yaw` — a real
--- sit/lean WORKSPOT animation is a TODO, so the pose tags are forward-looking data.
+-- ---- locations -------------------------------------------------------------
+-- Capture coords in-game with "Capture current position", then paste the printed line below. Each
+-- location has an ANCHOR (`pos`/`yaw` — where he first appears / falls back to) and an optional
+-- `waypoints` list he free-roams between. Per-waypoint: pos = {x,y,z}, yaw = deg,
+-- pose = "stand"|"sit"|"lean", dwell = {min,max} (overrides Config.wander.dwell*).
 -- See docs/captured_positions.md for the human-readable tables.
 --
--- OUTFITS (v0.39): each location carries an `appearance` — Jackie's REAL AMM appearance name.
--- ⚠️ v1.43: these NEVER ACTUALLY APPLIED until now. ammSpawn passed AMM the appearance as a table
--- (`{ app = name }`) where a plain string was required, so every spawn silently fell back to his record
--- default. It went unnoticed because 3 of the 7 venues want `jackie_welles_default` anyway. Fixed in
--- init.lua's ammSpawn; expect misty/afterlife/redwood/ginger/lizzies to CHANGE LOOK now.
--- All names below verified against AMM's shipped appearance DB for Character.Jackie. Wardrobe mapping:
+-- OUTFITS: each location carries an `appearance` — Jackie's real AMM appearance name, all verified
+-- against AMM's shipped appearance DB for Character.Jackie. Wardrobe mapping:
 --   jackie_welles_default               -> noodle, coyote, test, and the summon/arrival fallback
 --   jackie_welles_default_collar_down   -> misty, afterlife, redwood
 --   jackie_welles__q000_lizzies_club_no_jacket -> ginger (Ginger Panda) + lizzies (Lizzie's Bar)
---   jackie_welles__q005_suit            -> reserved for a future "date" day (not used at a location yet)
--- The full 17 on Character.Jackie (note: quest-tagged ones take a DOUBLE underscore, the rest single):
+--   jackie_welles__q005_suit            -> reserved for a future "date" day
+-- The full 17 on Character.Jackie (⚠️ quest-tagged ones take a DOUBLE underscore, the rest single):
 --   default · default_collar_down · default_no_machete · __q000_lizzies_club_no_jacket ·
 --   __q000_lizzies_club_no_machete · __q005_suit · __q005_suit_bleeding · __q005_suit_dirty ·
 --   __q005_suit_wounded · valentino · valentino_beaten_up · valentino_beaten_up_alt ·
@@ -3076,23 +2922,19 @@ Config.approach = {
   venues = { "noodle", "misty", "coyote", "afterlife", "ginger", "redwood", "lizzies" },
 }
 
--- ---- daily schedules (v0.37a: 5 day-types, shuffled, 3 stops/day) ----------
--- One state per time-of-day block. startHour/endHour are FRACTIONAL hours (e.g. 23.5 = 23:30),
--- so half-hour blocks work. state = "at_location" (needs locationKey) or "unavailable".
---
--- DESIGN:
---   * BEDTIME = MIDNIGHT. Sleep is 00:00-06:00, so the day-type boundary (midnight) lands while
---     he's asleep — no activity block ever straddles the rollover. Activities run 06:00-00:00.
---   * Each active day = 3-4 MAIN stops (long, ~3-6h each) totalling ~14h PRESENT (only 4h home +
---     6h sleep). Long settled stays, varied across the day. (quiet/gone are the exceptions.)
---   * HE ALWAYS RETURNS TO EL COYOTE before bed, then heads "upstairs" to sleep (that upstairs
---     spot is his despawn/home point — V1.0 transitions). On most days this is the 23:30-00:00
---     wind-down; on active3/quiet his evening IS Coyote, so it runs straight to midnight.
---     EXCEPTION: the `gone` day (he's out of town).
---   * 5 DAY-TYPES in a SHUFFLE BAG (Config.dayBag): each in-game day pops the next, reshuffling
---     when empty — every 5-day cycle uses each type once (no skips) in random order. All seven
---     venues appear across the active days: noodle/misty/lizzies (A1), redwood/ginger/afterlife
---     (A2), noodle/misty/afterlife/coyote (A3). (Lizzie's opens 21:00 -> only its late A1 slot.)
+-- ---- daily schedules (5 day-types, shuffled, 3 stops/day) ------------------
+-- One state per time-of-day block. startHour/endHour are FRACTIONAL hours (23.5 = 23:30), so
+-- half-hour blocks work. state = "at_location" (needs locationKey) or "unavailable".
+--   * BEDTIME = MIDNIGHT. Sleep is 00:00-06:00, so the day-type boundary lands while he is asleep and
+--     no activity block ever straddles the rollover. Activities run 06:00-00:00.
+--   * Each active day = 3-4 MAIN stops (~3-6 h each) totalling ~14 h PRESENT. Long settled stays,
+--     varied across the day. (quiet/gone are the exceptions.)
+--   * HE ALWAYS RETURNS TO EL COYOTE before bed, then heads "upstairs" to sleep — that upstairs spot is
+--     his despawn/home point. On most days this is the 23:30-00:00 wind-down; on active3/quiet his
+--     evening IS Coyote and runs straight to midnight. EXCEPTION: the `gone` day.
+--   * 5 DAY-TYPES in a SHUFFLE BAG (Config.dayBag): each in-game day pops the next, reshuffling when
+--     empty, so every 5-day cycle uses each type once in random order. All seven venues appear across
+--     the active days. (Lizzie's opens 21:00 -> only its late A1 slot.)
 Config.daySchedules = {
   -- ACTIVE 1 — Noodle (5h) + Misty's (6h) + Lizzie's (2.5h, opens 21:00) + Coyote wind-down
   active1 = {
