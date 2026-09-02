@@ -22,11 +22,8 @@ local SRC = arg[1] or "mod/JackieLives/init.lua"
 local srcf = assert(io.open(SRC, "r"), "cannot read " .. SRC .. " — run this from the repo root")
 local src = srcf:read("a"); srcf:close()
 
-local fails = 0
-local function check(name, cond, extra)
-  print((cond and "ok   " or "FAIL ") .. name .. (extra and ("   " .. tostring(extra)) or ""))
-  if not cond then fails = fails + 1 end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 -- ---------------------------------------------------------------------------
 -- 1. THE STATIC HALF — wanderTick must not read the raw field again
@@ -99,6 +96,4 @@ else
   check("...and warns once, not every frame", #logged == before)
 end
 
-print("")
-if fails > 0 then print(fails .. " FAILED"); os.exit(1) end
-print("ALL PASS")
+T.finish()

@@ -18,12 +18,8 @@
 
 package.path = "mod/JackieLives/?.lua;" .. package.path
 
-local fails, checks = 0, 0
-local function check(name, ok, detail)
-  checks = checks + 1
-  if ok then print(("  ok   %s"):format(name))
-  else fails = fails + 1; print(("  FAIL %s%s"):format(name, detail and ("\n         " .. detail) or "")) end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 -- ---------------------------------------------------------------------------
 -- Stub the game. `spy` records exactly what each backend was asked to do.
@@ -688,5 +684,4 @@ do
   end
 end
 
-print(("\n%d checks, %d failed"):format(checks, fails))
-os.exit(fails == 0 and 0 or 1)
+T.finish()

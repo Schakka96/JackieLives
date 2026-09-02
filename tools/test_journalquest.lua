@@ -29,11 +29,8 @@
 
 package.path = "mod/JackieLives/?.lua;" .. package.path
 
-local fails, checks = 0, 0
-local function ok(cond, msg)
-  checks = checks + 1
-  if not cond then fails = fails + 1; print("  FAIL: " .. msg) else print("  ok  : " .. msg) end
-end
+local T = dofile("tools/tcheck.lua")
+local ok = T.ok
 local function section(s) print("\n" .. s) end
 
 -- ---------------------------------------------------------------- stub journal manager
@@ -385,5 +382,4 @@ local firstQ = Index.quests[Index.questOrder[1]]
 ok(states[firstQ.path] == "Inactive", "...so a real save isn't left carrying it")
 
 -- =============================================================================================
-print(("\n%d checks, %d failed"):format(checks, fails))
-os.exit(fails == 0 and 0 or 1)
+T.finish()

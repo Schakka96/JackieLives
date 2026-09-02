@@ -34,12 +34,8 @@ local ROOT = (arg and arg[1]) or "mod/JackieLives/"
 if ROOT:sub(-1) ~= "/" then ROOT = ROOT .. "/" end
 package.path = ROOT .. "?.lua;" .. package.path
 
-local fails, checks = 0, 0
-local function check(name, ok, detail)
-  checks = checks + 1
-  if ok then print(("  ok   %s"):format(name))
-  else fails = fails + 1; print(("  FAIL %s%s"):format(name, detail and ("\n         " .. detail) or "")) end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 -- CET runs LuaJIT (5.1), where `math.atan2` exists; standard Lua 5.3+ dropped it in favour of the
 -- two-argument math.atan. The engine's yawToward uses atan2, so without this shim every code path
@@ -215,7 +211,7 @@ _G.print = quiet                                  -- the mod logs a lot; keep th
 local okLoad, errLoad = pcall(dofile, ROOT .. "init.lua")
 _G.print = realprint
 check("init.lua loads", okLoad, errLoad)
-if not okLoad then print("\n" .. checks .. " checks, " .. fails .. " failed"); os.exit(1) end
+if not okLoad then T.finish() end
 
 check("registers hotkeys", #hotkeys > 0, "no hotkey registered — CET would show no bindings")
 check("registers an onInit handler", type(events.onInit) == "function")
@@ -333,8 +329,7 @@ for name, defline in pairs(defs) do
     end
   end
 end
-checks = checks + 1
-if bad > 0 then fails = fails + 1 else print("  ok   no forward-reference calls") end
+check("no forward-reference calls", bad == 0, bad .. " found — see above")
 
 -- ---------------------------------------------------------------------------
 -- 3b. Native Settings addButton arity
@@ -366,8 +361,7 @@ for i = 1, n do
     end
   end
 end
-checks = checks + 1
-if nsBad > 0 then fails = fails + 1 else print("  ok   every addButton passes textSize before its callback") end
+check("every addButton passes textSize before its callback", nsBad == 0, nsBad .. " found — see above")
 
 -- ---------------------------------------------------------------------------
 -- 3c. Headroom against Lua's 200-local cap
@@ -1170,5 +1164,4 @@ do
   end
 end
 
-print(("\n%d checks, %d failed"):format(checks, fails))
-os.exit(fails == 0 and 0 or 1)
+T.finish()

@@ -76,15 +76,8 @@ load(extract("blazeForceStand"))()
 load(extract("blazeCalmHoldTick"))()
 
 -- ---- helpers ---------------------------------------------------------------
-local fails = 0
-local function check(name, got, want)
-  if got ~= want then
-    fails = fails + 1
-    print(("FAIL %-56s got=%s want=%s"):format(name, tostring(got), tostring(want)))
-  else
-    print(("ok   %-56s %s"):format(name, tostring(got)))
-  end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.eq
 local function reset()
   JL, LOG, APPLIED, HOLSTERS, CLONED = {}, {}, {}, 0, {}
   Config = { blazeCalm = { holdSeconds = 3.0, interval = 0.25, maxHolsterReasserts = 3 } }
@@ -166,5 +159,4 @@ check("expired while crouched -> disarms", JL.blazeCalm, nil)
 check("expired -> reported STILL CROUCHED", loggedMatching("STILL CROUCHED"), true)
 check("expired -> called it cosmetic, not fatal", loggedMatching("finale runs normally"), true)
 
-print(fails == 0 and "\nALL PASS" or ("\n" .. fails .. " FAILURE(S)"))
-os.exit(fails == 0 and 0 or 1)
+T.finish()

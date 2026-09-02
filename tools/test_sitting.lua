@@ -14,11 +14,8 @@
 
 package.path = "mod/JackieLives/?.lua;tools/?.lua;" .. package.path
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then pass = pass + 1; print("  ok   " .. name)
-  else fail = fail + 1; print("  FAIL " .. name .. (detail and ("\n         " .. tostring(detail)) or "")) end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 -- ---------------------------------------------------------------------------
 -- 1. the shipped default
@@ -414,5 +411,4 @@ do
         src:find("text = T%.text") ~= nil)
 end
 
-print(("\n%d checks, %d failed"):format(pass + fail, fail))
-os.exit(fail == 0 and 0 or 1)
+T.finish()

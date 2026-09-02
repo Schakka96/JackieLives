@@ -27,12 +27,8 @@ local function extract(name)
   return src:sub(s + 1, e + 4)
 end
 
-local fails, checks = 0, 0
-local function check(name, ok, detail)
-  checks = checks + 1
-  if ok then print(("  ok   %s"):format(name))
-  else fails = fails + 1; print(("  FAIL %s%s"):format(name, detail and ("\n         " .. detail) or "")) end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 -- ---------------------------------------------------------------------------
 -- The world the extracted functions run in.
@@ -114,5 +110,4 @@ check("...and says which backend actually ran", loggedMatching("falling back to 
 check("jlMakeCompanion tolerates a nil handle", jlMakeCompanion(nil) == false)
 
 print("")
-print(("%d checks, %d failed"):format(checks, fails))
-os.exit(fails == 0 and 0 or 1)
+T.finish()

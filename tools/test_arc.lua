@@ -22,12 +22,8 @@
 
 package.path = "mod/JackieLives/?.lua;" .. package.path
 
-local fails, checks = 0, 0
-local function check(name, ok, detail)
-  checks = checks + 1
-  if ok then print(("  ok   %s"):format(name))
-  else fails = fails + 1; print(("  FAIL %s%s"):format(name, detail and ("\n         " .. detail) or "")) end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 local Story = require("storyboard")
 local Arc   = require("arc")
@@ -333,5 +329,4 @@ do
   check("reset() clears the beat flags", (world.facts["jackielives_b_p1_episode"] or 0) == 0)
 end
 
-print(("\n%d checks, %d failed"):format(checks, fails))
-os.exit(fails == 0 and 0 or 1)
+T.finish()

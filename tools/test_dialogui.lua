@@ -35,11 +35,8 @@
 -- resolve mod/JackieLives/ relative to the repo root (where this is meant to be run from)
 package.path = "mod/JackieLives/?.lua;" .. package.path
 
-local fails, checks = 0, 0
-local function ok(cond, msg)
-  checks = checks + 1
-  if not cond then fails = fails + 1; print("  FAIL: " .. msg) else print("  ok  : " .. msg) end
-end
+local T = dofile("tools/tcheck.lua")
+local ok = T.ok
 
 -- ---------------------------------------------------------------- struct stubs
 local function struct(fields)
@@ -314,5 +311,4 @@ local sandboxShown = D2.show("Jackie", { { text = "sandbox row" } }, function() 
 ok(sandboxShown, "show() works when types are reachable ONLY as bare globals")
 ok(C.screen ~= nil and C.screen.rows[1].text == "sandbox row", "the row actually rendered")
 
-print(("\n%d/%d checks passed"):format(checks - fails, checks))
-os.exit(fails == 0 and 0 or 1)
+T.finish()

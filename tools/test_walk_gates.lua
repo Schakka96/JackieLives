@@ -65,15 +65,8 @@ load(extract("jlDinnerOwnsBody"))()
 load(extract("jlAbreastWhy"))()
 load(extract("jlAbreastOn"))()
 
-local fails = 0
-local function check(name, got, want)
-  if got ~= want then
-    fails = fails + 1
-    print(("FAIL %-52s got=%s want=%s"):format(name, tostring(got), tostring(want)))
-  else
-    print(("ok   %-52s %s"):format(name, tostring(got)))
-  end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.eq
 
 -- One simulated frame. jzOff = Jackie's height relative to V. Drives the real per-frame code path.
 local function step(dt, dz, speed2d, jzOff)
@@ -169,5 +162,4 @@ check("handoff: frames with BOTH driving Jackie",   overlap, 0)
 check("handoff: climb really did hand over (trail frames > 0)", sawBoth[false] > 0, true)
 check("handoff: flat really did hand back (abreast frames > 0)", sawBoth[true] > 0, true)
 
-print(fails == 0 and "\nALL PASS" or ("\n" .. fails .. " FAILURE(S)"))
-os.exit(fails == 0 and 0 or 1)
+T.finish()

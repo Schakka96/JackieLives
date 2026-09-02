@@ -22,11 +22,8 @@ assert(s0, "could not find updateTalkPrompt — renamed? then fix this harness")
 local body = src:sub(s0 + 1, (src:find("\nend\n", s0) or 0) + 4)
 body = body:gsub("^local function", "function")        -- make it callable from out here
 
-local fails = 0
-local function check(name, cond, extra)
-  print((cond and "ok   " or "FAIL ") .. name .. (extra and ("   " .. tostring(extra)) or ""))
-  if not cond then fails = fails + 1 end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 -- ---------------------------------------------------------------------------
 -- the stubbed world
@@ -151,6 +148,4 @@ frames(1.0)
 check("...but we still report being in talk range at 5 m", talkUI.shown == true,
       "talkUI.shown must not be narrowed by the DRAW range — other systems read it")
 
-print("")
-if fails > 0 then print(fails .. " FAILED"); os.exit(1) end
-print("ALL PASS")
+T.finish()

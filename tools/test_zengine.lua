@@ -20,11 +20,8 @@ package.path = here .. "/../mod/JackieLives/?.lua;" .. package.path
 
 local ZE = require("zengine")
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then pass = pass + 1; print("  ok   " .. name)
-  else fail = fail + 1; print(("  FAIL %s%s"):format(name, detail and ("  -> " .. tostring(detail)) or "")) end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 -- reload the module between scenarios: it is a singleton with attach state
 local function fresh()
@@ -256,5 +253,4 @@ do
   check("status() without bind()", (M.status() or ""):find("attached=true") ~= nil)
 end
 
-print(("\n%d passed, %d failed"):format(pass, fail))
-os.exit(fail == 0 and 0 or 1)
+T.finish()

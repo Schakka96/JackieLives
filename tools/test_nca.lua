@@ -20,11 +20,8 @@ _G.Game = { FindEntityByID = function() return nil end }   -- no engine: the rec
 
 local Allies = require("nca")
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then pass = pass + 1; print("  ok   " .. name)
-  else fail = fail + 1; print(("  FAIL %s%s"):format(name, detail and ("  -> " .. tostring(detail)) or "")) end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 -- ---------------------------------------------------------------------------
 -- A stub of their side, with their real semantics.
@@ -389,5 +386,4 @@ _G.GetMod = function() calls = calls + 1; return nil end
 for i = 1, 200 do Allies.tick(10000 + i * 100) end
 check("the search gives up rather than polling forever", calls <= Allies.maxTries, calls)
 
-print(("\n%d checks, %d failed"):format(pass + fail, fail))
-os.exit(fail == 0 and 0 or 1)
+T.finish()

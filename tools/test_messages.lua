@@ -24,16 +24,8 @@
 
 package.path = "mod/JackieLives/?.lua;" .. package.path
 
-local fails, checks = 0, 0
-local function ok(cond, msg)
-  checks = checks + 1
-  if not cond then
-    fails = fails + 1
-    print("  FAIL " .. msg)
-  else
-    print("  ok   " .. msg)
-  end
-end
+local T = dofile("tools/tcheck.lua")
+local ok = T.ok
 local function section(t) print("\n" .. t) end
 
 local Index = require("messages_index")
@@ -1012,5 +1004,4 @@ do  -- and their bookkeeping cannot collide: distinct fact ids, per the PERSONAS
   ok((w.facts["jackielives_msg_n_3"] or 0) >= 1, "...until he speaks for himself")
 end
 
-print(("\n%d checks, %d failed"):format(checks, fails))
-os.exit(fails == 0 and 0 or 1)
+T.finish()

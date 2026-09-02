@@ -17,11 +17,8 @@
 -- Static reads of the real sources: the behaviour lives in file-locals and in tick order, neither of
 -- which a stub harness can reach without re-implementing them (and a re-implementation drifts).
 
-local pass, fail = 0, 0
-local function check(name, ok, detail)
-  if ok then pass = pass + 1; print("  ok   " .. name)
-  else fail = fail + 1; print("  FAIL " .. name .. (detail and ("\n         " .. tostring(detail)) or "")) end
-end
+local T = dofile("tools/tcheck.lua")
+local check = T.check
 
 local src = io.open("mod/JackieLives/init.lua"):read("a")
 local cfg = io.open("mod/JackieLives/config.lua"):read("a")
@@ -128,5 +125,4 @@ check("the cooldown holds the body OUT rather than merely skipping the tick",
       src:find("JL%.idle%.blockUntil then.-clearIdle%(%); return") ~= nil,
       "a bare return would leave a body that somehow survived the dismiss standing there")
 
-print(("\n%d checks, %d failed"):format(pass + fail, fail))
-os.exit(fail == 0 and 0 or 1)
+T.finish()
