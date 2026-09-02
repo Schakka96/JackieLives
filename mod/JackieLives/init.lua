@@ -1286,26 +1286,6 @@ function setupDetachPurge()
   log("Detach purge hook (PlayerPuppet:OnDetach) registered: " .. tostring(ok))
 end
 
--- ---------------------------------------------------------------------------
--- Voice-over playback test (v0.4): prove we can make Jackie speak on command
--- ---------------------------------------------------------------------------
-local function getTalkTarget()
-  if JL.summon.spawn and JL.summon.spawn.handle then return JL.summon.spawn.handle, "summon" end
-  if JL.idle.spawn and JL.idle.spawn.handle then return JL.idle.spawn.handle, "idle" end
-  local h
-  pcall(function()
-    local ts = Game.GetTargetingSystem()
-    if ts then h = ts:GetLookAtObject(Game.GetPlayer(), false, false) end
-  end)
-  -- never treat a VEHICLE as a talk target (Jackie's Arch record contains "jackie"). See lookedAtJackie.
-  if h then
-    local isVeh = false
-    pcall(function() isVeh = tostring(h:GetClassName()):lower():find("vehicle") ~= nil end)
-    if not isVeh then return h, "lookat" end
-  end
-  return Game.GetPlayer(), "player"
-end
-
 -- Play a sound event on an entity via the audio system (the method working dialogue mods use).
 local function playEventOn(target, eventName, emitter)
   if not target then return false, "no target" end
@@ -2426,23 +2406,6 @@ local function voiceDuration(name, text)
   pcall(function() d = VO.duration(name, text) end)
   if type(d) == "number" and d > 0 then return d end
   return nil
-end
-
--- Diagnostic: prove the Audioware pipe end-to-end. Logs the plugin version, whether the
--- 'test_tone' event is registered (Duration > 0 = the manifest loaded), then plays it.
-local function audiowareProbe()
-  local ver = "?"
-  pcall(function() ver = Game.GetAudioSystemExt():Version() end)
-  local dur = -1
-  pcall(function() dur = Game.GetAudioSystemExt():Duration(CName.new("test_tone")) end)
-  local registered = (type(dur) == "number" and dur > 0)
-  log("Audioware probe: version=" .. tostring(ver) ..
-      "  Duration('test_tone')=" .. tostring(dur) ..
-      (registered and "  (REGISTERED - manifest loaded)" or "  (NOT registered - manifest/folder issue)"))
-  local ok = playVoice("test_tone")
-  log("Audioware probe: Play('test_tone') ok=" .. tostring(ok) ..
-      " -> you should hear a 1s beep if the pipe works")
-  JL.ui.status = "Audioware ver=" .. tostring(ver) .. "  test_tone dur=" .. tostring(dur) .. " (see console)"
 end
 
 local function startDialogue(lines)
@@ -3746,15 +3709,6 @@ local function pickFarewell()
   local e = f[i] or f[1]
   if type(e) == "table" then return e.text or "Later.", e.sfx end
   return e, nil
-end
-
--- Teleport a spawned NPC to `pos` (used to place a called-in Jackie at distance).
-local function teleportEntity(handle, pos)
-  if not handle or not pos then return end
-  pcall(function()
-    local tf = Game.GetTeleportationFacility()
-    if tf then tf:Teleport(handle, pos, EulerAngles.new(0.0, 0.0, 0.0)) end
-  end)
 end
 
 -- Run an action attached to a finished choice.
@@ -10693,15 +10647,6 @@ local function tunerInit()
   t.prevX, t.prevY, t.prevZ, t.prevYaw = 0, 0, 0, 0
   t.pendingApplyAt = nil
   t.init = true
-end
-
-local function tunerCoords()
-  local t = JL.tuner
-  return t.baseX + t.dx, t.baseY + t.dy, t.baseZ + t.dz, t.baseYaw + t.dyaw
-end
-
-local function tunerHere()   -- is idle Jackie present at the tuned venue?
-  return JL.idle.spawn and JL.idle.spawn.handle and JL.idle.locationKey == JL.tuner.key
 end
 
 -- (v1.9: `tunerApply` and `tunerPrint` were DELETED here, together with the WALK-IN re-seat they

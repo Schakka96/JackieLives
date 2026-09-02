@@ -7,11 +7,6 @@ local Config = {}
 Config.version = "1.8.10"
 
 -- ---- master toggles -------------------------------------------------------
--- DEBUG: when true, the mod hooks native phone/holocall methods at load and prints a
--- [JackieLives PROBE] line whenever one fires. Open your phone + call Jackie, then read the
--- CET console to see which methods drive the call (tells us if a native hook is viable).
--- Turn OFF (false) once we're done investigating. See docs/native_phone_probes.md.
-Config.probeNativePhone      = true
 Config.enableSchedule        = true
 Config.scheduleCheckInterval = 2.0     -- seconds between schedule/proximity checks
 Config.proximityRadius       = 45.0    -- metres: idle Jackie appears when you're this close to his spot

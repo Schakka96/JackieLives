@@ -4083,8 +4083,10 @@ popup** (the "Dark Future" method from Retrieval P2).
 - **KEPT (was a false positive in my first list):** the native choice-box cluster (`showJackieChoiceBox` /
   `hideJackieChoiceBox` / `buildJackieHub` / `choiceBox`) is **live** — it draws the "[F] Talk" prompt when
   you look at Jackie (toggled by `Config.talk.useChoiceBox`). Not dead; left intact.
-- [ ] **Tiny leftover for the future cleanup pass:** `getTalkTarget` is now unused (was only called by the
-      deleted VO trio). Harmless; remove on the next sweep. `Config.probeNativePhone` flag also now unused.
+- [x] **Tiny leftover for the future cleanup pass:** DONE 2026-09-02 — `getTalkTarget` and
+      `Config.probeNativePhone` are gone, along with `audiowareProbe`, `teleportEntity`, `tunerCoords`
+      and `tunerHere`. All were file-locals or a flag nothing read, so nothing could reach them; the
+      deletion also bought back five top-level local slots (22 -> 27 spare under the 200 cap).
 - [ ] **TEST:** mod still loads + behaves; the status line shows at the top of the window.
 
 ## 🛑 v0.68 — CRITICAL load-fix (200-local cap) + Retrieval quest Phase 1 (2026-07-01, awaiting in-game test)
