@@ -86,7 +86,7 @@ end
 local ID   = "1660220866564214792"
 local SFX  = "jl_" .. ID
 
--- v1.69: the vocal-effort fallback is now a 15% roll (Config.voice.gruntChance), so any check
+-- the vocal-effort fallback is now a 15% roll (Config.voice.gruntChance), so any check
 -- that asserts "a grunt happened" has to pin the roll or it is a coin flip in CI.
 local ALWAYS_GRUNT = { mode = "auto", gruntChance = 1.0,
                        gruntPool = { "ono_jackie_greet", "ono_jackie_curious" } }

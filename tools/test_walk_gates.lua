@@ -27,7 +27,7 @@ JL = { clock = 0, abreast = {}, summon = { active = true, companionSet = true, s
        dinner = {}, leaving = {}, loiter = {}, walkAbreast = true }
 Config = { abreast = { enabled = true, slopeRate = 0.45, maxZDelta = 1.0, slopeReleaseSeconds = 1.5,
                        walkMinSpeed = 0.6, walkMaxSpeed = 2.0, jogMinSpeed = 2.8, walkSustainSeconds = 2.0 },
-           -- v1.57 added a loiter gate to jlAbreastOn (V standing still -> the TRAIL owns Jackie, because
+           -- added a loiter gate to jlAbreastOn (V standing still -> the TRAIL owns Jackie, because
            -- that's where the halt lives). Real values, so the harness exercises the real hysteresis.
            loiter  = { enabled = true, stopSpeed = 0.55, goSpeed = 1.10,
                        stopSustain = 0.60, goSustain = 0.35 },
@@ -55,9 +55,9 @@ end
 load(extract("jlVWalking"))()
 load(extract("jlVertical"))()
 load(extract("jlVLoitering"))()   -- v1.57 gate, extracted (not stubbed) so it can't drift either
--- v1.8.3: the gates moved into jlAbreastWhy (jlAbreastOn is now "no reason"). Extract BOTH — the whole
+-- the gates moved into jlAbreastWhy (jlAbreastOn is now "no reason"). Extract BOTH — the whole
 -- point of this harness is that it runs the shipped bytecode, so a split predicate must be loaded split.
--- v1.8.5: jlAbreastWhy now asks jlDinnerOwnsBody() instead of the bare JL.dinner.phase, because a
+-- jlAbreastWhy now asks jlDinnerOwnsBody() instead of the bare JL.dinner.phase, because a
 -- `walking` dinner does NOT own the body (dinnerTick issues no move command during it). EXTRACTED,
 -- not stubbed, for the same reason as jlVLoitering above: a stub would let the two drift, and the
 -- whole point of this harness is that it runs the shipped bytecode.

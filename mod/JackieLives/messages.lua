@@ -754,7 +754,7 @@ local function pollReply(p, key)
   for _, r in ipairs(a.beat.replies or {}) do
     if isSucceeded(stateOf(r.path, "gameJournalPhoneChoiceEntry")) then
       log("V replied: " .. r.id)
-      -- v1.91: the question has been answered — take its options down. Leaving them Active is what
+      -- the question has been answered — take its options down. Leaving them Active is what
       -- made the thread unusable (see disarmGroup).
       disarmGroup(a.beat)
       rt().await = nil

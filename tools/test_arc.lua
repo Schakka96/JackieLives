@@ -9,7 +9,7 @@
 -- modes this repo has actually shipped:
 --
 --   * CONTENT THAT SPOILS — a beat firing for a player who hasn't finished the retrieval quest.
---     v1.56 shipped this: Vik revealed Jackie was alive to players who hadn't done the heist.
+--     shipped this: Vik revealed Jackie was alive to players who hadn't done the heist.
 --     Here it is asserted directly: with the mod locked, NOTHING fires, ever, under any clock.
 --   * CONTENT THAT NEVER FIRES — v1.64 shipped that: a gate that silently never opened for
 --     anybody, so a correctly-installed mod looked dead. Asserted here as its mirror image: with

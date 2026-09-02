@@ -157,7 +157,7 @@ end
 -- ---------------------------------------------------------------------------
 -- 2. FOLLOWER ROLE  (rewritten v1.65 — "they spawned but stayed planted")
 -- ---------------------------------------------------------------------------
--- v1.64 assigned an AIFollowerRole through `AIAssignRoleCommand` and called it done. In game the
+-- assigned an AIFollowerRole through `AIAssignRoleCommand` and called it done. In game the
 -- companion spawned, looked right, and NEVER MOVED. The decompiled scripts say exactly why, and it
 -- is worth writing down because "the role is set" is NOT what makes an NPC follow:
 --

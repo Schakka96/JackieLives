@@ -55,11 +55,11 @@ M.cfg = {
 
   reachRadius       = 6.0,   -- metres from the VTOL that triggers the escape cut
   gateOnSmasherOnly = true,  -- escape unlocks when SMASHER dies (Takemura optional), per design
-  -- v1.06: at the finale, fast-forward the lingering heist scene to kill its leftover "gone wrong" music
+  -- at the finale, fast-forward the lingering heist scene to kill its leftover "gone wrong" music
   -- (Antonia item 10, max-risk). Default ON. ⚠️ If the quest visibly jumps forward / Johnny starts after
   -- the finale on a test save, flip this false (init.lua blazeEndScene explains the risk).
   endSceneOnFinale  = true,
-  -- v1.11 (Antonia): the stuck q005 heist scene keeps its music and can't be ended (fast-travel/reload
+  -- the stuck q005 heist scene keeps its music and can't be ended (fast-travel/reload
   -- black-screen). MusicVolume->0 at the finale is the only GUARANTEED silence. Default ON. ⚠️ Kills ALL
   -- music until restored (blazeMuteMusic(false) / the overlay "Restore music" button) — toggle off here if
   -- you'd rather keep music and hunt the exact event with blazeLogAudio() instead.
@@ -84,7 +84,7 @@ M.yori = {
   -- z lowered 1 m (309.329 -> 308.329) so the DES-placed bosses land ON the floor instead of hovering:
   -- the exact-Z teleport was parking them ~1 m up and AMM's ragdoll/gravity didn't pull them down. (Antonia 2026-07-08)
   goro    = { rec = "Character.Takemura", pos = { x = -2226.165, y = 1765.743, z = 308.329, yaw = -157.5 }, hpMul = 0.20 },  -- ELEVATOR spot (= Smasher's old default coord, Antonia 2026-07-08)
-  -- v1.56 (Antonia 2026-07-23): Smasher was too easy — he was pinned at a flat Health x0.50 with NO damage
+  -- Smasher was too easy — he was pinned at a flat Health x0.50 with NO damage
   -- scaling at all, on every difficulty. `diffScale` replaces that with FINAL multipliers on the stock
   -- Character.Smasher record, picked from the player's difficulty at spawn time.
   -- ⚠️ The base game does NOT scale an NPC's max Health or raw damage by difficulty — nothing in the script
@@ -105,7 +105,7 @@ M.yori = {
     VeryHard = { hp = 2.40, dmg = 3.20, adds = 6 },   -- menu VERY HARD
   },
   diffScaleFallback = "Easy",   -- tier used when the difficulty can't be read (treat as Normal)
-  -- v1.56 (Antonia 2026-07-23): ARASAKA REINFORCEMENTS. When Smasher drops below `atHealthFrac`, a squad
+  -- ARASAKA REINFORCEMENTS. When Smasher drops below `atHealthFrac`, a squad
   -- storms the elevator spot — "sprinkling in some more difficulty" at the end of the fight.
   -- ⚠️ 0.30 is not an arbitrary number: it is EXACTLY Smasher's native EMERGENCY-PHASE threshold
   -- (adamSmasherComponent.script:304 returns 30.0, and :34 fires the phase change on crossing it, which
@@ -153,24 +153,24 @@ M.yori = {
   --    vert. Until that's done the VTOL above is the exit that carries the set-piece.
   roofHeli = { pos = { x = -2212.9, y = 1764.67, z = 320.0 }, radiusXY = 4.0, zTol = 14.0 },  -- Antonia's roof coords 2026-07-08
   escapeDebug = false,   -- v1.63: true = log the live gap to BOTH exits once a second while out of reach
-  -- v1.07 (Antonia): the finale destination — V wakes here, Jackie (normal outfit) appears next to her
+  -- the finale destination — V wakes here, Jackie (normal outfit) appears next to her
   -- facing her, and the finale conversation plays. Coords/yaw captured in-game 2026-07-09.
   finalePos = { x = -1787.921, y = -450.040, z = 7.747, yaw = -1.4 },
-  -- v1.50: `finaleSide` is now only a FALLBACK. The finale asks frontSideArrivalPoint() for the spot first —
+  -- `finaleSide` is now only a FALLBACK. The finale asks frontSideArrivalPoint() for the spot first —
   -- the same angle-sweeping, navmesh-snapped, height-checked search that fast-travel/catch-up respawns use
   -- ("he caught up straight into the geometry behind V"). That is why a normal arrival lands him cleanly
   -- sideways; the finale simply wasn't calling it, and a raw ±right-vector offset put him in the fence.
   finaleSide = 1.4,     -- v1.10: FALLBACK metres beside V (+ = V's right, - = left), used only if the search fails.
   finalePlaceDistance = 2.5,  -- v1.50: how far from V the front-side search should look for his spot
   finaleSettle = 1.8,   -- v1.11: seconds after the fade fully lifts before the convo starts (so it isn't during the blackscreen).
-  -- v1.47: the finale used to spawn Jackie the same frame V was teleported, at full black. AMM drops the body
+  -- the finale used to spawn Jackie the same frame V was teleported, at full black. AMM drops the body
   -- 1 m in front of V *at CreateEntity time*, so that could leave him at V's PRE-teleport spot (Konpeki), and
   -- the placement then silently gave up when his handle didn't resolve. These make the spawn wait, retry, and
   -- verify he actually arrived. Raise finaleSpawnDelay if he still lands somewhere else.
   finaleSpawnDelay     = 0.6,   -- s to let V's teleport land + the world stream in before spawning him
   finaleResolveTimeout = 4.0,   -- s to wait for the spawned body's handle before despawning + respawning
   finaleSpawnRetries   = 3,     -- how many spawn attempts before giving up and running the convo without him
-  -- v1.50: measured against the TARGET POINT, not against V. Distance-to-V could never catch the fence clip —
+  -- measured against the TARGET POINT, not against V. Distance-to-V could never catch the fence clip —
   -- standing inside the railing 1 m in front of her already passed the old 6 m "close enough" test.
   finalePlaceTolerance = 1.5,   -- m: how close to the target spot counts as "placed" before we stop re-issuing
   -- Gate: fires when the T-Bug PHONE CALL ENDS. From JLFactDump (docs/factdump.log): the fact
@@ -191,7 +191,7 @@ M.yori = {
   reachRadius = 5.0,
   fightLineDelay = 4.0,   -- seconds after each boss spawns before Jackie's one mid-fight bark
   avHintRadius = 3.0,     -- after Smasher's down, V within this of the elevator OR heli spot -> Jackie's "AV's on the roof" bark
-  -- v1.07 (Antonia): the FIGHTING Jackie wears the Militech heist suit; at the finale a FRESH Jackie
+  -- the FIGHTING Jackie wears the Militech heist suit; at the finale a FRESH Jackie
   -- appears next to V in his normal outfit.
   -- ✅ v1.43: both names VERIFIED against AMM's shipped appearance DB for `Character.Jackie` (which carries
   -- all 17 of his appearances). The double underscore before the quest tag is correct and required —
@@ -295,7 +295,7 @@ function M.hasRecords()   local c = M.cfg; return (c.goroRecord and c.smasherRec
 -- ---------------------------------------------------------------------------
 -- Run / stop
 -- ---------------------------------------------------------------------------
--- v1.56: the boss's FINAL stat multipliers for the difficulty the player is on RIGHT NOW.
+-- the boss's FINAL stat multipliers for the difficulty the player is on RIGHT NOW.
 -- Returns hpMul, dmgMul straight out of M.yori.diffScale — they are absolute multipliers on the stock
 -- TweakDB record, not deltas. Reading the difficulty at SPAWN time (not at load) is deliberate: the
 -- player can change it mid-playthrough from the pause menu, and the next run of the fight should follow.
@@ -322,7 +322,7 @@ local function spawnOne(slot, rec, pos, hostile, weaken, dmgMul)
   blog(string.format("%s SPAWNED id=%s rec=%s at %.1f,%.1f,%.1f yaw %.1f", slot, tostring(id), tostring(rec), pos.x, pos.y, pos.z, pos.yaw or 0))
 end
 
--- v1.63: spawn OUR VTOL if (and only if) a record was captured for it. `at` is the position to use —
+-- spawn OUR VTOL if (and only if) a record was captured for it. `at` is the position to use —
 -- the hardcoded Yorinobu run passes M.yori.heli.pos, the generic run passes M.cfg.heliPos. A silent
 -- no-op when unconfigured, which is exactly what makes the VTOL exit optional while the level's own
 -- roof AV always remains available.
@@ -335,7 +335,7 @@ local function spawnHeliIfConfigured(at)
   return true
 end
 
--- v1.56: ARASAKA REINFORCEMENTS — spawn the end-of-fight squad ONCE, in a ring around the elevator spot.
+-- ARASAKA REINFORCEMENTS — spawn the end-of-fight squad ONCE, in a ring around the elevator spot.
 -- Called from the tick when Smasher crosses `adds.atHealthFrac`. Each soldier is an ordinary `st.ent` slot
 -- ("add1", "add2", ...), so the existing resolve/place/hostile/scale path and M.reset()'s despawn loop
 -- pick them up for free — no special-casing anywhere else.
@@ -385,7 +385,7 @@ end
 -- (M.yori.roofHeli) — reaching EITHER fires the fade.
 function M.startYorinobu()
   M.reset()
-  -- v1.07 (Antonia): Takemura removed for now — start straight on Smasher (goroDead pre-set true so the
+  -- Takemura removed for now — start straight on Smasher (goroDead pre-set true so the
   -- old goro-gate paths are inert). stage jumps to "smasher"; the "goro" stage code below is now dead.
   M.st = { active = true, mode = "yorinobu", stage = "smasher", ent = {},
            goroDead = true, smasherDead = false, lastObjective = "", firedFade = false,
@@ -438,7 +438,7 @@ function M.tryEscapePress()
   local st = M.st
   if not st or not st.active or st.stage ~= "escape" or not st.escapeReady then return false end
   if M.bound.hidePrompt then M.bound.hidePrompt() end
-  -- v1.63a: the escape now outranks an open choice menu (see the OnAction hook), so we may be leaving
+  -- the escape now outranks an open choice menu (see the OnAction hook), so we may be leaving
   -- with a conversation still on screen. Tear it down, or the picker survives into the fade — and an
   -- open menu that nothing is listening to still swallows the player's input.
   if M.bound.closeDialogue then pcall(M.bound.closeDialogue) end
@@ -542,7 +542,7 @@ end
 function M.tick(now, dt)
   local st = M.st; if not st or not st.active then return end
 
-  -- v1.56: iterate whatever is actually spawned (pairs, not a fixed list) so the Arasaka adds get
+  -- iterate whatever is actually spawned (pairs, not a fixed list) so the Arasaka adds get
   -- resolved/placed/scaled by the same path as the bosses.
   for _, e in pairs(st.ent) do
     resolveAndPlace(e)
@@ -584,7 +584,7 @@ function M.tick(now, dt)
       if not st.saidSmasherFight and now >= st.smasherFightAt then
         st.saidSmasherFight = true; say("smasherFight")      -- "We ain't dyin' — not today!"
       end
-      -- v1.56 ARASAKA REINFORCEMENTS: once Smasher is hurt past the threshold, the squad storms in. ONCE
+      -- ARASAKA REINFORCEMENTS: once Smasher is hurt past the threshold, the squad storms in. ONCE
       -- (st.addsSent latches), and only while he's still up — no point sending them to an empty room.
       -- Polled on a 0.5 s heartbeat rather than every frame; healthFrac is a stat-pool read per call.
       if not st.addsSent and (M.yori.adds and M.yori.adds.enabled) and not st.smasherDead then
@@ -612,13 +612,13 @@ function M.tick(now, dt)
       if not st.saidAvLine and M.bound.distToPlayer then
         local hr = M.yori.avHintRadius or 3.0
         local dg = M.bound.distToPlayer(M.yori.goro.pos)
-        -- v1.63: nearest of EITHER exit — our spawned VTOL or the level's roof AV.
+        -- nearest of EITHER exit — our spawned VTOL or the level's roof AV.
         local dv = 1e9
         if M.yori.heli     then dv = math.min(dv, M.bound.distToPlayer(M.yori.heli.pos))     end
         if M.yori.roofHeli then dv = math.min(dv, M.bound.distToPlayer(M.yori.roofHeli.pos)) end
         if dg <= hr or dv <= hr then st.saidAvLine = true; say("avOnRoof") end
       end
-      -- v1.63: TWO valid exits again — whichever V reaches first shows the "[F]: Get in the AV" prompt.
+      -- TWO valid exits again — whichever V reaches first shows the "[F]: Get in the AV" prompt.
       -- The actual fade is gated on the F press (M.tryEscapePress, from init.lua's OnAction hook).
       --
       -- They use DIFFERENT reach maths on purpose, and that is the whole point of keeping both:
@@ -648,7 +648,7 @@ function M.tick(now, dt)
       end
       if inRange then
         st.escapeReady = true
-        -- v1.11 (Antonia): weather/day change moved OUT of here — at the heli it was too early. It now
+        -- weather/day change moved OUT of here — at the heli it was too early. It now
         -- fires at FULL BLACK in the finale (init.lua), so the storm/night flips while the screen is dark.
         if now >= (st.escapePromptAt or 0) then       -- re-assert the NATIVE [F] interaction prompt on a heartbeat
           st.escapePromptAt = now + 1.0
@@ -662,7 +662,7 @@ function M.tick(now, dt)
       end
 
     elseif st.stage == "cut" then
-      -- v1.07 (Antonia): Jackie says "C'mon, V — let's get outta here" FIRST, THEN we fade. So queue the
+      -- Jackie says "C'mon, V — let's get outta here" FIRST, THEN we fade. So queue the
       -- line, wait for the VO queue to drain (voPump sets voNextAt to the clip end), and only then fade+finale.
       if not st.saidHeliLine then
         st.saidHeliLine = true
@@ -692,7 +692,7 @@ function M.tick(now, dt)
     end
 
   elseif st.stage == "escape" then
-    -- v1.63: EITHER exit ends it, same pair as the finale path — our spawned VTOL (3-D sphere around
+    -- EITHER exit ends it, same pair as the finale path — our spawned VTOL (3-D sphere around
     -- M.cfg.heliPos, the position captured in the overlay) or the level's roof AV (horizontal footprint
     -- + vertical tolerance). The VTOL leg is skipped when no heliPos was captured.
     local d1 = (M.bound.distToPlayer and M.cfg.heliPos) and M.bound.distToPlayer(M.cfg.heliPos) or 1e9

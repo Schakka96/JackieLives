@@ -141,7 +141,7 @@ do
   local T = Config.seatTip
   check("Config.seatTip exists", type(T) == "table")
   check("...with a title and a body", type(T and T.title) == "string" and #(T and T.text or "") > 80)
-  -- v1.8.2 AND IT STAYS SHORT. Antonia, 2026-08-17: *"MUCH shorter, concise instructions only.
+  -- AND IT STAYS SHORT. Antonia, 2026-08-17: *"MUCH shorter, concise instructions only.
   -- very few words please."* The card is read standing at a table waiting for something to
   -- happen, so every sentence of background costs the instructions their reader. This bound is the
   -- brief, written down — if a future edit needs more room, it needs a different card.
@@ -160,7 +160,7 @@ do
         (T and T.fact or ""):find("jackielives_", 1, true) == 1,
         "got " .. tostring(T and T.fact) .. ", expected it to start with " .. "jackielives_")
 
-  -- v1.8.2 IT FIRES AT THE TABLE, NOT ON THE WAY TO IT. It used to go up on the walking ->
+  -- IT FIRES AT THE TABLE, NOT ON THE WAY TO IT. It used to go up on the walking ->
   -- seating hand-off, which is `Config.date.seatTriggerRadius` (12 m) out — a card about a
   -- chair the player cannot see yet. Antonia asked for 3 m, and 3 m is a knob now.
   check("the card has a trigger radius of its own", type(T and T.radius) == "number" and T.radius > 0,

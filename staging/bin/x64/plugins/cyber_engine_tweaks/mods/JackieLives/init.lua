@@ -233,7 +233,7 @@ function discoverJackieFromSpawned(verbose)   -- global (not local): 200-local c
   return found
 end
 
--- v0.96 BLAZE: generalised version of discoverJackieFromSpawned — grab ANY AMM-spawned
+-- BLAZE: generalised version of discoverJackieFromSpawned — grab ANY AMM-spawned
 -- NPC/vehicle's record path by a name substring (e.g. "smasher", "takemura", "av"). Spawn
 -- it via AMM's own menu first, then call this; returns the record string (also logged so it
 -- can be pasted into blaze.lua M.cfg for permanence). Global (not local) => 200-cap safe.
@@ -263,7 +263,7 @@ function discoverBlazeRecord(nameFilter)
   return hit
 end
 
--- v0.97 BLAZE: grab the TweakDB record path off whatever V is LOOKING AT. Works for the heli
+-- BLAZE: grab the TweakDB record path off whatever V is LOOKING AT. Works for the heli
 -- (a vehicle — not in AMM's NPC table) and anything else with a crosshair hitbox. Reads
 -- GetRecordID() and reverses it to the readable "Vehicle.xxx"/"Character.xxx" string via CET's
 -- TDBID.ToStringDEBUG. Global (not local) => 200-cap safe.
@@ -291,7 +291,7 @@ function discoverBlazeRecordFromTarget()
   return nil
 end
 
--- v0.96 BLAZE: capture V's current transform as a plain {x,y,z,yaw} table for a set-piece
+-- BLAZE: capture V's current transform as a plain {x,y,z,yaw} table for a set-piece
 -- spawn point, and LOG it so it can be pasted into blaze.lua M.cfg. Global => 200-cap safe.
 function blazeCapture()
   local pl = Game.GetPlayer(); if not pl then log("Blaze capture: no player."); return nil end
@@ -302,7 +302,7 @@ function blazeCapture()
   return t
 end
 
--- v0.96 BLAZE: persist the whole set-piece config to a plain-text file in the mod folder
+-- BLAZE: persist the whole set-piece config to a plain-text file in the mod folder
 -- (CET sandboxes io to .../mods/JackieLives/), written as executable Lua assignments so it
 -- RE-LOADS itself on launch (see blazeLoadConfig) -- captures survive reloads/redeploys with
 -- ZERO console copying. Move this file to the Mac only if you want the values baked into
@@ -311,13 +311,13 @@ BLAZE_CONFIG_FILE = "blaze_config.txt"
 
 -- v1.x BLAZE: the Story-mode description, shown both in the arm/confirm prompt and once Blaze is on.
 -- Global (not a top-level local) => 200-cap safe; one source of truth for the two draw sites.
--- v1.07 (Antonia): spoiler-light — hint that it's INTENSE, don't reveal who you fight, what happens
+-- spoiler-light — hint that it's INTENSE, don't reveal who you fight, what happens
 -- after, or the payoff. Keep the functional warnings (replaces the ending, disables the main plot, can't undo).
 BLAZE_DESC = "A wilder, more intense way out of the Heist -- you and Jackie face it together, guns up. " ..
   "This REPLACES the Heist's ending and DISABLES the main storyline. Extremely experimental, and it " ..
   "CAN'T be undone. Choose it BEFORE jumping off the building in the Heist."
 
--- v1.03: records/positions capture was removed from the overlay — the bosses use hardcoded records +
+-- records/positions capture was removed from the overlay — the bosses use hardcoded records +
 -- the fixed elevator spawn, and the escape is the roof AV (coords in blaze.lua M.yori). The only thing
 -- still worth persisting is the OPTIONAL spawned-VTOL record (if you ever set Blaze.cfg.heliRecord via
 -- the console). Everything else lives in blaze.lua now.
@@ -334,7 +334,7 @@ function blazeDumpConfig()
   end)
 end
 
--- v0.96 BLAZE: read blaze_config.txt (if present) and apply it to Blaze.cfg on load. The file
+-- BLAZE: read blaze_config.txt (if present) and apply it to Blaze.cfg on load. The file
 -- IS Lua (Blaze.cfg.* = ...), so we just load+run it. Guarded: a missing file or a disabled
 -- load() simply no-ops (in-session captures still work). Global => 200-cap safe.
 function blazeLoadConfig()
@@ -350,7 +350,7 @@ function blazeLoadConfig()
 end
 
 -- ===========================================================================
--- v1.06 BLAZE (Antonia item 10) — "ESCAPE THE SCENE" finale teardown.
+-- BLAZE (Antonia item 10) — "ESCAPE THE SCENE" finale teardown.
 -- The Heist "everything goes wrong" music kept playing into the finale because our soft teleport moves
 -- V within the already-streamed world and never ends the q005 heist scene/combat mix. These helpers are
 -- the verified game calls (decompiled 2.x scripts) that tear that state down. All pcall-guarded; every
@@ -411,7 +411,7 @@ function blazeClearCombat()
   return true
 end
 
--- v1.12 (Antonia): HOLSTER V's weapon — the exact request the game's own code queues to holster (verified
+-- HOLSTER V's weapon — the exact request the game's own code queues to holster (verified
 -- in the decompiled EquipmentSystem: UnequipWeapon manipulation). Empties V's hands + plays the holster anim.
 function blazeHolsterWeapon(pl)
   pl = pl or Game.GetPlayer(); if not pl then return false end
@@ -493,7 +493,7 @@ function blazeReleaseStand(pl)
   JL.forceStandRec = nil
 end
 
--- v1.11 (Antonia): put V in a CALM state for the finale fade-in — out of combat, weapon HOLSTERED, and
+-- put V in a CALM state for the finale fade-in — out of combat, weapon HOLSTERED, and
 -- STANDING (not crouched). Exact holster/uncrouch calls verified separately; each is pcall-guarded so a
 -- wrong/absent one just no-ops. Called at full black in the finale.
 function blazeTransportCalm()
@@ -504,7 +504,7 @@ function blazeTransportCalm()
   pcall(function() blazeHolsterWeapon(pl) end)
   -- STAND UP / uncrouch (filled from research).
   pcall(function() blazeForceStand(pl) end)
-  -- v1.51: ARM THE HOLD. This runs in the SAME FRAME as V's teleport, and the teleport is ASYNC (the very
+  -- ARM THE HOLD. This runs in the SAME FRAME as V's teleport, and the teleport is ASYNC (the very
   -- reason the finale re-issues Jackie's placement until he lands). Firing the holster/uncrouch once into
   -- that frame is a race: whichever of the two the engine processes second can swallow the first. So we
   -- keep re-asserting on a short heartbeat until V is OBSERVED standing, then stop and say how long it took.
@@ -517,7 +517,7 @@ function blazeTransportCalm()
   return true
 end
 
--- v1.51: watch the calm to a conclusion. Stepped from onUpdate. Cheap: does nothing unless armed.
+-- watch the calm to a conclusion. Stepped from onUpdate. Cheap: does nothing unless armed.
 -- Re-asserts ForceStand quietly (we already know which record works — no repeat of its log line), and
 -- re-queues the holster a couple of times, since a weapon can be re-drawn by the state the teleport lands in.
 function blazeCalmHoldTick()
@@ -631,7 +631,7 @@ function blazeLoadCheckpoint()
 end
 
 -- ===========================================================================
--- v1.11 BLAZE (Antonia) — stuck-scene MUSIC tools. Fast-travel/checkpoint reload BLACK-SCREEN (the live
+-- BLAZE (Antonia) — stuck-scene MUSIC tools. Fast-travel/checkpoint reload BLACK-SCREEN (the live
 -- q005 scene holds a hard world lock), so world-reload is OUT. Two real levers instead (verified via
 -- decompiled scripts + CET audio API research, docs/research/cet_scene_music_teardown.md):
 --   A) LOG the playing audio event (blazeLogAudio) -> capture its CName -> Stop it (blazeStopMusicEvent).
@@ -691,7 +691,7 @@ function blazeMuteMusic(on)
   return true
 end
 
--- v1.56 BLAZE: print the CURRENT difficulty and the Smasher tuning row it selects. Type `blazeDifficulty()`
+-- BLAZE: print the CURRENT difficulty and the Smasher tuning row it selects. Type `blazeDifficulty()`
 -- in the CET console, change the difficulty in Settings > Gameplay, and run it again — that empirically
 -- settles the enum-name-vs-menu-label mapping documented on Blaze.bound.difficulty, which is inferred from
 -- the decompiled scripts rather than observed. If the menu label and the row below ever disagree, re-key
@@ -725,7 +725,7 @@ function blazeFinaleTeardown()
   if not (Blaze and Blaze.cfg and Blaze.cfg.muteMusicOnFinale == false) then pcall(function() blazeMuteMusic(true) end) end
 end
 
--- v1.07 BLAZE (Antonia): force SUNNY weather once Smasher's down + V reaches the heli. Weather is
+-- BLAZE (Antonia): force SUNNY weather once Smasher's down + V reaches the heli. Weather is
 -- version-finicky, so this is the helper the overlay's A/B buttons + the auto-trigger both call. Priority
 -- must beat the heist's stormy state (3 is high). ⚠️ The heist is at NIGHT — "sunny" clears the sky but
 -- you still need DAYTIME for actual sun; use blazeSetMidday() (overlay button) alongside it. Globals => 200-cap safe.
@@ -926,7 +926,7 @@ local function ammSpawn(companionFlag, appearance)
   -- Fall back to a REAL appearance name, never "random": an unknown name is a silent no-op (leaving him in
   -- whatever he had), and AMM's random-cycle path would put him in a different outfit every spawn.
   local app = (appearance and appearance ~= "") and appearance or (Config.defaultAppearance or "jackie_welles_default")
-  -- v1.68 — TWO BACKENDS, AND THE PLAYER PICKS. The old path was `amm.Spawn:NewSpawn` +
+  -- TWO BACKENDS, AND THE PLAYER PICKS. The old path was `amm.Spawn:NewSpawn` +
   -- `amm.Spawn:SpawnNPC`, and without AMM installed it failed right here with "AMM Spawn module not
   -- available" — Jackie simply could not be summoned. AMM's SpawnNPC is itself just
   -- `DynamicEntitySystem:CreateEntity` 1 m in front of V (Modules/spawn.lua:582), so the native path
@@ -975,10 +975,10 @@ local function ammSpawn(companionFlag, appearance)
   Session.clear()
   if not spawn then return nil, serr or "native spawn failed" end
   spawn.companionFlag = companionFlag
-  -- v1.52: stamp the record with the session that created it. Session.stale() reads this to know the
+  -- stamp the record with the session that created it. Session.stale() reads this to know the
   -- handle is a dead pointer after a load, so callers drop it instead of dereferencing it.
   Session.stamp(spawn)
-  -- v1.43: REMEMBER what the companion is wearing. Every companion respawn (culled body, stranded
+  -- REMEMBER what the companion is wearing. Every companion respawn (culled body, stranded
   -- fast-travel) used to call ammSpawn(1) with no appearance and silently put him back in
   -- Config.defaultAppearance — which is why the Blaze heist Jackie lost his suit at Konpeki, where
   -- streaming/cutscenes cull him constantly. Recording the RESOLVED name (not the arg) means a nil
@@ -987,7 +987,7 @@ local function ammSpawn(companionFlag, appearance)
   return spawn
 end
 
--- v1.43: the outfit a respawned COMPANION should come back in — whatever he was last spawned wearing,
+-- the outfit a respawned COMPANION should come back in — whatever he was last spawned wearing,
 -- falling back to his normal clothes. GLOBAL -> costs no top-level local (200-cap).
 function jlCompanionAppearance()
   return JL.summon.appearance or Config.defaultAppearance or "jackie_welles_default"
@@ -1011,7 +1011,7 @@ end
 JL_APPFIX_WINDOW = 8.0   -- seconds we keep verifying after the body resolves
 JL_APPFIX_TRIES  = 4     -- re-asserts before we give up and warn
 
--- v1.8.3: the readable name out of a CName. `tostring` on a CName gives the whole struct —
+-- the readable name out of a CName. `tostring` on a CName gives the whole struct —
 -- `ToCName{ hash_lo = 0x..., hash_hi = 0x... --[[ jackie_welles_default --]] }` — so anything that
 -- compares a CName read-back to a plain string is comparing against that, and fails forever. The name
 -- is only inside the `--[[ ... --]]` comment. (NCLives has this as `NCL.recordPath` in ncl.lua; this
@@ -1167,7 +1167,7 @@ local function summonJackie()
   log("Summon requested.")
 end
 
--- v0.34: clear the vehicle-arrival state + despawn its bike (inline so the early dismiss
+-- clear the vehicle-arrival state + despawn its bike (inline so the early dismiss
 -- functions don't depend on the vehicle helpers defined far below).
 local function clearVehicleArrival()
   if JL.varrival.bikeId then
@@ -1180,7 +1180,7 @@ local function clearVehicleArrival()
   JL.varrival.pingAt, JL.varrival.slowedLogged = nil, nil
 end
 
--- v1.8.2 SEND-OFF -> IDLE COOLDOWN. Stamp "the schedule may not put a body in front of V yet".
+-- SEND-OFF -> IDLE COOLDOWN. Stamp "the schedule may not put a body in front of V yet".
 -- Read at the top of scheduleTick. See Config.dismiss.idleCooldown for the whole story (short
 -- version: dismissing the companion opens the gate on the idle/schedule body, and if V is standing
 -- at the venue the schedule wants him at, a second Jackie spawns in V's face a second later).
@@ -1267,7 +1267,7 @@ function jlPurgeJackieBodies(reason)
         :format(tostring(reason), n))
 end
 
--- v1.61: run the purge the instant a load begins tearing the world down. PlayerPuppet.OnDetach fires at
+-- run the purge the instant a load begins tearing the world down. PlayerPuppet.OnDetach fires at
 -- the START of a load (and on game exit / Johnny swaps) but NOT on fast-travel — fast-travel only teleports
 -- the existing puppet (fastTravelSystem.script:444), it never detaches — so a following Jackie survives a
 -- fast-travel exactly as before. We touch NOTHING on the detaching puppet (no `self:` deref); the callback
@@ -1353,7 +1353,7 @@ local function getGameHour()
   return nil
 end
 
--- v0.39: MONOTONIC total in-game time in SECONDS (across days), for measuring companion duration.
+-- MONOTONIC total in-game time in SECONDS (across days), for measuring companion duration.
 -- GetGameTime():ToSeconds() returns total game seconds (getGameHour mods it by a day for the clock).
 local function getGameSeconds()
   local ts = Game.GetTimeSystem(); if not ts then return nil end
@@ -1407,7 +1407,7 @@ function jlWatsonHoldTick(dt)
   pcall(function() jlWatsonApply(false) end)
 end
 
--- v1.44: is the Blaze set-piece (or its finale) actually PLAYING right now? Used to suspend Quiet-Life
+-- is the Blaze set-piece (or its finale) actually PLAYING right now? Used to suspend Quiet-Life
 -- rules that would otherwise pull Jackie out of the scene — chiefly the companion-duration auto-leave.
 -- Deliberately NOT `JL.mode == "blaze"`: that stays true for the rest of the save, so it would disable his
 -- going-home behaviour permanently on a Blaze playthrough. `Blaze.reset()` nils `st`, and the finale tick
@@ -1420,7 +1420,7 @@ function jlBlazeSceneLive()
   return live
 end
 
--- v1.41: ABSOLUTE in-game day index (0,1,2...) from the monotonic game clock. Used for once-per-day
+-- ABSOLUTE in-game day index (0,1,2...) from the monotonic game clock. Used for once-per-day
 -- gates. Deliberately NOT JL.day.count: that only advances when ensureDayTemplate catches the hour
 -- WRAPPING past midnight, so a flat 24 h sleep (10:00 -> 10:00) never decreases the hour and would be
 -- missed. Total-seconds / 86400 can't miss a day. Returns nil if the TimeSystem isn't up yet (callers
@@ -1431,7 +1431,7 @@ function jlGameDay()
   return math.floor(s / 86400.0)
 end
 
--- v0.39: start (or restart) Jackie's companion-duration clock. Called when he becomes a companion
+-- start (or restart) Jackie's companion-duration clock. Called when he becomes a companion
 -- and again when a dinner resets it. Stores when he joined + when he'll head home (game seconds).
 local function armCompanionTimer(extendHours)
   local g = getGameSeconds()
@@ -1440,7 +1440,7 @@ local function armCompanionTimer(extendHours)
   JL.summon.companionExpiresGame = g and (g + hrs * 3600) or nil
 end
 
--- v0.39: is the dinner invite available yet? Gated by `unlockAfterGameHours` once enforceUnlock
+-- is the dinner invite available yet? Gated by `unlockAfterGameHours` once enforceUnlock
 -- is turned on; for now (enforceUnlock=false) it's always available.
 local function dateUnlocked()
   local d = Config.date; if not d then return false end
@@ -1506,7 +1506,7 @@ local function currentScheduleBlock()
   local h = getGameHour(); if not h then return nil, nil end
   for _, b in ipairs(activeSchedule()) do
     if hourInBlock(h, b.startHour, b.endHour) then
-      -- v1.55 (Husbando only): once Jackie has been to Misty's ONCE, that's where they break up — and he
+      -- (Husbando only): once Jackie has been to Misty's ONCE, that's where they break up — and he
       -- never goes back. Every later Misty slot in the schedule becomes the noodle bar instead. Hermano is
       -- untouched: there they're solid, and he keeps his standing visit.
       -- Return a COPY — the schedule blocks are shared Config tables and must never be mutated in place,
@@ -1524,7 +1524,7 @@ local function currentScheduleBlock()
   return nil, h
 end
 
--- v0.55: is Jackie asleep right now? True during his nightly sleep window (Config.secret
+-- is Jackie asleep right now? True during his nightly sleep window (Config.secret
 -- startHour..endHour, default 00:00-06:00). Calls placed while he's asleep don't connect — the
 -- phone just rings out (he doesn't pick up). Independent of where the schedule has him.
 local function jackieAsleep()
@@ -1700,7 +1700,7 @@ local function actionJustPressed(action)
   return pressed
 end
 
--- v0.40: the action's TYPE (BUTTON_PRESSED / AXIS_CHANGE / ...) and analog VALUE. Used only by the
+-- the action's TYPE (BUTTON_PRESSED / AXIS_CHANGE / ...) and analog VALUE. Used only by the
 -- cycle-debug log so we can see whether deeper dialogue layers deliver the arrows as a button or an
 -- axis (a button name we add to CYCLE_*; an axis needs different handling).
 local function actionType(action)
@@ -1716,7 +1716,7 @@ local function actionValue(action)
   return v
 end
 
--- v0.41: true on the key-RELEASE edge. On deeper dialogue layers the arrows reach us ONLY as
+-- true on the key-RELEASE edge. On deeper dialogue layers the arrows reach us ONLY as
 -- BUTTON_RELEASED (never just-pressed), so navigation keys off this. IsButtonJustReleased covers
 -- most cases; the typed-RELEASED fallback catches the rest.
 local function actionReleased(action)
@@ -1752,12 +1752,12 @@ local function setupInteractHook()
       -- the highlight, the debounce and the both-edges handling now (dialogui.lua, INPUT section) —
       -- it keeps the v0.41 finding that navigation arrives PRESSED on the first choice layer but
       -- only RELEASED on deeper ones, so both edges are accepted and debounced.
-      -- v1.63.1: `or DialogUI.isShown()` so the STANDALONE test picker ("Show test picker" /
+      -- `or DialogUI.isShown()` so the STANDALONE test picker ("Show test picker" /
       -- DialogUI.selfTest()) is navigable too. It runs with no conversation, so Branch.open is false
       -- and the old condition routed nothing to it — which would have made a perfectly working picker
       -- look input-dead. It's also simply more correct: if the native box is up, it owns the input.
       if Branch.open or DialogUI.isShown() then
-        -- v0.40 DEBUG: log EVERY action while the box is open (name + type + value) so an arrow that
+        -- DEBUG: log EVERY action while the box is open (name + type + value) so an arrow that
         -- arrives as an AXIS on some layer is still visible. Turn cycleDebug off once locked.
         if Config.dialogue and Config.dialogue.cycleDebug then
           log(string.format("CYCLE action: %s  type=%s value=%s pressed=%s",
@@ -1772,14 +1772,14 @@ local function setupInteractHook()
       if not actionJustPressed(action) then return end
       if Config.talk and Config.talk.logActions then log("OnAction: " .. tostring(name)) end
       if not INTERACT_ACTIONS[name] then return end
-      -- v1.0 BLAZE: at the "[F]: Get in the AV" escape moment, F triggers the final fade. Consumes the
+      -- BLAZE: at the "[F]: Get in the AV" escape moment, F triggers the final fade. Consumes the
       -- press so it doesn't also grunt/talk. No-op (returns false) any other time.
       if JL.mode == "blaze" then
         local consumed = false
         pcall(function() consumed = Blaze.tryEscapePress and Blaze.tryEscapePress() end)
         if consumed then return end
       end
-      -- v0.32: try to start the location-based branching convo FIRST. Only if it doesn't
+      -- try to start the location-based branching convo FIRST. Only if it doesn't
       -- start (not looking, busy, or the 'everywhere' tree is on its DONE cooldown) do we
       -- fall back to a one-off grunt. This both avoids grunt+dialogue overlapping AND gives
       -- the "just grunts during cooldown" behaviour for free.
@@ -1924,7 +1924,7 @@ local function showOnscreenMsg(text, duration, silent)
   if not silent then playUiSound(Config.banner and Config.banner.sfx) end
 end
 
--- v0.93: MAIN-QUEST CALL REFUSAL notice. Calling/summoning Jackie during a MAIN quest is a deliberate
+-- MAIN-QUEST CALL REFUSAL notice. Calling/summoning Jackie during a MAIN quest is a deliberate
 -- no-op (he won't get dragged into the story), but it used to fail SILENTLY — the only feedback was the
 -- CET status text, invisible during normal play — so it read as a bug ("I did the retrieval quest, why
 -- won't he answer?"). This routes every refusal through one place: V's status line + log AS BEFORE, PLUS
@@ -1953,7 +1953,7 @@ local function showSubtitle(text, speakerName, duration, speakerObj)
   local line
   local ok, err = pcall(function()
     line = scnDialogLineData.new()
-    -- v1.60 LOCALIZATION CHOKEPOINT 1 of 4: every spoken line in the mod reaches the subtitle
+    -- LOCALIZATION CHOKEPOINT 1 of 4: every spoken line in the mod reaches the subtitle
     -- band through here, so one Lang.t translates them all (English falls through unchanged).
     line.text         = tostring(Lang.t(text) or "")
     line.speakerName  = tostring(speakerName or "")
@@ -2000,7 +2000,7 @@ end
 -- if scnDialogLineData / the blackboard push isn't available on this build.
 local function showDialogueText(speaker, text, duration, speakerObj)
   if not showSubtitle(text, speaker, duration, speakerObj) then
-    -- v1.60: translate BEFORE the concat — showOnscreenMsg would otherwise look up the whole
+    -- translate BEFORE the concat — showOnscreenMsg would otherwise look up the whole
     -- "Jackie:   <line>" string, which is not a key, and the line would stay English here.
     showOnscreenMsg(tostring(speaker) .. ":   " .. tostring(Lang.t(text)), (duration or 4.0) + 0.5, true)  -- silent: subtitle fallback, not a notice banner
   end
@@ -2011,7 +2011,7 @@ local function updateTalkPrompt(dt)
   talkUI.checkT = (talkUI.checkT or 0) + dt
   if talkUI.checkT < 0.2 then return end
   talkUI.checkT = 0
-  -- v1.01: while Blaze's "Get in the AV" prompt owns the native interaction box, don't touch it.
+  -- while Blaze's "Get in the AV" prompt owns the native interaction box, don't touch it.
   if JL.mode == "blaze" then
     local esc = false; pcall(function() esc = Blaze.escapePromptActive and Blaze.escapePromptActive() end)
     if esc then talkUI.shown = false; return end
@@ -2023,7 +2023,7 @@ local function updateTalkPrompt(dt)
   end
   if Branch.busy then return end   -- a conversation is running; don't fight / clear its choice box
   local j = lookedAtJackie()
-  -- v1.8.7 ⚠️ NEVER ADVERTISE A KEY THAT DOES NOTHING. Branch.kick already stands down on a body Night
+  -- ⚠️ NEVER ADVERTISE A KEY THAT DOES NOTHING. Branch.kick already stands down on a body Night
   -- City Allies owns (see the note there): our conversation reaches that companion through the `Talk`
   -- row the bridge appends to THEIR menu, not through our own box. THE PROMPT NEVER LEARNED THAT. So
   -- on an NCA-hired Jackie we kept pushing our "[F] Talk" hub anyway — which on a controller draws as a
@@ -2051,7 +2051,7 @@ local function updateTalkPrompt(dt)
     end
   end
   if within then
-    -- v1.8.7 ⚠️ "off" MEANS OFF — checked before anything is drawn, and it is the ONE state with no
+    -- ⚠️ "off" MEANS OFF — checked before anything is drawn, and it is the ONE state with no
     -- exception clause. A player running a HUD-hider mod wants a clean screen; a player who knows the
     -- key wants their reminder gone. Neither is served by a prompt that reappears "just this once".
     -- The KEY ITSELF IS UNTOUCHED: look at him and press it and he talks exactly as before. This hides
@@ -2111,7 +2111,7 @@ local function updateTalkPrompt(dt)
       end
     end
   end
-  -- v1.8.6: mirror onto JL so jlPromptProbeTick (and loadsim) can read it — talkUI is a file-local.
+  -- mirror onto JL so jlPromptProbeTick (and loadsim) can read it — talkUI is a file-local.
   JL.talkPromptShown = talkUI.shown
 end
 
@@ -2262,7 +2262,7 @@ local function flapTick()
 end
 
 -- ---------------------------------------------------------------------------
--- v0.53 CATCH-HIS-EYE SMILE. While V holds their look straight on Jackie (and nothing else is
+-- CATCH-HIS-EYE SMILE. While V holds their look straight on Jackie (and nothing else is
 -- driving his face), roll a LOW chance every `rollEvery` s; on a hit he smiles for `duration` s
 -- then relaxes. Same FacialReaction mechanism as the talk-flap, so it's gated OFF whenever a line
 -- is playing (flap/dialogue) — a smile must never stomp the mouth mid-sentence.
@@ -2283,7 +2283,7 @@ local function resetSmileFace(handle)
   pcall(function() local s = handle:GetStimReactionComponent(); if s then s:ResetFacial(0) end end)
 end
 
--- v0.94: pick WHICH happy face a smile uses once it has fired. `selfChance` -> his own `idle` (Smile);
+-- pick WHICH happy face a smile uses once it has fired. `selfChance` -> his own `idle` (Smile);
 -- otherwise an evenly-picked one of `otherIdles` (Joy etc.), so the "other" faces COLLECTIVELY make up
 -- the remaining share. Does NOT touch how OFTEN he smiles — the chance roll upstream is unchanged.
 local function pickSmileIdle(cfg)
@@ -2318,7 +2318,7 @@ local function smileTick()
     return
   end
 
-  -- v0.93 REUNION SMILE BOOST — while the first-meeting dialogue is running he beams. Bypasses the
+  -- REUNION SMILE BOOST — while the first-meeting dialogue is running he beams. Bypasses the
   -- gaze + Branch/dialogue gates (we WANT smiles mid-convo here), but still yields to his mouth flap
   -- so spoken lines lip-sync. Hard `reunionSafety` expiry protects against an aborted meet.
   if s.reunionActive then
@@ -2377,7 +2377,7 @@ local function smileTick()
   log("Smile: caught V's eye -> brief smile (idle " .. tostring(s.idle) .. ").")
 end
 
--- v0.55 AMBIENT "feel alive" grunts. While Jackie is present (companion OR idle at a venue) and
+-- AMBIENT "feel alive" grunts. While Jackie is present (companion OR idle at a venue) and
 -- nothing else is driving his voice/face, roll a small `chance` every `everyMinutes` real minutes
 -- for ONE of his non-pained vocal efforts (a laugh, a huff, a curious "hmm"). The pool deliberately
 -- excludes pain/choking/scream/death + combat barks, so he never randomly grunts like he's hurt or
@@ -2407,7 +2407,7 @@ local function ambientGruntTick()
   log("Ambient: '" .. tostring(ev) .. "' (feel-alive grunt).")
 end
 
--- v1.66: both of these now go through vo.lua, which prefers the GAME'S OWN voice-over
+-- both of these now go through vo.lua, which prefers the GAME'S OWN voice-over
 -- (no shipped audio, no Audioware) and falls back to an Audioware bank for anyone who
 -- already built one. The signatures are unchanged so the ~20 call sites below didn't
 -- have to move; `name` is still an Audioware-style event name, and "jl_<digits>" is
@@ -2467,7 +2467,7 @@ local function dialogueTick()
     JL.ui.status = "Dialogue done."; log("Dialogue: done."); return
   end
   local who = tostring(line.speaker or "?")
-  -- v0.20: real voice via Audioware for BOTH speakers (V reuses Jackie clips for now)
+  -- real voice via Audioware for BOTH speakers (V reuses Jackie clips for now)
   local spoke = false
   if line.sfx then spoke = playVoice(line.sfx) end
   if (not spoke) and line.fallbackSfx then spoke = playVoice(line.fallbackSfx) end  -- guaranteed WAV
@@ -2478,7 +2478,7 @@ local function dialogueTick()
   end
   -- pace by the real clip length when readable, else the configured dur; small gap after
   local secs = voiceDuration(line.sfx) or line.dur or 4.0
-  -- v0.22: real subtitle band (speaker = Jackie's entity for his lines, else V)
+  -- real subtitle band (speaker = Jackie's entity for his lines, else V)
   local isJk = who:lower():find("jackie") ~= nil
   local spk  = isJk and dialogueTarget() or Game.GetPlayer()
   if isJk then startFlap(secs) end   -- lip-movement: flap only on Jackie's lines
@@ -2521,7 +2521,7 @@ function jlVar(entry)
 end
 
 -- ---------------------------------------------------------------------------
--- v1.69: is V's BODY male? Not the Husbando/Hermano switch — the actual character in the save,
+-- is V's BODY male? Not the Husbando/Hermano switch — the actual character in the save,
 -- which is what the audio engine reads when it chooses between the two takes of a gendered line.
 -- Cached after the first successful read (the body can't change mid-session) and NEVER cached on
 -- a failed one: on a slow load Game.GetPlayer() isn't up yet, and locking in a wrong answer there
@@ -2564,7 +2564,7 @@ function jlLineText(text, sfx)
   return e.m or text                      -- male take   -> the male wording, whatever V's body is
 end
 
--- v1.54: HERMANO IS THE DEFAULT FOR EVERY V. The old v1.2/v1.3 behaviour auto-read V's body gender on
+-- HERMANO IS THE DEFAULT FOR EVERY V. The old v1.2/v1.3 behaviour auto-read V's body gender on
 -- first load and locked Female V -> Husbando; that's gone (jlDetectGenderOnce deleted). Rationale: most
 -- players run a male V, Hermano is the canon track, and a player who wants Husbando can just flip the
 -- Esc -> Settings switch. So the mode is ONLY ever non-default if the player explicitly chose it.
@@ -2613,7 +2613,7 @@ function jlSetFactNum(name, n)
 end
 function jlBikeOutcome() return jlFactNum("jackielives_bike") end
 
--- v1.74 FIRST DINNER: seating is a work in progress, and here is the manual control.
+-- FIRST DINNER: seating is a work in progress, and here is the manual control.
 -- Fired from dinnerTick the moment V reaches the seat marker (see Config.seatTip for the why and
 -- the two gates). `force` = the CET button, which re-shows it without consuming either gate.
 --
@@ -2712,18 +2712,18 @@ local function isReunionBeat()
 end
 
 -- Play a Jackie line: real voice (sfx, else the guaranteed jl_fallback WAV) + subtitle.
--- v1.56 `mute`: suppress the jl_fallback GRUNT on a text-only line. Normally an unvoiced line still plays
+-- `mute`: suppress the jl_fallback GRUNT on a text-only line. Normally an unvoiced line still plays
 -- a neutral vocal effort so Jackie isn't silent — but on the reunion beats that's exactly the problem
 -- Antonia hit: a long stretch of grunt-backed subtitles with the occasional real VO line landing on top of
 -- it reads as broken rather than intentional. A tree can now set `muteFallback = true` (Branch.start passes
 -- it through) to be GENUINELY silent except for the lines that carry a real `sfx`.
 local function speakJackieLine(text, sfx, mute)
-  -- v1.69: for the handful of lines CDPR recorded twice under one String ID, the subtitle follows
+  -- for the handful of lines CDPR recorded twice under one String ID, the subtitle follows
   -- the take the game is about to play (V's body gender) rather than the one this file was
   -- written from. Everything else passes straight through. This is the ONE place it happens, so
   -- every caller — hub, barks, calls, arrival greetings — is covered by the same rule.
   text = jlLineText(text, sfx)
-  -- v1.66: the line comes out of HIS body now, not out of a 2D bank, so the speaker has to
+  -- the line comes out of HIS body now, not out of a 2D bank, so the speaker has to
   -- be resolved before the audio rather than only for the subtitle. Jackie if he's spawned,
   -- else the player — on a phone call he isn't in the world yet, and a null speaker makes
   -- the subtitle band skip the line entirely.
@@ -2798,12 +2798,12 @@ end
 local function startDinnerWalk(key)
   if not JL.summon.active then return end
   local D = Config.date or {}
-  -- v1.57: he AGREED to eat — so he is definitively not walking off any more. (Belt-and-braces: the invite
+  -- he AGREED to eat — so he is definitively not walking off any more. (Belt-and-braces: the invite
   -- in runCallAction already aborts, but Jackie can also propose the outing himself, and a leaving Jackie
   -- must never be left coasting on jlRetreatFollow once a dinner is on.) Full companion shift, since a
   -- dinner is exactly the thing that resets his clock; dinnerTick resets it again when the meal is done.
   pcall(function() jlAbortDeparture((Config.companion and Config.companion.maxGameHours) or 6.0, "dinner accepted") end)
-  -- v0.47: the "not twice a day" refusal moved UP to the invite (runCallAction "start_date"), so by the
+  -- the "not twice a day" refusal moved UP to the invite (runCallAction "start_date"), so by the
   -- time we get here V has already passed the cooldown gate and committed to a venue.
   local r = findRestaurant(key)
   if not r or not r.pos then
@@ -2820,14 +2820,14 @@ local function startDinnerWalk(key)
   JL.dinner.destYaw  = r.yaw or 0.0
   JL.dinner.satAt    = nil
   JL.dinner.dwellSince, JL.dinner.seatTipTried = nil, nil   -- v1.8.2: a fresh outing gets a fresh arrival-dwell clock and may re-offer the seat card
-  -- v0.52: if HE picked the spot ("You pick, hermano." -> dine:random) and it has a naming line, he SAYS it
+  -- if HE picked the spot ("You pick, hermano." -> dine:random) and it has a naming line, he SAYS it
   -- ("Meet me at Lizzie's." / "...we hit the Afterlife..."); otherwise the generic accept ack.
   local selfPick = (key == "random") and r.pickSfx
   local line = selfPick and r.pickText or D.ackText
   local sfx  = selfPick and r.pickSfx  or D.ackSfx
   local av   = jlVar({ text = line, sfx = sfx })   -- v1.2: Hermano swap (e.g. "Right on, chica." -> "...mano.")
   pcall(function() speakJackieLine(av.text, av.sfx) end)
-  -- v0.64: flash the objective as the native neon-left on-screen message (not a persistent ImGui box).
+  -- flash the objective as the native neon-left on-screen message (not a persistent ImGui box).
   -- v1.x: bars (r.drinks = true, e.g. Lizzie's / Afterlife) read "grab some drinks" instead of "food".
   local fmt = (r.drinks and (D.objectiveTextDrinks or "Grab some drinks with Jackie: Go to %s"))
              or (D.objectiveText) or "Grab some food with Jackie: Go to %s"
@@ -2847,7 +2847,7 @@ end
 -- The `menu` table survives as the CHOICE MODEL (menu.choices / menu.sel / menu.title) Branch.* works
 -- against; only the drawing moved.
 
--- v0.33e: true while any game menu is up (pause/ESC, map, inventory...). UI_System.IsInMenu
+-- true while any game menu is up (pause/ESC, map, inventory...). UI_System.IsInMenu
 -- is the game's own blackboard flag, so this catches them all without per-menu hooks.
 local function uiInMenu()
   local v = false
@@ -2860,7 +2860,7 @@ local function uiInMenu()
 end
 
 -- ---------------------------------------------------------------------------
--- v1.02 BLAZE: real FADE TO BLACK (then back in). A full-screen black ImGui overlay whose alpha
+-- BLAZE: real FADE TO BLACK (then back in). A full-screen black ImGui overlay whose alpha
 -- animates out -> hold -> in. Covers ALL game UI, but SKIPS drawing while a game menu (pause/ESC/map)
 -- is up (uiInMenu) so it never blacks those out. At full black it runs the injected `atBlack` callback
 -- (the finale: teleport + quest-complete), so the swap is hidden. Stepped from onUpdate (tick) + onDraw
@@ -2920,13 +2920,13 @@ function drawBlazeFade()
   end)
 end
 
--- v1.63: drawDialogueBox() is gone with the rest of the ImGui picker — the native widget draws
+-- drawDialogueBox() is gone with the rest of the ImGui picker — the native widget draws
 -- itself, so there is nothing to render from onDraw any more. Its two safety behaviours moved:
 --   * "close if we've left to the main menu"  -> DialogUI.tick()
 --   * "don't draw over the pause/ESC menu"    -> free; the game's own dialogWidgetGameController
 --     listens to UI_System.IsInMenu and hides itself (dialogUI.script:31, OnMenuVisibilityChange).
 
--- v0.33: while Jackie is your COMPANION (following you), every face-to-face talk node also
+-- while Jackie is your COMPANION (following you), every face-to-face talk node also
 -- offers a "send him off" choice that walks him away + despawns him. Returns a FRESH list so
 -- the config tree is never mutated. Not added during a CALL (you can't call him while he's with
 -- you anyway) - guarded by JL.summon.active + the tree not being the call tree.
@@ -2936,11 +2936,11 @@ local function withCompanionExtras(choices)
      or bstate.tree == Config.reunionCallTree then return choices end  -- not on a call
   if Config.date and bstate.tree == Config.date.tree then return choices end -- and not mid-date (no recursion)
   if bstate.tree == Config.reunionMeetTree then return choices end  -- v0.85: no "send off" during the first meeting
-  -- v0.83: NEVER offer "Head home, Jackie" during a dinner outing — dismissing a SEATED puppet (role
+  -- NEVER offer "Head home, Jackie" during a dinner outing — dismissing a SEATED puppet (role
   -- cleared, in a sit workspot) doesn't stand him up and crashes the game. The dinner "Enough chillin',
   -- let's go" option (seatedTree) is the safe way to end the outing.
   if JL.dinner.phase then return choices end
-  -- v0.81: dinner invite + "Head home, Jackie" only appear on the tree's START node (the MAIN talk). Once
+  -- dinner invite + "Head home, Jackie" only appear on the tree's START node (the MAIN talk). Once
   -- V dives into a sub-branch the convo just plays out and closes; to dismiss/invite again she reopens the
   -- conversation. Keeps sign-off branches clean and dismiss out of every follow-up node.
   local t = bstate.tree
@@ -2966,7 +2966,7 @@ local function withCompanionExtras(choices)
   end
   out[#out + 1] = {
     text   = (Config.dismiss and Config.dismiss.choiceText) or "Head home, Jackie.",
-    -- v1.70: the send-off is one of V's own recordings now (Config.dismiss.choiceSfx). It is
+    -- the send-off is one of V's own recordings now (Config.dismiss.choiceSfx). It is
     -- the row that ENDS a companion session, so it is heard as often as the greeting is.
     sfx    = Config.dismiss and Config.dismiss.choiceSfx,
     to     = nil,
@@ -3016,7 +3016,7 @@ local function openChoiceMenu(choices, title, node)
     local appear = true
     if c.chance then local r = 1.0; pcall(function() r = math.random() end); appear = (r < c.chance) end
     if c.once and bstate.taken and bstate.taken[c.once] then appear = false end   -- v1.54: already walked this branch
-    -- v1.65 FAMILIARITY GATE. `minFam = <tier 0..3>`: the topic only appears once Jackie has opened up
+    -- FAMILIARITY GATE. `minFam = <tier 0..3>`: the topic only appears once Jackie has opened up
     -- that far (familiarity.lua). No minFam = always eligible, so every tree written before this is
     -- untouched. Checked BEFORE `cond`, and mirrored in the empty-menu fallback below, so a topic he
     -- hasn't earned can never be resurrected by the safety net — that would leak the whole character.
@@ -3030,7 +3030,7 @@ local function openChoiceMenu(choices, title, node)
       appear = (ok and res == true)
     end
     if appear then
-      -- v1.2: resolve the DISPLAY text into a shallow COPY so re-rolling a textPool or switching
+      -- resolve the DISPLAY text into a shallow COPY so re-rolling a textPool or switching
       -- relationship mode never clobbers the config's base text. In Hermano mode a choice's `m`
       -- override ({text=} or {textPool=}) wins; otherwise the base choice text is used.
       local sc = {}; for k, v in pairs(c) do sc[k] = v end
@@ -3038,7 +3038,7 @@ local function openChoiceMenu(choices, title, node)
       local pool = src.textPool
       if pool and #pool > 0 then
         local i = 1; pcall(function() i = math.random(1, #pool) end)
-        -- v1.70: a textPool entry may be a plain STRING (as it always was) or a
+        -- a textPool entry may be a plain STRING (as it always was) or a
         -- { text =, sfx = } row, so V's exit lines can carry one of her own recordings the
         -- same way a normal choice row does. Both shapes coexist in one pool on purpose —
         -- most written lines will never have a recording behind them, and a pool should not
@@ -3053,7 +3053,7 @@ local function openChoiceMenu(choices, title, node)
       elseif src.text then
         sc.text = src.text
       end
-      -- v1.77 `variants` (array of {text=, sfx=, to=}) — a textPool that also carries the VOICE and
+      -- `variants` (array of {text=, sfx=, to=}) — a textPool that also carries the VOICE and
       -- (optionally) the node that answers it. Ported from NCLives v1.76.
       --
       -- `textPool` shuffles the words alone, which is all a written line needs. A VOICED line can't
@@ -3078,7 +3078,7 @@ local function openChoiceMenu(choices, title, node)
     end
   end
   -- =========================================================================
-  -- v1.65 RANDOM SUBSET (`pick` on the NODE) + HUB REFRESH
+  -- RANDOM SUBSET (`pick` on the NODE) + HUB REFRESH
   -- =========================================================================
   -- Once Jackie has three tiers of topics unlocked, showing all of them at once is a wall of text that
   -- makes him feel like a menu. With `pick` set, only some eligible topics are offered per draw:
@@ -3154,7 +3154,7 @@ local function openChoiceMenu(choices, title, node)
     if #shown == 0 then shown = choices end   -- everything was spent -> last resort, show the raw list
   end
   menu.choices, menu.sel, menu.title = shown, 1, title or "Jackie"
-  -- v1.63: hand the resolved list to the GAME's dialogue widget (dialogui.lua). DialogUI owns the
+  -- hand the resolved list to the GAME's dialogue widget (dialogui.lua). DialogUI owns the
   -- highlight while it's up and calls Branch.confirm(idx) on select; `menu` stays the model Branch.*
   -- reads. If the widget can't be driven for any reason we DON'T open a phantom menu that the player
   -- can't see but that still swallows their input — we log and end the beat cleanly.
@@ -3193,7 +3193,7 @@ end
 -- cleaned up together — no more per-branch bookkeeping. It's idempotent (safe to call twice) and is
 -- backed by subtitleWatchdogTick (onUpdate) as a guaranteed safety net for any path that still forgets.
 Branch.finish = function(reason)
-  -- v1.62: a conversation opened mid-walk-off PAUSED his retreat. If it's still paused now (V didn't pick
+  -- a conversation opened mid-walk-off PAUSED his retreat. If it's still paused now (V didn't pick
   -- dinner — a dinner accept/invite calls jlAbortDeparture, which clears leaving.phase, so this won't fire),
   -- RESUME the walk-off: re-issue the retreat and let leavingTick carry him out as before.
   if JL.leaving.phase == "walking" and JL.leaving.paused then
@@ -3266,7 +3266,7 @@ end
 Branch.start = function(nodeKey, tree)
   tree = tree or bstate.tree or Config.dialogueTree
   if not tree or not tree.nodes then return end
-  -- v1.54: entering a DIFFERENT tree = a brand-new conversation, so wipe the one-time-choice ledger
+  -- entering a DIFFERENT tree = a brand-new conversation, so wipe the one-time-choice ledger
   -- (bstate.taken). Within one tree it persists, which is what makes a HUB node work: a branch the
   -- player already walked (`once = "<key>"`) stays hidden when they come back to the hub.
   if bstate.tree ~= tree then bstate.taken, bstate.seen = nil, nil end
@@ -3279,7 +3279,7 @@ Branch.start = function(nodeKey, tree)
   closeChoiceMenu()
   pcall(hideJackieChoiceBox)        -- clear the native "[F] Talk" prompt while we talk
   bstate.node = node
-  -- v1.69 GREET ONCE PER CONVERSATION. Every topic in the hub ends in `to = "open"`, so re-entering
+  -- GREET ONCE PER CONVERSATION. Every topic in the hub ends in `to = "open"`, so re-entering
   -- the hub used to replay its greeting pool — and that pool is his ARRIVAL lines ("Talk to me,
   -- choomba", "¿Qué onda?"). Antonia: he "throws an arrival line EVERY time V returns to the main
   -- dialogue picker hub, not good". Right: you say hello once, then you're talking. A node marked
@@ -3304,7 +3304,7 @@ Branch.start = function(nodeKey, tree)
     jline = pickPoolLine(node.jackiePool)
   end
   jline = jlVar(jline)   -- v1.2: swap in the Hermano (male-V) line if this entry carries an `m = {...}`
-  -- v1.56: a tree may declare `muteFallback = true` -> no grunt on its text-only lines (see speakJackieLine).
+  -- a tree may declare `muteFallback = true` -> no grunt on its text-only lines (see speakJackieLine).
   local secs = speakJackieLine(jline and jline.text, jline and jline.sfx, tree.muteFallback)
   bstate.openAt = (JL.clock or 0) + secs + 0.4
 end
@@ -3413,7 +3413,7 @@ function jlSpeakPlayerLine(sfx, text)
   pcall(function() p = Game.GetPlayer() end)
   if not p then return nil end
 
-  -- v1.71: the id we SPEAK. For a female V on a gendered line, with the archive merged, this is our
+  -- the id we SPEAK. For a female V on a gendered line, with the archive merged, this is our
   -- synthetic id whose voiceover-map row points at the FEMALE .wem — the only way to select a take,
   -- because a line's two takes share one String ID and the engine picks the column natively. Falls
   -- back to the real id whenever any condition fails, so it can never mute a line. Everything else
@@ -3522,27 +3522,27 @@ Branch.confirm = function(idx)
     bstate.taken = bstate.taken or {}
     bstate.taken[c.once] = true
   end
-  -- v1.54 `fact = { name = "...", value = N }`: record the choice into the SAVE, right now. A choice that
+  -- `fact = { name = "...", value = N }`: record the choice into the SAVE, right now. A choice that
   -- routes onward (`to = "hub"`) can't fire an `action` — actions only run on a terminal choice — so this
   -- is how a mid-conversation decision (V keeps the Arch / gives it back) survives to be read later.
   if c.fact and c.fact.name then jlSetFactNum(c.fact.name, c.fact.value or 1) end
-  -- v1.65 `fam = <n>`: this specific reply moves the needle. Almost always NEGATIVE — V saying the wrong
+  -- `fam = <n>`: this specific reply moves the needle. Almost always NEGATIVE — V saying the wrong
   -- thing, not a bonus for saying the right one, because the base award already covers "you talked to
   -- him". Floors at 0 in Fam.add: you can cool Jackie off, you can never make him a stranger again.
   if c.fam then pcall(function() Fam.add("choice", c.fam) end) end
   hideSubtitle()
-  -- v1.70: if this row carries one of V's OWN recordings, play it — and let the recording
+  -- if this row carries one of V's OWN recordings, play it — and let the recording
   -- decide how long the subtitle stays. Reading time is a guess; the game told us the real
   -- length (vo_durations.lua), and a subtitle that clears while V is still talking is the
   -- single most obvious way a voiced line reads as broken. Falls through to the old
   -- reading-time behaviour whenever nothing played, so an unvoiced row is untouched.
   local spoke = nil
   pcall(function() spoke = jlSpeakPlayerLine(c.sfx, c.text) end)
-  -- v0.94: on the reunion beats, scale V's chosen line to its length too (so long picks aren't cut off).
+  -- on the reunion beats, scale V's chosen line to its length too (so long picks aren't cut off).
   local hold = spoke
                or (isReunionBeat() and readingSecs(c.text))
                or (Config.dialogue and Config.dialogue.choiceHold) or 2.5
-  -- v1.70: run V's own line through jlLineText too. Same reason it exists for Jackie — CDPR
+  -- run V's own line through jlLineText too. Same reason it exists for Jackie — CDPR
   -- recorded ~2,000 of V's lines TWICE under one String ID with different words, the engine
   -- picks the take from V's body, and a subtitle written from the female take would contradict
   -- the audio a male V hears. No V line currently in the trees is one of those, which is
@@ -3562,11 +3562,11 @@ Branch.move = function(delta)
   pcall(function() DialogUI.move(delta); menu.sel = DialogUI.index() end)
 end
 
--- v0.32: pick the talk tree for WHERE JACKIE CURRENTLY IS. If he's idle-spawned at a named
+-- pick the talk tree for WHERE JACKIE CURRENTLY IS. If he's idle-spawned at a named
 -- place with its own tree (noodle/coyote/afterlife/misty...), use that; otherwise fall back
 -- to the short `everywhere` tree. Returns tree, key. Never nil if Config.locationDialogue.everywhere exists.
 local function currentTalkTree()
-  -- v0.83: seated at dinner -> casual small-talk tree (no dismiss; "Enough chillin'..." stands him up).
+  -- seated at dinner -> casual small-talk tree (no dismiss; "Enough chillin'..." stands him up).
   if JL.dinner.phase == "seated" and Config.date and Config.date.seatedTree then
     return Config.date.seatedTree, "_dinner"
   end
@@ -3607,7 +3607,7 @@ Branch.kick = function()
   end
   -- remember which tree to mark DONE when it ends (cooldown'd trees only, and not while companion)
   bstate.talkCooldownKey = (cd and not JL.summon.active) and key or nil
-  -- v1.62: if he's mid-walk-off, PAUSE it the instant V opens the conversation (not later, at the dinner
+  -- if he's mid-walk-off, PAUSE it the instant V opens the conversation (not later, at the dinner
   -- pick) — halt him and turn to face V. Branch.finish resumes the walk-off unless a dinner cancels it.
   if JL.leaving.phase == "walking" and not JL.leaving.paused then
     JL.leaving.paused = true
@@ -3623,7 +3623,7 @@ Branch.kick = function()
     --  workspot or fight the walk-in; jlLookAtTick's head-tracking already covers those cases.)
     pcall(jlFaceV)
   end
-  -- v1.65 FAMILIARITY: ONE point per CONVERSATION, awarded here — the moment a talk tree actually
+  -- FAMILIARITY: ONE point per CONVERSATION, awarded here — the moment a talk tree actually
   -- opens, not on the [F] prompt (which fires whenever V looks at him). Deliberately not per topic:
   -- paying per row would make "click every option before leaving" the optimal play, and at this curve
   -- that would collapse months of intended progression into an afternoon. Walking six topics in one
@@ -3673,7 +3673,7 @@ local function arrivalPoint()
     pt = Vector4.new(pp.x + d, pp.y, pp.z, 1.0)   -- last resort: +X so he's NEVER on top of V
     how = "fallback+X"
   end
-  -- v1.61: this is the arrival's LAST-RESORT point (callers try navmeshArrivalPoint first). It used to be
+  -- this is the arrival's LAST-RESORT point (callers try navmeshArrivalPoint first). It used to be
   -- returned RAW — the forward point at V's own z, which over a balcony is mid-air. Ground it: jlGrounded
   -- snaps it to navmesh, or drops back to V's own position. Never air.
   local grounded = jlGrounded(pt)
@@ -3765,9 +3765,9 @@ end
 local function runCallAction(name)
   if name == "dismiss_walkaway" then
     if JL.summon.active then
-      -- v0.40: if he's near the venue the schedule wants him at, walk him BACK there + go idle
+      -- if he's near the venue the schedule wants him at, walk him BACK there + go idle
       -- (re-join the cycle) instead of despawning. Else, the normal walk-away-and-despawn.
-      -- v1.77: LOG WHICH BRANCH RAN. "They just despawn" was reported against this row, and the two
+      -- LOG WHICH BRANCH RAN. "They just despawn" was reported against this row, and the two
       -- branches fail in ways that look identical from the pavement — so name the branch, every time.
       local returned = false
       if returnToPost then local ok, res = pcall(returnToPost); returned = ok and res == true end
@@ -3782,7 +3782,7 @@ local function runCallAction(name)
   if name == "start_date" then
     if not (Config.date and Config.date.tree) then return end
     local D = Config.date
-    -- v0.47: the "not twice a day" refusal now fires HERE, right after V's invite, so an
+    -- the "not twice a day" refusal now fires HERE, right after V's invite, so an
     -- on-cooldown Jackie declines immediately with refuseText and the venue picker never shows.
     local g  = getGameSeconds()
     local cd = (D.resetCooldownHours or 24.0) * 3600
@@ -3792,7 +3792,7 @@ local function runCallAction(name)
       log("Dinner: refused at invite (within " .. tostring(D.resetCooldownHours or 24) .. "h of his last dinner).")
       return
     end
-    -- v1.57: he passed the cooldown gate, so the date tree is about to open. If he was mid-walk-off (his
+    -- he passed the cooldown gate, so the date tree is about to open. If he was mid-walk-off (his
     -- shift expired), STOP him here — otherwise he strolls away, and often despawns, while V is still
     -- picking a restaurant. Only a SHORT grace (`abortGraceHours`), so taking a raincheck at the picker
     -- doesn't quietly hand him a whole extra shift; startDinnerWalk extends it properly if V goes through.
@@ -3808,7 +3808,7 @@ local function runCallAction(name)
     -- dinnerTick's `seated` phase owns the stand-up (it has the workspot/collision helpers). We just flag
     -- it; the flag also tells it NOT to re-speak getUpText (the seatedTree already said his parting line).
     JL.dinner.leaveNow = true
-    -- v1.65: the dinner PAYS OFF here, at the stand-up — so an outing V abandons halfway (walks away,
+    -- the dinner PAYS OFF here, at the stand-up — so an outing V abandons halfway (walks away,
     -- reloads, gets shot at) doesn't count. It's the biggest single award in the system on purpose:
     -- it's the one thing that costs real time, and time is what this whole curve is measuring.
     pcall(function() Fam.add("dinner") end)
@@ -3835,7 +3835,7 @@ local function runCallAction(name)
   end
   if name == "reunion_complete" then   -- v0.85: first-meeting dialogue ended -> UNLOCK the mod
     pcall(function() Retrieval.completeReunion() end)
-    -- v0.93: disarm the reunion smile boost + relax his face.
+    -- disarm the reunion smile boost + relax his face.
     pcall(function()
       if JL.smile.until_ > 0 or JL.smile.reunionActive then resetSmileFace(JL.smile.handle) end
       JL.smile.reunionActive, JL.smile.reunionForceUntil = false, 0
@@ -3860,11 +3860,11 @@ local function runCallAction(name)
   if name ~= "summon_arrival" then return end
   if isMainQuestActive() then jlDeclineMainQuest(); return end
   if JL.summon.active then JL.ui.status = "Jackie's already with you."; return end
-  -- v1.65: he dropped what he was doing and came out. Small — answering the phone isn't intimacy — and
+  -- he dropped what he was doing and came out. Small — answering the phone isn't intimacy — and
   -- awarded only past the two refusals above, so a declined call pays nothing.
   pcall(function() Fam.add("call") end)
-  -- v0.50: two modes only — both run through vehicleArrivalTick (foot = bikeless, bike = useBike).
-  -- v0.51: player Esc-menu "Disable vehicle arrivals" (JL.disableVehicleArrivals) forces FOOT,
+  -- two modes only — both run through vehicleArrivalTick (foot = bikeless, bike = useBike).
+  -- player Esc-menu "Disable vehicle arrivals" (JL.disableVehicleArrivals) forces FOOT,
   -- regardless of Config.call.arrivalMethod — the bike arrival is buggy and players can opt out.
   local bike  = ((Config.call and Config.call.arrivalMethod) == "bike") and not JL.disableVehicleArrivals
   local delay = (Config.call and Config.call.vehicleSpawnDelay) or 1.0
@@ -3875,7 +3875,7 @@ local function runCallAction(name)
   log(("Call: %s arrival scheduled in %ss."):format(bike and "BIKE" or "FOOT", tostring(delay)))
 end
 
--- v1.32: a call is "in progress" from the moment it's armed (ring) until the window closes
+-- a call is "in progress" from the moment it's armed (ring) until the window closes
 -- (nativeOpen) and the queued hang-up/watchdog clear. Guards startCall / onPlayerCalledJackie so
 -- you can't stack a SECOND call over a live one (the old guards left a gap during the farewell/
 -- hang-up window, when Branch.busy is already false but the call window is still up). Global (not a
@@ -3886,7 +3886,7 @@ function jlCallInProgress()
          and true or false
 end
 
--- v1.33: live-tunable "temporarily unavailable" fix state, seeded ONCE from Config.nativeCall so the
+-- live-tunable "temporarily unavailable" fix state, seeded ONCE from Config.nativeCall so the
 -- CET "Call fix" buttons/slider can change mode/delay at runtime. Global (not a top-level local) for
 -- the 200-locals cap. mode: "quick" | "instant" | "alive" | "vanilla".
 function jlCallFix()
@@ -3902,7 +3902,7 @@ function jlCallFix()
   return JL.callfix
 end
 
--- v1.37: how long the ALIVE-mode ring plays before Jackie "picks up" — random in [alivePickupMin,
+-- how long the ALIVE-mode ring plays before Jackie "picks up" — random in [alivePickupMin,
 -- alivePickupMax] (default 1.2-3.0 s) so it feels human, not a fixed beat. Global -> 200-local cap safe.
 function jlAliveRingSecs()
   local nc = Config.nativeCall or {}
@@ -3915,7 +3915,7 @@ end
 -- Begin a holocall. With useNativeWindow: fire the native RING (IncomingCall) now; callTick
 -- then aborts it (STOP) and switches to the CONNECT window before running our convo.
 local function startCall()
-  -- v0.85: in AWAITING_CALL (shard read, reunion not done) V CAN call — Jackie always answers.
+  -- in AWAITING_CALL (shard read, reunion not done) V CAN call — Jackie always answers.
   if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then
     JL.ui.status = Retrieval.unavailableMsg(); Retrieval.notifyUnavailable(); return       -- gated until the retrieval quest is done
   end
@@ -3932,7 +3932,7 @@ local function startCall()
   if Config.nativeCall and Config.nativeCall.useNativeWindow then
     triggerNativeCall(id, "IncomingCall", 1)   -- native ring (avatar + ringtone)
   end
-  -- v0.55: if Jackie's asleep he doesn't pick up — ring out, then auto hang up (no connect, no convo).
+  -- if Jackie's asleep he doesn't pick up — ring out, then auto hang up (no connect, no convo).
   if jackieAsleep() and not Retrieval.isAwaitingCall() then   -- v0.85: reunion call always connects
     local rs = (Config.call and Config.call.asleepRingSeconds) or 7.0
     showOnscreenMsg("Calling Jackie...", rs + 0.5)
@@ -3955,18 +3955,18 @@ end
 --  watchdogAt  -> safety: force hang up if a call somehow never completes (no permanent stuck call)
 local function callTick()
   local now = JL.clock or 0
-  -- v1.33: EndCall/connect the SAME contact we rang (alive-swap mode rings "jackie", not "jackie_dead").
+  -- EndCall/connect the SAME contact we rang (alive-swap mode rings "jackie", not "jackie_dead").
   local id  = JL.call.activeId or (Config.nativeCall and Config.nativeCall.id) or "jackie_dead"
   local native = Config.nativeCall and Config.nativeCall.useNativeWindow
 
-  -- v0.98: reset the vanilla-call interrupt pulse (see jlSilenceVanillaJackieCall) so a one-shot
+  -- reset the vanilla-call interrupt pulse (see jlSilenceVanillaJackieCall) so a one-shot
   -- interrupt can't linger and block a legitimate later holocall.
   if JL.call.clearInterruptAt and now >= JL.call.clearInterruptAt then
     JL.call.clearInterruptAt = nil
     pcall(function() Game.GetQuestsSystem():SetFactStr("holo_interrupt_call", 0) end)
   end
 
-  -- v0.55: asleep -> the call just rings out, then hangs up. No pickup, no convo.
+  -- asleep -> the call just rings out, then hangs up. No pickup, no convo.
   if JL.call.noAnswerAt and now >= JL.call.noAnswerAt then
     JL.call.noAnswerAt = nil
     if native then triggerNativeCall(id, "EndCall", 3) end   -- hang up the ring
@@ -3977,7 +3977,7 @@ local function callTick()
     return
   end
 
-  -- v1.38 DEFERRED ALIVE SWAP. The dead call is killed up-front in the observer; a couple frames later
+  -- DEFERRED ALIVE SWAP. The dead call is killed up-front in the observer; a couple frames later
   -- (once it's really gone) we ring the ALIVE avatar HERE. Deferring stops the swap racing the game's
   -- just-started dead call (synchronous swapping let the dead card + "unavailable" voicemail win).
   if JL.call.aliveSwapAt and now >= JL.call.aliveSwapAt then
@@ -4008,7 +4008,7 @@ local function callTick()
     if native then openNativeCallWindow() end     -- CONNECT: empty transparent window stays up
     JL.call.watchdogAt = now + 300                -- safety net (force-end if a call never completes)
     Branch.busy = false                           -- Branch.start re-sets it
-    -- v0.85: in AWAITING_CALL this is THE reunion call (long, emotional, ends with him walking in);
+    -- in AWAITING_CALL this is THE reunion call (long, emotional, ends with him walking in);
     -- it folds in the bike-back beat. Every other call = the normal tree. (v0.94b: the old
     -- firstCallTree bike-back fallback was retired — the reunion + reunion_arrival cover it.)
     local tree = Config.callTree
@@ -4059,19 +4059,19 @@ end
 -- without re-firing IncomingCall ourselves.
 local function onPlayerCalledJackie()
   if not Retrieval.isUnlocked() and not Retrieval.isAwaitingCall() then return end  -- gated: let the game's own call ring out (no hijack)
-  -- v1.38: the dead call is ALREADY killed in the observer before we get here, so every bail below just
+  -- the dead call is ALREADY killed in the observer before we get here, so every bail below just
   -- means "no call starts" — never "the dead voicemail plays". Log WHICH guard bails so we can diagnose.
   if jlCallInProgress() then log("[Hijack] bail: a call is already in progress (jlCallInProgress)."); return end
   if Branch.open or Branch.busy or dlg.active then log("[Hijack] bail: mid-conversation (Branch.open/busy or dlg.active)."); return end
   if JL.summon.active then log("[Hijack] bail: Jackie already summoned (companion) — can't 'call' him."); return end
   if isMainQuestActive() then log("[Hijack] bail: main quest active -> decline."); jlDeclineMainQuest(); return end
-  -- v0.55: asleep -> he doesn't pick up (dead card already killed; just no connect).
+  -- asleep -> he doesn't pick up (dead card already killed; just no connect).
   if jackieAsleep() and not Retrieval.isAwaitingCall() then   -- v0.85: reunion call always connects
     JL.ui.status = "Jackie's not pickin' up (asleep)."
     log("[Hijack] bail: Jackie asleep (schedule window) -> no pickup.")
     return
   end
-  -- v1.33: the "temporarily unavailable" fix. The Observer just caught the game ringing the DEAD
+  -- the "temporarily unavailable" fix. The Observer just caught the game ringing the DEAD
   -- contact (jackie_dead), which flashes the "number unavailable" card. jlCallFix() holds the live
   -- mode/delay (CET "Call fix" section; seeded from Config.nativeCall). Branch on how to kill it.
   local cf  = jlCallFix()
@@ -4098,7 +4098,7 @@ local function onPlayerCalledJackie()
     local aliveId = (Config.nativeCall and Config.nativeCall.aliveId) or "jackie"
     JL.call.activeId = aliveId                                    -- callTick EndCall/connects "jackie"
     pcall(function() triggerNativeCall(id, "EndCall", 3) end)     -- kill the dead card again (attempt 2)
-    -- v1.38: DON'T ring alive this frame — the game's dead call is still settling. Defer ~0.35 s so it's
+    -- DON'T ring alive this frame — the game's dead call is still settling. Defer ~0.35 s so it's
     -- gone first, then callTick's aliveSwapAt block rings the live avatar + arms the connect->dialogue.
     JL.call.aliveSwapAt = now + 0.35
   else                                                   -- "quick": short dead ring, then EndCall->connect
@@ -4109,12 +4109,12 @@ local function onPlayerCalledJackie()
   log(("Hijack: mode=%s delay=%.2f ourRing=%s -> our flow."):format(m, cf.delay or 0.75, tostring(cf.ourRing)))
 end
 
--- v1.37: run the FULL alive-call flow on demand — ring the live `jackie` avatar (see-through holo),
+-- run the FULL alive-call flow on demand — ring the live `jackie` avatar (see-through holo),
 -- random pickup delay, connect, then our branching dialogue — WITHOUT the in-game phone. Used by the
 -- CET "Test ALIVE call" button (the raw RING/CONNECT buttons only fire one phase, no dialogue).
 -- callTick drives ring->EndCall->connect->Branch.start from the timers we arm here. Global -> cap safe.
 function jlStartAliveCall()
-  -- v1.38: it's a TEST button — clear any stale/stuck call state so a prior aborted attempt (e.g. a
+  -- it's a TEST button — clear any stale/stuck call state so a prior aborted attempt (e.g. a
   -- lingering Branch.busy) can't silently block it. Then run the full flow.
   JL.call.ringingAt, JL.call.connectAt, JL.call.aliveSwapAt = nil, nil, nil
   JL.call.noAnswerAt, JL.call.hangupAt, JL.call.watchdogAt = nil, nil, nil
@@ -4180,7 +4180,7 @@ end
 
 -- Observe PhoneSystem:TriggerCall; when the PLAYER calls Jackie's contact (IncomingCall on a
 -- 'jackie' call id, not one of our own TriggerCalls), hand off to onPlayerCalledJackie.
--- v1.55: this is now the FALLBACK path — used only if the pre-emptive Override can't be registered.
+-- this is now the FALLBACK path — used only if the pre-emptive Override can't be registered.
 local function setupCallHijackLegacy()
   if not (Config.nativeCall and Config.nativeCall.hijackPlayerCalls) then return end
   local ok, err = pcall(function()
@@ -4210,7 +4210,7 @@ local function setupCallHijackLegacy()
   return ok
 end
 
--- v1.55: the PRE-EMPTIVE hijack. Swallows the vanilla Jackie call BEFORE it starts (see the essay above).
+-- the PRE-EMPTIVE hijack. Swallows the vanilla Jackie call BEFORE it starts (see the essay above).
 -- Returns true if the Override registered; the caller falls back to the legacy Observe if it didn't.
 local function setupCallPreempt()
   if not (Config.nativeCall and Config.nativeCall.hijackPlayerCalls) then return false end
@@ -4270,7 +4270,7 @@ local function setupCallPreempt()
   return ok
 end
 
--- v1.55: kill the "number temporarily unavailable" status string while OUR call owns the phone.
+-- kill the "number temporarily unavailable" status string while OUR call owns the phone.
 -- OnSetPhoneStatus (phoneSystem.script:150) is the only thing that writes it. Cheap insurance: even if the
 -- pre-empt above misses an edge case, the dead-number TEXT still can't appear over our call.
 local function setupPhoneStatusSuppress()
@@ -4381,7 +4381,7 @@ local function navmeshArrivalPoint(distance)
     JL.arrival.seeded = true
   end
   local fwdAng  = math.atan2(fwd.y, fwd.x)
-  -- v0.52: PLACEMENT. Default = a SIDE of V (left or right, 90°±20° off forward, random side first; the
+  -- PLACEMENT. Default = a SIDE of V (left or right, 90°±20° off forward, random side first; the
   -- other side is tried as a fallback). Set Config.call.spawnSides=false to fall back to the old
   -- behind/front placement (Config.call.spawnBehind). Build the ordered list of base angles to try.
   local bases, label = {}, ""
@@ -4398,7 +4398,7 @@ local function navmeshArrivalPoint(distance)
     bases = { behind and (fwdAng + math.pi) or fwdAng }
     label = behind and "BEHIND" or "front"
   end
-  -- v0.51: reject snapped points whose height differs from V's by more than `maxSpawnZDelta`, so he
+  -- reject snapped points whose height differs from V's by more than `maxSpawnZDelta`, so he
   -- never lands on a roof / balcony / metro level / parking deck the navmesh-below search can find. A
   -- same-level point is far likelier to actually have a walkable PATH to V (the stuck-respawn ladder
   -- is the backstop if it still doesn't).
@@ -4458,7 +4458,7 @@ function frontSideArrivalPoint(distance, jp, behindFirst)
   -- cutting across in front of V. No jp (fresh respawn, handle not resolved) -> right side first.
   local rightFirst = true
   if jp then rightFirst = ((jp.x - pp.x) * rx + (jp.y - pp.y) * ry) >= 0 end
-  -- v1.59: BEHIND (out of a standing V's view, and usually the ground she just walked over) goes first when
+  -- BEHIND (out of a standing V's view, and usually the ground she just walked over) goes first when
   -- the caller asks for it; the near-front anchors stay first otherwise.
   local bases
   if behindFirst then
@@ -4466,7 +4466,7 @@ function frontSideArrivalPoint(distance, jp, behindFirst)
   else
     bases = rightFirst and { rAng, lAng, fwdAng } or { lAng, rAng, fwdAng }
   end
-  -- v1.59: widen the per-base sweep when V is still — "he's allowed to be outside the abreast angles".
+  -- widen the per-base sweep when V is still — "he's allowed to be outside the abreast angles".
   local offs = { 0, 12, -12, 24, -24 }
   if behindFirst then
     local spread = (Config.catchUp or {}).stillAngleSpread or 75.0
@@ -4480,7 +4480,7 @@ function frontSideArrivalPoint(distance, jp, behindFirst)
         local a    = baseAng + math.rad(deg)
         local cand = Vector4.new(pp.x + math.cos(a) * d, pp.y + math.sin(a) * d, pp.z, 1.0)
         local snapped = snapToNavmesh(cand)
-        -- v1.59: navmesh + height + REACHABLE ON FOOT FROM V. The third test is the one that keeps him off
+        -- navmesh + height + REACHABLE ON FOOT FROM V. The third test is the one that keeps him off
         -- the wrong side of a railing (see jlPathReachable); it degrades to "accept" if the API is absent.
         if snapped and math.abs(snapped.z - pp.z) <= maxZ and jlPathReachable(pp, snapped) then
           log(("Recovery: %s point base=%+.0f off=%+.0f d=%.1f dZ=%+.1f -> { %.2f, %.2f, %.2f }")
@@ -4585,7 +4585,7 @@ local function sendWalkToPlayer(handle, movementType, desiredDistance, stealth)
   end))
 end
 
--- v0.77 walk-OFF: the INVERSE of the keep-close follow — an AIFollowTargetCommand with a LARGE
+-- walk-OFF: the INVERSE of the keep-close follow — an AIFollowTargetCommand with a LARGE
 -- desiredDistance so the follow AI opens the gap and Jackie strolls AWAY from V until he's `distance`
 -- metres off (then leavingTick despawns him). We use a follow command (not AIMoveToCommand) because on
 -- game 2.31 a move-to-a-far-point instantly TELEPORTED a just-role-cleared puppet (confirmed via dumps);
@@ -4632,7 +4632,7 @@ local function sendMoveToPlayer(handle, movementType, desiredDistance)
   end))
 end
 
--- v0.33: send a puppet to an ARBITRARY world point (same AIMoveToCommand as sendMoveToPlayer,
+-- send a puppet to an ARBITRARY world point (same AIMoveToCommand as sendMoveToPlayer,
 -- but to a fixed Vector4 instead of V's position). Used to walk Jackie away when dismissed.
 local function sendMoveToPoint(handle, pos, movementType, desiredDistance)
   if not handle or not pos then return false end
@@ -4707,7 +4707,7 @@ end
 startLeaving = function(opts)
   local sp = JL.summon.spawn
   local h  = sp and sp.handle
-  -- v1.77: this used to return SILENTLY with no handle, so a dismissal did nothing at all and left no
+  -- this used to return SILENTLY with no handle, so a dismissal did nothing at all and left no
   -- trace. If the body can't be reached there is no walk-off to give — say so, so the log distinguishes
   -- "never started" from "walked off and despawned at distance" (leavingTick logs the latter).
   if not h then
@@ -4720,11 +4720,11 @@ startLeaving = function(opts)
   -- 1) parting line (real VO + subtitle), like any Jackie line. Capture its duration so we can WIPE the
   --    subtitle afterwards - a one-off speakJackieLine has no follow-up hide, so the line stuck forever.
   local secs = 4.0
-  -- v0.94: parting line is a POOL (Config.dismiss.partingPool) picked at random each dismiss; falls back to
+  -- parting line is a POOL (Config.dismiss.partingPool) picked at random each dismiss; falls back to
   -- the single partingText/partingSfx. An explicit opts.text (e.g. mainQuestExit) still overrides the pool.
   -- These are function-local (NOT main-chunk locals) so they don't count toward init.lua's 200-local cap.
   local pText, pSfx = D.partingText, D.partingSfx
-  -- v1.69: one pool for both Vs. The old `partingPoolM` was a male duplicate whose "male clips" were
+  -- one pool for both Vs. The old `partingPoolM` was a male duplicate whose "male clips" were
   -- wem stems the native path can't speak — so Hermano, the DEFAULT track, was the one that walked
   -- off in silence. These lines say "V", not a pet name, and the two that are gendered are gendered
   -- by the engine (vo_gender.lua subtitles them). See Config.dismiss.
@@ -4750,7 +4750,7 @@ end
 -- and despawn him once he's >= despawnDistance from V (or the safety deadline passes).
 local function leavingTick()
   if JL.leaving.phase ~= "walking" then return end
-  -- v1.62: V opened a conversation mid-walk-off -> FREEZE the retreat (it's rude to keep walking away).
+  -- V opened a conversation mid-walk-off -> FREEZE the retreat (it's rude to keep walking away).
   -- No re-issue and no despawn while paused; Branch.finish resumes (or dinner cancels it for good).
   -- Safety net: if the choice box is no longer open (a close path that skipped Branch.finish), unpause so
   -- he can't get stuck frozen forever — leavingTick then re-issues the retreat on this very tick.
@@ -4776,7 +4776,7 @@ local function leavingTick()
   local far = d and d >= (D.despawnDistance or 30.0)
   if far or (JL.leaving.deadline and now >= JL.leaving.deadline) then
     setCompanionFlag(false)   -- v0.72: he's finished walking off and despawned -> intent over
-    -- v1.8.2: THIS is the path Antonia hit — he walks off, vanishes, and scheduleTick (ungated the
+    -- THIS is the path Antonia hit — he walks off, vanishes, and scheduleTick (ungated the
     -- moment JL.summon.active goes false) spawns a fresh idle Jackie at the venue V is standing in.
     pcall(function() jlStampIdleCooldown("walked off") end)
     ammDespawn(sp)
@@ -4849,7 +4849,7 @@ local function aiTeleport(handle, pos, yawDeg, doNavTest)
   end))
 end
 
--- v0.45: place a npc at an EXACT world pos + yaw, with NO navmesh snap. The seat tuner needs this
+-- place a npc at an EXACT world pos + yaw, with NO navmesh snap. The seat tuner needs this
 -- (doNavTest=true ate small slider nudges by snapping to the nearest navmesh point), and the SIT
 -- facing needs it (else the workspot inherits his walk-in direction -> wrong seat angle).
 -- IMPORTANT: the AITeleportCommand (doNavTest=false) is what ACTUALLY relocates a spawned puppet — the
@@ -4866,7 +4866,7 @@ local function placeAtExact(handle, pos, yawDeg)
   return true
 end
 
--- v0.43: toggle a spawned NPC's collision. NPCPuppet:DisableCollision()/EnableCollision() drop the
+-- toggle a spawned NPC's collision. NPCPuppet:DisableCollision()/EnableCollision() drop the
 -- AI collider + obstacle trace, so chair/world geometry can't block him reaching a seat or shove him
 -- out of it. Guarded — silently no-ops if the method isn't on this puppet/build. (Defined here, above
 -- promoteToCompanion, so the companion path can call it. See COLLISION OWNERSHIP map up top.)
@@ -4877,7 +4877,7 @@ local function setNpcCollision(handle, enabled)
   end)
 end
 
--- v0.62: is this NPC currently mounted to a vehicle? Asks the mounting facility for his mount
+-- is this NPC currently mounted to a vehicle? Asks the mounting facility for his mount
 -- info and checks for a valid parent (the vehicle). pcall-guarded -> returns false on any reflection
 -- hiccup, so the safety dismount below can NEVER play a phantom get-off on a Jackie who's on foot.
 local function isMounted(handle)
@@ -4895,7 +4895,7 @@ end
 -- Promote the spawned Jackie to a real companion (follower role -> combat + auto-follow +
 -- friendly). This is when the native catch-up teleport becomes available again; we only do it
 -- once he's already close, so it never visibly skips the walk-in.
--- v1.77 `rejoin`: they were ALREADY with V and are simply going back on follow — after a meal, off
+-- `rejoin`: they were ALREADY with V and are simply going back on follow — after a meal, off
 -- a bike, out of a cutscene. Pass true and they say nothing. Without it every re-promotion fires the
 -- ARRIVAL GREETING below, so a companion who has been sitting across a table from V for an in-game
 -- hour stands up and greets her like they have just turned up (Antonia, 2026-08-17). Omitting the
@@ -4903,14 +4903,14 @@ end
 local function promoteToCompanion(rejoin)
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
-  -- v0.62: SAFETY dismount. On a bike arrival Jackie is sometimes STILL in the seat when he's
+  -- SAFETY dismount. On a bike arrival Jackie is sometimes STILL in the seat when he's
   -- promoted (the walk-phase unmount didn't take). Re-issue one unmount, but ONLY if he's really
   -- still mounted — so a foot arrival or an already-grounded Jackie never plays a phantom get-off.
   if unmountDriver and isMounted(h) then
     log("promoteToCompanion: Jackie still mounted -> safety dismount.")
     pcall(function() unmountDriver(h, JL.varrival and JL.varrival.bikeHandle) end)
   end
-  -- v1.67: was `amm.Spawn:SetNPCAsCompanion(h)`. That call is AMM's, and AMM's version of it is the
+  -- was `amm.Spawn:SetNPCAsCompanion(h)`. That call is AMM's, and AMM's version of it is the
   -- only reason Jackie has ever followed anyone. Native.setCompanion is the same job done against the
   -- base game's own API — and, unlike the AMM call, it VERIFIES the result instead of returning
   -- success either way. Mechanism and the script citations: native.lua's header.
@@ -4928,7 +4928,7 @@ local function promoteToCompanion(rejoin)
   setCompanionFlag(true)                 -- v0.72: persist "is companion" in the save (survives reload / culling FT)
 end
 
--- v0.50: the old AMM-spawn-near-V + HIDE + teleport "safe walk-in" (arrivalTick / arrivalMoveType)
+-- the old AMM-spawn-near-V + HIDE + teleport "safe walk-in" (arrivalTick / arrivalMoveType)
 -- was DELETED here. Both arrival modes now spawn via DES out at distance (no pop near V -> no
 -- invisibility hack needed) and share vehicleArrivalTick's sprint -> walk -> companion tail. See the
 -- ARRIVAL design note above Config.call in config.lua.
@@ -4985,7 +4985,7 @@ function jlSpawnArrivalBody(pt, yawDeg)
   local rec = Config.jackieRecord or "Character.Jackie"
   local jid = spawnDynEntity(rec, pt, yawDeg, "JackieLives_jackie", app)
   if not jid then return nil end
-  -- v1.52: stamp so a post-load stale ref is dropped, not dereferenced. The appearance/record fields
+  -- stamp so a post-load stale ref is dropped, not dereferenced. The appearance/record fields
   -- are what ammSpawn has always recorded; the arrival paths simply never did.
   return Session.stamp({ id = jid, handle = nil, appearance = app, record = rec })
 end
@@ -4996,7 +4996,7 @@ local function yawToward(from, to)
   return math.deg(math.atan2(to.y - from.y, to.x - from.x)) - 90.0
 end
 
--- v1.62: rotate spawned Jackie IN PLACE to look at V (no move — same spot, new yaw). Used when a
+-- rotate spawned Jackie IN PLACE to look at V (no move — same spot, new yaw). Used when a
 -- conversation opens (it's rude to keep facing away) and by the main-quest warning. GLOBAL (200-local
 -- cap) — captures the placeAtExact/yawToward/playerPos locals declared above.
 function jlFaceV(handle)
@@ -5011,7 +5011,7 @@ function jlFaceV(handle)
   return placeAtExact(handle, jp, yawToward(jp, pp))
 end
 
--- v1.62: MAIN-QUEST GRACE. Called every tick while Jackie is an active, undismissed companion who
+-- MAIN-QUEST GRACE. Called every tick while Jackie is an active, undismissed companion who
 -- isn't at dinner or already walking off (the caller guards those). Instead of bolting the instant a
 -- main quest goes active — which the game loves to auto-track the moment a side job ends — he WARNS and
 -- waits Config.mainExitGrace.seconds. Drop the big fish inside that window and he STAYS; stay on it and
@@ -5020,7 +5020,7 @@ end
 function jlMainExitTick()
   local G  = Config.mainExitGrace or {}
   local me = JL.mainExit
-  -- v1.62: don't arm/warn/expire while V is mid-conversation with him — the countdown FREEZES until the
+  -- don't arm/warn/expire while V is mid-conversation with him — the countdown FREEZES until the
   -- talk ends, so a grace timeout can't interrupt an open dialogue with a walk-off. (Branch.busy covers
   -- the gap while he speaks; Branch.open once the choices are up.)
   if Branch and (Branch.open or Branch.busy) then return end
@@ -5295,7 +5295,7 @@ function jlBikeKnockOff(on)
   end
 end
 
--- v1.41 ANTI-CRASH #2 — make the spawned Arch Invulnerable so a hard hit can't DESTROY it out from
+-- ANTI-CRASH #2 — make the spawned Arch Invulnerable so a hard hit can't DESTROY it out from
 -- under him (a destroyed bike ends the follow). AMM god-modes its spawned entities the same way.
 -- Does NOT stop knock-off — that's jlBikeKnockOff's job. GLOBAL -> 200-cap safe.
 function jlBikeGodMode(veh)
@@ -5311,7 +5311,7 @@ end
 local function despawnArrivalBike()
   if JL.varrival.bikeId then deleteEntityById(JL.varrival.bikeId) end
   JL.varrival.bikeId, JL.varrival.bikeHandle = nil, nil
-  -- v1.41: bike's gone -> drop OUR ref on the global knock-off flat, but only if this arrival actually
+  -- bike's gone -> drop OUR ref on the global knock-off flat, but only if this arrival actually
   -- took one (a foot arrival never armed it, and must not decrement the cruise system's ref).
   if JL.varrival.bikePhysArmed then
     JL.varrival.bikePhysArmed = false
@@ -5351,7 +5351,7 @@ local function resolveJackieHandle()
     sp.roleSet = true                                     -- latch FIRST: a failed call must not retry every frame
     jlMakeCompanion(h)
   end
-  -- v1.77: the body exists now, so this is the first moment the outfit can be re-asserted AMM-style
+  -- the body exists now, so this is the first moment the outfit can be re-asserted AMM-style
   -- (the spec asked for it at CreateEntity, which is the request that loses the streaming race).
   -- Latched like roleSet: once per spawn record, never once per frame.
   if h and not sp.appArmed then
@@ -5361,7 +5361,7 @@ local function resolveJackieHandle()
   return h
 end
 
--- v0.38 FRESH-RESPAWN FALLBACK: the bike ride broke / stalled. Throw it all out — despawn the bike
+-- FRESH-RESPAWN FALLBACK: the bike ride broke / stalled. Throw it all out — despawn the bike
 -- and the (often stuck/mounted) Jackie — and respawn him FRESH ~fallbackDistance m away on the
 -- navmesh, then drop into the existing on-foot "sprinting" phase (sprint -> walk -> companion).
 -- Fires once per arrival; if even this stalls, the maxSeconds deadline teleports him in.
@@ -5402,7 +5402,7 @@ local function vehicleArrivalFootFallback(reason)
       :format(tostring(reason), c.fallbackDistance or 40.0))
 end
 
--- v0.51: (re)spawn a fresh on-foot Jackie `dist` m from V (navmesh + height-valid point) and drop
+-- (re)spawn a fresh on-foot Jackie `dist` m from V (navmesh + height-valid point) and drop
 -- into the "sprinting" phase. Used for BOTH the initial foot arrival and the STUCK -> RESPAWN-CLOSER
 -- ladder (if a sprinting/walking Jackie can't path to V — bad navmesh island / wrong building level —
 -- we kill him and respawn at the next-closer rung). Despawns any current arrival Jackie + bike first
@@ -5481,7 +5481,7 @@ local function vehicleArrivalTick()
     va.placeAt    = (JL.clock or 0) + 1.0
     va.phase      = "placing"
     va.deadline   = (JL.clock or 0) + (c.maxSeconds or 120.0)
-    -- v0.47: the v0.38 foot-fallback (40s -> ditch bike + respawn on foot) was KILLING working rides
+    -- the v0.38 foot-fallback (40s -> ditch bike + respawn on foot) was KILLING working rides
     -- before they finished (an 80 m city ride routinely exceeds 40s). It's now OPT-IN via
     -- Config.vehicle.footFallback (default OFF) so the bike gets its uninterrupted v0.36 conditions
     -- back. With it off, the only backstop is the maxSeconds deadline (force companion handoff).
@@ -5503,7 +5503,7 @@ local function vehicleArrivalTick()
   -- resolve handles each tick until both exist
   if va.bikeId and not va.bikeHandle then
     pcall(function() va.bikeHandle = Game.FindEntityByID(va.bikeId) end)
-    -- v1.41: the moment the Arch exists, protect the ride-in — raise the NPC knock-off threshold so a
+    -- the moment the Arch exists, protect the ride-in — raise the NPC knock-off threshold so a
     -- clipped taxi can't ragdoll him off mid-arrival (which used to end as "Jackie NOT on the bike ->
     -- ditch bike, he comes on foot"), and make the bike invulnerable so it can't be destroyed under him.
     if va.bikeHandle and not va.bikePhysArmed then
@@ -5542,7 +5542,7 @@ local function vehicleArrivalTick()
     return
   end
 
-  -- v0.38 FRESH-RESPAWN FALLBACK: not handed off within fallbackSeconds and still on the bike
+  -- FRESH-RESPAWN FALLBACK: not handed off within fallbackSeconds and still on the bike
   -- (placing/driving) -> ditch the bike, respawn Jackie fresh ~40 m out, sprint/walk in. Once only.
   if not va.footTried and va.footFallbackAt and now >= va.footFallbackAt
      and (va.phase == "placing" or va.phase == "driving") then
@@ -5550,7 +5550,7 @@ local function vehicleArrivalTick()
     return
   end
 
-  -- v0.51 ON-FOOT STUCK -> RESPAWN CLOSER. While sprinting/walking, track his CLOSEST distance to V.
+  -- ON-FOOT STUCK -> RESPAWN CLOSER. While sprinting/walking, track his CLOSEST distance to V.
   -- If he makes no further progress for `respawnStuckSeconds` (bad navmesh island, wrong building
   -- level, blocked path — he just stutters in place, never closing), kill him and respawn at the next
   -- rung in `respawnRungs` (35 -> 20 m). v0.53: stops at 20 m (a 5 m respawn read as a face-teleport);
@@ -5584,7 +5584,7 @@ local function vehicleArrivalTick()
     setFriendly(jh)
     pcall(function() va.bikeHandle:TurnVehicleOn(true) end)
     mountAsDriver(jh, va.bikeHandle)                                -- local climb-on (both at distance)
-    -- v0.53: give him REAL time to walk to the seat + climb on before the bike drives off. 1.2s was
+    -- give him REAL time to walk to the seat + climb on before the bike drives off. 1.2s was
     -- too short — the bike left without him. The "driving" phase then watches Jackie-to-bike distance
     -- and, if he's clearly NOT on it (mount failed), ditches the bike and he comes in on foot from there.
     va.driveAt = now + (c.mountSeconds or 4.0)
@@ -5605,7 +5605,7 @@ local function vehicleArrivalTick()
     local d   = (pp and bp) and dist3(pp, bp) or nil                  -- BIKE -> V (when to park)
     local dj  = (pp and jp) and dist3(pp, jp) or nil                  -- JACKIE -> V (what we report)
     local jbd = (jp and bp) and dist3(jp, bp) or nil                  -- JACKIE -> BIKE (is he actually riding?)
-    -- v0.53: if the bike has been moving a couple seconds and Jackie is NOT on it (mount failed -> the
+    -- if the bike has been moving a couple seconds and Jackie is NOT on it (mount failed -> the
     -- bike drove off without him), DITCH the bike and he comes in ON FOOT from where he's standing. No
     -- teleport, no "bike arrives alone". This also fixes the report following the bike instead of him.
     if jbd and jbd > (c.fellOffDist or 6.0) and (now - (va.driveAt or 0)) >= 2.0 then
@@ -5617,7 +5617,7 @@ local function vehicleArrivalTick()
       return
     end
     local slowing = d and d <= (c.slowDownDistance or 30.0)            -- v0.52: he's intentionally crawling here
-    -- v0.53: ping reports JACKIE's distance to V (bike's in parens), not the bike's, since he's the one arriving
+    -- ping reports JACKIE's distance to V (bike's in parens), not the bike's, since he's the one arriving
     if dj and now >= (va.pingAt or 0) then va.pingAt = now + 3.0; log(("VehArrival: riding in... %.1f m to V (bike %.0f)."):format(dj, d or 0)) end
     -- re-issue the drive at V's live position so he tracks you. v0.50/0.52: ease off to `slowSpeed` once
     -- inside `slowDownDistance` (30 m) so the park at `dismountDistance` (20 m) is a smooth brake, not a
@@ -5668,7 +5668,7 @@ local function vehicleArrivalTick()
   end
 
   if va.phase == "walking" then
-    -- v0.52: bike dismount enters here directly; retry the unmount once so he can't stick in the seat pose.
+    -- bike dismount enters here directly; retry the unmount once so he can't stick in the seat pose.
     if va.unmountAgainAt and now >= va.unmountAgainAt then
       va.unmountAgainAt = nil; pcall(function() unmountDriver(jh, va.bikeHandle) end)
     end
@@ -5696,7 +5696,7 @@ local function vehicleArrivalTick()
   end
 end
 
--- v0.39 RECRUIT-IN-PLACE: dialogue "Let's go/roll" at a location -> the Jackie standing there
+-- RECRUIT-IN-PLACE: dialogue "Let's go/roll" at a location -> the Jackie standing there
 -- BECOMES your companion (no second Jackie arriving from afar). Hand his entity from the idle
 -- system to the summon system, promote to companion, and stop the schedule/wander owning him
 -- (DON'T despawn — same entity, no pop). This is what was missing: the gig dialogue ended but
@@ -5750,7 +5750,7 @@ function jlInCombat()
   return val
 end
 
--- v1.61: does this GameObject currently have a weapon DRAWN? Reads it the game's own way — the active
+-- does this GameObject currently have a weapon DRAWN? Reads it the game's own way — the active
 -- weapon in the WeaponRight/WeaponLeft attachment slots (GameObject.GetActiveWeapon, gameObject.script:757).
 -- Non-nil AND not fists => armed. Any failure -> false ("assume holstered"), so a bad read never makes us
 -- keep nagging him to holster. Global -> 200-local cap safe.
@@ -5768,7 +5768,7 @@ function jlWeaponDrawn(handle)
   return drawn
 end
 
--- v1.61 HOLSTER JACKIE — issue AIUnequipCommand (aiCommand.script:383) for the right hand then the left,
+-- HOLSTER JACKIE — issue AIUnequipCommand (aiCommand.script:383) for the right hand then the left,
 -- the game's documented "put this slot's item away" command. ⚠️ The dump proves the command and its handler
 -- (EquipItemCommandDelegate, aiEquipItemCommand.script) EXIST; it does NOT prove the follower behaviour tree
 -- runs that task, so this is the in-game unknown (like the loiter hold command). It is the only holster lever
@@ -5791,7 +5791,7 @@ function jlHolster(handle)
   return any
 end
 
--- v1.61 WEAPON MIRROR TICK. "Jackie puts his guns away when V does." If V's weapon is holstered and neither
+-- WEAPON MIRROR TICK. "Jackie puts his guns away when V does." If V's weapon is holstered and neither
 -- of them is in combat, but Jackie's is still drawn, holster him — and keep re-issuing (throttled) until his
 -- hands read empty, because a single command often loses a race with his combat-exit animation. An episode
 -- resets the moment V draws again or a fight starts, so this never fights a legitimate armed moment.
@@ -5893,7 +5893,7 @@ function catchUpTick()
   if C.enabled == false then return end
   if JL.blazeFinale then return end   -- v1.47: the finale places Jackie itself; a respawn-when-stranded here
                                       -- would despawn the body it just spawned (and hide the new one).
-  -- v1.48: don't yank him back to V's side while he's crossing the room to take someone down. The
+  -- don't yank him back to V's side while he's crossing the room to take someone down. The
   -- approach legitimately opens a gap, and an aiTeleport mid-takedown would cancel the command.
   if jlTakedownBusy() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   -- settled companion only: active + role applied, and NOT mid-arrival / dinner / walking-off.
@@ -5972,7 +5972,7 @@ function catchUpTick()
   -- he's far. Require it to PERSIST a beat (a fast-travel/load gap, not a momentary stream hiccup).
   JL.catchUp.farSince   = JL.catchUp.farSince or now
   JL.catchUp.graceSince = JL.catchUp.graceSince or now
-  -- v1.59 PROGRESS GRACE. A bare timer treats "stuck behind a fence" and "sprinting back, 8 m closer than
+  -- PROGRESS GRACE. A bare timer treats "stuck behind a fence" and "sprinting back, 8 m closer than
   -- last tick" identically, so a Jackie who only needed a few more seconds got yanked — and a teleport in
   -- front of V is exactly what Antonia was seeing. While the gap is genuinely CLOSING, push the timer back
   -- and let him run. `maxGraceSeconds` caps it from graceSince, so a Jackie inching forward against geometry
@@ -5988,7 +5988,7 @@ function catchUpTick()
   if (now - JL.catchUp.farSince) < (C.sustainSeconds or 4.0) then return end
   if (now - (JL.catchUp.lastAt or -1e9)) < (C.cooldown or 3.0) then return end
 
-  -- v0.79 ESCALATION. aiTeleport (AITeleportCommand) can only move his body while it's still streamed with
+  -- ESCALATION. aiTeleport (AITeleportCommand) can only move his body while it's still streamed with
   -- live AI. A load-screen fast-travel across DISTRICTS strands it far away, so the teleport silently no-ops
   -- (the old build then LIED "teleported to her side" and left him behind, and travelling back never fixed it).
   -- So: if he's beyond respawnDistance (obvious district-scale FT — skip the doomed teleport) OR a prior
@@ -6021,7 +6021,7 @@ function catchUpTick()
   end
   local pt = frontSideArrivalPoint(C.placeDistance or 3.0, jp, behindFirst)
              or navmeshArrivalPoint(C.placeDistance or 3.0)
-  -- v1.59: the old third fallback was `arrivalPoint()`, which ends in `snapToNavmesh(pt) or pt` — i.e. it
+  -- the old third fallback was `arrivalPoint()`, which ends in `snapToNavmesh(pt) or pt` — i.e. it
   -- hands back a RAW, unvalidated forward point when nothing snaps. That is precisely how he materialised in
   -- mid-air in front of a V leaning over a balcony. There is no safe unvalidated point: if nothing walkable
   -- was found, do NOTHING this tick. He keeps walking (the trail is sprinting him home), the cooldown holds,
@@ -6162,7 +6162,7 @@ function jlVertical()
   return st.vertical
 end
 
--- v1.46 SNEAK DETECTION — "is V crouched right now?"
+-- SNEAK DETECTION — "is V crouched right now?"
 -- Read from the SAME PlayerStateMachine blackboard blazeClearCombat uses. The Locomotion int is an OUTPUT
 -- (writing it does nothing — see blazeForceStand), but READING it is exactly what we want here.
 -- The state values are resolved BY NAME through jlAnimEnum (`gamePSMLocomotionStates`), never hardcoded, so
@@ -6187,7 +6187,7 @@ function jlSneakStates()
   return t
 end
 
--- v1.51: the RAW read — "is V crouched right now?" — with no mod-feature gate on it. The Blaze finale's
+-- the RAW read — "is V crouched right now?" — with no mod-feature gate on it. The Blaze finale's
 -- calm-hold needs this to verify V actually stood up, and that must not depend on Config.stealth.enabled.
 -- jlVSneaking() below is this plus the stealth feature's on/off switch and a per-frame cache.
 function jlVCrouched()
@@ -6217,7 +6217,7 @@ function jlVSneaking()
   return st.sneaking
 end
 
--- v1.46 DIAGNOSTIC (logs once). The engine hides a companion from enemy perception automatically —
+-- DIAGNOSTIC (logs once). The engine hides a companion from enemy perception automatically —
 -- `SenseComponent.ShouldIgnoreIfPlayerCompanion` short-circuits sensing, threat-tracking AND reactions for
 -- anyone `AIHumanComponent.IsPlayerCompanion()` accepts. That returns true only when BOTH hold: his AI role
 -- is Follower, and his `FriendlyTarget` behaviour arg is the player. AMM's "set as companion" establishes
@@ -6241,7 +6241,7 @@ function jlCompanionCheck()
   end
 end
 
--- v1.47 FOLLOWER TAKEDOWN. The Heist's parallel takedown reduced to its mechanism: one AI command, with the
+-- FOLLOWER TAKEDOWN. The Heist's parallel takedown reduced to its mechanism: one AI command, with the
 -- victim passed as a plain runtime handle. See the long note on Config.takedown for the decompiled sources.
 -- The handler's ONLY gates on the victim are these two, so we check them up front and explain the refusal
 -- rather than firing a command the behaviour tree will silently drop.
@@ -6253,7 +6253,7 @@ function jlValidVictim(o)
   if not o then return false, "no target" end
   local T = Config.takedown or {}
 
-  -- v1.48 SAFETY. Nothing in this path deals damage — the engine owns the grapple — but ordering a takedown
+  -- SAFETY. Nothing in this path deals damage — the engine owns the grapple — but ordering a takedown
   -- on V or on a friendly is still wrong, so refuse before the command is ever built.
   local isPlayer = false
   pcall(function() local v = o:IsPlayer(); if type(v) == "boolean" then isPlayer = v end end)
@@ -6288,7 +6288,7 @@ function jlValidVictim(o)
   return true
 end
 
--- v1.48 Is a takedown running? While it is, our leash ticks must NOT re-issue movement commands to Jackie:
+-- Is a takedown running? While it is, our leash ticks must NOT re-issue movement commands to Jackie:
 -- a fresh AIFollowTargetCommand / AIMoveToCommand replaces the takedown mid-approach and he just walks back
 -- to V. (That is bug #2 behind "the NPC survived".) Global -> 200-local cap safe.
 function jlTakedownBusy()
@@ -6345,7 +6345,7 @@ function jlTakedown(victim)
     cmd.target                         = victim          -- the runtime handle; targetRef stays empty
     cmd.approachBeforeTakedown         = (T.approachBeforeTakedown ~= false)
     cmd.doNotTeleportIfTargetIsVisible = (T.doNotTeleportIfTargetIsVisible ~= false)
-    -- v1.48 THE FLAG THAT MAKES IT ACTUALLY FIRE. PlayerPuppet.OnTakedownOrder sets exactly this before
+    -- THE FLAG THAT MAKES IT ACTUALLY FIRE. PlayerPuppet.OnTakedownOrder sets exactly this before
     -- broadcasting the same class. IsCombatCommand() has no script callers — the follower behaviour tree
     -- reads it natively to route the command into its takedown subtree. Left false, the command is
     -- accepted and silently ignored, which is why the first build left the guard standing.
@@ -6380,7 +6380,7 @@ function jlTakedownLookAt()
   return jlTakedown(o)
 end
 
--- v1.46 THE SINGLE HANDOFF PREDICATE. followKeepCloseTick (the trail) runs BEFORE abreastTick each frame
+-- THE SINGLE HANDOFF PREDICATE. followKeepCloseTick (the trail) runs BEFORE abreastTick each frame
 -- and yields to abreast; abreastTick then decides whether it actually wants him. Before v1.46 the two asked
 -- DIFFERENT questions (the trail yielded on bare `jlVWalking()`), so any gate added to abreastTick alone
 -- opened a hole: on stairs the trail stood down AND abreast stood down, nobody drove Jackie, and he fell
@@ -6390,7 +6390,7 @@ function jlAbreastOn()
   return jlAbreastWhy() == nil
 end
 
--- v1.8.3 THE SAME PREDICATE, BUT IT SAYS WHY (ported from NCLives v1.83). Eleven gates, and the failure
+-- THE SAME PREDICATE, BUT IT SAYS WHY (ported from NCLives v1.83). Eleven gates, and the failure
 -- looks identical from outside all of them: the companion trails. So the gates live here, each returning
 -- a stable one-line reason, and jlAbreastOn is just "no reason". jlWalkProbeTick prints the reason
 -- whenever it CHANGES, which turns "sometimes he walks wrong" into a named guard in the log.
@@ -6402,7 +6402,7 @@ function jlAbreastWhy()
   if not A.enabled then return "walk-beside disabled in config" end -- v1.57: opt-in; default = plain trailing follower
   if not JL.walkAbreast then return "walk-beside switched OFF in settings" end
   if not (JL.summon.active and JL.summon.companionSet) then return "not a settled companion" end
-  -- v1.8.5: only seating/seated own the body — see jlDinnerOwnsBody. A `walking` dinner falls THROUGH
+  -- only seating/seated own the body — see jlDinnerOwnsBody. A `walking` dinner falls THROUGH
   -- to the gates below, so the probe keeps naming the guard that is really refusing.
   if jlDinnerOwnsBody() then return "the DINNER phase owns his movement" end
   if JL.leaving.phase then return "the LEAVING phase owns his movement" end
@@ -6412,7 +6412,7 @@ function jlAbreastWhy()
   if jlInCombat() then return "V is in combat" end                         -- fighting -> free him to fight
   if jlVertical() then return "stairs/slope -> single file" end            -- v1.46
   if jlVSneaking() then return "V is crouched" end                         -- v1.46: shadow her, never lead
-  -- v1.57: V is basically standing -> the TRAIL owns him, because that's where the loiter halt lives. With
+  -- V is basically standing -> the TRAIL owns him, because that's where the loiter halt lives. With
   -- stock values jlVWalking() already says no here (stopSpeed sits below walkMinSpeed), but the two are
   -- independently tunable now, so state it explicitly rather than rely on the bands not overlapping — if
   -- both ticks thought they owned him he'd be shoved to a side anchor and told to hold still at once.
@@ -6482,7 +6482,7 @@ function jlWalkProbeTick()
   end
 end
 
--- v0.67 KEEP-CLOSE FOLLOW. After handoff we issue ONE tight follow (followDistance), but AMM's own
+-- KEEP-CLOSE FOLLOW. After handoff we issue ONE tight follow (followDistance), but AMM's own
 -- companion follow then takes over with a much LONGER leash, so Jackie trails far behind V. This
 -- re-asserts our tight AIFollowTargetCommand on a throttle so he holds `Config.follow.distance` (a few
 -- metres) instead. Gated to the settled companion state only (not mid-arrival/dinner/walk-off) so it
@@ -6491,13 +6491,13 @@ end
 local function followKeepCloseTick()
   local F = Config.follow or {}
   if F.enabled == false then return end
-  -- v1.48: a takedown is running — re-asserting the follow here would REPLACE it and walk him back to V.
+  -- a takedown is running — re-asserting the follow here would REPLACE it and walk him back to V.
   -- (jlAbreastOn() is false during a takedown, so without this the trail would happily grab him.)
   if jlTakedownBusy() then return end
   if jlInCombat() then return end   -- v1.35: fighting -> don't re-leash; native combat AI runs him
-  -- v0.85b: abreast owns positioning ONLY while V walks; at jog/sprint the trail takes back over.
+  -- abreast owns positioning ONLY while V walks; at jog/sprint the trail takes back over.
   -- v1.39: ...unless the player disabled the custom walk, in which case this trail is the default follower.
-  -- v1.46: ask jlAbreastOn() — the SAME predicate abreastTick uses — so the two can never both stand down
+  -- ask jlAbreastOn() — the SAME predicate abreastTick uses — so the two can never both stand down
   -- (on stairs the old `jlVWalking()` test here yielded to an abreast that had already gated itself off).
   if jlAbreastOn() then return end
   if not (JL.summon.active and JL.summon.companionSet) then return end
@@ -6506,12 +6506,12 @@ local function followKeepCloseTick()
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
   local now = JL.clock or 0
-  -- v1.57: the geometry reads moved ABOVE the re-issue throttle so the loiter halt below can react within
+  -- the geometry reads moved ABOVE the re-issue throttle so the loiter halt below can react within
   -- its own sustain window instead of waiting out F.interval (1.5 s) as well.
   -- don't fight the catch-up teleport: if he's far enough for that to own him, leave it.
   local pp = playerPos(); if not pp then return end
   local jp; pcall(function() jp = h:GetWorldPosition() end); if not jp then return end
-  -- v1.59 RUN HIM HOME. This used to be a bare `return` — "catch-up owns him out here". It didn't: catch-up
+  -- RUN HIM HOME. This used to be a bare `return` — "catch-up owns him out here". It didn't: catch-up
   -- only ever TELEPORTS, so beyond this distance nobody was commanding him at all and he coasted on a stale
   -- order. That is a large part of why the teleport looked necessary so often. Now the trail keeps issuing a
   -- SPRINT follow while he's out there, which is what gives Config.catchUp.progressGrace something to
@@ -6540,7 +6540,7 @@ local function followKeepCloseTick()
   JL.loiter.lastHoldAt = nil   -- he's moving again -> the next halt takes effect immediately
   if (now - (JL.follow.lastAt or -1e9)) < (F.interval or 1.5) then return end
   JL.follow.lastAt = now
-  -- v1.46: while V SNEAKS, shadow her — trail at the stealth gap and never Run (a running Jackie overshoots
+  -- while V SNEAKS, shadow her — trail at the stealth gap and never Run (a running Jackie overshoots
   -- her and ends up in front, which is how he kept walking into the enemy she was creeping up on).
   local S = Config.stealth or {}
   if S.enabled ~= false and jlVSneaking() then
@@ -6569,7 +6569,7 @@ end
 function abreastTick()
   if jlPuppetHolds() then return end   -- v1.9: seat tuner owns this body (walk-abreast re-issues a position every tick)
   local A = Config.abreast or {}
-  -- v1.46: every gate now lives in jlAbreastOn() (shared with followKeepCloseTick's yield test), so the
+  -- every gate now lives in jlAbreastOn() (shared with followKeepCloseTick's yield test), so the
   -- trail picks him up in exactly the cases abreast declines him — stairs and slopes included.
   if not jlAbreastOn() then
     JL.abreast.smFwdX = nil     -- reset the heading EMA so it re-seeds cleanly when abreast resumes
@@ -6605,7 +6605,7 @@ function abreastTick()
   JL.abreast.smFwdX, JL.abreast.smFwdY = sx, sy
 
   -- --- two candidate anchors off the smoothed heading; pick the side closest to Jackie --------------
-  -- v1.55 FLEXIBLE BAND. The nominal radius is the player's slider (jlFollowDistance). But we do NOT drag
+  -- FLEXIBLE BAND. The nominal radius is the player's slider (jlFollowDistance). But we do NOT drag
   -- him onto that exact ring every re-issue — that's what made him fight for a spot. If his CURRENT distance
   -- from V already sits inside [minRadius, maxRadius] (1.2-5 m), we accept it and build the anchor at that
   -- distance, correcting only his ANGLE (beside her, not behind). He's only pulled back toward the nominal
@@ -6699,7 +6699,7 @@ function abreastTick()
   -- = zoneRadius (the WIDE leash) so he settles anywhere in the zone and strolls, never fighting for a spot.
   if (now - (JL.abreast.lastAt or -1e9)) < (A.interval or 0.3) then return end
   JL.abreast.lastAt = now
-  -- v1.46: GROUND THE ANCHOR (built here, past the throttle — the navmesh query is not free, and only the
+  -- GROUND THE ANCHOR (built here, past the throttle — the navmesh query is not free, and only the
   -- point we're about to send needs to be correct). Copying V's z verbatim only holds on flat ground: on an
   -- incline the point several metres ahead of her is under the surface (climbing) or above it (descending),
   -- and the nav projection then picks a different floor from one re-issue to the next. Snap it down onto the
@@ -6715,7 +6715,7 @@ function abreastTick()
   sendMoveToPoint(h, dest, mv, tol)
 end
 
--- v0.80: SUBTITLE WATCHDOG — the guaranteed cleanup. Stepped every frame from onUpdate. The old bug:
+-- SUBTITLE WATCHDOG — the guaranteed cleanup. Stepped every frame from onUpdate. The old bug:
 -- subtitle cleanup lived on each individual dialogue path, so any branch that ended without hitting a
 -- hideSubtitle() (or a one-off line with no follow-up) left the bottom band stuck forever, because the
 -- native band doesn't reliably auto-expire on this build. This is the belt-and-braces fix: if a line is
@@ -6745,7 +6745,7 @@ local function branchTick()
     if bstate.node and bstate.node.choices then
       openChoiceMenu(withCompanionExtras(withDateChoices(bstate.node, bstate.node.choices)), "Jackie", bstate.node)
     elseif bstate.node then
-      -- v0.34c: terminal node with NO choices -> after Jackie's line, auto-end the convo and run
+      -- terminal node with NO choices -> after Jackie's line, auto-end the convo and run
       -- its node-level `action` (e.g. gig accept -> summon). No redundant "Let's do it" V click.
       bstate.pending       = "__end__"
       bstate.pendingAction = bstate.node.action
@@ -6766,13 +6766,13 @@ local function branchTick()
       if wasCall then
         hideSubtitle()
         if act == "summon_arrival" or act == "reunion_arrival" then
-          -- v0.33e: Jackie already agreed to come - a V sign-off here ("...don't keep me
+          -- Jackie already agreed to come - a V sign-off here ("...don't keep me
           -- waitin'") reads awkward. Skip it; just hang up after a short beat.
           JL.call.hangupAction = act
           JL.call.hangupAt = (JL.clock or 0) + 0.4
         else
           -- other call strands: V's random sign-off shows, THEN we hang up (callTick.hangupAt)
-          -- v1.70: the sign-off is spoken now, and the hang-up waits for the RECORDING rather
+          -- the sign-off is spoken now, and the hang-up waits for the RECORDING rather
           -- than a flat 1.8 s. Cutting the line off mid-word is the whole reason the old
           -- fixed hold could not stay.
           local fText, fSfx = pickFarewell()
@@ -6785,7 +6785,7 @@ local function branchTick()
         end
         JL.ui.status = "Call wrapping up..."
       else
-        -- v0.32: if this was a cooldown'd talk tree (the `everywhere` backup), stamp it DONE now so
+        -- if this was a cooldown'd talk tree (the `everywhere` backup), stamp it DONE now so
         -- further F presses just grunt until the cooldown expires. Read it BEFORE Branch.finish (which
         -- clears bstate.talkCooldownKey as part of the reset).
         local cdKey = bstate.talkCooldownKey
@@ -6854,7 +6854,7 @@ local function pickNextWaypoint(wps, cur)
   return (cur % n) + 1
 end
 
--- v0.43b: apply the MASTER idle-collision switch (Config.idleNoCollision) to the live idle Jackie.
+-- apply the MASTER idle-collision switch (Config.idleNoCollision) to the live idle Jackie.
 -- ON  -> collision OFF for his whole stay (chairs/stalls can't block or shove him).
 -- OFF -> collision ON (normal). Owned ONLY by the idle system. See COLLISION OWNERSHIP map up top.
 -- Safe to call repeatedly (at placement and whenever the switch is flipped in the window).
@@ -6865,17 +6865,17 @@ local function applyIdleCollision()
   JL.idle.collisionOff = Config.idleNoCollision and true or false
 end
 
--- v0.39 SIT/LEAN via AMM workspots. Stop any workspot pose on a handle (gets him out of the chair
+-- SIT/LEAN via AMM workspots. Stop any workspot pose on a handle (gets him out of the chair
 -- / off the wall) before he walks again.
 local function stopWorkspotPose(handle)
   if not handle then return end
   pcall(function() Game.GetWorkspotSystem():StopInDevice(handle) end)
-  -- v0.44: collision is NOT touched here (callers own it — see COLLISION OWNERSHIP map up top).
+  -- collision is NOT touched here (callers own it — see COLLISION OWNERSHIP map up top).
   JL.idle.posed = false
   JL.idle.pendingPose, JL.idle.pendingSit = nil, nil   -- cancel any not-yet-fired pose/sit
 end
 
--- v1.77: is AUTOMATIC sit/lean on? Ships FALSE (Config.poses.enabled) — see the long note on that
+-- is AUTOMATIC sit/lean on? Ships FALSE (Config.poses.enabled) — see the long note on that
 -- config block. Every engine-driven sit asks this first; the player's "Seat them here" button is the
 -- one caller allowed past it, and it says so by passing `force`.
 -- GLOBAL on purpose: read from dinnerTick, applyIdlePose and onDraw, and init.lua is at the 200-local cap.
@@ -6886,7 +6886,7 @@ end
 
 -- Play a real sit/lean animation on Jackie using AMM's proven Poses pipeline. Returns true if
 -- the call went through (no guarantee it visually took — guarded; falls back to standing).
--- v1.77 `force`: play it even though automatic sitting is off. ONLY the manual "Seat them here"
+-- `force`: play it even though automatic sitting is off. ONLY the manual "Seat them here"
 -- button passes this — it is the player looking at the chair and saying "there".
 local function tryWorkspotPose(handle, pose, nameOverride, force)
   local P = Config.poses
@@ -6896,7 +6896,7 @@ local function tryWorkspotPose(handle, pose, nameOverride, force)
   local name = nameOverride or P[pose]; if not name then return false end  -- per-waypoint poseAnim wins
   local amm = getAMM()
   if not amm or not amm.Poses or not amm.NewTarget or not amm.GetScanID then return false end
-  -- v0.44: NO collision handling here. tryWorkspotPose is shared by the IDLE and DINNER systems,
+  -- NO collision handling here. tryWorkspotPose is shared by the IDLE and DINNER systems,
   -- which manage collision differently (idle = master switch at placement; dinner = around the seat).
   -- Doing it here made the two fight. Each caller owns collision now. See the COLLISION OWNERSHIP map
   -- near the top of this file.
@@ -6917,7 +6917,7 @@ local function applyIdlePose(handle, wp, forceSnap)
   if not handle or not wp then return end
   local W = Config.wander or {}
   -- the exact seat point (anchor + optional poseOffset) and its facing
-  -- v1.77: with automatic sitting off, a sit/lean waypoint is just a STANDING spot. Skip the
+  -- with automatic sitting off, a sit/lean waypoint is just a STANDING spot. Skip the
   -- poseOffset (it lowers him onto a seat plane he's no longer using) and skip the pendingPose chain
   -- below — that chain ends in placeAtExact, which does NOT nav-snap, and is exactly how a standing
   -- NPC ends up hovering. aiTeleport's nav test keeps him on the floor.
@@ -6931,7 +6931,7 @@ local function applyIdlePose(handle, wp, forceSnap)
     pcall(function() aiTeleport(handle, v, wp.yaw or 0.0) end)   -- nav-snap walk to roughly the spot
   end
   if sitOn and (wp.pose == "sit" or wp.pose == "lean") then
-    -- v0.45: carry the EXACT pos + yaw so the deferred fire can lock his seat position AND facing
+    -- carry the EXACT pos + yaw so the deferred fire can lock his seat position AND facing
     -- (placeAtExact) right before the workspot plays — fixes the wrong-seat-angle on arrival.
     JL.idle.pendingPose = { pose = wp.pose, name = wp.poseAnim, vec = v, yaw = wp.yaw or 0.0,
                             at = (JL.clock or 0) + ((Config.poses and Config.poses.delay) or 0.5) }
@@ -7095,7 +7095,7 @@ function jlPuppetTick()
   end
   if P.posed then return end                          -- a played workspot pins them; don't fight it
 
-  -- v1.8.4 KEEP THE STAND-STILL ALIVE. AIHoldPositionCommand ends after its `duration` (6 s by
+  -- KEEP THE STAND-STILL ALIVE. AIHoldPositionCommand ends after its `duration` (6 s by
   -- default) and jlHalt's fallback is a move-to-own-spot that completes on arrival — so BOTH rungs
   -- of that ladder stop holding after a few seconds and the old behaviour resumes underneath us.
   -- That is the "every few ticks" in the report. The heartbeat is what makes "AI off" mean off.
@@ -7145,7 +7145,7 @@ end
 function jlManualUnseat(reason) return jlPuppetRelease(reason) end
 
 -- ===========================================================================
--- v1.41 LOOK-AT / head tracking. See the long note on Config.lookAt. We queue ONE `entLookAtAddEvent`
+-- LOOK-AT / head tracking. See the long note on Config.lookAt. We queue ONE `entLookAtAddEvent`
 -- onto the puppet and the engine head-tracks V by itself from then on — including through a sit
 -- workspot, because it's an additive animation-graph overlay rather than a body rotation. We only
 -- decide WHEN he should be tracking; we never drive the rotation, so there's nothing to jitter.
@@ -7299,7 +7299,7 @@ end
 local function dinnerTick()
   local D = JL.dinner
   if not D.phase then return end
-  -- v1.8.5: the seat tuner owns this body. The move commands below are already refused centrally
+  -- the seat tuner owns this body. The move commands below are already refused centrally
   -- (see sendWalkToPlayer), but this tick ALSO calls placeAtExact and the workspot pose directly,
   -- and those are deliberately unguarded because the tuner itself drives them. Stand down whole.
   if jlPuppetHolds() then return end
@@ -7318,7 +7318,7 @@ local function dinnerTick()
   local now = JL.clock or 0
   local pp  = playerPos()
 
-  -- v1.8.2 THE SEAT CARD FIRES AT THE TABLE, NOT ON THE WAY TO IT.
+  -- THE SEAT CARD FIRES AT THE TABLE, NOT ON THE WAY TO IT.
   -- It used to go up on the walking -> seating hand-off, which happens `seatTriggerRadius` (12 m)
   -- from the seat — so the player read a card about a chair they could not see yet. Antonia,
   -- 2026-08-17: *"it should appear once V reaches the actual coordinate (3m radius) not sooner."*
@@ -7342,8 +7342,8 @@ local function dinnerTick()
         if role then role:OnRoleCleared(h) end
         h.isPlayerCompanionCached = false
       end)
-      -- v0.44: collision OFF so the chair can't block him reaching the seat.
-      -- v1.77: only when he's actually going to SIT. Standing at the table with collision off means
+      -- collision OFF so the chair can't block him reaching the seat.
+      -- only when he's actually going to SIT. Standing at the table with collision off means
       -- standing INSIDE the table, so with automatic sitting disabled he keeps his normal collider
       -- and stops wherever the navmesh lets him — which is a chair's width from the table, i.e. right.
       if jlSitPosesOn() then
@@ -7375,7 +7375,7 @@ local function dinnerTick()
             D.sitFireAt = now + ((Config.poses and Config.poses.delay) or 0.5)
             if not reached then log("Dinner: seat reach timed out -> snapping him onto the seat.") end
           else
-            -- v1.77 AUTOMATIC SITTING OFF: no snap, no workspot. placeAtExact is a NAV-SNAP-FREE
+            -- AUTOMATIC SITTING OFF: no snap, no workspot. placeAtExact is a NAV-SNAP-FREE
             -- teleport onto the seat plane — the one thing that will float a standing NPC — and the
             -- seat plane is ~0.45 m up. So he simply stops where he walked to and stands at the
             -- table. The meal (and the whole `seated` phase after it) runs exactly as before.
@@ -7459,7 +7459,7 @@ local function dinnerTick()
   end
 end
 
--- v0.48: schedule Jackie's NEXT self-initiated dinner offer, a random in-game gap from now, tied to the
+-- schedule Jackie's NEXT self-initiated dinner offer, a random in-game gap from now, tied to the
 -- current companion session (so a fresh session re-rolls instead of firing instantly on a stale stamp).
 local function scheduleJackieDinnerOffer()
   local g = getGameSeconds(); if not g then return end
@@ -7471,7 +7471,7 @@ local function scheduleJackieDinnerOffer()
   JL.dinner.offerSession  = JL.summon.companionSinceGame
 end
 
--- v0.48: while Jackie is your companion and a dinner is available (off the once/24h cooldown), after the
+-- while Jackie is your companion and a dinner is available (off the once/24h cooldown), after the
 -- scheduled gap HE just SAYS a hungry hint (jackieInvite.text) — no picker, no choices. It nudges V to use
 -- her own "Wanna get something to eat?" invite. The gap is tuned close to his max summon time.
 local function jackieDinnerOfferTick()
@@ -7542,7 +7542,7 @@ local function wanderTick()
   local sp = JL.idle.spawn
   local h  = jlResolveIdleHandle()                     -- v1.8.8: nothing else ever filled this (see above)
   if not h then return end
-  -- v1.77: same outfit re-assert for a VENUE body — they get a per-location appearance, so they have
+  -- same outfit re-assert for a VENUE body — they get a per-location appearance, so they have
   -- the same streaming race as a summoned one (see jlArmAppearanceFix).
   if not sp.appArmed then
     sp.appArmed = true
@@ -7554,7 +7554,7 @@ local function wanderTick()
   local now = JL.clock or 0
   local W   = Config.wander
 
-  -- v1.1 SEAT-TUNER WALK-IN (replaces the respawn/teleport re-seat that never took). Get him UP, walk
+  -- SEAT-TUNER WALK-IN (replaces the respawn/teleport re-seat that never took). Get him UP, walk
   -- him to a start point a few metres out, then walk him INTO the exact tuned coordinate and sit. Uses
   -- ONLY the walk command the idle wander already uses to move him between waypoints (proven to work) —
   -- never a teleport on a workspot-pinned puppet (that was the "solid as a rock" failure). Collisions
@@ -7563,7 +7563,7 @@ local function wanderTick()
   -- (v1.9: the TUNER WALK-IN state machine was DELETED here with tunerApply, the only thing that
   -- ever armed `JL.tuner.walk`. The tuner no longer walks anyone anywhere.)
 
-  -- v0.45 deferred sit/lean in TWO steps so the (async) exact-teleport lands BEFORE the workspot plays
+  -- deferred sit/lean in TWO steps so the (async) exact-teleport lands BEFORE the workspot plays
   -- (playing it same-frame let the workspot re-pin him at the OLD spot — the "tuner does nothing" bug):
   --   (1) pendingPose -> placeAtExact (exact pos + facing) + arm pendingSit a beat later
   if JL.idle.pendingPose and now >= JL.idle.pendingPose.at then
@@ -7583,7 +7583,7 @@ local function wanderTick()
   if not JL.idle.placed then
     if (now - (JL.idle.spawnedAt or 0)) < 0.6 then return end
     applyIdleCollision()                               -- v0.43b: kill collision BEFORE the snap so the chair can't block him
-    -- v1.1 seat tuner: if the tuner drove this (re)spawn it pins the EXACT seat it's editing
+    -- seat tuner: if the tuner drove this (re)spawn it pins the EXACT seat it's editing
     -- (JL.idle.forceStartIdx) instead of a random waypoint, and HOLDS him there (long dwell) so he
     -- doesn't wander off mid-tune. A fresh, standing puppet always sits where we place it — this is
     -- why the tuner respawns him rather than teleporting a workspot-pinned (seated) puppet.
@@ -7688,7 +7688,7 @@ local function idleLeavingTick()
   end
 end
 
--- v0.40 RETURN-TO-POST: dismissing companion Jackie while he's near the venue the schedule wants
+-- RETURN-TO-POST: dismissing companion Jackie while he's near the venue the schedule wants
 -- him at -> hand the SAME entity back to the idle system, drop his follower role, and walk him to
 -- the nearest waypoint so he re-joins the cycle (no despawn/respawn). Returns true if it took over.
 -- (Assigns the forward-declared `returnToPost` upvalue so runCallAction can reach it.)
@@ -7749,7 +7749,7 @@ returnToPost = function()
   return true
 end
 
--- v0.41 secret sleeping-hours cameo: during the sleep window, a once-per-night roll. Returns the
+-- secret sleeping-hours cameo: during the sleep window, a once-per-night roll. Returns the
 -- secret location key when he's "showing up" tonight, else nil. Re-rolls each new night.
 local function secretWantKey(hour)
   local S = Config.secret
@@ -7820,7 +7820,7 @@ end
 local function scheduleTick()
   if JL.idle.leaving then return end                 -- a departure is in progress; idleLeavingTick owns it
   if JL.summon.active then clearIdle(); return end
-  -- v1.8.2: V JUST SENT HIM OFF. Hold the schedule back so the send-off actually reads as one —
+  -- V JUST SENT HIM OFF. Hold the schedule back so the send-off actually reads as one —
   -- see Config.dismiss.idleCooldown and jlStampIdleCooldown. clearIdle() (not a bare return) so a
   -- body that somehow survived the dismiss is removed rather than left standing.
   if JL.idle.blockUntil then
@@ -7839,7 +7839,7 @@ local function scheduleTick()
   end
   -- secret nap cameo: while asleep/unavailable, he may be at the hidden spot instead
   if not wantKey then wantKey = secretWantKey(hour) end
-  -- v1.3 approach cameo: V walking up to a venue can force him there for the day (overrides the
+  -- approach cameo: V walking up to a venue can force him there for the day (overrides the
   -- normal schedule so he shows up where V actually is). See approachTick.
   local forced = approachTick(hour, wantKey)
   if forced then wantKey = forced end
@@ -7867,7 +7867,7 @@ local function scheduleTick()
         JL.idle.placed, JL.idle.phase      = false, nil   -- v0.35: wanderTick places + roams him
         JL.idle.curIdx, JL.idle.tgtIdx     = nil, nil
         JL.idle.spawnedAt                  = JL.clock or 0
-        -- v1.55: he's at Misty's, and in Husbando that only ever happens ONCE — latch it (see jlMistyRetired).
+        -- he's at Misty's, and in Husbando that only ever happens ONCE — latch it (see jlMistyRetired).
         if wantKey == (Config.mistyKey or "misty") then pcall(jlMarkMistyVisited) end
         log("Idle Jackie at " .. loc.name .. " (" .. tostring(loc.appearance or Config.defaultAppearance) .. ")")
       else
@@ -7978,7 +7978,7 @@ local function nsTick()
     end
 
 
-    -- v1.70.1 — V'S VOICE. V speaks her own dialogue choices now, and this is the one control
+    -- V'S VOICE. V speaks her own dialogue choices now, and this is the one control
     -- for it. ⚠️ It does NOT tell the game what sex V is: the game reads that from the save
     -- (GetResolvedGenderName), and a line's male and female takes share ONE String ID, so the
     -- ENGINE picks the take. All this changes is the SHAPE of the event we send, which is the
@@ -8127,7 +8127,7 @@ local function nsTick()
       end
     )
 
-    -- v1.55: THE FOLLOW-DISTANCE SLIDER (Antonia asked for it back). One number for BOTH follow modes —
+    -- THE FOLLOW-DISTANCE SLIDER (Antonia asked for it back). One number for BOTH follow modes —
     -- the trail (while you jog/sprint) and the walk-abreast side anchor (while you stroll). Walk-abreast
     -- treats it as a NOMINAL distance, not a hard target: anywhere in Config.abreast.minRadius..maxRadius
     -- (1.2-5 m) is accepted without correction, so he ambles instead of fighting for an exact spot.
@@ -8152,7 +8152,7 @@ local function nsTick()
       end
     )
 
-    -- v1.56: THE MANUAL START. This is what makes it safe to ship the quest gate ON. The gate now stays
+    -- THE MANUAL START. This is what makes it safe to ship the quest gate ON. The gate now stays
     -- silent unless it can POSITIVELY confirm you're post-heist (so it can never spoil a new game) — which
     -- means a player whose journal path we failed to resolve would otherwise be stuck forever. They press
     -- this instead. It's also mentioned on the welcome card, so they know it exists.
@@ -8173,7 +8173,7 @@ local function nsTick()
       end
     )
 
-    -- v2.0 THE STORY ARC. Same reasoning as the manual start above, one level up: the arc paces
+    -- THE STORY ARC. Same reasoning as the manual start above, one level up: the arc paces
     -- itself off in-game days and familiarity, which means a player can legitimately go a week of
     -- play without seeing it and be unable to tell "not yet" from "broken". This subcategory is the
     -- answer to that, and the two content switches are the promise the opening card makes.
@@ -8314,17 +8314,17 @@ function jlSaveSettings()
     if type(JL[k]) == "number" then f:write(k .. "=" .. string.format("%.3f", JL[k]) .. "\n") end
   end
   f:write("mode=" .. tostring(JL.mode or "quietlife") .. "\n")  -- v0.95 string setting (not a boolean)
-  -- v1.66 voice backend: "auto" | "native" | "audioware" | "off". Persisted for the same reason every
+  -- voice backend: "auto" | "native" | "audioware" | "off". Persisted for the same reason every
   -- other tuner here is — config.lua is re-required from disk on reload, so an in-game choice that
   -- lived only in Config would be silently reverted by the next reload (see the seat/walk tuners).
   f:write("voiceMode=" .. tostring(JL.voiceMode or "auto") .. "\n")
-  -- v1.70.1 V's voice: "auto" (route on V's BODY gender) | "male" | "female". Persisted for the
+  -- V's voice: "auto" (route on V's BODY gender) | "male" | "female". Persisted for the
   -- same reason voiceMode is — config.lua is re-required from disk on every reload, so a choice
   -- that lived only in Config would be silently reverted the next time the mod reloaded.
   f:write("vVoice=" .. tostring(JL.vVoice or "auto") .. "\n")
-  -- v1.8.7 talk prompt: also a STRING ("native" | "text" | "off"), same reason as vVoice above.
+  -- talk prompt: also a STRING ("native" | "text" | "off"), same reason as vVoice above.
   f:write("talkPrompt=" .. tostring(JL.talkPrompt or "native") .. "\n")
-  -- v1.60 language: "auto" = follow the game's own language setting, else a code from Lang.LANGUAGES.
+  -- language: "auto" = follow the game's own language setting, else a code from Lang.LANGUAGES.
   f:write("lang=" .. tostring(JL.langChoice or "auto") .. "\n")
   f:close()
 end
@@ -8333,7 +8333,7 @@ function jlLoadSettings()
   local f = io.open(JL_SETTINGS_FILE, "r")
   if not f then return end
   for line in f:lines() do
-    -- v1.55: the value class was `%w+`, which cannot match a float ("3.500" contains a '.') — so a numeric
+    -- the value class was `%w+`, which cannot match a float ("3.500" contains a '.') — so a numeric
     -- setting would have been written correctly and then silently dropped on load. Accept dots/minus too.
     local k, v = line:match("^(%w+)=([%w%.%-]+)$")
     if k then
@@ -8542,7 +8542,7 @@ function jlLoadSeats()
   if n > 0 then log(("seats: restored %d tuned seat(s) from %s"):format(n, JL_SEATS_FILE)) end
 end
 
--- v0.95 single source of truth for the story mode. Persists the choice AND mirrors it to the
+-- single source of truth for the story mode. Persists the choice AND mirrors it to the
 -- jl_mode_blaze quest fact so a (future) WolvenKit questphase edit on q005_heist can gate the
 -- Heist-ending reroute on it (fact set => Blaze reroute fires; unset => vanilla story). Global
 -- (not a top-level local) for the 200-locals cap.
@@ -8951,7 +8951,7 @@ function jlCruiseStop()
   log("Cruise: ended -> Jackie back on foot.")
 end
 
--- v1.41 ANTI-CRASH #3 — the cruise safety net. Even with the knock-off threshold raised, a bad enough
+-- ANTI-CRASH #3 — the cruise safety net. Even with the knock-off threshold raised, a bad enough
 -- impact (or `IsBeingDragged()`, which ignores the threshold entirely) can still put the Arch on its
 -- side and throw Jackie off. Detect that, stand the bike back up behind V, wake its physics, re-mount
 -- him and re-issue the follow. Rate-limited so a bike wedged against a wall can't teleport-thrash.
@@ -9016,7 +9016,7 @@ function jlCruiseTick()
   if not jlCruise.active then return end
   if jlCruise.bikeId and not jlCruise.bikeHandle then
     pcall(function() jlCruise.bikeHandle = Game.FindEntityByID(jlCruise.bikeId) end)
-    -- v1.41: Arch exists -> raise the NPC knock-off threshold + make it invulnerable for the ride.
+    -- Arch exists -> raise the NPC knock-off threshold + make it invulnerable for the ride.
     if jlCruise.bikeHandle and not jlCruise.bikePhysArmed then
       jlCruise.bikePhysArmed = true
       jlBikeKnockOff(true)
@@ -9036,7 +9036,7 @@ function jlCruiseTick()
   pcall(jlCruiseRightingTick)   -- v1.41: stand the bike back up if it topples / he gets thrown
 end
 
--- v0.76 DEBUG: dump Jackie's full runtime state to the console (bound to a CET button + called at the
+-- DEBUG: dump Jackie's full runtime state to the console (bound to a CET button + called at the
 -- start/end of the dismiss walk-away so we can see WHY he vanishes). Global (no main-chunk local -> cap safe).
 -- Reports, for each system's entity: handle validity, world position, live distance to V, AMM companion
 -- caching + whether an AI role is attached — so a bogus position read or a stale handle is obvious.
@@ -9074,7 +9074,7 @@ end
 -- any stale/culled spawn first so we never leak or double up. The onUpdate promote block applies the
 -- follower role next frame; armCompanionTimer re-arms the duration clock fresh.
 function respawnCompanionAtV()
-  -- v1.43: capture his outfit BEFORE the despawn clears the spawn, and bring him back wearing it. A bare
+  -- capture his outfit BEFORE the despawn clears the spawn, and bring him back wearing it. A bare
   -- ammSpawn(1) here reverted him to Config.defaultAppearance — the Blaze heist Jackie kept losing his
   -- dirty suit at Konpeki Plaza, because that's where his body gets culled and this path fires.
   local app = jlCompanionAppearance()
@@ -9083,7 +9083,7 @@ function respawnCompanionAtV()
   local spawn, err = ammSpawn(1, app)
   if not spawn then log("Persist: respawn at V FAILED (" .. tostring(err) .. ") — will retry."); return false end
   JL.summon.spawn, JL.summon.active, JL.summon.companionSet = spawn, true, false
-  -- v0.82: arm the settle window. He's freshly popped in at V (AMM drops him ~1 m from her); hide him +
+  -- arm the settle window. He's freshly popped in at V (AMM drops him ~1 m from her); hide him +
   -- drop collision for a beat so he doesn't visibly POP or clip into a wall, then settleTick reveals him +
   -- restores collision by clock. handle may be nil this frame (DES resolves later) — settleTick re-hides
   -- once it appears, so the reveal is always by TIME, never a one-shot that can miss the async handle.
@@ -9093,7 +9093,7 @@ function respawnCompanionAtV()
     JL.settle.hideUntil    = now + (S.hideSeconds or 2.0)
     JL.settle.collideUntil = now + (S.collideSeconds or 4.0)
     JL.settle.handle       = nil   -- resolved live in settleTick (spawn.handle isn't ready yet)
-    -- v1.40: AMM drops the fresh body at its OWN spot (often the wall BEHIND V at a fast-travel point).
+    -- AMM drops the fresh body at its OWN spot (often the wall BEHIND V at a fast-travel point).
     -- Arm a one-shot reposition to V's front/side, done by settleTick while he's still hidden. Clearing the
     -- retry timers so it re-evaluates from scratch. Toggle with Config.catchUp.frontSideRespawn.
     JL.settle.reposePending = (Config.catchUp and Config.catchUp.frontSideRespawn ~= false)
@@ -9104,7 +9104,7 @@ function respawnCompanionAtV()
   return true
 end
 
--- v0.82 SETTLE TICK. During the brief window after a respawn-at-V, keep the fresh Jackie INVISIBLE (so V
+-- SETTLE TICK. During the brief window after a respawn-at-V, keep the fresh Jackie INVISIBLE (so V
 -- doesn't see him pop in beside her) and NON-COLLIDING (so he can't get shoved out of a wall/geometry he
 -- spawned against). Both are re-asserted every frame against the live handle (which resolves a frame or
 -- two after the spawn), then lifted by clock: reveal at hideUntil, re-collide at collideUntil. Hands-off
@@ -9116,7 +9116,7 @@ function settleTick()
   if not (s and (s.hideUntil or s.collideUntil or s.reposePending)) then return end
   local now = JL.clock or 0
   local h = JL.summon.spawn and JL.summon.spawn.handle
-  -- v1.40 FRONT-SIDE REPOSITION. While he's still hidden after a respawn-at-V, move him off AMM's drop spot
+  -- FRONT-SIDE REPOSITION. While he's still hidden after a respawn-at-V, move him off AMM's drop spot
   -- (often the wall behind V at a fast-travel point) to a point AHEAD/beside V (frontSideArrivalPoint reuses
   -- the walk-abreast angles). Wait ~0.15 s after the handle resolves so his AI can accept an AITeleportCommand,
   -- then re-issue at most every ~0.4 s until he's within ~4 m of V or the hide window ends (so the reveal shows
@@ -9145,7 +9145,7 @@ function settleTick()
   if s.hideUntil and now < s.hideUntil then
     if h then setVisible(h, false) end
   elseif s.hideUntil then
-    -- v1.47: only close the window once we ACTUALLY revealed him. This used to clear `hideUntil`
+    -- only close the window once we ACTUALLY revealed him. This used to clear `hideUntil`
     -- unconditionally, so if the handle happened to be nil on the exact reveal frame (a respawn swapped
     -- JL.summon.spawn under us) the reveal was skipped forever and Jackie stayed INVISIBLE — present,
     -- companion, unseeable. Keep retrying until a handle shows up, with a hard cap so we can't hide him
@@ -9169,7 +9169,7 @@ function settleTick()
   end
 end
 
--- v1.52 SESSION RESET — called by Session.tick() the frame a new session begins (game load, load-from-
+-- SESSION RESET — called by Session.tick() the frame a new session begins (game load, load-from-
 -- save, new game). Every entity handle we hold belongs to the world that just went away.
 --
 -- ⚠️ DROP the references. Do NOT despawn, do NOT read a position, do NOT null-check by dereferencing.
@@ -9177,7 +9177,7 @@ end
 -- rebuilds its own spawn table on load, so its bodies are its problem, not ours — there is nothing for
 -- us to clean up, only references for us to forget.
 function jlResetSessionState(id, why)
-  -- v1.67: the follower-role watchdog counts attempts against ONE body. A new session means a new
+  -- the follower-role watchdog counts attempts against ONE body. A new session means a new
   -- body, so a session that ended mid-retry must not start the next one already out of tries.
   jlFollowerWatch = { at = -999, tries = 0, ok = false }
   JL.summon   = { spawn = nil, active = false, companionSet = false, walkIn = false }
@@ -9282,7 +9282,7 @@ function companionPersistTick()
                                       -- also arms the settle HIDE window over the finale scene.
   if not Retrieval.isUnlocked() then return end                 -- mod still gated -> no companion to keep
 
-  -- v0.84 CRASH FIX: the startup grace MUST be measured from when the player entered the world, NOT
+  -- CRASH FIX: the startup grace MUST be measured from when the player entered the world, NOT
   -- from JL.clock (time since onInit). A mid-session load-from-save does NOT re-run onInit, so JL.clock
   -- is already huge and the old `JL.clock < startupGrace` gate was skipped instantly -> we respawned into
   -- a still-streaming world = the load crash. Now: while the player is absent (load screen / fast-travel)
@@ -9296,7 +9296,7 @@ function companionPersistTick()
   if (now - JL.persist.worldReadyAt) < (P.startupGrace or 8.0) then return end  -- let the world finish streaming
 
   -- Is a LIVE, settled companion actually present right now?
-  -- v1.52: Session.stale() FIRST. A spawn record from a previous session holds a dead native pointer;
+  -- Session.stale() FIRST. A spawn record from a previous session holds a dead native pointer;
   -- the GetWorldPosition() below would be a use-after-free. Drop it without touching it.
   local live = false
   if JL.summon.spawn and Session.stale(JL.summon.spawn) then
@@ -9309,7 +9309,7 @@ function companionPersistTick()
   end
 
   if live then
-    -- v1.52 CROSS-SAVE LEAK FIX: only self-heal the fact if THIS save already claimed him when the
+    -- CROSS-SAVE LEAK FIX: only self-heal the fact if THIS save already claimed him when the
     -- session began. Previously a stale handle that still happened to resolve made `live` true, and
     -- this line wrote the companion fact into a freshly-loaded save that never had a Jackie — a
     -- one-way ratchet that made him "come with" into other saves. Never create the fact, only repair it.
@@ -9335,7 +9335,7 @@ function companionPersistTick()
     JL.persist.gapSince = nil; return
   end
 
-  -- v0.84 CRASH FIX: don't spawn until AMM has re-initialised post-load and Jackie's record resolves.
+  -- CRASH FIX: don't spawn until AMM has re-initialised post-load and Jackie's record resolves.
   -- After a load AMM re-inits a beat later than us; calling its Spawn path before it's ready was the other
   -- half of the load crash. Bail (and reset the gap timer) until both are live, then spawn is the same
   -- proven path the confirmed catch-up respawn (bug 2f) already uses safely.
@@ -9356,7 +9356,7 @@ function companionPersistTick()
 end
 
 -- ---------------------------------------------------------------------------
--- v2.0 ARC GLUE. The five game-touching helpers the story engine needs, kept here rather than in
+-- ARC GLUE. The five game-touching helpers the story engine needs, kept here rather than in
 -- arc.lua so that arc.lua stays pure Lua and testable offline. They are GLOBALS on purpose
 -- (200-local cap) and they live HERE, below spawnDynEntity/playerPos, on purpose too: a top-level
 -- function that names a file-local declared further down compiles to a nil global and throws on
@@ -9465,7 +9465,7 @@ function jlTutorialCard(title, text, duration)
 end
 
 registerForEvent("onInit", function()
-  -- v1.52: ROTATE, don't truncate. The old `io.open("...","w")` here destroyed the log of the run that
+  -- ROTATE, don't truncate. The old `io.open("...","w")` here destroyed the log of the run that
   -- crashed, on the very next launch — i.e. exactly when you went looking for it. The crashing run now
   -- survives as jackie_debug.log.prev; read its tail for the last [MARK] before the process died.
   Session.bind{ log = log, onNewSession = jlResetSessionState }
@@ -9480,10 +9480,10 @@ registerForEvent("onInit", function()
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
   pcall(jlApplyTalkPrompt) -- v1.8.7: ...and how (or whether) the "look at Jackie" prompt is drawn
   pcall(jlDefaultHermano)  -- v1.54: Hermano for everyone unless the player explicitly flipped the switch
-  -- v1.60: pick the language. AFTER jlLoadSettings so an explicit player choice beats autodetect;
+  -- pick the language. AFTER jlLoadSettings so an explicit player choice beats autodetect;
   -- nil/"auto" (the default, and every existing jl_settings.txt) follows the game's own language.
   pcall(function() Lang.init(JL.langChoice) end)
-  -- v1.63: the native dialogue picker. bind BEFORE init so the very first log line is attributed,
+  -- the native dialogue picker. bind BEFORE init so the very first log line is attributed,
   -- and init registers the controller capture + the four guards that keep our hub on screen.
   -- onPreempt: a REAL in-game conversation is opening (a quest scene, a phone call) — the game's
   -- dialogue always wins, so end whatever we were saying rather than fight it for the widget.
@@ -9555,7 +9555,7 @@ registerForEvent("onInit", function()
   -- retrieval questline: logger + v1.2 relationship-mode selector (Husbando/Hermano recovery text)
   -- + v1.54 showObjective -> the native banner (with its UI sound), so the quest's steps actually
   -- tell the player what to do next ("Find Jackie...", "Call Jackie", "Wait for Jackie").
-  -- v1.65: familiarity. `config` is a CLOSURE, not the table — config.lua is re-required from disk on
+  -- familiarity. `config` is a CLOSURE, not the table — config.lua is re-required from disk on
   -- every reload, so handing over the table itself would pin a stale copy and the player's tuning would
   -- stop taking effect (the config-reload-wipes-it trap, same one the seat/walk tuners hit).
   pcall(function()
@@ -9568,7 +9568,7 @@ registerForEvent("onInit", function()
     log("Familiarity: " .. Fam.status())
   end)
 
-  -- v1.66 VOICE: same closure rule as above — Config.voice is read live, so mode/context
+  -- VOICE: same closure rule as above — Config.voice is read live, so mode/context
   -- changes take effect on reload instead of pinning whatever was loaded first.
   pcall(function()
     VO.bind{
@@ -9576,7 +9576,7 @@ registerForEvent("onInit", function()
       config      = function() return Config.voice end,
       readingSecs = readingSecs,
       playEvent   = function(target, event) return playEventOn(target, event, "") end,
-      -- v1.71: the three questions VO.femaleTakeId needs before it may speak a female-take id.
+      -- the three questions VO.femaleTakeId needs before it may speak a female-take id.
       bodyMale    = function() return jlVBodyMale() end,
       archiveOk   = function() return jlArchiveLoaded() end,
       takePref    = function() return jlTakePref() end,
@@ -9588,7 +9588,7 @@ registerForEvent("onInit", function()
     log("Voice: " .. VO.status())
   end)
 
-  -- v1.92 SMS. ⚠️ EVERY KEY LISTED IN Msg.bind()'s ALLOW-LIST MUST BE PASSED HERE. NCLives shipped
+  -- SMS. ⚠️ EVERY KEY LISTED IN Msg.bind()'s ALLOW-LIST MUST BE PASSED HERE. NCLives shipped
   -- this whole feature inert in its v1.72 because two bindings were named in the allow-list and never
   -- passed from init.lua — the log was clean and 83 offline checks went green over it, because the
   -- test harness binds them itself. Msg.diagnose() now prints the missing ones by name, which is the
@@ -9644,16 +9644,16 @@ registerForEvent("onInit", function()
   pcall(function()
     Retrieval.bind{
       log = log, isHermano = jlHermano, showObjective = showOnscreenMsg,
-      -- v1.55: the SAME record jlReturnJackiesBike disables, so the Reverend Flash restore re-enables exactly the
+      -- the SAME record jlReturnJackiesBike disables, so the Reverend Flash restore re-enables exactly the
       -- bike the reunion took away — they can't drift apart.
       bikeRecord = (Config.bikeReturn and Config.bikeReturn.bikeRecord) or nil,
     }
-    -- v1.55: the Reverend Flash easter egg is authored in config.lua (with all the other content), but it RUNS in
+    -- the Reverend Flash easter egg is authored in config.lua (with all the other content), but it RUNS in
     -- retrieval.lua, which owns the proximity/popup machinery and does not require config.lua. Hand it over.
     Retrieval.Config.revflash = Config.revflash
   end)
 
-  -- v2.0 THE ARC. Everything the story engine can see about Night City arrives here and nowhere
+  -- THE ARC. Everything the story engine can see about Night City arrives here and nowhere
   -- else. Two rules govern this table, both learned the expensive way:
   --   * every getter is DEFENSIVE — an unreadable answer must read as "no", never as "yes".
   --     A fact we cannot confirm is not permission to fire a beat (v1.56 shipped the opposite and
@@ -9731,7 +9731,7 @@ registerForEvent("onInit", function()
     if JL.arcSide     ~= nil then Config.arc.sideQuests = JL.arcSide end
     log("Arc: " .. tostring(Config.arc and Config.arc.enabled))
   end)
-  -- v0.96 BLAZE: inject every game-touching primitive the set-piece needs, built from the
+  -- BLAZE: inject every game-touching primitive the set-piece needs, built from the
   -- proven helpers in this file. blaze.lua stays pure Lua; ONLY this table calls Game.*.
   pcall(function()
     Blaze.bind{
@@ -9751,7 +9751,7 @@ registerForEvent("onInit", function()
           local pl = Game.GetPlayer()
           if pl and h and h.GetAttitudeAgent then
             h:GetAttitudeAgent():SetAttitudeTowards(pl:GetAttitudeAgent(), EAIAttitude.AIA_Hostile)
-            -- v1.0 BLAZE: make the boss MUTUALLY hostile to companion Jackie too. Setting the enemy
+            -- BLAZE: make the boss MUTUALLY hostile to companion Jackie too. Setting the enemy
             -- hostile only toward V left Jackie a neutral bystander (he'd follow but never swing).
             -- With mutual hostility his AMM follower AI registers the boss as a threat and engages.
             local jh = JL.summon and JL.summon.spawn and JL.summon.spawn.handle
@@ -9782,7 +9782,7 @@ registerForEvent("onInit", function()
         local dx, dy, dz = pp.x - p.x, pp.y - p.y, pp.z - p.z
         return math.sqrt(dx * dx + dy * dy + dz * dz)
       end,
-      -- v1.62: HORIZONTAL (X/Y) distance + the raw vertical gap, as two numbers. The roof-AV exit needs a
+      -- HORIZONTAL (X/Y) distance + the raw vertical gap, as two numbers. The roof-AV exit needs a
       -- footprint check (a flat radius on the deck) plus a generous vertical tolerance, because the AV's
       -- origin sits above the deck V stands on — a 3-D sphere leaks that dz and never fires (see the
       -- roofHeli notes in blaze.lua). Returns (horizontalDist, |verticalGap|).
@@ -9792,7 +9792,7 @@ registerForEvent("onInit", function()
         return math.sqrt(dx * dx + dy * dy), math.abs(pp.z - p.z)
       end,
       deleteById = function(id) deleteEntityById(id) end,
-      -- v1.0 BLAZE: hand a weapon straight into V's inventory (MVP for the staged fight pickups).
+      -- BLAZE: hand a weapon straight into V's inventory (MVP for the staged fight pickups).
       -- Direct inventory-add is 100% reliable vs a physical AMM ground-drop; the trigger coords in
       -- blaze.lua just gate WHEN each is given. Returns true if AddToInventory didn't error.
       giveWeapon = function(rec)
@@ -9800,14 +9800,14 @@ registerForEvent("onInit", function()
         pcall(function() Game.AddToInventory(rec, 1); ok = true end)
         return ok
       end,
-      -- v1.0 BLAZE: read a quest fact (numeric). Used to gate the fight on the "T-Bug opens the glass
+      -- BLAZE: read a quest fact (numeric). Used to gate the fight on the "T-Bug opens the glass
       -- doors" beat instead of a raw proximity check. Returns 0 if the fact/system isn't available.
       getFact = function(name)
         local v = 0
         pcall(function() local qs = Game.GetQuestsSystem(); if qs then v = qs:GetFactStr(name) or 0 end end)
         return v
       end,
-      -- v1.01 BLAZE: show/clear the game's NATIVE yellow [F] interaction prompt (the same
+      -- BLAZE: show/clear the game's NATIVE yellow [F] interaction prompt (the same
       -- InteractionChoiceHub the "Talk to Jackie" box uses) with a custom label, e.g. "Get in the AV".
       -- Reuses choiceBox.id/.shown so updateTalkPrompt's heartbeat stays coordinated (it yields while
       -- Blaze.escapePromptActive()). F is caught by the OnAction hook -> Blaze.tryEscapePress.
@@ -9828,12 +9828,12 @@ registerForEvent("onInit", function()
           end
         end)
       end,
-      -- v1.63a: end any open Jackie conversation. Called by Blaze.tryEscapePress, because the escape
+      -- end any open Jackie conversation. Called by Blaze.tryEscapePress, because the escape
       -- [F] can now fire WHILE a choice menu is up (see the OnAction hook) and that menu must not
       -- survive into the fade — an open picker nothing is listening to still eats the player's input.
       closeDialogue = function()
         pcall(function() if Branch and Branch.open and Branch.finish then Branch.finish() end end)
-        -- v1.64.1: also drop a STANDALONE native picker (the "Show test picker" diagnostic), which is
+        -- also drop a STANDALONE native picker (the "Show test picker" diagnostic), which is
         -- shown without Branch.open — so the check above would miss it and it would ride into the fade
         -- still swallowing input, which is exactly what this hook exists to prevent.
         pcall(function() if DialogUI and DialogUI.isShown() then DialogUI.hide() end end)
@@ -9874,7 +9874,7 @@ registerForEvent("onInit", function()
         log(string.format("[Blaze] boss stats scaled: Health x%s, damage x%s",
                           tostring(hpMul or 1.0), tostring(dmgMul or 1.0)))
       end,
-      -- v1.56 BLAZE: a spawned NPC's CURRENT health as a 0..1 fraction (nil if it can't be read).
+      -- BLAZE: a spawned NPC's CURRENT health as a 0..1 fraction (nil if it can't be read).
       -- Stat pools answer the `perc` form on a 0..100 scale — adamSmasherComponent.script:299-311 compares
       -- this exact call against the literals 80.0 / 50.0 / 30.0 / 5.0 — so divide by 100 here.
       healthFrac = function(h)
@@ -9907,7 +9907,7 @@ registerForEvent("onInit", function()
         end
         return name
       end,
-      -- v1.03 BLAZE: EMERGENCY force-defeat whatever V is looking at (test lever / immortality bypass).
+      -- BLAZE: EMERGENCY force-defeat whatever V is looking at (test lever / immortality bypass).
       -- Tries the script Kill(), then falls back to zeroing the Health pool. Won't touch companion Jackie.
       defeatLookAt = function()
         local pl = Game.GetPlayer(); if not pl then return false end
@@ -9925,7 +9925,7 @@ registerForEvent("onInit", function()
         log("[Blaze] defeat-target: " .. (ok and "killed the targeted NPC." or "could not kill (see console)."))
         return ok
       end,
-      -- v1.03 BLAZE: log the looked-at NPC's class / entityID / record / display name — how to grab the
+      -- BLAZE: log the looked-at NPC's class / entityID / record / display name — how to grab the
       -- passive luggage-Jackie's identity (aim at him, click Identify, read the console line).
       identifyLookAt = function()
         local pl = Game.GetPlayer(); if not pl then return end
@@ -9959,7 +9959,7 @@ registerForEvent("onInit", function()
         log("[Blaze] remove-look-at: removed targeted NPC [" .. cls .. "].")
         return true
       end,
-      -- v1.07 (Antonia): AUTO-remove the scene's passive luggage-Jackie by his PERSISTENT entity id
+      -- AUTO-remove the scene's passive luggage-Jackie by his PERSISTENT entity id
       -- (from Identify: 9001273, record Character.Jackie, name LocKey#47007). Same removal path as the
       -- look-at button, but targeted by id so it needs no aiming. Skips our companion. Returns true only
       -- when it actually found + removed him (so blaze.lua stops retrying). Quiet on "not found yet".
@@ -9990,7 +9990,7 @@ registerForEvent("onInit", function()
       -- v1.x: blaze's green objective banners hold 1.6x LONGER (Antonia) — applied here so it covers every
       -- objective call regardless of the duration blaze.lua passes (8.0 -> 12.8, 6.0 -> 9.6, 4.0 -> 6.4).
       objective = function(text, dur) showOnscreenMsg(text, (dur or 8.0) * 1.6) end,
-      -- v1.02: REAL fade to black -> hold -> back in (drawBlazeFade). finale() re-arms it with the
+      -- REAL fade to black -> hold -> back in (drawBlazeFade). finale() re-arms it with the
       -- teleport/quest-complete callback so those run at FULL BLACK (hidden). fade() alone = visual only.
       fade = function(caption) startBlazeFade(nil); if caption and caption ~= "" then log("[Blaze] fade: " .. caption) end end,
       -- ALTERNATE-TIMELINE WORLD UNLOCK: the Watson prologue barrier reads the quest fact
@@ -10003,14 +10003,14 @@ registerForEvent("onInit", function()
       -- barrier facts are re-asserted every 5 s for the rest of the save. A one-shot write here could
       -- be undone by a later quest tick and shut the bridges.
       worldUnlock = function() pcall(function() jlWatsonApply(true) end) end,
-      -- v1.05: kill the leftover Heist "gone wrong" scene music at the finale (Antonia item 10).
+      -- kill the leftover Heist "gone wrong" scene music at the finale (Antonia item 10).
       -- Best-effort; the console tester blazeStopMusic('<event>') finds the exact name in-game.
       stopMusic = function() pcall(blazeStopMusic) end,
-      -- v1.06: the full "escape the scene" teardown (combat clear + music reset + scene fast-forward).
+      -- the full "escape the scene" teardown (combat clear + music reset + scene fast-forward).
       finaleTeardown = function() pcall(blazeFinaleTeardown) end,
-      -- v1.07: force sunny weather at the escape (Antonia). Default approach; overlay has A/B buttons.
+      -- force sunny weather at the escape (Antonia). Default approach; overlay has A/B buttons.
       setWeather = function() pcall(blazeSetWeather) end,
-      -- v1.10: also jump to daytime at the escape (heist is at night, so sunny alone stays dark).
+      -- also jump to daytime at the escape (heist is at night, so sunny alone stays dark).
       setDay = function() pcall(function() blazeSetMidday(12) end) end,
       -- ⚠️ EXPERIMENTAL Yorinobu scenario helpers ----------------------------------
       -- Jackie speaks: play the voiced clip + show the text. Returns the clip length (s) so blaze.lua's
@@ -10111,7 +10111,7 @@ registerForEvent("onOverlayOpen",  function() JL.ui.overlayOpen = true end)
 registerForEvent("onOverlayClose", function() JL.ui.overlayOpen = false end)
 
 -- ---------------------------------------------------------------------------
--- v0.42: PROXIMITY BARKS. While Jackie is idle at a location (NOT your companion), V walking up
+-- PROXIMITY BARKS. While Jackie is idle at a location (NOT your companion), V walking up
 -- triggers a ONE-SHOT greeting bark; getting right in his face triggers a grunt. Both are WWise voice
 -- barks on his entity, each on its own cooldown. Distances + cooldowns are live-tunable from the CET
 -- window (sliders) until the feel is dialed in. State lazily inits (JL.bark) so it never collides with
@@ -10136,7 +10136,7 @@ local function barkCfg()
   return JL.bark
 end
 
--- v0.48: pick a greet event that is NOT the one used most recently and NOT used within greetRepeatCooldown
+-- pick a greet event that is NOT the one used most recently and NOT used within greetRepeatCooldown
 -- (5 min). Degrades gracefully: if every event is on cooldown, just avoid an immediate repeat; with a
 -- single-event pool, return it. Records the pick so the next call steers away from it. `now` = JL.clock.
 local function pickFreshGreet(b, now)
@@ -10158,10 +10158,10 @@ local function pickFreshGreet(b, now)
   return ev
 end
 
--- v0.52: no-repeat picker for arrival GREETING LINES (real jl_ clips + subtitle, NOT WWise grunt events).
+-- no-repeat picker for arrival GREETING LINES (real jl_ clips + subtitle, NOT WWise grunt events).
 -- Avoids the last-used line + any used within greetRepeatCooldown (5 min). State on JL.arrivalGreet (keyed by sfx).
 local function pickArrivalGreetLine(now)
-  -- v1.69: one pool (the male duplicate is gone — see Config.call.arrivalGreetings).
+  -- one pool (the male duplicate is gone — see Config.call.arrivalGreetings).
   local pool = (Config.call and Config.call.arrivalGreetings) or {}
   if #pool == 0 then return nil end
   JL.arrivalGreet = JL.arrivalGreet or { used = {}, last = nil }
@@ -10183,10 +10183,10 @@ local function pickArrivalGreetLine(now)
   return e
 end
 
--- v1.41: pick the spoken VENUE HELLO line (real jl_ clip + subtitle) for the first approach of the
+-- pick the spoken VENUE HELLO line (real jl_ clip + subtitle) for the first approach of the
 -- in-game day. Same no-immediate-repeat rule as the arrival greeting so two consecutive days don't
 -- open with the same line. GLOBAL -> costs no top-level local (200-cap).
--- v1.69: no longer picks a pool by relationship mode — where a line has two takes the ENGINE picks,
+-- no longer picks a pool by relationship mode — where a line has two takes the ENGINE picks,
 -- and vo_gender.lua matches the subtitle. See Config.venueGreet.
 function pickVenueHelloLine()
   local G = Config.venueGreet or {}
@@ -10222,7 +10222,7 @@ local function arrivalGreetTick()
     if JL.reunionPending then   -- v0.85: the FIRST-EVER meeting -> play the short reunion dialogue, then unlock
       JL.reunionPending = false
       pcall(function() Branch.start(Config.reunionMeetTree and Config.reunionMeetTree.start or nil, Config.reunionMeetTree) end)
-      -- v0.93: arm the reunion SMILE BOOST — forced smile for the first N s, then 3x smile chance for
+      -- arm the reunion SMILE BOOST — forced smile for the first N s, then 3x smile chance for
       -- the rest of the meet (see smileTick). Cleared by the reunion_complete action; `reunionSafety`
       -- is a hard expiry so an aborted meet can't leave him grinning forever.
       pcall(function()
@@ -10259,7 +10259,7 @@ local function proximityBarkTick(dt)
   if not jp then return end
   local d = dist3(pp, jp); b.lastDist = d
   local now = JL.clock or 0
-  -- v1.41: FIRST APPROACH OF THE IN-GAME DAY -> a real spoken hello, checked BEFORE the grunt chain so
+  -- FIRST APPROACH OF THE IN-GAME DAY -> a real spoken hello, checked BEFORE the grunt chain so
   -- it still lands if V walks straight into bump range on the first sample. `day == nil` (TimeSystem not
   -- up yet) falls through to the ordinary grunt rather than firing a hello on an unknown day.
   local G = Config.venueGreet or {}
@@ -10292,7 +10292,7 @@ local function proximityBarkTick(dt)
   end
 end
 
--- v1.11 BLAZE finale scene: after the fade drops V at the finale spot (JL.blazeFinale armed by the finale
+-- BLAZE finale scene: after the fade drops V at the finale spot (JL.blazeFinale armed by the finale
 -- bind), RESPAWN Jackie fresh in his NORMAL outfit (the fight companion gets culled by the long teleport —
 -- "Jackie didn't load in"), stand him BESIDE V facing her, then run the finale conversation once the fade
 -- lifts AND the scene has settled (Antonia: it appeared too early, during the blackscreen). Reuses the
@@ -10303,7 +10303,7 @@ function blazeFinaleSceneTick()
   local app = (Blaze.yori and Blaze.yori.finaleAppearance) or "jackie_welles_default"
 
   if f.phase == "spawn" then
-    -- v1.44: CANCEL ANY WALK-OFF IN PROGRESS. If the companion clock expired (e.g. the escape's midday
+    -- CANCEL ANY WALK-OFF IN PROGRESS. If the companion clock expired (e.g. the escape's midday
     -- jump on an older save) Jackie is mid "heading home" walk. Left alone, leavingTick would keep running
     -- and despawn the FRESH Jackie we're about to spawn — the finale would play to an empty spot. Clearing
     -- the leaving state also wipes the parting-line subtitle timer so "Catch you later" can't hang on
@@ -10318,7 +10318,7 @@ function blazeFinaleSceneTick()
     -- inheriting an already-expired one (belt-and-braces: the blaze gate in onUpdate should stop the
     -- auto-leave anyway, but the finale must not depend on JL.mode still being "blaze").
     JL.summon.companionExpiresGame, JL.summon.companionSinceGame = nil, nil
-    -- v1.47: WAIT FOR THE WORLD before spawning. `finale()` teleports V at full black and arms us the same
+    -- WAIT FOR THE WORLD before spawning. `finale()` teleports V at full black and arms us the same
     -- frame; AMM's SpawnNPC drops the body 1 m in front of V *at CreateEntity time*, so spawning too early
     -- can drop him at V's PRE-teleport spot (back at Konpeki) — and spawning into a not-yet-streamed world
     -- is the exact failure class companionPersistTick already guards with its `startupGrace`.
@@ -10348,7 +10348,7 @@ function blazeFinaleSceneTick()
     local now = JL.clock or 0
     local h = resolveJackieHandle()
     if not h then
-      -- v1.47: this used to fall through to "talk" SILENTLY after 8 s, which is exactly what an unplaced
+      -- this used to fall through to "talk" SILENTLY after 8 s, which is exactly what an unplaced
       -- Jackie looked like in-game: "fresh Jackie spawned" in the log, no Jackie, no error, no walk-off.
       -- Now: say so, and RESPAWN rather than shrug — the body is either unresolvable or somewhere else.
       if now - (f.spawnAt or f.startedAt or 0) > ((Blaze.yori and Blaze.yori.finaleResolveTimeout) or 4.0) then
@@ -10365,7 +10365,7 @@ function blazeFinaleSceneTick()
     end
     pcall(function() h:PrefetchAppearanceChange(CName.new(app)) end)   -- belt-and-suspenders normal outfit
     pcall(function() h:ScheduleAppearanceChange(CName.new(app)) end)
-    -- v1.47: a concurrent respawn-at-V (catchUp / persist) may have armed the SETTLE window, which keeps the
+    -- a concurrent respawn-at-V (catchUp / persist) may have armed the SETTLE window, which keeps the
     -- puppet INVISIBLE and non-colliding for ~2 s and re-asserts that every frame. If its reveal is missed,
     -- Jackie is present, a companion, and permanently unseeable — "companion: true, no Jackie around".
     -- Tear the window down and force him visible + solid before we place him.
@@ -10454,7 +10454,7 @@ function blazeFinaleSceneTick()
     if (not Branch.busy) or ((JL.clock or 0) - (f.talkStartedAt or 0) > 300.0) then
       pcall(blazeReleaseStand)   -- let V crouch again now the finale's over
       JL.blazeFinale = nil       -- convo done -> disarm
-      -- v1.44: THE SET-PIECE IS OVER. Blaze.reset() nils `Blaze.st` (previously only ever cleared when a
+      -- THE SET-PIECE IS OVER. Blaze.reset() nils `Blaze.st` (previously only ever cleared when a
       -- NEW run started, so `st.active` stayed true for the rest of the save) and despawns any leftover
       -- Smasher/Takemura/heli entities — including the heli we abandoned on the Konpeki roof.
       -- Clearing it is also what releases jlBlazeSceneLive(), handing Jackie back to the normal
@@ -10475,7 +10475,7 @@ registerForEvent("onUpdate", function(dt)
   -- same place for the same reason: it touches no world handle, only another mod's Lua table. Stops
   -- calling GetMod for good after 20 tries, and does nothing at all once attached.
   pcall(function() ZEngine.tick(JL.clock or 0) end)
-  -- v1.52 SESSION GUARD — MUST BE FIRST. onUpdate keeps ticking through a load screen, so on the frame a
+  -- SESSION GUARD — MUST BE FIRST. onUpdate keeps ticking through a load screen, so on the frame a
   -- new session starts every handle below this line is a pointer into the world that just died. Nothing
   -- that can touch a handle may run before this. (`pcall` cannot save us from a native use-after-free.)
   pcall(function() Session.tick() end)
@@ -10526,7 +10526,7 @@ registerForEvent("onUpdate", function(dt)
   pcall(bikeTestTick)        -- v0.63: read back what the bike-model test actually spawned
   pcall(arrivalGreetTick)    -- v0.46/v0.48: one-shot fresh greeting when an arrived Jackie closes to 4 m
   pcall(leavingTick)    -- v0.33: dismissed Jackie walking off -> despawn at distance
-  -- v1.52: THE CRASH SITE. This block ran every frame against JL.summon.spawn.handle — including the
+  -- THE CRASH SITE. This block ran every frame against JL.summon.spawn.handle — including the
   -- frames right after a load-from-save, when that handle points into the world that was just torn down.
   -- SetNPCAsCompanion on freed memory is a native use-after-free, and the pcall below never caught it
   -- (pcall catches Lua errors, not native faults). Session.tick() should already have reset us; this
@@ -10560,7 +10560,7 @@ registerForEvent("onUpdate", function(dt)
     log("Companion role applied.")
   end
 
-  -- v1.44: a SCRIPTED CLOCK JUMP (blazeSetMidday) must not eat Jackie's companion time. Re-arm the
+  -- a SCRIPTED CLOCK JUMP (blazeSetMidday) must not eat Jackie's companion time. Re-arm the
   -- duration clock from the NEW `now` on the tick after the jump. Done before the expiry check below so
   -- the stale deadline can never fire in the same frame.
   if JL.rearmCompanionClock then
@@ -10571,7 +10571,7 @@ registerForEvent("onUpdate", function(dt)
       log("Companion: game clock was jumped -> duration timer re-armed (the jump doesn't count).")
     end
   end
-  -- v0.39: companion-duration clock. Arm it once he's a confirmed companion (any path), and when
+  -- companion-duration clock. Arm it once he's a confirmed companion (any path), and when
   -- it runs out (and autoLeaveOnExpiry) send him home via the same walk-off as a dismissal.
   if JL.summon.active and JL.summon.companionSet and not JL.summon.companionExpiresGame then
     armCompanionTimer()
@@ -10631,12 +10631,12 @@ registerForEvent("onUpdate", function(dt)
     pcall(scheduleTick)
   end
 
-  -- v1.45: hold the Watson barrier open. Runs in BOTH story modes and regardless of whether the set-piece
+  -- hold the Watson barrier open. Runs in BOTH story modes and regardless of whether the set-piece
   -- is still live — once a save has been marked `jl_watson_open`, switching back to Quiet Life (or a quest
   -- tick re-locking the fact) must never strand V behind the bridges. No marker -> instant no-op.
   pcall(function() jlWatsonHoldTick(dt) end)
 
-  -- v0.97: mourning suppression. Re-assert the grief holds every ~5 s (cheap, and re-catches any fact
+  -- mourning suppression. Re-assert the grief holds every ~5 s (cheap, and re-catches any fact
   -- the quest system flips back up). Quiet Life runs it only when the player opted in; Blaze ALWAYS runs
   -- it (v1.05: Blaze auto-suppresses grief + the ofrenda + forces El Coyote open — Antonia item).
   if (JL.mode == "quietlife" and JL.mourningSuppress) or JL.mode == "blaze" then
@@ -10649,10 +10649,10 @@ registerForEvent("onUpdate", function(dt)
 end)
 
 -- ---------------------------------------------------------------------------
--- v0.43 SEAT POSITION TUNER. Live X/Y/Z/yaw OFFSETS from a location's captured seat. Slide in-game
+-- SEAT POSITION TUNER. Live X/Y/Z/yaw OFFSETS from a location's captured seat. Slide in-game
 -- (with idle Jackie present at that venue) until he sits perfectly, then print the config-ready
 -- line. Re-seating goes through the normal stop-workspot -> teleport -> deferred sit path, so the
--- v0.43 sit-time collision drop applies and he won't clip the chair.
+-- sit-time collision drop applies and he won't clip the chair.
 -- ---------------------------------------------------------------------------
 -- All of a location's SIT waypoints, in order (a venue can have several stools — e.g. noodle has 2).
 local function tunerSitWaypoints(loc)
@@ -10879,11 +10879,11 @@ registerForEvent("onDraw", function()
   local block, hour = currentScheduleBlock()
   ImGui.Text("AMM: " .. (JL.amm and "ok" or "MISSING") ..
              "   Jackie record: " .. (JL.jackie.record and "ok" or "?"))
-  -- v1.63: is the native dialogue picker actually able to draw? "controller MISSING" is the one
+  -- is the native dialogue picker actually able to draw? "controller MISSING" is the one
   -- state that stops a conversation from opening, and it's invisible without this line.
   ImGui.Text("Dialogue picker: " .. (DialogUI.hasController() and "native, controller ok" or "native, controller MISSING") ..
              (DialogUI.isShown() and ("   [open, row " .. tostring(DialogUI.index()) .. "]") or ""))
-  -- v1.63.1: the two buttons that turn "the box didn't appear" into an actual answer. Both write to
+  -- the two buttons that turn "the box didn't appear" into an actual answer. Both write to
   -- jackie_debug.log (in this mod's folder), which is the file to send when reporting a failure.
   -- The native widget is GAME UI, so it draws out in the world (behind this window), not inside it.
   -- "Diagnose" leaves its probe box up for ~10 s so you can close the overlay and look; the test
@@ -10893,7 +10893,7 @@ registerForEvent("onDraw", function()
   if ImGui.Button("Show test picker") then pcall(function() DialogUI.selfTest() end) end
   ImGui.SameLine()
   if ImGui.Button("Close test picker") then pcall(function() DialogUI.hide() end) end
-  -- v1.72 DISTANCE. Colour-coded, because the number needs a scale to be read fast: green is normal
+  -- DISTANCE. Colour-coded, because the number needs a scale to be read fast: green is normal
   -- following range, amber is "on his way / lost the trail", red is a spawn that went somewhere it
   -- shouldn't have. "no body out" is not an error.
   do
@@ -10935,7 +10935,7 @@ registerForEvent("onDraw", function()
   end
   ImGui.Separator()
 
-  -- v1.60 LANGUAGE selector. Every local here is function-scoped (inside onDraw) so the main
+  -- LANGUAGE selector. Every local here is function-scoped (inside onDraw) so the main
   -- chunk's 200-local budget is untouched — the third safe pattern from the cap note up top.
   -- "Auto" follows the game's own language setting; an explicit pick persists to jl_settings.txt.
   if ImGui.CollapsingHeader("Language — " .. Lang.labelFor(Lang.code) .. (Lang.auto and " (auto)" or "")) then
@@ -10957,7 +10957,7 @@ registerForEvent("onDraw", function()
   end
   ImGui.Separator()
 
-  -- v1.66 VOICE BACKEND selector. Every local here is function-scoped (inside onDraw), so the main
+  -- VOICE BACKEND selector. Every local here is function-scoped (inside onDraw), so the main
   -- chunk's 200-local budget is untouched.
   --
   -- ⚠️ WHY THIS EXISTS AT ALL. With mode="auto" the mod tries the native path and, if the redscript
@@ -11001,7 +11001,7 @@ registerForEvent("onDraw", function()
         .. "r6\\scripts\\JackieLives\\JackieLivesVO.reds is in your game folder.")
     end
 
-    -- v1.70.1 V'S OWN VOICE. Everything above is about Jackie; V speaks her dialogue choices now.
+    -- V'S OWN VOICE. Everything above is about Jackie; V speaks her dialogue choices now.
     -- This block exists to answer ONE question by ear that cannot be answered from a Mac: whether
     -- the event shape changes which gendered take the engine plays, or whether the engine reads
     -- V's body and ignores us. One press, two takes, both named in the log.
@@ -11036,7 +11036,7 @@ registerForEvent("onDraw", function()
       .. "If BOTH takes sound identical, the engine is reading V's body and ignoring the event "
       .. "shape entirely: say so, and this switch gets retired instead of tuned.")
 
-    -- v1.69 VOICE LAB. The dialogue event carries NO position field (verified against the RTTI
+    -- VOICE LAB. The dialogue event carries NO position field (verified against the RTTI
     -- dump), so if a line comes out of the wrong place the only variables are the ENTITY it was
     -- queued on and the context/expression it carried. These buttons fire the same line through
     -- each variant so you can hear which one puts Jackie's voice in Jackie's mouth. Summon him
@@ -11080,7 +11080,7 @@ registerForEvent("onDraw", function()
   end
   ImGui.Separator()
 
-  -- v0.95 STORY MODE selector (Quiet Life vs Blaze of Glory). Buttons + wrapped description, using
+  -- STORY MODE selector (Quiet Life vs Blaze of Glory). Buttons + wrapped description, using
   -- only idioms already proven in this file (Button/Text/SameLine/TextWrapped/TextColored).
   -- The header carries the LIVE mode in its label so you can read it without opening the section.
   if ImGui.CollapsingHeader("Story mode — " .. (JL.mode == "blaze" and "BLAZE OF GLORY" or "QUIET LIFE")) then
@@ -11093,7 +11093,7 @@ registerForEvent("onDraw", function()
       ImGui.TextColored(1.0, 0.35, 0.2, 1.0, "Blaze of Glory  (EXTREMELY EXPERIMENTAL)")
       ImGui.TextWrapped(BLAZE_DESC)
 
-      -- v0.96 MVP-A: Heist set-piece test controls (spawn Smasher+Goro+VTOL, run the
+      -- MVP-A: Heist set-piece test controls (spawn Smasher+Goro+VTOL, run the
       -- kill-Smasher -> reach-VTOL -> cut-to-black flow). Positions/records are captured
       -- in-game; paste the console-logged values into blaze.lua M.cfg to make them stick.
       -- The Heist set-piece. It AUTO-STARTS when the start-fact flips (the T-Bug call ends): Smasher at
@@ -11110,7 +11110,7 @@ registerForEvent("onDraw", function()
         local ok = false; pcall(function() ok = Blaze.bound.defeatLookAt and Blaze.bound.defeatLookAt() end)
         JL.ui.status = ok and "Defeated the targeted NPC." or "Aim at an NPC first (see console)."
       end
-      -- v1.11: the q005 scene music is fired NATIVELY and can get stuck; a fast-travel/checkpoint reload
+      -- the q005 scene music is fired NATIVELY and can get stuck; a fast-travel/checkpoint reload
       -- black-screens (the live scene holds a world lock). MusicVolume->0 is the only thing that silences
       -- it from CET, so this pair stays as a player-facing rescue.
       if ImGui.Button("Mute ALL music (stuck heist music)") then
@@ -11145,7 +11145,7 @@ registerForEvent("onDraw", function()
         "returns as a living Heywood NPC. Less invasive -- but Jackie can only join SIDE jobs, never the " ..
         "main plot.")
 
-      -- v1.32: mourning suppression, minimal — just the two persisted settings + status. (The long
+      -- mourning suppression, minimal — just the two persisted settings + status. (The long
       -- help text and the dev Preview/Apply buttons were removed; ticking a box already applies it
       -- next tick via JL.mourningTimer. jlMourningApply still exists if we need it from the console.)
       ImGui.Separator()
@@ -11165,7 +11165,7 @@ registerForEvent("onDraw", function()
     if ImGui.Button("Dismiss Jackie") then dismissJackie() end
   end
 
-  -- v1.57 MOVEMENT TUNER. Was three sliders that reset on every reload; now every knob that shapes how
+  -- MOVEMENT TUNER. Was three sliders that reset on every reload; now every knob that shapes how
   -- Jackie moves with V is here, and "Save" writes them to jl_walk.txt so they survive (jlLoadWalk on
   -- onInit re-applies them over config.lua's baked defaults). Everything is LIVE the instant you drag it.
   -- Read the live line FIRST — it tells you which system currently owns him, so you know which group of
@@ -11204,7 +11204,7 @@ registerForEvent("onDraw", function()
     end
   end
 
-  -- v1.47 MVP: prove AIFollowerTakedownCommand actually works from Lua before anything is built on it.
+  -- MVP: prove AIFollowerTakedownCommand actually works from Lua before anything is built on it.
   -- No CET mod is known to construct this command, so it is unproven — this button is the experiment.
   -- Aim at an UNAWARE enemy (the grapple that plays is a stealth takedown) and press it.
   if ImGui.CollapsingHeader("Follower takedown (experimental)") then
@@ -11216,7 +11216,7 @@ registerForEvent("onDraw", function()
       JL.ui.status = (ok and "" or "Takedown refused: ") .. tostring(msg)
       log("Takedown (look-at test): " .. tostring(msg))
     end
-    -- v1.61: prove the holster command in isolation. Reads V + Jackie weapon state, then forces a holster.
+    -- prove the holster command in isolation. Reads V + Jackie weapon state, then forces a holster.
     ImGui.Separator()
     do
       local pl = Game.GetPlayer()
@@ -11236,7 +11236,7 @@ registerForEvent("onDraw", function()
     end
   end
 
-  -- v0.50: TWO arrival modes only — toggle FOOT <-> BIKE, live. Pick one, then Call Jackie (or hit
+  -- TWO arrival modes only — toggle FOOT <-> BIKE, live. Pick one, then Call Jackie (or hit
   -- "Test arrival now"). Both spawn via DES out at distance and share the sprint -> walk -> companion tail.
 
 
@@ -11264,7 +11264,7 @@ registerForEvent("onDraw", function()
     ImGui.Text("In cutscene (tier>=4): " .. (jlInCutscene() and "YES (Jackie leaves)" or "no"))
   end
 
-  -- v1.33 phone hijack. The mode contest is SETTLED — 'alive' won and is the default, so the mode
+  -- phone hijack. The mode contest is SETTLED — 'alive' won and is the default, so the mode
   -- picker, the delay/ring knobs and the raw single-phase buttons are gone (jlCallFix().mode and
   -- triggerNativeCall() are still there if a future experiment needs them from the console).
   -- What's left: is the hijack live right now, and one button to watch the whole alive call.
@@ -11283,7 +11283,7 @@ registerForEvent("onDraw", function()
       "exactly what happens when you phone Jackie from the in-game phone.")
   end
 
-  -- v1.32: minimal reunion-quest DEV jumps (the everyday "Unlock now" button lives up top with the
+  -- minimal reunion-quest DEV jumps (the everyday "Unlock now" button lives up top with the
   -- status). All the call-flow / bike-cruise / reunion-beats / shard TEST controls were removed.
   if ImGui.CollapsingHeader("Reunion quest — dev jumps") then
     ImGui.Text("Stage: " .. Retrieval.stageName())
@@ -11294,7 +11294,7 @@ registerForEvent("onDraw", function()
   end
 
 
-  -- v1.55: position capture + the Reverend Flash easter egg. The egg is testable WITHOUT the real
+  -- position capture + the Reverend Flash easter egg. The egg is testable WITHOUT the real
   -- coords — "Fire now" ignores position entirely. To arm it for real: stand in the bar, hit "Capture
   -- current position", paste the x/y/z into Config.revflash.pos, set Config.revflash.enabled = true.
   if ImGui.CollapsingHeader("Position capture & easter egg") then
@@ -11324,7 +11324,7 @@ registerForEvent("onDraw", function()
 
     ImGui.TextWrapped("Companions stand at tables — the sit animation isn't tied to real furniture, "
       .. "so an automatic sit floats. Place them yourself and it lands exactly where you put it.")
-    -- v1.8.5: name the dependency BEFORE they press a dead button, not after. Placing them and
+    -- name the dependency BEFORE they press a dead button, not after. Placing them and
     -- turning them is ours and always works; the sit/lean ANIMATION is AMM's workspot system.
     if not getAMM() then
       ImGui.TextColored(0.95, 0.80, 0.35, 1.0, "AppearanceMenuMod is not loaded.")
@@ -11519,7 +11519,7 @@ registerForEvent("onShutdown", function()
   pcall(function() jlManualUnseat("shutdown") end)  -- v1.77: never leave a hand-seated puppet in a workspot we no longer own
   pcall(clearDinnerWaypoint)     -- v0.41: never leave a dinner map pin stuck
   pcall(function() if jlCruise and jlCruise.active then jlCruiseStop() end end)  -- v0.92: never orphan the cruise Arch
-  -- v1.41: aiBikeKnockOffModifier is a GLOBAL TweakDB flat. Force it back to the captured original on
+  -- aiBikeKnockOffModifier is a GLOBAL TweakDB flat. Force it back to the captured original on
   -- unload regardless of what the ref-count believes — a mod reload mid-ride must not leave every NPC
   -- biker in Night City unknockable for the rest of the session.
   pcall(function()
@@ -11544,6 +11544,6 @@ registerHotkey("jl_diag",    "Jackie diagnostics",       function() diagnostics(
 --  gives the real in-game Interact key (F) for free - see setupInteractHook.)
 registerInput("jl_talk", "Talk to Jackie (look at him)", function(isDown) if isDown then talkToJackie() end end)
 
--- v0.42: the "-" cycle-choice fallback (jl_cycle_choice) is REMOVED. Arrow ↑/↓ now navigate the
+-- the "-" cycle-choice fallback (jl_cycle_choice) is REMOVED. Arrow ↑/↓ now navigate the
 -- choice box on every layer (release-edge handling in setupInteractHook), so the manual binding is
 -- no longer needed. F still confirms the highlighted option.

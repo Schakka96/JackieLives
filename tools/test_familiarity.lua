@@ -142,7 +142,7 @@ end
 check("some questions grow their answer with familiarity", grew >= 3,
       "only " .. grew .. " nodes vary by tier — new topics alone read as a menu growing, not a person opening up")
 
--- v1.69: this check used to be "no tier-gated line may claim a voice clip at all", because under
+-- this check used to be "no tier-gated line may claim a voice clip at all", because under
 -- Audioware ONE `sfx` naming a wav that wasn't in the bank made it reject the whole bank and Jackie
 -- went completely silent. That failure mode died with v1.66 — the native path names the game's own
 -- lines, and an id the game doesn't know is one silent line, not a dead mod. So the rule inverts:

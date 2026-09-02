@@ -174,7 +174,7 @@ local function sentPaths(w)
   return out
 end
 
--- v1.91: answer whatever question he is currently waiting on, if any. His question OWNS the
+-- answer whatever question he is currently waiting on, if any. His question OWNS the
 -- thread while it is open (only one choice group may be Active at a time — see disarmGroup), so a
 -- test that wants to see V's own conversation-starters has to clear his question first. Returns the
 -- beat that was answered, or nil.
@@ -544,7 +544,7 @@ section("13. V can text HIM (v1.46)")
 do
   local w = unlockedWorld(0)
   settle(w)
-  -- v1.91: he opens with a question, and a question OWNS the thread while it is open. Answer it,
+  -- he opens with a question, and a question OWNS the thread while it is open. Answer it,
   -- and V's own conversation-starters come back.
   answerPending(w)
   local out

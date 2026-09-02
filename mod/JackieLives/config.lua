@@ -77,7 +77,7 @@ Config.talk = {
                        -- This makes the box a PERMANENT look-driven prompt, not the one-shot test button.
   boxRefresh   = 1.0,  -- seconds: re-assert the box while looking, so it survives if the game's own
                        -- interaction system clears the blackboard. 0 = push once only (no heartbeat).
-  -- v1.8.9 — THE TEXT PROMPT IS SHOWN ONCE PER LOOK, and this is how long you have to look AWAY
+  -- THE TEXT PROMPT IS SHOWN ONCE PER LOOK, and this is how long you have to look AWAY
   -- before it may show again. It is NOT a repeat interval: the banner used to be re-pushed every
   -- 2.5 s while you looked, which replayed the game's notification animation over and over
   -- ("spamming continuously every few seconds", reported 2026-08-22 and in the Nexus comments).
@@ -88,7 +88,7 @@ Config.talk = {
   -- game can clear from under us, so it keeps its `boxRefresh` heartbeat — re-asserting a box that
   -- is already on screen changes nothing visually, unlike re-pushing a notification.
   textRearmSeconds = 2.0,
-  -- v1.8.9 — HOW CLOSE YOU HAVE TO BE FOR THE TEXT BANNER, as opposed to `range` above, which is how
+  -- HOW CLOSE YOU HAVE TO BE FOR THE TEXT BANNER, as opposed to `range` above, which is how
   -- close you have to be to TALK. They are deliberately different numbers.
   -- The two prompt styles were never equally visible at `range`: the native "[F] Talk" box is an
   -- offer we push to the interaction blackboard, and the GAME filters it through its own (much
@@ -145,7 +145,7 @@ Config.voice = {
   -- above they need NO dependency of any kind. A tree with `muteFallback = true` skips them.
   gruntPool = { "ono_jackie_greet", "ono_jackie_curious", "ono_jackie_additional" },
 
-  -- v1.69 HOW OFTEN an unvoiced line gets that vocal effort. It used to be EVERY time, which
+  -- HOW OFTEN an unvoiced line gets that vocal effort. It used to be EVERY time, which
   -- is fine when unvoiced lines are rare and awful once the hub is mostly written text: every
   -- topic V picked answered with a grunt, and a sound that was meant to say "he's alive" ended
   -- up saying "the mod's broken". Antonia liked the effect, so it stays — just rarely.
@@ -191,7 +191,7 @@ Config.smile = {
   reapply  = 0.6,    -- re-assert the facial every N s so it doesn't decay before duration ends
   category = 3,      -- FacialReaction category for the smile set
   idle     = 6,      -- 6 = Smile — HIS OWN signature grin (5 = Joy, 2 = Neutral)
-  -- v0.94 SMILE VARIETY — WHICH face a smile uses once one fires (does NOT change how OFTEN he smiles).
+  -- SMILE VARIETY — WHICH face a smile uses once one fires (does NOT change how OFTEN he smiles).
   -- `selfChance` of the time it's his own `idle` (the Smile); the rest of the time it's one of
   -- `otherIdles` (the "other" happy faces), picked evenly so they COLLECTIVELY share (1 - selfChance).
   -- Only 5 (Joy) is verified so far, so today it's 60% Smile / 40% Joy. To add more variety, sweep
@@ -203,7 +203,7 @@ Config.smile = {
   -- Only affects HOW OFTEN, not which face. Keyed to the idle/venue spawn (JL.idle.spawnedAt).
   spawnBoostSeconds = 10.0,
   spawnBoostMult    = 3.0,
-  -- v0.93 REUNION SMILE BOOST — during the first-meeting dialogue (reunionMeetTree) he beams:
+  -- REUNION SMILE BOOST — during the first-meeting dialogue (reunionMeetTree) he beams:
   -- a forced smile for the first `reunionForceSeconds`, then `reunionChanceMult`x the normal smile
   -- chance for the rest of that chat. `reunionIdles` rotates his two happy faces (6 = Smile, 5 = Joy)
   -- so it isn't one frozen expression. The smile always YIELDS to his mouth flap, so his spoken lines
@@ -255,7 +255,7 @@ Config.testDialogue = {
 }
 
 -- ---- dialogue box display -------------------------------------------------
--- v1.63: the box itself is the GAME's native dialogue widget now (dialogui.lua), so it draws its
+-- the box itself is the GAME's native dialogue widget now (dialogui.lua), so it draws its
 -- own input hints — arrows / mouse wheel move the highlight, F selects. `cycleHint` is vestigial.
 Config.dialogue = {
   cycleHint  = "Up/Dn",  -- vestigial since v1.63: the native widget draws its own input hint.
@@ -263,11 +263,11 @@ Config.dialogue = {
   cycleDebug = false,    -- v0.42 OFF: arrow CNames locked + both-edge handling confirmed working.
                          --   Flip true to re-log input-action names while a choice box is open
                          --   (v1.63: also switches on DialogUI's own per-action logging).
-  -- v1.63: apply GameplayRestriction.NoCombat while the picker is up, so V can't shoot mid-sentence.
+  -- apply GameplayRestriction.NoCombat while the picker is up, so V can't shoot mid-sentence.
   -- OFF by default because it's a real gameplay change the ImGui box never made — flip it on if a
   -- stray click during a chat ever ruins a moment.
   pickerNoCombat = false,
-  -- v1.65 HUB REFRESH — how long a sampled topic list sticks (see `pick` on a node, below).
+  -- HUB REFRESH — how long a sampled topic list sticks (see `pick` on a node, below).
   -- The hub is re-entered after EVERY topic, so without this a player could sit in one conversation
   -- reopening the menu until the whole pool had scrolled past. The list is meant to be "what's on his
   -- mind right now", not a slot machine. A draw holds for a random hubRefreshMin..Max seconds, measured
@@ -362,7 +362,7 @@ Config.subtitleReading = {
 -- WALKS AWAY; once he is `despawnDistance` m from V (or `maxSeconds` pass) he despawns. This
 -- is the immersive opposite of the instant "Dismiss Jackie" hotkey.
 Config.dismiss = {
-  -- v1.70 — NOT SILENT ANY MORE. "Don't worry about me. I'll manage on my own." is V's own
+  -- NOT SILENT ANY MORE. "Don't worry about me. I'll manage on my own." is V's own
   -- line, spoken TO Jackie in the game, and it is precisely this beat: she is sending him off
   -- because she can handle what's next. It replaces the written "Head home, Jackie. I got this
   -- from here.", which was reaching for the same sentence without a recording behind it.
@@ -390,7 +390,7 @@ Config.dismiss = {
     { text = "Hasta luego.",                     sfx = "jl_1784859163293052928" },
     { text = "Make moves, chica.",               sfx = "jl_2238739839238447112" },  -- male V: "...mano."
   },
-  -- v1.69: `partingPoolM` is GONE. It was a male-V duplicate of the pool above, and the duplication
+  -- `partingPoolM` is GONE. It was a male-V duplicate of the pool above, and the duplication
   -- was built on a mistake — its "male mirror clips" turned out to be the SAME String IDs as the
   -- lines above, which the game already speaks in the right take for V's body. What the duplicate
   -- actually did was point at WEM STEMS (`jl_jackie_..._m_...`) instead of ids, and vo.lua can only
@@ -530,7 +530,7 @@ Config.abreast = {
   -- a trap for whoever next restores a fallback path — they would silently reintroduce the
   -- wall-clipping gap this was changed to fix (2026-08-14). Change both or neither.
   radius         = 1.5,     -- m — nominal only; see above
-  -- v1.55 FLEXIBLE DISTANCE BAND (Antonia: "the abreast follow should be more flexible on the distance:
+  -- FLEXIBLE DISTANCE BAND (Antonia: "the abreast follow should be more flexible on the distance:
   -- anything from 1.2m to 5m is ok"). The old model rebuilt his anchor at EXACTLY `radius` every re-issue,
   -- so any drift in or out was actively corrected — he was forever being tugged back onto one precise ring.
   -- Now, if he's ALREADY somewhere inside [minRadius, maxRadius], that distance is accepted and the anchor
@@ -542,7 +542,7 @@ Config.abreast = {
   smoothSeconds  = 3.3,     -- EMA time-constant for V's heading (Antonia's tuned value)
   interval       = 0.3,     -- s between re-issues of the move-to-anchor command (short = tracks the drift)
   movement       = "Walk",  -- how he moves while HOLDING position (matches V's walk)
-  -- v1.36 ANGULAR LEASH. The old distance-chase jittered; now the SPRINT trigger is purely ANGULAR.
+  -- ANGULAR LEASH. The old distance-chase jittered; now the SPRINT trigger is purely ANGULAR.
   -- rearArcFrac = the slice of the full 360° circle (centred DIRECTLY BEHIND V) that counts as "he's fallen
   -- behind" and unlocks a sprint. 0.40 -> the rear 144° (he must be >108° off V's forward). zoneRadius = the
   -- free-walk leash around the side anchor: he sprints in until within it, then calms to a walk and holds
@@ -552,7 +552,7 @@ Config.abreast = {
   zoneRadius     = 1.5,     -- m free-walk leash around the anchor; sprint ends + hold-tolerance = this
   -- ⚠️ v1.8.3: `leadDistance` is LEGACY — the fallback used only if `leadSeconds` is cleared to nil.
   leadDistance   = 2.0,     -- m his WALK target sits ahead of the anchor (along V's heading) so he keeps moving
-  -- v1.8.3 THE LOOKAHEAD, AND THE BRAKE. Antonia, 2026-08-17: "Jackie often very aggressively walks
+  -- THE LOOKAHEAD, AND THE BRAKE. Antonia, 2026-08-17: "Jackie often very aggressively walks
   -- ahead too fast and then is stuck at the edge of his leash and doesn't fall back well."
   -- A flat `leadDistance` is only right at one walking speed — see the long note in abreastTick. These
   -- two make it a fraction of a second of V's CURRENT pace instead, so it shrinks with her.
@@ -567,18 +567,18 @@ Config.abreast = {
   catchUpMovement= "Sprint",-- how he moves to GET into position when he's fallen behind (must out-pace a walking V)
   catchUpSmoothSeconds = 0.5, -- while sprinting in, aim at a near-INSTANT heading (where V is NOW), not the EMA
   catchUpTolerance = 0.35,  -- target distance while sprinting in
-  -- v1.39: pace-match (SetIndividualTimeDilation speed-up) REMOVED — scaling his time made his stride float
+  -- pace-match (SetIndividualTimeDilation speed-up) REMOVED — scaling his time made his stride float
   -- and broke the angular leash. He now just walks his own natural Walk gait; the rear-arc sprint handles
   -- keeping up. Walk-beside is ON by default (v1.61); the player can turn it off at Esc -> Settings -> Jackie Lives ->
   -- Gameplay -> "Walk beside me". OFF = the plain trailing follower (the flag is JL.walkAbreast).
   walkMaxSpeed   = 2.0,     -- m/s at/below which V counts as WALKING (abreast on)
   jogMinSpeed    = 2.8,     -- m/s above which V counts as jogging/sprinting (trail); band = hysteresis
-  -- v0.93: abreast is a NARROW case — it only makes sense while V is genuinely STROLLING. Two extra gates
+  -- abreast is a NARROW case — it only makes sense while V is genuinely STROLLING. Two extra gates
   -- stop it from hijacking normal standing-around conversation (where he'd sit at a weird 3.5 m angle,
   -- jerking as the camera pans):
   walkMinSpeed      = 0.6,  -- m/s V must EXCEED to count as walking. Below this she's STILL -> he trails close.
   walkSustainSeconds= 2.0,  -- s V must hold the walk band CONTINUOUSLY before abreast engages (no snap on a step)
-  -- v1.46 VERTICAL GATE (stairs / slopes / ladders / lifts). Walking abreast is a FLAT-GROUND idea: a
+  -- VERTICAL GATE (stairs / slopes / ladders / lifts). Walking abreast is a FLAT-GROUND idea: a
   -- staircase is rarely two-abreast wide, and the old build copied V's z straight into the anchor, so the
   -- point 5.5 m "ahead" of a climbing V was buried inside the stairs (or floating over them). The nav
   -- projection then flip-flopped between the lower and upper floor each re-issue — that is the "jagged
@@ -662,7 +662,7 @@ Config.stealth = {
 -- ONCE, in the same frame as V's async teleport — a race, and the log claimed success either way.
 -- Now it re-asserts on a heartbeat until V is OBSERVED standing (read from the PlayerStateMachine
 -- Locomotion blackboard via jlVCrouched), then reports how long it took, or says plainly that it failed.
--- v1.53: the ForceStand record is minted at runtime (blazeEnsureForceStandRecord) — no TweakXL. If that ever
+-- the ForceStand record is minted at runtime (blazeEnsureForceStandRecord) — no TweakXL. If that ever
 -- fails, the uncrouch is simply SKIPPED: V stays crouched through the transport and the finale runs normally.
 -- That is the agreed fallback; do NOT reintroduce a framework dependency to fix cosmetics.
 Config.blazeCalm = {
@@ -709,10 +709,10 @@ Config.takedown = {
   approachBeforeTakedown         = true,  -- he walks up to the victim; false = snap straight behind them
   doNotTeleportIfTargetIsVisible = true,  -- never teleport him while the victim is on V's screen (ugly)
   combatCommand                  = true,  -- v1.48: REQUIRED. Routes it into the follower BT's takedown subtree.
-  -- v1.48 SAFETY (Antonia asked). Nothing here ever deals damage — the engine owns the grapple — but a
+  -- SAFETY (Antonia asked). Nothing here ever deals damage — the engine owns the grapple — but a
   -- takedown ordered on V or on a friendly would still be wrong. Refuse anything that isn't a hostile puppet.
   requireHostile   = true,  -- only order takedowns on NPCs hostile to V. Set false at your own risk.
-  -- v1.48 while a takedown runs, our leash ticks must not re-issue commands to Jackie or they cancel it.
+  -- while a takedown runs, our leash ticks must not re-issue commands to Jackie or they cancel it.
   holdCommands     = true,
   timeoutSeconds   = 15.0,  -- give up (and hand him back to the leash) if no grapple/kill lands by then
 }
@@ -746,14 +746,14 @@ Config.catchUp = {
   enabled         = true,
   distance        = 25.0,   -- metres from V beyond which he's considered "left behind"
   sustainSeconds  = 4.0,    -- v1.59 (was 2.0): he must stay that far for this long before we do anything
-  -- v1.59 PROGRESS GRACE — "he's making his way back, leave him alone".
+  -- PROGRESS GRACE — "he's making his way back, leave him alone".
   progressGrace   = true,   -- false = the old plain timer
   progressEpsilon = 0.5,    -- m the gap must SHRINK per check to count as progress (noise floor)
   maxGraceSeconds = 20.0,   -- s of grace he can earn this way before we intervene regardless (anti-forever)
   chaseMovement   = "Sprint",-- how the trail runs him home while he's beyond `distance` (he must out-pace V)
   cooldown        = 3.0,    -- minimum seconds between catch-up teleports (anti-thrash)
   placeDistance   = 3.0,    -- metres to V's side he's dropped (navmesh-snapped; never ON V)
-  -- v1.59 LAND HIM BEHIND HER WHEN SHE'S STANDING STILL. The v1.40 rule (always AHEAD/beside, see
+  -- LAND HIM BEHIND HER WHEN SHE'S STANDING STILL. The v1.40 rule (always AHEAD/beside, see
   -- frontSideRespawn) fixed fast-travel drops into the wall behind V — but a stationary V is usually LOOKING
   -- at that front-side spot, so the recovery pops into view. Worse, if she's standing at a railing there is
   -- often no walkable ground in front at all: the front-side search fails, the old code fell through to an
@@ -766,7 +766,7 @@ Config.catchUp = {
   -- `stillAngleSpread` degrees either side of each base heading. This is Antonia's "he is allowed to be
   -- outside of the defined abreast angles if V stops walking" — a standing V doesn't care where he stands.
   stillAngleSpread = 75.0,  -- degrees of extra sweep either side of each base heading while V is still
-  -- v1.59 REACHABILITY. snapToNavmesh only proves a point is ON some navmesh — not that it is connected to
+  -- REACHABILITY. snapToNavmesh only proves a point is ON some navmesh — not that it is connected to
   -- the patch V is standing on. That is how he ended up on the far side of a railing/canal, unable to path
   -- back, which then re-triggers catch-up in a loop. Now every candidate is path-checked against V with
   -- NavigationSystem.CalculatePathOnlyHumanNavmesh (navigationSystem.script:55) and rejected if no foot path
@@ -774,9 +774,9 @@ Config.catchUp = {
   -- and says so ONCE in jackie_debug.log rather than blocking every recovery.
   requirePath     = true,
   pathTolerance   = 1.0,    -- m find-point tolerance handed to the path query
-  -- v1.59: if NOTHING valid is found, we now SKIP the teleport and let him keep walking, instead of falling
+  -- if NOTHING valid is found, we now SKIP the teleport and let him keep walking, instead of falling
   -- through to a raw unsnapped point. That raw fallback is what put him in the air. Never re-add it.
-  -- v1.40: on both recovery paths, place him AHEAD/beside V (reusing the walk-abreast angles), never BEHIND —
+  -- on both recovery paths, place him AHEAD/beside V (reusing the walk-abreast angles), never BEHIND —
   -- the wall/structure behind a fast-travel point is where the old build dropped him. The teleport path uses
   -- frontSideArrivalPoint directly; the respawn path repositions him there (invisibly) during the settle-hide
   -- window. Set false to go back to AMM's own drop spot + the plain side/behind navmesh sweep.
@@ -784,7 +784,7 @@ Config.catchUp = {
   respawnWhenStranded = true,-- v0.79: fall back to despawn+respawn when a teleport can't reach him (set false to disable)
   respawnDistance = 150.0,  -- metres beyond which we skip the doomed teleport and respawn immediately (district-scale FT)
   maxTeleTries    = 2,      -- v1.59 (was 1): failed teleports before we escalate to the visible despawn+respawn
-  -- v1.74 THE "GONE", NOT "FAR", CASE (ported from NCLives). Every rung of the ladder above is
+  -- THE "GONE", NOT "FAR", CASE (ported from NCLives). Every rung of the ladder above is
   -- measured in metres, so none of them could fire when the companion's body was CULLED by a load
   -- screen and its position stopped being readable at all — catchUpTick returned on the nil position
   -- every tick and nobody came back (NCLives, fast travel, 2026-08-14: "1165 m in red, companion
@@ -873,7 +873,7 @@ Config.follow = {
   roleWatch         = true,   -- false = assign once at promote, the pre-v1.67 behaviour
   roleWatchInterval = 2.0,    -- seconds between checks (cheap: two reflection reads)
   roleWatchTries    = 5,      -- re-applies before we stop and say so in the log
-  -- v1.55: this is now only the FALLBACK. The live trail distance comes from jlFollowDistance() — the
+  -- this is now only the FALLBACK. The live trail distance comes from jlFollowDistance() — the
   -- "Jackie's follow distance" slider in Esc -> Settings, which drives BOTH this trail and the walk-abreast
   -- radius from one number (Antonia: "the default distance for sprint follow and abreast follow can be the
   -- same right? Like 3-5m?"). Default is Config.followDistanceDefault below (1.5 m — back down from v1.55's 3.5; see the note there).
@@ -984,7 +984,7 @@ Config.date = {
   seatTriggerRadius = 12.0,  -- metres: V this close to the spot -> Jackie peels off to his seat
   seatReachRadius   = 2.0,   -- metres: Jackie this close to his seat -> snap + sit
   seatTimeout       = 12.0,  -- v0.44 seconds: if he can't path within seatReachRadius by now, snap+sit anyway
-  -- v1.8.2: `sitWaitSeconds` is a DWELL now, not a delay — see dinnerTick. They must be inside
+  -- `sitWaitSeconds` is a DWELL now, not a delay — see dinnerTick. They must be inside
   -- `lineRadius` of the seat and STAY there this long before the arrival line plays; walking
   -- back out resets the clock. Raising it makes them settle visibly before speaking.
   sitWaitSeconds    = 2.0,   -- seconds settled AT the seat before the arrival line + the clock reset
@@ -995,7 +995,7 @@ Config.date = {
   lineTimeout       = 30.0,  -- seconds
   getUpRadius       = 10.0,  -- metres: V this far from seated Jackie -> he gets up + re-follows
   resetCooldownHours = 24.0, -- the dinner FULL reset can only fire once per this many in-game hours
-  -- v1.57: inviting a WALKING-OFF Jackie to dinner cancels his departure (jlAbortDeparture) so he doesn't
+  -- inviting a WALKING-OFF Jackie to dinner cancels his departure (jlAbortDeparture) so he doesn't
   -- stroll away — and despawn — while V is still choosing a restaurant. The invite alone only buys him this
   -- short fresh shift; ACCEPTING (a venue picked) upgrades it to the full Config.companion.maxGameHours.
   -- Keep it small: it's the "hang on, hear me out" window, not a free extra day at V's side.
@@ -1020,18 +1020,18 @@ Config.date = {
       pickText = "Meet me at Lizzie's.", pickSfx = "jl_1691270077089771520" },
   },
 
-  -- v0.43: walk/arrival BANTER fully disabled (Antonia). The only spoken beats are the three below.
+  -- walk/arrival BANTER fully disabled (Antonia). The only spoken beats are the three below.
   -- Jackie's single-line beats (real-matching clips; the restaurant NAME shows via the waypoint + objective):
   ackText    = "Right on, chica.",                  ackSfx    = "jl_1721407637774192672",  -- on accept (heading out)
   doneText   = "Anyway, what's goin' on?",          doneSfx   = "jl_1878047791342612480",  -- v0.48: seated, 2s after sitting (reset) — relaxed catch-up beat
   getUpText  = "Why, what's the rush?",             getUpSfx  = "jl_1989527454849245184",  -- V walks off -> he gets up
   -- v0.43b/v0.47: he won't go out to eat twice a day. If asked within resetCooldownHours of his last
   -- dinner, he REFUSES the moment V invites him (before the venue picker shows) and the outing aborts.
-  -- v0.48: "Got no time for this!" was unsuitable -> DROPPED. Placeholder reuses the decline line until a
+  -- "Got no time for this!" was unsuitable -> DROPPED. Placeholder reuses the decline line until a
   -- better "already ate today" clip is chosen from the refreshed (~1000-line) bank. (See TODO backlog.)
   refuseText = "Why, what's the rush?", refuseSfx = "jl_1989527454849245184",
 
-  -- v0.48: JACKIE drops a hungry HINT himself (not just V's menu invite). While he's your companion and a
+  -- JACKIE drops a hungry HINT himself (not just V's menu invite). While he's your companion and a
   -- dinner is available (off cooldown), after a randomized in-game gap he simply SAYS this line — no picker,
   -- no choices. It nudges V to use her own "Wanna get something to eat?" invite. The gap sits close to his
   -- max summon time so it lands like an occasional "I'm gettin' hungry", not a nag. enabled=false disables.
@@ -1046,13 +1046,13 @@ Config.date = {
   tree = {
     start = "open",
     nodes = {
-      -- v0.52: V's "Wanna get something to eat?" lands -> Jackie ACCEPTS ("had enough for one day"), then the
+      -- V's "Wanna get something to eat?" lands -> Jackie ACCEPTS ("had enough for one day"), then the
       -- venue picker shows RIGHT HERE: 4 random venues (withDateChoices) + "You pick, hermano." (he names a
       -- spot) + "Actually... raincheck." (-> decline). Raincheck now lives IN the picker, not a step before it.
       open = {
         jackie  = { text = "Yeah, had enough for one day, lemme tell you.", sfx = "jl_1697051347046326272" },
         restaurantPicker = true,   -- 4 random restaurant options are auto-injected here from `restaurants`
-        -- v1.70 voiced. "You order." is V's own line to Jackie over food in the game — it is
+        -- voiced. "You order." is V's own line to Jackie over food in the game — it is
         -- literally this beat, handing him the choice, and it replaces the written
         -- "You pick, hermano." exactly.
         choices = {
@@ -1067,7 +1067,7 @@ Config.date = {
     },
   },
 
-  -- v0.83: SEATED small-talk tree — used ONLY while Jackie is seated at dinner (JL.dinner.phase ==
+  -- SEATED small-talk tree — used ONLY while Jackie is seated at dinner (JL.dinner.phase ==
   -- "seated"; wired via currentTalkTree). Casual banter + a few random-chance "get it off your chest"
   -- topics (each choice carries a `chance`, re-rolled every time the menu opens, so the options vary).
   -- No dismiss option here (that crashes a seated puppet). "Enough chillin'..." runs action "dinner_leave"
@@ -1078,7 +1078,7 @@ Config.date = {
     start = "open",
     nodes = {
       open = {
-        -- v1.69: greet once, then it's one meal-long conversation (see Branch.start).
+        -- greet once, then it's one meal-long conversation (see Branch.start).
         greetOnce = true,
         jackiePool = {
           { text = "Man, this hits the spot. No gigs, no gunfire — just you an' me." },
@@ -1127,7 +1127,7 @@ Config.date = {
         },
       },
       misty = {
-        -- v1.54: Misty and Jackie are TOGETHER, in both tracks — the old "we ended it" breakup (and the
+        -- Misty and Jackie are TOGETHER, in both tracks — the old "we ended it" breakup (and the
         -- "thinkin' 'bout someone else entirely" line aimed at V) is gone for good. Jackie never discusses
         -- his relationship falling apart, because it doesn't. No `m` override needed: this is his answer
         -- whichever track you're on.
@@ -1193,7 +1193,7 @@ Config.dialogueTree = {
   nodes = {
     open = {
       jackie  = { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
-      -- v1.70: V is voiced here too. His `open` line IS a greeting ("Good to see you, chica"),
+      -- V is voiced here too. His `open` line IS a greeting ("Good to see you, chica"),
       -- so V's reply can be the recorded ANSWER to a greeting — which is exactly what
       -- "It's good to see you, too, Jack. How ya been?" is in the game. It reads as written
       -- for this exchange because, structurally, it was.
@@ -1218,7 +1218,7 @@ Config.dialogueTree = {
     },
     bye = {
       jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-      -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
+      -- no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
     },
   },
 }
@@ -1245,7 +1245,7 @@ Config.locationDialogue = {
           { text = "C'mon, let's go have some lunch.",                              sfx = "jl_1834500545020096512" },
           { text = "V, how you feel? You all right?",                              sfx = "jl_1802590928224841728" },
         },
-        -- v1.70 voiced. "What's good to eat?" is V's real noodle-stand line and it earns his
+        -- voiced. "What's good to eat?" is V's real noodle-stand line and it earns his
         -- "Does not get any higher, choom." better than the old "What's good here?" did.
         choices = {
           { text = "What's good to eat?",                to = "food"  , sfx = "jl_1752047456382693376" },
@@ -1279,7 +1279,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
+        -- no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -1294,7 +1294,7 @@ Config.locationDialogue = {
           { text = "Mama told me things come to those who wait, and some're even good!", sfx = "jl_2008342351712284672" },
           { text = "Talk to me, choomba.",                                           sfx = "jl_2239163066690486272" },
         },
-        -- v1.70 voiced. "What's new with Señora Welles?" is V's own line TO Jackie, and it sets
+        -- voiced. "What's new with Señora Welles?" is V's own line TO Jackie, and it sets
         -- up his "She's my blood, all right" far better than the old "Mama Welles around?" —
         -- which asked whether she was present and got answered with who she is.
         choices = {
@@ -1326,7 +1326,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
+        -- no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -1341,7 +1341,7 @@ Config.locationDialogue = {
           { text = "Legends are born here.",                            sfx = "jl_1904093608424787968" },
           { text = "Straight to biz, eh, chica?",                       sfx = "jl_1777946122915868672" },
         },
-        -- v1.70 voiced. ⚠️ "You miss it? The merc life?" had NO recording and could not get one
+        -- voiced. ⚠️ "You miss it? The merc life?" had NO recording and could not get one
         -- honestly — every V line about missing the life is welded to a scene. So it stays
         -- WRITTEN, and that is the right call: a wrong-but-voiced line is worse than a
         -- right-but-silent one. The other two rows had recordings that fit exactly.
@@ -1374,7 +1374,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
+        -- no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -1388,10 +1388,10 @@ Config.locationDialogue = {
           { text = "Don't come here often, do ya? Heheh. Good to see you, chica.", sfx = "jl_1661700260668284928" },
           { text = "Ah, thanks, Misty. You're the best.",                          sfx = "jl_1255773314399088640" },
         },
-        -- v1.54: V's lines here were rewritten so each one actually SETS UP the real voiced reply that
+        -- V's lines here were rewritten so each one actually SETS UP the real voiced reply that
         -- follows it (Miguel's clips are fixed — the question has to earn the answer). Misty stays very
         -- much in the picture: this is his girl's shop and he talks about her like it.
-        -- v1.70 voiced. "What're you up to?" is the recorded form of the old "what's the plan
+        -- voiced. "What're you up to?" is the recorded form of the old "what's the plan
         -- for the rest of your day?" and flows into his "Now I go back, find Misty..." just as
         -- cleanly. The cards question stays WRITTEN — it is a question only this mod can ask
         -- (did Misty foresee him surviving), so no recording of it exists or could.
@@ -1436,7 +1436,7 @@ Config.locationDialogue = {
       },
       bye = {
         jackie  = { text = "Time we were on our way, mamita.", sfx = "jl_1155727714874494976" },
-        -- v0.81: no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
+        -- no (Leave) menu — this is the last line, so it auto-closes the dialogue box.
       },
     },
   },
@@ -1469,7 +1469,7 @@ Config.locationDialogue = {
     -- (Config.dialogue.hubRefreshMin/Max) is what stops a player farming it in one sitting.
     nodes = {
       open = {
-        -- v1.69 ⚠️ GREET ONCE. Every topic below ends `to = "open"`, so without this he re-greets V
+        -- ⚠️ GREET ONCE. Every topic below ends `to = "open"`, so without this he re-greets V
         -- each time the topic list comes back — and the greeting pool is his ARRIVAL lines, which made
         -- one conversation sound like six separate hellos. Now: hello on the way in, then the list
         -- just reappears, the way the game's own dialogue hub behaves. See Branch.start.
@@ -1489,7 +1489,7 @@ Config.locationDialogue = {
         -- v1.69: 4–5, up from 3–4. The topic list roughly doubled (see SMALL TALK below) and a
         -- three-row draw out of twenty-odd topics started to feel arbitrary rather than curated.
         pick = { 4, 5 },     -- a handful of topics per draw, not a wall
-        -- v1.70 ⚠️ ONLY THE TIER-0/1 SMALL TALK IS VOICED, AND THAT IS ON PURPOSE.
+        -- ⚠️ ONLY THE TIER-0/1 SMALL TALK IS VOICED, AND THAT IS ON PURPOSE.
         -- The deeper a topic goes, the more it is a question only THIS MOD can ask — "What do
         -- you remember about that night?", "Do you blame me?" — and V never recorded those,
         -- because in the game he does not survive to be asked. So tiers 2 and 3 stay written.
@@ -1529,7 +1529,7 @@ Config.locationDialogue = {
           { text = "...Say it. Whatever it is you keep not sayin'.",
             to = "unsaid", once = "unsaid", minFam = 3, chance = 0.05 },
           -- ---- always available ----------------------------------------------
-          -- v1.70: the way OUT is the row V clicks more than any other in the mod, so it is the
+          -- the way OUT is the row V clicks more than any other in the mod, so it is the
           -- one most worth giving her real voice to. All four are recordings now (a textPool
           -- entry may be a string or a { text, sfx } row — see nodeChoices in init.lua).
           -- "Let's roll. No point in waitin'." is her own line TO Jackie; the rest are her
@@ -1894,11 +1894,11 @@ Config.call = {
   companionDistance    = 5.0,    -- m: promote to companion at this range (foot + bike)
   arrivalGruntDistance = 4.0,    -- m: once companion + this close, Jackie says an arrival GREETING line (below)
 
-  -- v0.52: on arrival (once he closes to arrivalGruntDistance) Jackie speaks a real GREETING LINE — a jl_
+  -- on arrival (once he closes to arrivalGruntDistance) Jackie speaks a real GREETING LINE — a jl_
   -- clip + subtitle, NOT a WWise grunt event. The picker avoids the last-used line + any used in the last
   -- 5 min (JL.bark.greetRepeatCooldown). Add/trim entries freely; any jl_<id> from the bank works.
   --
-  -- v1.69: ONE pool for both genders, and two lines RESCUED into it. `arrivalGreetingsM` used to sit
+  -- ONE pool for both genders, and two lines RESCUED into it. `arrivalGreetingsM` used to sit
   -- below with a male-V duplicate of this list; its "male-only clips" were WEM STEMS, which vo.lua
   -- can't play (`jl_<digits>` only), so the male track arrived in silence. Converting each stem's
   -- trailing hex to decimal gave the real String ID — and the ids turned out to be the SAME lines,
@@ -1968,7 +1968,7 @@ Config.vehicle = {
   -- `respawnStuckSeconds`), he's despawned + respawned at the next-closer `respawnRungs` distance.
   -- At the closest rung he's on V's own navmesh, so it converges; beyond it, he just hands off in place.
   maxSpawnZDelta    = 4.0,   -- m: max |Jackie.z - V.z| for a valid spawn point (same floor as V)
-  -- v0.53: rungs end at 20 m, NOT 5 m — a 5 m respawn read as a "teleport to V's face". 20 m is still a
+  -- rungs end at 20 m, NOT 5 m — a 5 m respawn read as a "teleport to V's face". 20 m is still a
   -- clean walk-in, and with the BEHIND fallback in the spawn picker the ladder rarely needs to fire at all.
   respawnRungs      = { 35.0, 20.0 },  -- progressively-closer respawn distances when stuck
   respawnStuckSeconds = 10.0,-- v0.52: seconds of no forward progress (to V) before a stuck-respawn fires (2x; was 5 — too tight)
@@ -1998,7 +1998,7 @@ Config.vehicle = {
   --                      AMM's catch-up teleport. Always armed.
   --   fallbackSeconds (40) = (ONLY if footFallback=true) ditch the bike, DESPAWN bike+Jackie and
   --                      RESPAWN him fresh ~fallbackDistance m out on foot, then sprint/walk in.
-  -- v0.47: footFallback DEFAULTS OFF — it was firing at 40s and killing legit bike rides (an 80 m
+  -- footFallback DEFAULTS OFF — it was firing at 40s and killing legit bike rides (an 80 m
   -- city ride routinely takes >40s) which is what "broke" bike arrivals since v0.38. Off = the bike
   -- rides uninterrupted like it did in the working v0.36; maxSeconds is the only backstop.
   footFallback     = false,  -- true = re-enable the 40s ditch-bike-and-respawn-on-foot rescue
@@ -2043,7 +2043,7 @@ Config.nativeCall = {
   hijackPlayerCalls = true,          -- when the PLAYER calls Jackie from the in-game phone, route that
                                      --   call into our flow (immersive). Observes PhoneSystem:TriggerCall.
 
-  -- v1.55 THE REAL FIX for the "temporarily unavailable" flash. The old hijack was an `Observe` on
+  -- THE REAL FIX for the "temporarily unavailable" flash. The old hijack was an `Observe` on
   -- PhoneSystem.TriggerCall — a POST-hook, so the vanilla call (and its quest fact, and therefore its
   -- scene) had ALREADY started by the time we reacted. Everything after that was catch-up; that race is
   -- why the dead card kept flashing. `preemptCall` instead OVERRIDES PhoneSystem.OnTriggerCall — the
@@ -2055,7 +2055,7 @@ Config.nativeCall = {
   preemptCall        = true,
   suppressStatusText = true,
 
-  -- v1.56 THE "SEMI-SMART IDENTIFIER" (Antonia's idea, and it's the right one). We do NOT depend on knowing
+  -- THE "SEMI-SMART IDENTIFIER" (Antonia's idea, and it's the right one). We do NOT depend on knowing
   -- the engine's exact parameter names/order/arity — which we cannot verify without a Windows machine, and
   -- which changes between game patches anyway. Instead the Override stringifies EVERY argument it is handed
   -- and keyword-matches. If any of them names Jackie (or a dead/disconnected number), it's our call.
@@ -2084,7 +2084,7 @@ Config.nativeCall = {
   hijackHangupDelay = 0.75,           -- seconds (quick mode): how long the dead ring plays before connect
   hijackOurRingSfx  = false,          -- quick/instant: ALSO play our ring SFX? false avoids "rings twice"
   aliveId           = "jackie",       -- the alive-contact CName used by hijackMode="alive"
-  -- v1.37: the alive contact's IncomingCall is SILENT, so we play our own ring SFX (Config.call.ringEvent)
+  -- the alive contact's IncomingCall is SILENT, so we play our own ring SFX (Config.call.ringEvent)
   -- and randomise how long it rings before Jackie "picks up" — feels human, not a fixed beat.
   alivePickupMin    = 1.2,            -- seconds: shortest ring before he answers (alive mode)
   alivePickupMax    = 3.0,            -- seconds: longest ring before he answers (alive mode)
@@ -2113,7 +2113,7 @@ Config.callTree = {
         -- very rare, dark family humor (~1%):
         { text = "Checkin' to see if I'm not rotting in some dumpster, like most o' the Welles boys?", sfx = "jl_2008332149470457856", chance = 0.01 },
       },
-      -- v1.70 ⚠️ V SPEAKS ON THIS CALL. Every row below carries `sfx` — one of **V's own**
+      -- ⚠️ V SPEAKS ON THIS CALL. Every row below carries `sfx` — one of **V's own**
       -- recordings, played out of V's body when the player picks it. The audio is the game's;
       -- the WORDS therefore are too, which is why these rows read slightly differently from
       -- the written ones they replaced. Bending the row to the recording is correct and normal
@@ -2170,7 +2170,7 @@ Config.callTree = {
         -- rare (~5%):
         { text = "Heh, City Hall should be fuckin' thankin' us!", sfx = "jl_1989660111004311552", chance = 0.05 },
       },
-      -- v0.34c: TERMINAL node (no `choices`). Once Jackie gives his "I'm in" line the call just
+      -- TERMINAL node (no `choices`). Once Jackie gives his "I'm in" line the call just
       -- ends and the summon fires - no redundant "Let's do it" click for V. The node-level
       -- `action` is what a choice used to carry. (See branchTick: no-choices node -> auto-end.)
       action = "summon_arrival",
@@ -2240,7 +2240,7 @@ Config.bikePhysics = {
   uprightDot     = 0.4,    -- worldUp.z below this = considered toppled
 }
 
--- v0.94b: Config.firstCallTree (the short bike-back fallback call) RETIRED — deleted; git history is
+-- Config.firstCallTree (the short bike-back fallback call) RETIRED — deleted; git history is
 -- the archive. It was never reached in the live flow: reunionCallTree folds in the bike ask, and the
 -- Arch is returned on the `reunion_arrival` action. Config.bikeReturn (above) is still used by that
 -- arrival + the "Give bike back" debug button, so it stays.
@@ -2256,7 +2256,7 @@ Config.bikePhysics = {
 -- ============================================================================
 Config.reunionCallTree = {
   start = "answer",
-  -- v1.56 (Antonia): "no voice lines should fire during the call at all. It sounds weird when it's mostly
+  -- "no voice lines should fire during the call at all. It sounds weird when it's mostly
   -- subtitle and suddenly a line." Correct — and it was worse than it looked: an unvoiced line still played
   -- the jl_fallback GRUNT, so the call was a stretch of grunting with one real VO clip landing on top of it.
   -- `muteFallback` makes every text-only line GENUINELY SILENT. The ONLY voiced line left in the whole call
@@ -2326,7 +2326,7 @@ Config.reunionCallTree = {
     },
 
     -- ---- BRANCH: the Arch --------------------------------------------------
-    -- v1.54: V raises it (she's the one who's had it all this time), and she gets a REAL say — hand it
+    -- V raises it (she's the one who's had it all this time), and she gets a REAL say — hand it
     -- back, or keep it. The `fact` writes the decision straight into the save, because a choice that
     -- routes onward (`to = "hub"`) can't fire an `action`, and reunionMeetTree reads it later, face to face.
     bike = {
@@ -2443,7 +2443,7 @@ Config.reunionCallTree = {
     onmyway = {
       -- terminal -> reunion_arrival: Jackie walks in on foot -> first meeting. v1.54: the Arch only goes
       -- back if V promised it (jackielives_bike == 1); the action reads the fact, so this node is neutral.
-      -- v1.56: was the VOICED clip "Made it. Almost at your place." — which never made sense as a HANG-UP
+      -- was the VOICED clip "Made it. Almost at your place." — which never made sense as a HANG-UP
       -- line (he hadn't set off yet; the clip was chosen for its audio, and the words were bent to fit it).
       -- Unvoiced now, so it can finally say what this beat actually is: he's hanging up to come to her.
       jackiePool = {
@@ -2455,7 +2455,7 @@ Config.reunionCallTree = {
 }
 
 -- The SHORT face-to-face first meeting, played when the walked-in Jackie reaches V.
--- v1.56: same rule as the call — `muteFallback` silences the grunt on every text-only line, and the ONE
+-- same rule as the call — `muteFallback` silences the grunt on every text-only line, and the ONE
 -- voiced line is the GREETING. Everything that used to be voiced mid-scene is now text, and rewritten:
 -- those subtitles had been bent to match whatever the clip happened to say, which is why they read oddly.
 Config.reunionMeetTree = {
@@ -2482,7 +2482,7 @@ Config.reunionMeetTree = {
         { text = "Yeah, yeah — desert don't do a man's looks any favors. But you? ...Damn. Sight for sore eyes, V. Missed that face more'n I got words for.",
           m = { text = "Yeah, yeah — desert don't do a man's looks any favors. But you, hermano? Damn, you're a sight. Missed that ugly mug o' yours." } },
       },
-      -- v1.54: the bike is now OPTIONAL on the call, so the face-to-face has to ask the save what actually
+      -- the bike is now OPTIONAL on the call, so the face-to-face has to ask the save what actually
       -- happened before it opens its mouth — otherwise Jackie thanks V for an Arch he never got back.
       -- Same V line, three destinations; `cond` shows exactly one of them. Each predicate is written
       -- defensively (`f and ...`) so that if jlBikeOutcome were ever missing, the neutral route still wins
@@ -2496,7 +2496,7 @@ Config.reunionMeetTree = {
           cond = function() local f = jlBikeOutcome; return (f == nil) or f() == 0 end },    -- 0 = never came up
       },
     },
-    -- v1.56: was the VOICED clip "Aah, savin' my ass, V, thank you. How about I drive you home, eh?" — the
+    -- was the VOICED clip "Aah, savin' my ass, V, thank you. How about I drive you home, eh?" — the
     -- words were picked for the audio, and "savin' my ass" is a strange thing to say about a KEPT BIKE.
     -- Unvoiced now, so it can be the beat it actually is: he's just realised she never sold the Arch.
     drivehome = {
@@ -2507,7 +2507,7 @@ Config.reunionMeetTree = {
         { text = "She's in my garage, Jackie. Waiting for you. Here — your keys.", to = "bikejoy" },
       },
     },
-    -- v1.54: V told him on the call she's keeping the Arch. He's already made his peace with it — so he
+    -- V told him on the call she's keeping the Arch. He's already made his peace with it — so he
     -- turns it into a joke and makes HER drive. Text-only (no clip fits); ends at the same `leave` beat.
     keptride = {
       jackiePool = {
@@ -2518,7 +2518,7 @@ Config.reunionMeetTree = {
         { text = "Get on, Jackie. Let's go home.", to = "leave" },
       },
     },
-    -- v0.94b: MUTE (text-only) — the Miguel VO clip didn't fit here. Bespoke subtitle: he's just
+    -- MUTE (text-only) — the Miguel VO clip didn't fit here. Bespoke subtitle: he's just
     -- floored his bike was kept safe. Add `sfx = "jl_<id>"` later if a fitting clip turns up.
     bikejoy = {
       jackiePool = {
@@ -2530,7 +2530,7 @@ Config.reunionMeetTree = {
     },
     leave = {
       -- terminal -> reunion_complete: unlock the whole mod (schedule + calls + summon).
-      -- v1.56: was the VOICED clip "...I'm dyin' for some fresh air" — a line about wanting to get OUTSIDE,
+      -- was the VOICED clip "...I'm dyin' for some fresh air" — a line about wanting to get OUTSIDE,
       -- which is a strange note to close the reunion on (he's spent months in an empty desert). Unvoiced now,
       -- so it can land the moment properly: he's home, and he's not going anywhere again.
       jackiePool = {
@@ -2661,7 +2661,7 @@ Config.wander = {
 -- saved the game).
 Config.seatTip = {
   fact  = "jackielives_seat_tip",
-  -- v1.8.2 - SHORT. Antonia, 2026-08-17: *"the tutorial notice about seat tuning should be MUCH
+  -- SHORT. Antonia, 2026-08-17: *"the tutorial notice about seat tuning should be MUCH
   -- shorter, concise instructions only. very few words please."* The old card opened with three
   -- sentences of WHY (freestanding anims, why standing is the default) in front of a player who is
   -- standing at a table waiting for something to happen. None of that is actionable, and a card
@@ -2675,7 +2675,7 @@ Config.seatTip = {
        .. "4. Save this seat\n"
        .. "5. Release them",
   duration = 14.0,
-  -- v1.8.2 WHEN. Was: the walking -> seating hand-off, i.e. `Config.date.seatTriggerRadius` (12 m)
+  -- WHEN. Was: the walking -> seating hand-off, i.e. `Config.date.seatTriggerRadius` (12 m)
   -- out, which put the card on screen while V was still crossing the room. It fires at the TABLE
   -- now - V within this many metres of the seat coordinate - because the card is instructions for
   -- a thing the player is about to look at, and it should arrive when they are looking at it.
@@ -2715,7 +2715,7 @@ Config.poses = {
   sit     = "sit_barstool__2h_on_lap__01",          -- DEFAULT = barstool (most of his chairs)
   sitChair= "sit_chair__2h_on_lap__01",             -- low/deep chair (Misty's) — used via poseAnim
   lean    = "stand_wall_lean180__2h_on_wall__01",
-  -- v1.8.4 SEAT TUNER — the two numbers that make "take control" actually hold them.
+  -- SEAT TUNER — the two numbers that make "take control" actually hold them.
   -- `tunerHalt`  = seconds between re-issuing the stand-still command while the tuner is live and
   --                they are NOT posed. Must stay comfortably under Config.loiter.holdDuration (6 s),
   --                or the hold lapses between heartbeats and they start walking off again.
@@ -3020,7 +3020,7 @@ Config.mainQuestBlocklist = {
 }
 Config.declineLine = "V: Not draggin' Jackie into this mess. Not after everything he went through."
 
--- v0.93: the SAME refusal, but written for the blue on-screen NOTICE band (top-left objective-style
+-- the SAME refusal, but written for the blue on-screen NOTICE band (top-left objective-style
 -- notifications), so a call/summon that no-ops during a main quest tells the player WHY instead of
 -- looking broken. Kept short so it fits the notice band; declineLine stays V's spoken/status line.
 Config.mainQuestBlockNotice = "Can't call Jackie during a main mission — not draggin' him into this."

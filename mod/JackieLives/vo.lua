@@ -380,7 +380,7 @@ function M.status(target)
   local b = M.backend(target)
   local n = 0
   if DUR then for _ in pairs(DUR) do n = n + 1 end end
-  -- v1.69.1: gruntChance is in here because "he still grunts every time" is far more often a stale
+  -- gruntChance is in here because "he still grunts every time" is far more often a stale
   -- deploy than a bug — the .lua files are copied by hand to the game folder, so the repo being
   -- right says nothing about what's running. If this reads 1.00, the game is on an old config.lua.
   local gc = cfg().gruntChance

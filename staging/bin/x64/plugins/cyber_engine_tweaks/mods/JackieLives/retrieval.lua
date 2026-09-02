@@ -49,7 +49,7 @@ M.Config = {
   --   mode = "quest"  -> require the journal quest below to be Succeeded.
   -- Ships "off" so the chain is testable at Vik's without driving the prologue.
   -- Use M.debugQuestState() in-game to confirm the path, then flip to "quest".
-  -- v1.56: SHIPS "quest" NOW (was "off" — a testing default that should never have gone public).
+  -- SHIPS "quest" NOW (was "off" — a testing default that should never have gone public).
   -- With the gate off, Vik's "Jackie didn't die on my table" reveal fired on PROXIMITY ALONE. Every
   -- new-game player visits Vik in Act 1 (The Ripperdoc) — so they got the reveal BEFORE Jackie had even
   -- died. That's both a spoiler and nonsense.
@@ -66,7 +66,7 @@ M.Config = {
   -- decompiled scripts, so they can't be confirmed off-Windows). "unknown" exists precisely so that a wrong
   -- guess degrades to "the player presses a button", not to "the mod is dead" and not to "the mod spoils".
   --
-  -- v1.64 THE REAL FIX (this is why players reported "nothing happens at Vik's"): the journal paths below
+  -- THE REAL FIX (this is why players reported "nothing happens at Vik's"): the journal paths below
   -- never resolved. `JournalManager:GetEntryByString` wants a real .journal resource path, and none of our
   -- five guesses is one — so questGateState() returned "unknown" for EVERYBODY. "unknown" means stay silent,
   -- so the reveal never fired at the clinic AND the welcome card that advertises the manual-start button was
@@ -91,7 +91,7 @@ M.Config = {
     succeededOnly = true,     -- true = require Succeeded; false = Active-or-later also ok
   },
 
-  -- v1.56 WELCOME CARD (Antonia). Shown ONCE, on the first load after installing, and ONLY to a player who
+  -- WELCOME CARD (Antonia). Shown ONCE, on the first load after installing, and ONLY to a player who
   -- is already post-"Playing for Time" — i.e. only when the gate says "met", so it can never appear in a
   -- pre-heist game and spoil Jackie's death. It tells them Vik's been trying to reach them, and — crucially
   -- — that the questline can be started from the mod menu if it doesn't fire at Vik's. That last sentence is
@@ -103,7 +103,7 @@ M.Config = {
          .. "wouldn't say over the phone.\n\n"
          .. "Go see him at his clinic.\n\n"
          .. "(For mod settings go to Esc -> Mods -> JackieLives) ",
-    -- v1.8.5: Antonia, 2026-08-17 — *"please make it clear on the intro info card that the games own
+    -- Antonia, 2026-08-17 — *"please make it clear on the intro info card that the games own
     -- cinematic subtitles have to be active for this mod"*. It is the one setting that makes the mod
     -- look broken rather than quiet: nothing here draws its own subtitle, every line goes through the
     -- GAME's subtitle widget, so with them off the player hears Jackie and reads an empty screen.
@@ -118,7 +118,7 @@ M.Config = {
     subtitleText = "⚠ Turn ON \"Dialog subtitles\" (Settings -> Interface) — every line this mod "
                 .. "speaks is a game subtitle, so with them off you'll hear him and read nothing.",
     duration = 16.0,
-    -- v1.64: shown instead of the above when the gate can't read the quest state AT ALL ("unknown"). Says
+    -- shown instead of the above when the gate can't read the quest state AT ALL ("unknown"). Says
     -- nothing about Jackie being alive or dead — safe in a pre-heist save — but it does point at the manual
     -- start button, so nobody is ever left with a mod that silently does nothing.
     unknownTitle = "Jackie Lives — installed",
@@ -129,7 +129,7 @@ M.Config = {
   },
 
   -- Vik's tip — the reveal, shown as the lower-left tutorial popup when V returns to the clinic.
-  -- v1.54: no Misty, and no "whatever's between you two" (Antonia — the pining is gone). Vik reports the
+  -- no Misty, and no "whatever's between you two" (Antonia — the pining is gone). Vik reports the
   -- one thing he'd actually report: the boy shouldn't have lived, he asked for V, go bring him home.
   -- tipText = Husbando (base, a shade warmer); tipTextM = Hermano (canon). init.lua picks via mvar().
   tipTitle    = "Vik:",
@@ -150,7 +150,7 @@ M.Config = {
   tipDuration = 10.0,
 
   -- Jackie's note — read on reaching the Badlands hideout (Rocky Ridge garage).
-  -- v1.54: Jackie's note does NOT mention Misty, in either track (Antonia). The old base version had him
+  -- Jackie's note does NOT mention Misty, in either track (Antonia). The old base version had him
   -- brooding over her "story" and pining after V from the desert; both are gone. What's left is the thing
   -- the note is actually for: he's alive, he's out of the life, and he wants V to call him.
   shardTitle  = "Shard — Jackie Welles",
@@ -200,7 +200,7 @@ M.Config = {
   -- conversations (see TODO: those base-game/mourning dialogue options are to be blocked). Each
   -- shard shows ONCE, on proximity to that person's spot, persisted via its own game fact.
   -- Coords: Misty's Esoterica + El Coyote Cojo, lifted from Config.locations (misty/coyote).
-  -- v1.54: BOTH notes are now single-track (no `linesM`) — mvar() falls through to `lines` when there's no
+  -- BOTH notes are now single-track (no `linesM`) — mvar() falls through to `lines` when there's no
   -- masculine variant, so one text serves every V. The old Husbando versions were the romance arc in
   -- letter form (Misty releasing Jackie and blessing V; Mama warning V not to toy with her son's heart)
   -- and Antonia cut it: Misty and Jackie are TOGETHER, and neither woman is writing about V's love life.
@@ -237,7 +237,7 @@ M.Config = {
 -- ---------------------------------------------------------------------------
 -- Stage constants + module state
 -- ---------------------------------------------------------------------------
--- v0.85: AWAITING(3) is now a REAL persisted stage — shard read, Jackie has no world presence yet
+-- AWAITING(3) is now a REAL persisted stage — shard read, Jackie has no world presence yet
 -- and ALWAYS answers V's call; the reunion call + walk-in drive the jump to REUNITED.
 local LOCKED, TIP, SHARD, AWAITING, REUNITED = 0, 1, 2, 3, 4
 local USE_GAME_FACT = true
@@ -253,7 +253,7 @@ local state = { fallbackStage = 0, mappinId = nil, lastStage = -1, vikFired = fa
 
 local function log(msg) if deps.log then pcall(deps.log, "[Retrieval] " .. tostring(msg)) end end
 
--- v1.2: relationship-mode selector. init.lua binds `isHermano` (a function -> bool). When it returns
+-- relationship-mode selector. init.lua binds `isHermano` (a function -> bool). When it returns
 -- true the male-V (Hermano) track is active, so a recovery text shows its `*M` variant; otherwise the
 -- base (Husbando) text is used. mvar(husbando, hermano) picks the active one — and the hermano arg is
 -- OPTIONAL: a text with no `*M` variant (both post-reunion shards, as of v1.54) serves every V.
@@ -280,7 +280,7 @@ local function nearPoint(pt, radius)
   return dist2(pp.x, pp.y, pt[1], pt[2]) <= (radius or 4.0)
 end
 
--- v1.60 LOCALIZATION CHOKEPOINT 5 of 5. retrieval.lua does NOT go through init.lua's
+-- LOCALIZATION CHOKEPOINT 5 of 5. retrieval.lua does NOT go through init.lua's
 -- showOnscreenMsg for its own cards (only objectives do, via deps.showObjective), so the
 -- questline's popups/banners need the translation applied here too. Required directly
 -- rather than injected via bind() so a card can never render English just because the
@@ -352,7 +352,7 @@ local function showTip(title, text, duration)
   onscreen(text, duration)
 end
 
--- v1.60: the shard / postShard notes are TABLES of lines joined with "\n". Translate each line
+-- the shard / postShard notes are TABLES of lines joined with "\n". Translate each line
 -- INDIVIDUALLY, then join — so the translation key is one shard line, not the whole multi-line note.
 -- Line-level keys stay stable when a single line is edited and match the mod's authored granularity;
 -- the joined-whole string would be one brittle key that breaks on any edit. showTip's own Lang.t then
@@ -438,13 +438,13 @@ local function questState(path)
   return result
 end
 
--- v1.56: THREE states, not a boolean. See the essay on M.Config.gate.
+-- THREE states, not a boolean. See the essay on M.Config.gate.
 --   "met"     -> post-heist: the reveal may fire, the welcome card may show.
 --   "notyet"  -> the quest resolved and isn't Succeeded: STAY SILENT (this is the spoiler case).
 --   "unknown" -> no path resolved: we know nothing, so STAY SILENT and rely on the manual start button.
 -- The old code collapsed "notyet" and "unknown" into a single `false`, which is why the only way to make
 -- the mod usable was to disable the gate entirely — and that's what leaked the spoiler into a new game.
--- v1.64: read a fact and report whether the READ itself worked, so "the fact is 0" (= pre-heist, stay silent)
+-- read a fact and report whether the READ itself worked, so "the fact is 0" (= pre-heist, stay silent)
 -- can be told apart from "the quest system didn't answer" (= genuinely unknown). factNum() collapses both to
 -- 0, which is fine for our own facts but not for a gate that must never guess.
 local function factRead(name)
@@ -496,7 +496,7 @@ function M.debugQuestState()
   log("--------------------------")
 end
 
--- v1.56: MANUAL START — the safety net that lets the gate be ON without any risk of bricking the mod.
+-- MANUAL START — the safety net that lets the gate be ON without any risk of bricking the mod.
 -- Wired to Esc -> Settings -> Jackie Lives -> "Start the search for Jackie", and to a CET button. It
 -- BYPASSES the gate entirely: the player is explicitly telling us they've already lost Jackie. So even if
 -- every journal path we guess is wrong ("unknown"), nobody is ever stuck — they press this and play.
@@ -512,7 +512,7 @@ function M.startSearch()
   return true
 end
 
--- v1.56 WELCOME CARD — once per save, first load after install, and ONLY when the gate says "met" (so it
+-- WELCOME CARD — once per save, first load after install, and ONLY when the gate says "met" (so it
 -- can never appear pre-heist and spoil Jackie's death). Tells the player Vik's looking for them, and how to
 -- start the questline by hand if it doesn't fire at his clinic.
 local function welcomeTick()
@@ -522,7 +522,7 @@ local function welcomeTick()
   if getStage() >= TIP then                            -- questline already started -> card is pointless
     setFactNum(W.fact, 1); return
   end
-  -- v1.8.5: the subtitle requirement rides along as its OWN translated string (see Config.welcome
+  -- the subtitle requirement rides along as its OWN translated string (see Config.welcome
   -- .subtitleText for why it is not part of `text`). showTip runs both halves through Lang.t.
   -- ⚠️ concatT, not a plain `..`. showTip runs Lang.t over whatever it is handed, so joining the two
   -- English halves first would produce ONE key that matches neither of them and the card would fall
@@ -619,10 +619,10 @@ end
 local function reachHideout()                          -- TIP -> AWAITING_CALL
   if getStage() ~= TIP then return end
   showTip(M.Config.shardTitle, concatT(mvar(M.Config.shardLines, M.Config.shardLinesM)), M.Config.shardDuration)
-  -- v1.54: the note is long — let the player actually READ it before the "Call Jackie" banner lands.
+  -- the note is long — let the player actually READ it before the "Call Jackie" banner lands.
   queueObjective((M.Config.objectives or {}).awaiting, (M.Config.shardDuration or 12.0) * 0.6)
   log("Shard read at hideout -> AWAITING_CALL (V must call Jackie; he always answers now).")
-  -- v0.85: no more auto-ring. Jackie now WAITS for V to call him (he always picks up in this
+  -- no more auto-ring. Jackie now WAITS for V to call him (he always picks up in this
   -- stage — no schedule, never 'asleep'). init.lua plays Config.reunionCallTree, whose ending
   -- walks him in on foot; the first-meeting dialogue then calls M.completeReunion() -> REUNITED.
   setStage(AWAITING)
@@ -736,10 +736,10 @@ end
 -- ---------------------------------------------------------------------------
 function M.isUnlocked()    return getStage() >= REUNITED end
 function M.getStage()      return getStage() end
--- v0.85: true once the shard's read and before the reunion completes. init.lua uses this to let
+-- true once the shard's read and before the reunion completes. init.lua uses this to let
 -- V call Jackie (he ALWAYS answers — no schedule/asleep gate) and to pick Config.reunionCallTree.
 function M.isAwaitingCall() return getStage() == AWAITING end
--- v1.54: called by init.lua's `reunion_arrival` action, i.e. the moment the reunion CALL hangs up and
+-- called by init.lua's `reunion_arrival` action, i.e. the moment the reunion CALL hangs up and
 -- Jackie starts walking in. This is the step Antonia specifically flagged as missing — without it the
 -- player just stands there after the call with no idea they're supposed to wait.
 function M.notifyArrivalPending()
@@ -765,7 +765,7 @@ end
 function M.unavailableMsg() return "Number disconnected." end
 function M.notifyUnavailable() onscreen(M.unavailableMsg(), 2.5) end   -- native band, no init.lua scope needed
 
--- v1.74: EXPOSE the tutorial card. `showTip` is the mod's one card renderer — the native lower-left
+-- EXPOSE the tutorial card. `showTip` is the mod's one card renderer — the native lower-left
 -- popup that Vik's message and Jackie's note already use, with the on-screen band as its fallback —
 -- and until now it was a file-local, so anything outside the retrieval questline that wanted a card
 -- had to grow its own copy. It nearly did: the first-dinner seating card was written as 73 lines of
@@ -806,7 +806,7 @@ function M.tick(dt)
 
   if s ~= state.lastStage then                         -- pin follows the stage (survives reloads)
     if s == TIP then placePin() else clearPin() end
-    -- v1.54: RE-ASSERT the objective on the first tick of a session (lastStage is only -1 straight after
+    -- RE-ASSERT the objective on the first tick of a session (lastStage is only -1 straight after
     -- a load). These banners are flashes, not a persistent tracker, so a player who quits mid-quest and
     -- comes back tomorrow gets told what they were doing. Live transitions queue their own banner in
     -- giveTip / reachHideout / notifyArrivalPending — hence the first-observation guard, so they don't

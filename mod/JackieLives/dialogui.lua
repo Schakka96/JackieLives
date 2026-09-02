@@ -310,7 +310,7 @@ local function pushHubs(hubs, now)
   pcall(function() data.choiceHubs = hubs end)
   local n = #hubs
 
-  -- v1.63.1: BOTH routes, every time, in this order. They are individually idempotent, and each
+  -- BOTH routes, every time, in this order. They are individually idempotent, and each
   -- covers the other's failure mode:
   --
   --  A) OnDialogsData is the game's OWN complete handler (interactionUIBase.script:52-61) — it sets

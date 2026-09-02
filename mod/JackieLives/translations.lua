@@ -233,7 +233,7 @@ return {
     ["Calling Jackie..."] = "ジャッキーに発信中……",
     ["No answer."] = "応答なし。",
   
-    -- v1.65 familiarity: Jackie's tiered conversation hub.
+    -- familiarity: Jackie's tiered conversation hub.
     ["There she is. Sit down, take a breath — you're always movin'."] = "来たな。座れよ、ひと息つけ——あんたはいつも動きっぱなしだ。",
     ["There he is. Sit down, take a breath — you're always movin'."] = "来たな。座れよ、ひと息つけ——あんたはいつも動きっぱなしだ。",
     ["Was hopin' you'd come by. Don't tell nobody I said that."] = "来てくれねぇかと思ってたとこだ。誰にも言うなよ。",
@@ -640,7 +640,7 @@ return {
     ["Calling Jackie..."] = "Llamando a Jackie...",
     ["No answer."] = "No contesta.",
   
-    -- v1.65 familiarity: Jackie's tiered conversation hub.
+    -- familiarity: Jackie's tiered conversation hub.
     ["There she is. Sit down, take a breath — you're always movin'."] = "Ahí está. Siéntate, respira un poco — siempre andas en movimiento.",
     ["There he is. Sit down, take a breath — you're always movin'."] = "Ahí está. Siéntate, respira un poco — siempre andas en movimiento.",
     ["Was hopin' you'd come by. Don't tell nobody I said that."] = "Esperaba que te pasaras. No le digas a nadie que dije eso.",
@@ -1047,7 +1047,7 @@ return {
     ["Calling Jackie..."] = "Rufe Jackie an...",
     ["No answer."] = "Keine Antwort.",
   
-    -- v1.65 familiarity: Jackie's tiered conversation hub.
+    -- familiarity: Jackie's tiered conversation hub.
     ["There she is. Sit down, take a breath — you're always movin'."] = "Da ist sie ja. Setz dich, atme mal durch — du bist ja immer in Bewegung.",
     ["There he is. Sit down, take a breath — you're always movin'."] = "Da ist er ja. Setz dich, atme mal durch — du bist ja immer in Bewegung.",
     ["Was hopin' you'd come by. Don't tell nobody I said that."] = "Hab gehofft, dass du vorbeikommst. Sag das bloß keinem.",
@@ -1454,7 +1454,7 @@ return {
     ["Calling Jackie..."] = "Appel de Jackie...",
     ["No answer."] = "Pas de réponse.",
   
-    -- v1.65 familiarity: Jackie's tiered conversation hub.
+    -- familiarity: Jackie's tiered conversation hub.
     ["There she is. Sit down, take a breath — you're always movin'."] = "La voilà. Assieds-toi, souffle un peu — t'es toujours en mouvement.",
     ["There he is. Sit down, take a breath — you're always movin'."] = "Le voilà. Assieds-toi, souffle un peu — t'es toujours en mouvement.",
     ["Was hopin' you'd come by. Don't tell nobody I said that."] = "J'espérais que tu passerais. Va pas le répéter.",
@@ -1861,7 +1861,7 @@ return {
     ["Calling Jackie..."] = "Sto chiamando Jackie...",
     ["No answer."] = "Nessuna risposta.",
   
-    -- v1.65 familiarity: Jackie's tiered conversation hub.
+    -- familiarity: Jackie's tiered conversation hub.
     ["There she is. Sit down, take a breath — you're always movin'."] = "Eccola. Siediti, prendi fiato — sei sempre in movimento.",
     ["There he is. Sit down, take a breath — you're always movin'."] = "Eccolo. Siediti, prendi fiato — sei sempre in movimento.",
     ["Was hopin' you'd come by. Don't tell nobody I said that."] = "Speravo passassi. Non dirlo a nessuno.",
@@ -2268,7 +2268,7 @@ return {
     ["Calling Jackie..."] = "Dzwonię do Jackie'ego...",
     ["No answer."] = "Brak odpowiedzi.",
   
-    -- v1.65 familiarity: Jackie's tiered conversation hub.
+    -- familiarity: Jackie's tiered conversation hub.
     ["There she is. Sit down, take a breath — you're always movin'."] = "O, jest. Siadaj, złap oddech — ciągle jesteś w biegu.",
     ["There he is. Sit down, take a breath — you're always movin'."] = "O, jest. Siadaj, złap oddech — ciągle jesteś w biegu.",
     ["Was hopin' you'd come by. Don't tell nobody I said that."] = "Liczyłem, że wpadniesz. Nie mów nikomu, że to powiedziałem.",
@@ -2675,7 +2675,7 @@ return {
     ["Calling Jackie..."] = "Ligando pro Jackie...",
     ["No answer."] = "Não atende.",
   
-    -- v1.65 familiarity: Jackie's tiered conversation hub.
+    -- familiarity: Jackie's tiered conversation hub.
     ["There she is. Sit down, take a breath — you're always movin'."] = "Lá está ela. Senta, respira um pouco — você tá sempre em movimento.",
     ["There he is. Sit down, take a breath — you're always movin'."] = "Lá está ele. Senta, respira um pouco — você tá sempre em movimento.",
     ["Was hopin' you'd come by. Don't tell nobody I said that."] = "Tava torcendo pra você aparecer. Não conta pra ninguém que eu disse isso.",
@@ -3082,7 +3082,7 @@ return {
     ["Calling Jackie..."] = "Звоним Jackie...",
     ["No answer."] = "Нет ответа.",
   
-    -- v1.65 familiarity: Jackie's tiered conversation hub.
+    -- familiarity: Jackie's tiered conversation hub.
     ["There she is. Sit down, take a breath — you're always movin'."] = "А вот и она. Садись, отдышись — ты вечно на ходу.",
     ["There he is. Sit down, take a breath — you're always movin'."] = "А вот и он. Садись, отдышись — ты вечно на ходу.",
     ["Was hopin' you'd come by. Don't tell nobody I said that."] = "Надеялся, что зайдёшь. Только никому не говори, что я это сказал.",
@@ -3489,7 +3489,7 @@ return {
     ["Calling Jackie..."] = "正在呼叫Jackie……",
     ["No answer."] = "无人接听。",
   
-    -- v1.65 familiarity: Jackie's tiered conversation hub.
+    -- familiarity: Jackie's tiered conversation hub.
     ["There she is. Sit down, take a breath — you're always movin'."] = "你来啦。坐下，喘口气——你老是闲不住。",
     ["There he is. Sit down, take a breath — you're always movin'."] = "你来啦。坐下，喘口气——你老是闲不住。",
     ["Was hopin' you'd come by. Don't tell nobody I said that."] = "还盼着你能来一趟呢。别跟人说我说过这话。",

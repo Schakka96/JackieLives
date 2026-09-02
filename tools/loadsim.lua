@@ -424,7 +424,7 @@ if events.onDraw then
   check("...and Begin/End are balanced", imguiDepth == 0,
         "depth left at " .. tostring(imguiDepth) .. " — an early return skipped an ImGui.End()")
 
-  -- v1.8.8 — AND AGAIN WITH THE FALLBACK MENU OPEN. `JL.fallbackMenu` is off by default, so the
+  -- AND AGAIN WITH THE FALLBACK MENU OPEN. `JL.fallbackMenu` is off by default, so the
   -- two runs above walk right past jlDrawFallbackMenu and every control in it — which is the whole
   -- settings surface for a player whose Native Settings panel never appeared. The only way in from
   -- out here is to make the checkbox answer "ticked" once: ImGui.Checkbox returns the VALUE (house
@@ -678,7 +678,7 @@ if events.onUpdate then
     check("...with Auto / Male / Female", #vSel.options == 3, tostring(#vSel.options) .. " options")
     check("...and defaults to Auto", vSel.def == 1)
 
-    -- v1.71 — WHAT THIS CONTROL DOES NOW. It used to pick a different SHAPE of the DialogLineEvent
+    -- WHAT THIS CONTROL DOES NOW. It used to pick a different SHAPE of the DialogLineEvent
     -- and hope the engine chose the other take; it never did, because the shape carries no gender at
     -- all (../NCLives/docs/research/vo_gender.md §6.5). jlPlayerVariant is therefore pinned to 0 and
     -- the choice rides on jlTakePref -> VO.femaleTakeId, which substitutes a String ID of our own
@@ -825,7 +825,7 @@ if hotkeyCb["jl_call"] and events.onUpdate and Retrieval and DialogUI then
     check("...and the picker closed behind it", DialogUI.isShown() == false)
   end
 
-  -- v1.69.2: the log must name the ROWS. A menu built wrong (a gated topic that leaked, a sign-off
+  -- the log must name the ROWS. A menu built wrong (a gated topic that leaked, a sign-off
   -- sorted into the wrong place) is indistinguishable from a correct one in "menu open (5 choices)",
   -- and the log is the only thing a bug report can carry.
   local fh = io.open("jackie_debug.log", "r")
@@ -978,7 +978,7 @@ end
 --     each mover that read it raw switched itself off for the entire walk to dinner and left the
 --     companion to the base game's follower AI. That is the slow-follow report, the ignored fast
 --     travel, AND the bike that would not spawn — three symptoms, one flag.
--- v1.8.6 moved four sites onto jlDinnerOwnsBody(); v1.8.6 found two more (cruise, persist). This scan
+-- moved four sites onto jlDinnerOwnsBody(); v1.8.6 found two more (cruise, persist). This scan
 -- is what stops the seventh: a mover may not name the raw flag, it must ask the predicate.
 do
   print("\n10. no movement tick reads JL.dinner.phase raw")
