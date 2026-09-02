@@ -1038,21 +1038,10 @@ do
 end
 
 -- =============================================================================
--- 21. a companion walking to V's car door is not steered by anything else
+-- 21. the talk prompt never advertises a key that does nothing
 -- =============================================================================
--- v1.90. THE regression guard for the car-passenger fix. jlPassengerTick issues an AIMountCommand
--- and the companion then WALKS to the door — which takes seconds, during which the ticks that run
--- immediately after it in onUpdate must leave him alone. They did not: followKeepCloseTick,
--- abreastTick (via jlAbreastWhy) and catchUpTick each re-issued their own move at a V who is now in
--- a moving car, replacing the mount command mid-walk, and catchUp went further and teleported him.
---
--- That is why the feature "sometimes worked": only when he happened to already be at the door.
---
--- Every one of these was ALREADY gated on jlCruise.active for the identical reason (v0.85, don't
--- drag him off the bike). So the shape of the bug is "somebody added a movement tick and gated it on
--- the bike but not the car", which is exactly the mistake this scan exists to catch on the next one.
 do
-  print("\n21. a mount in progress locks out the other movement ticks")
+  print("\n21. the talk prompt never advertises a key that does nothing")
   local f = assert(io.open(ROOT .. "init.lua", "r"))
   local src = f:read("a"); f:close()
 
@@ -1062,24 +1051,6 @@ do
     local e0 = src:find("\nend\n", s0 + 1)
     return src:sub(s0, e0 and e0 + 4 or nil)
   end
-
-  for _, name in ipairs({ "followKeepCloseTick", "catchUpTick", "jlAbreastWhy" }) do
-    local body = bodyOf(name)
-    check(name .. " exists (renamed? then fix this list)", body ~= nil)
-    if body then
-      local code = body:gsub("%-%-[^\n]*", "")   -- comments legitimately discuss the gate
-      check(("%s stands down while the companion is boarding"):format(name),
-            code:find("jlPassengerBusy%(%)") ~= nil,
-            "this tick will overwrite the AIMountCommand and the companion will never get in the car")
-    end
-  end
-
-  -- And the predicate has to mean what those gates think it means: busy from the moment a vehicle is
-  -- latched, free again the moment it is released. A gate that is always false is not a gate.
-  local keep = jlPassenger.veh
-  jlPassenger.veh = nil;   check("nobody boarding -> not busy", jlPassengerBusy() == false)
-  jlPassenger.veh = "veh"; check("a latched vehicle -> busy",   jlPassengerBusy() == true)
-  jlPassenger.veh = keep
 
   -- ========================================================================
   -- the talk prompt never advertises a key that does nothing (v1.8.7)

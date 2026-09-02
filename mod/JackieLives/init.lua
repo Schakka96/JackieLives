@@ -6290,8 +6290,7 @@ function catchUpTick()
 
   if jlInCombat() then JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return end
   if jlDinnerOwnsBody() or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
-     or (jlCruise and jlCruise.active)        -- v0.85: don't teleport him off his cruising bike
-     or jlPassengerBusy() then                -- v1.90: ...or off his walk to V's car door
+     or (jlCruise and jlCruise.active) then   -- v0.85: don't teleport him off his cruising bike
     JL.catchUp.farSince, JL.catchUp.teleTries = nil, nil; return
   end
   local h = JL.summon.spawn and JL.summon.spawn.handle
@@ -6755,7 +6754,6 @@ function jlAbreastWhy()
   if JL.leaving.phase then return "the LEAVING phase owns his movement" end
   if JL.varrival and JL.varrival.phase then return "the ARRIVAL phase owns his movement" end
   if jlCruise and jlCruise.active then return "cruising on the bike" end   -- not while cruising on his bike
-  if jlPassengerBusy() then return "getting into V's car" end              -- v1.90: see jlPassengerBusy()
   if jlTakedownBusy() then return "mid-takedown" end                       -- v1.48: a takedown owns him
   if jlInCombat() then return "V is in combat" end                         -- fighting -> free him to fight
   if jlVertical() then return "stairs/slope -> single file" end            -- v1.46
@@ -6851,8 +6849,7 @@ local function followKeepCloseTick()
   if jlAbreastOn() then return end
   if not (JL.summon.active and JL.summon.companionSet) then return end
   if jlDinnerOwnsBody() or JL.leaving.phase or (JL.varrival and JL.varrival.phase)
-     or (jlCruise and jlCruise.active)                   -- v0.85: leave him on his cruising bike
-     or jlPassengerBusy() then return end                -- v1.90: leave him walking to V's car door
+     or (jlCruise and jlCruise.active) then return end   -- v0.85: leave him on his cruising bike
   local h = JL.summon.spawn and JL.summon.spawn.handle
   if not h then return end
   local now = JL.clock or 0
@@ -9215,240 +9212,6 @@ function jlIsBikeVeh(veh)
   return (cn:find("bike") ~= nil) or (cn:find("motorcycle") ~= nil)
 end
 
--- ---------------------------------------------------------------------------
--- v1.90 CAR PASSENGER — Jackie gets in when V does
--- ---------------------------------------------------------------------------
--- ⚠️ THIS DID NOT EXIST BEFORE v1.90, and that is the whole bug report. The follower role does NOT
--- get an NPC into a car; vanilla only seats followers through scripted quest commands. AMM does it
--- in `Scan:AutoAssignSeats` (Modules/scan.lua:781) — but that loop iterates `AMM.Spawn.spawnedNPCs`,
--- and since v1.68 Jackie is spawned NATIVELY (init.lua's ammSpawn NATIVE branch). AMM has never
--- heard of him. So with AMM installed he sometimes rode along (the old AMM-spawn path) and with the
--- native spawn he never did. "Unreliable" was really "absent, with an AMM-shaped exception".
---
--- Ported wholesale from NCLives v1.85. The backend is native.lua §3; everything below is the
--- policy: when to ask, how long to wait, and what to do when the walk doesn't land.
---
--- Deliberately NOT handled here:
---   * BIKES. V on a bike is `jlCruiseTick`'s job — Jackie gets his own Arch and trails.
---     `jlCruiseTick` is gated ahead of this in onUpdate; this tick stands down on two wheels.
---   * V's own seat. Native.seats() never offers seat_front_left (see native.lua).
---
--- State lives on a GLOBAL rather than JL so a soft-reload can't strand a live command — and because
--- init.lua is at Lua's 200-local cap and cannot afford another top-level local.
-jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
-                -- v1.8.8 `forced` = the teleport has been ASKED for and is still in flight (Mount() queues).
-                -- v1.8.9 `lostAt` = when the vehicle read first disagreed (it flickers — see the teardown),
-                --        `gaveUp` = the car whose ladder is finished, so it can never restart mid-drive.
-                mounted = false, seat = nil, armed = nil, forced = false, lostAt = nil, gaveUp = nil }
-
--- THE GATE THE WHOLE FIX HANGS ON.
---
--- A companion who has been told to get into a car is BUSY. Without this, the ticks that run right
--- after the passenger tick — followKeepCloseTick, then abreast, then catchUp — re-issue their own
--- move command at a V who is now sitting in a moving car, which REPLACES the mount command while
--- Jackie is still walking to the door. catchUp goes further and teleports him.
---
--- Every one of those ticks was already gated on `jlCruise.active` for exactly this reason (v0.85,
--- "don't drag him off the bike"). This is the same gate for the car.
-function jlPassengerBusy()
-  return (jlPassenger and jlPassenger.veh) and true or false
-end
-
--- V has STARTED getting in (see setupPassengerHook). The polled tick can only react once V's own
--- mount has completed and GetVehicleObject() goes non-nil, which is ~2 s of door animation Jackie
--- could have spent walking. Arm the tick early.
-function jlPassengerArm(veh)
-  if not veh then return end
-  if jlPassenger.veh == veh then return end
-  jlPassenger.armed = veh
-end
-
--- Register that early trigger. `OnVehicleStartedMountingEvent` fires the moment V reaches for the
--- door — AMM watches the same event for its own driver bookkeeping (AMM init.lua:589), so the shape
--- of `event` is not a guess: `.character` is who is mounting, `.isMounting` distinguishes getting in
--- from getting out. The observer mounts nobody; it sets a flag, so all the gating, throttling and
--- escalation stays in jlPassengerTick.
-function setupPassengerHook()
-  if JL.passengerHooked then return end
-  local ok = pcall(function()
-    Observe("VehicleComponent", "OnVehicleStartedMountingEvent", function(self, event)
-      pcall(function()
-        if not (event and event.isMounting) then return end
-        if not (event.character and event.character:IsPlayer()) then return end
-        jlPassengerArm(self:GetVehicle())
-      end)
-    end)
-  end)
-  JL.passengerHooked = ok
-  log("Passenger early-entry hook (VehicleComponent:OnVehicleStartedMountingEvent) registered: " .. tostring(ok))
-end
-
-function jlPassengerTick()
-  local P = (Config.follow or {}).passenger
-  if P == false then return end                     -- opt-out; default is on
-  if jlCruise and jlCruise.active then return end   -- bikes belong to the cruise system
-
-  -- PERF: table lookups before engine reads. With no companion out — which is most of the time
-  -- anyone is playing — this tick must cost nothing but the branches above and the one below.
-  --
-  -- ⚠️ The early-out has to survive a STANDING command: if V is driving with Jackie aboard and he is
-  -- then dismissed, `jlPassenger.veh` is still set and needs clearing. So bail only when there is
-  -- nothing to clean up either.
-  if not (JL.summon.active and JL.summon.companionSet) and not jlPassenger.veh then return end
-
-  local live = jlPlayerVehicleObj()
-  local veh  = live or jlPassenger.armed
-
-  -- V got out (or swapped vehicles): drop the standing command so Jackie resumes following on foot
-  -- instead of walking to a car that's driving away.
-  -- ⚠️ v1.8.9 — NOT ON THE FIRST FRAME. `jlPlayerVehicleObj()` is
-  -- `GetQuickSlotsManager():GetVehicleObject()`, and that answers nil for a frame here and there
-  -- while V is still very much driving. One nil frame used to run this whole teardown: the mount
-  -- command was CANCELLED and the busy gate released, so the follow ticks pulled Jackie straight
-  -- back out of a moving car — and the next frame the vehicle read came back, the ladder started
-  -- over, and Jackie climbed back in. In, out, in, out, for the length of the journey. Reported
-  -- 2026-08-22: *"keep enter the vehicle and get out vehicle while with V."*
-  -- So a change has to PERSIST before it counts. Same rule, same reason as the talk prompt's
-  -- re-arm: a reading taken from a moving world is not a decision.
-  if jlPassenger.veh and veh ~= jlPassenger.veh then
-    jlPassenger.lostAt = jlPassenger.lostAt or (JL.clock or 0)
-  else
-    jlPassenger.lostAt = nil
-  end
-  if jlPassenger.veh and veh ~= jlPassenger.veh
-     and ((JL.clock or 0) - jlPassenger.lostAt) >= ((Config.follow or {}).passengerLostSeconds or 1.0) then
-    local h = JL.summon.spawn and JL.summon.spawn.handle
-    if h and jlPassenger.cmd then Native.cancelMount(h, jlPassenger.cmd) end
-    jlPassenger.veh, jlPassenger.cmd, jlPassenger.deadline = nil, nil, nil
-    jlPassenger.tries, jlPassenger.mounted, jlPassenger.seat = 0, false, nil
-    jlPassenger.forced, jlPassenger.lostAt, jlPassenger.gaveUp = false, nil, nil                      -- v1.8.8: a new vehicle gets a fresh walk-then-teleport ladder
-  end
-  if not live then jlPassenger.armed = nil end
-
-  if not veh then return end
-  if jlIsBikeVeh(veh) then return end
-
-  -- Only a real, promoted companion rides along — not an idle/venue Jackie, not a mid-arrival one
-  -- still walking in (he'd abandon the arrival to chase the car), and not one the dinner or the
-  -- leaving machine already owns.
-  if not (JL.summon.active and JL.summon.companionSet) then return end
-  if JL.varrival and JL.varrival.phase then return end
-  if jlDinnerOwnsBody() or JL.leaving.phase then return end
-  local h = resolveJackieHandle(); if not h then return end
-
-  local now = JL.clock or 0
-  local C   = (Config.follow or {}).passengerTiming or {}
-
-  -- -------------------------------------------------------------------------------------------
-  -- ALREADY SENT FOR THIS VEHICLE -> the VERIFY half
-  -- -------------------------------------------------------------------------------------------
-  if jlPassenger.veh == veh then
-    if jlPassenger.mounted then return end          -- aboard; nothing left to do all journey
-    if Native.isMountedTo(h, veh) then
-      jlPassenger.mounted = true
-      log(("Passenger: Jackie is in the car (seat %s, attempt %d)."):format(
-          tostring(jlPassenger.seat), jlPassenger.tries or 1))
-      return
-    end
-    if not jlPassenger.deadline or now < jlPassenger.deadline then return end
-
-    -- The walk didn't land inside its window. Escalate rather than retry forever: one more honest
-    -- walk (the first attempt is often eaten by a door that was still opening or a hostile
-    -- pathfind), then teleport him in. Jackie standing in the road watching V drive away is worse
-    -- than Jackie appearing in the seat.
-    local tries = (jlPassenger.tries or 1)
-    if tries < (C.walkTries or 2) then
-      jlPassenger.tries = tries + 1
-      -- ⚠️ v1.8.9 — Native.mount opens with `WorkspotSystem:StopInDevice`, and a vehicle seat IS a
-      -- workspot. Re-issuing it at somebody who has already climbed in THROWS THEM BACK OUT. The
-      -- isMountedTo check at the top of this verify half is what normally stops us getting here,
-      -- but it is one engine read away from being wrong, and the cost of it being wrong is the
-      -- in-out loop. Ask again, right now, before doing something that can only hurt.
-      if Native.isMountedTo(h, veh) then
-        jlPassenger.mounted = true
-        log("Passenger: already aboard after all — not re-issuing the mount.")
-        return
-      end
-      local cmd = Native.mount(h, veh, jlPassenger.seat, jlPassenger.cmd)
-      jlPassenger.cmd = cmd or jlPassenger.cmd
-      jlPassenger.deadline = now + (C.walkSeconds or 6.0)
-      log(("Passenger: not aboard after %.0fs — walk attempt %d."):format(C.walkSeconds or 6.0, jlPassenger.tries))
-    elseif not jlPassenger.forced then
-      -- ⚠️ v1.8.8 — THE TELEPORT IS A REQUEST, NOT A RESULT. Native.forceMount ends in
-      -- `Game.GetMountingFacility():Mount(req)`, which QUEUES a mounting request; the body is not in
-      -- the seat on the frame we asked. The first version of this ladder tested `Native.isMountedTo`
-      -- on that same frame, got the honest "no", declared the force-mount dead and cleared
-      -- `jlPassenger.veh` -- which releases the busy gate, so the follow/catch-up ticks immediately
-      -- push their own move command at a companion the engine was one frame from seating. They never
-      -- get in, and the log says the teleport failed when it had not even been tried yet. THIS is
-      -- "Jackie can't get inside a vehicle" (reported 2026-08-20).
-      -- So: ask, hold the gate, and judge on a LATER tick. The `isMountedTo` check at the top of this
-      -- verify half is what actually notices they made it.
-      jlPassenger.forced   = true
-      Native.forceMount(h, veh, jlPassenger.seat)
-      jlPassenger.deadline = now + (C.forceVerifySeconds or 1.5)
-      log(("Passenger: walk failed twice — placing Jackie in the seat; verifying in %.1fs.")
-          :format(C.forceVerifySeconds or 1.5))
-    else
-      -- The force-mount had its whole verify window and they still are not aboard. NOW it failed.
-      log("Passenger: force-mount did not take either — Jackie stays on foot, and this car is done.")
-      jlPassenger.gaveUp = veh                  -- v1.8.9: no restart for THIS vehicle (see the note at FIRST SEND)
-      jlPassenger.veh, jlPassenger.forced = nil, false   -- release the gate; let them follow again
-      jlPassenger.deadline = nil
-    end
-    return
-  end
-
-  -- -------------------------------------------------------------------------------------------
-  -- FIRST SEND
-  -- -------------------------------------------------------------------------------------------
-  -- ⚠️ v1.8.9 — ONE LADDER PER VEHICLE, AND WHEN IT IS DONE IT IS DONE. Without this, a ladder that
-  -- fails simply starts again two seconds later, forever: walk, walk, teleport, give up, walk...
-  -- If ANY of that half-succeeds — and a teleport into a seat usually does — the player watches
-  -- their companion climb in and out of a moving car for the whole drive. A companion on the
-  -- pavement is a disappointment; a companion strobing through the passenger door is a broken mod.
-  -- Whatever the underlying cause, this is the backstop that makes the loop impossible: give up
-  -- for THIS vehicle and stay given up until V gets out or changes car.
-  if jlPassenger.gaveUp == veh then return end
-  if now - (jlPassenger.sentAt or -999) < 2.0 then return end
-  jlPassenger.sentAt = now
-
-  local seat = Native.freeSeat(veh)
-  if not seat then return end
-
-  -- If the player hand-seated him ("Seat them here"), that latch has to come down BEFORE the mount.
-  -- Native.mount stops the workspot either way, but only jlManualUnseat also restores collision and
-  -- clears JL.puppet — and a stale puppet latch is what turns a later despawn into a hard crash.
-  if JL.puppet then pcall(function() jlManualUnseat("getting into V's car") end) end
-
-  -- DISTANCE. AIMountCommand is a walk. From across the street, with V already pulling away, it is a
-  -- walk to nowhere. Past `farDistance` skip straight to the teleport: it is the only thing that can
-  -- still put him in the car, and it is what AMM did for every mount anyway.
-  local far = false
-  local pp = playerPos()
-  local jp; pcall(function() jp = h:GetWorldPosition() end)
-  if pp and jp then
-    local okD, d = pcall(dist3, pp, jp)
-    if okD and type(d) == "number" then far = d > (C.farDistance or 18.0) end
-  end
-
-  jlPassenger.veh, jlPassenger.seat, jlPassenger.mounted = veh, seat, false
-  if far then
-    jlPassenger.tries  = C.walkTries or 2           -- no walk left to try
-    jlPassenger.forced = true                       -- ...and the teleport is now the attempt in flight
-    Native.forceMount(h, veh, seat)
-    -- v1.8.8 — same asynchronous-mount rule as the escalation branch above: do NOT read the result
-    -- back on the frame we asked for it. Hold the gate and let the verify half see them arrive.
-    jlPassenger.deadline = now + (C.forceVerifySeconds or 1.5)
-    log("Passenger: Jackie too far to walk to the car -> placed directly.")
-  else
-    jlPassenger.tries = 1
-    jlPassenger.cmd = Native.mount(h, veh, seat, jlPassenger.cmd)
-    jlPassenger.deadline = now + (C.walkSeconds or 6.0)
-    if not jlPassenger.cmd then jlPassenger.deadline = now end   -- send failed -> escalate next tick
-  end
-end
-
 -- True only during a real locked cutscene (PlayerStateMachine SceneTier >= 4 = FPPCinematic/Cinematic).
 -- NO false positives on holocalls / dialogue / vendors / braindance (those stay tier 1-3). Verified
 -- against psiberx/cp2077-cet-kit GameUI (the base AMM + most companion mods use). Global -> cap-safe.
@@ -9776,13 +9539,6 @@ function jlResetSessionState(id, why)
   JL.follow   = { lastAt = nil }
   JL.abreast  = { lastAt = nil }
   JL.persist  = { gapSince = nil, lastRespawn = nil, worldReadyAt = nil }
-  -- v1.90: the car-passenger latch holds a VEHICLE HANDLE and a live AI command from the world that
-  -- just died. Nothing here needs cancelling — that world is gone — but the refs must not survive, or
-  -- the first tick of the new session compares a fresh vehicle against a dead pointer and tries to
-  -- cancel a command on a corpse. It lives on a global rather than JL (200-cap), which is exactly why
-  -- it would otherwise be missed by this function.
-  jlPassenger = { veh = nil, cmd = nil, sentAt = -999, tries = 0, deadline = nil,
-                  mounted = false, seat = nil, armed = nil, forced = false, lostAt = nil, gaveUp = nil }
   -- dinner: clear only the in-flight outing, keep the cross-session offer schedule
   if JL.dinner then
     JL.dinner.phase, JL.dinner.dest, JL.dinner.destName, JL.dinner.destYaw = nil, nil, nil, nil
@@ -10059,7 +9815,6 @@ registerForEvent("onInit", function()
   getAMM()
   setupInteractHook()   -- v0.15: native F (Interact) triggers Talk-to-Jackie, no binding
   pcall(setupDetachPurge)  -- v1.61: despawn a following Jackie at load-teardown START -> no cross-save load crash
-  pcall(setupPassengerHook) -- v1.90: start the walk to the car door when V reaches for it, not 2 s later
   pcall(setupCallHijack)   -- v0.30: player phone-calls to Jackie route into our flow
   pcall(jlLoadSettings)    -- v0.51: restore persisted Esc-menu toggles (husbando / disableVehicleArrivals)
   pcall(jlApplyTalkPrompt) -- v1.8.7: ...and how (or whether) the "look at Jackie" prompt is drawn
@@ -11206,7 +10961,6 @@ registerForEvent("onUpdate", function(dt)
     pcall(jlMainExitTick)
   end
   pcall(jlCruiseTick)     -- v0.85: V on a BIKE -> Jackie trails on his Arch (gated before the foot ticks)
-  pcall(jlPassengerTick)  -- v1.90: V in a CAR -> Jackie gets in (AMM never seated a natively-spawned Jackie)
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(abreastTick)      -- v0.84: OR (when enabled) hold him beside/ahead of V instead of trailing
   pcall(jlWalkProbeTick)  -- v1.8.3: log WHICH gate is refusing walk-beside (self-guards; edge + heartbeat)

@@ -118,6 +118,14 @@ Badlands note.
 
 ### Problems & Resolutions
 
+**The car-passenger escalation ladder is GONE (reverted 2026-09-02).** The walk → walk →
+teleport ladder, its busy gate, its verify half and every latch bolted on to steady it
+(`forceVerifySeconds`, `passengerLostSeconds`, `forced`, `gaveUp`) never stopped the "climbs in and
+out of a moving car" report and have been removed from all three mods. JackieLives has no car-passenger code at all again, which is what it shipped with for its whole life before 2026-08-19 — AMM seats him if AMM knows the body. The full record of
+what was attempted and why it failed — including the identical mistake made on the bike mount on
+2026-07-30 — lives OUTSIDE the repos, in `../research/vehicle_passenger_ladder_postmortem.md`. Read
+it before touching this again.
+
 **A player's Audioware log was full of "cannot load audio: jackie_…Wav" errors.** (2026-08-25,
 user report.) Since v1.66 Jackie speaks through the game's own recordings and nobody needs a voice
 bank — but `staging/` still shipped `r6/audioware/JackieLives/JackieLives.yml`, a 2331-key manifest
@@ -160,25 +168,6 @@ Player-facing copy for the Nexus page, hand-written in each of the ten languages
 `docs/LANGUAGES.md`.
 
 ### Problems & Resolutions
-
-**Jackie climbed in and out of a moving car for the whole journey.** (v1.8.10, 2026-08-22 — reported
-against NCLucy: *"keep enter the vehicle and get out vehicle while with V"*, and the same code is
-here.) `jlPlayerVehicleObj()` is `GetQuickSlotsManager():GetVehicleObject()`, and it answers nil for
-the odd frame while V is still very much driving. One such frame ran the whole teardown: the mount
-command was CANCELLED and `jlPassenger.veh` cleared, which releases `jlPassengerBusy()` — so the
-follow ticks pulled him out of a moving car. Next frame the read came back, the ladder started over,
-and he climbed in again. Measured on the shipped code: **9 mount commands and 4 teleports in 60 s.**
-Three defences, because one was not enough:
-1. the teardown needs the change to PERSIST (`Config.follow.passengerLostSeconds`, 1 s) — same rule
-   as the talk prompt's re-arm, and for the same reason: a reading taken from a moving world is not
-   a decision;
-2. a walk retry re-asks `Native.isMountedTo` FIRST, because `Native.mount` opens with
-   `WorkspotSystem:StopInDevice` and a vehicle seat is a workspot — re-issuing it at somebody who has
-   already climbed in throws them back out;
-3. `jlPassenger.gaveUp` — one ladder per car, ever. Whatever the underlying cause, a failed ladder
-   can no longer restart two seconds later. A companion on the pavement is a disappointment; a
-   companion strobing through the passenger door is a broken mod.
-`tools/test_passenger.lua` §6 and §7 pin all three; both fail against the shipped code.
 
 **The text talk prompt also showed from across the room.** (v1.8.9, 2026-08-22 — reported by the
 same player who turned the F switch off: *"then I had a message 'Talk to <name> [F]' showing on the
@@ -227,22 +216,6 @@ investigating it, and it would produce exactly that symptom. Ruled out on the wa
 name (`jackie_welles_default_collar_down` is real — verified against the local game install's
 `base\characters\appearances\main_npc\jackie_welles.app`), the Misty retirement (Husbando-only),
 and schedule rarity (Misty's is on 3 of 5 day-types, the Afterlife on 2 of 5).
-
-**A queued mount was read back as a failed mount, so Jackie never got in the car.** (v1.8.8,
-2026-08-20 — the "just updated to 1.91 but Jackie cant get inside a vehicle" report. The engine is
-shared, so NCLives and NCLucy had it word for word and were fixed the same day.) `Native.forceMount`
-ends in `Game.GetMountingFacility():Mount(req)`, which **queues** a mounting request; nobody is in a
-seat on the frame it is asked for. v1.90's escalation ladder tested `Native.isMountedTo` on that same
-frame, got the honest "not aboard", declared the teleport dead and cleared `jlPassenger.veh`.
-Clearing that releases `jlPassengerBusy()` — the only thing holding `followKeepCloseTick` /
-`catchUpTick` off his body — so they pushed their own move command at a Jackie the engine was one
-frame from seating. Net effect: walk, walk, teleport, abandon, repeat, forever, with a log line
-blaming the teleport for a failure it had not been given the chance to have. Fix: a `forced` latch.
-Ask for the mount, **hold the gate**, and judge on a later tick
-(`Config.follow.passengerTiming.forceVerifySeconds`, 1.5 s); the `isMountedTo` check at the top of
-the verify half is what notices he made it. Only after the whole window expires is it a failure.
-`tools/test_passenger.lua` extracts the real `jlPassengerTick` and models the asynchronous engine
-timing — it fails 4 checks against the pre-fix code.
 
 **The Language row could take the whole settings panel down with it.** (v1.8.8, alongside the
 "Native Settings for Jackie Lives isn't showing up" report — *not* confirmed as its cause, see the
