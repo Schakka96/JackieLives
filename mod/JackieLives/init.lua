@@ -9212,6 +9212,100 @@ function jlIsBikeVeh(veh)
   return (cn:find("bike") ~= nil) or (cn:find("motorcycle") ~= nil)
 end
 
+-- ---------------------------------------------------------------------------
+-- CAR PASSENGER — the NCLives v1.64 method, ported 2026-09-02
+-- ---------------------------------------------------------------------------
+-- V gets in a car -> Jackie walks over and gets in the passenger seat. The follower role does NOT do
+-- this; vanilla only seats followers through scripted quest commands, which is why every companion
+-- mod has to do it itself. AMM did it in `Scan:AutoAssignSeats` (Modules/scan.lua:781), but that
+-- loop iterates `AMM.Spawn.spawnedNPCs` — and since v1.68 Jackie is spawned NATIVELY, so AMM has
+-- never heard of him. That is the whole gap this closes.
+--
+-- ⚠️⚠️ READ `../research/vehicle_passenger_ladder_postmortem.md` BEFORE YOU CHANGE A LINE OF THIS.
+-- Between 2026-08-19 and 2026-08-22 this tick was an ESCALATION LADDER — walk, verify, walk again,
+-- teleport, with a busy gate and five latches to steady it. It produced the worst bug this mod has
+-- shipped: Jackie climbing in and out of a moving car for the length of the journey, reported by
+-- players against all three mods, and three separate fixes did not cure it. It was reverted whole.
+--
+-- What is here now is the version NCLives has run since v1.64, and it is deliberately tiny:
+--
+--   ONE `AIMountCommand`, sent ONCE per vehicle, and then we stop caring.
+--
+-- That is the entire safety property. Nothing re-issues the command, so nothing can eject him from a
+-- seat he is already in (`Native.mount` opens with `StopInDevice`, and a car seat IS a workspot — a
+-- "retry" is an eject). Nothing polls his seat status, so no flickering engine read can flip a latch.
+-- Its one failure mode is a walk that does not land, and he then simply follows on foot.
+--
+-- ⚠️ ONE HONEST CAVEAT, and it is why the probe below exists. This method is proven in the engine —
+-- JackieVehicleTest step 7a seated him "perfectly WITH the walk-to-door + get-in animation" on
+-- 2026-07-02 — but that Jackie was AMM-summoned. In NCLives it has shipped AMM-free since 2026-08-04
+-- and was NEVER confirmed working in game (NCLives' own TODO still lists "the car passenger walk-in"
+-- as not verified). So it is honest to call this UNTESTED on a natively-spawned body until somebody
+-- drives with him and reads the log.
+--
+-- Deliberately NOT handled here:
+--   * BIKES. V on a bike is `jlCruiseTick`'s job — Jackie gets his own Arch and trails.
+--     `jlCruiseTick` is gated ahead of this in onUpdate; this tick stands down on two wheels.
+--   * V's own seat. Native.SEATS never offers seat_front_left (see native.lua).
+--
+-- State lives on a GLOBAL rather than JL so a soft-reload can't strand a live command — and because
+-- init.lua is at Lua's 200-local cap and cannot afford another top-level local.
+jlPassenger = { veh = nil, cmd = nil, sentAt = -999, probeAt = nil }
+
+function jlPassengerTick()
+  if (Config.follow or {}).passenger == false then return end   -- opt-out; default is on
+  if jlCruise and jlCruise.active then return end               -- bikes belong to the cruise system
+
+  -- ⚠️ The early-out has to survive a STANDING command: if V is driving with Jackie aboard and he is
+  -- then dismissed, `jlPassenger.veh` is still set and needs clearing. So bail only when there is
+  -- nothing to clean up either.
+  if not (JL.summon.active and JL.summon.companionSet) and not jlPassenger.veh then return end
+
+  local veh = jlPlayerVehicleObj()
+
+  -- V got out (or swapped vehicles): drop the standing command so Jackie resumes following on foot
+  -- instead of walking to a car that's driving away.
+  if jlPassenger.veh and veh ~= jlPassenger.veh then
+    local h = JL.summon.spawn and JL.summon.spawn.handle
+    if h and jlPassenger.cmd then Native.cancelMount(h, jlPassenger.cmd) end
+    jlPassenger.veh, jlPassenger.cmd, jlPassenger.probeAt = nil, nil, nil
+  end
+
+  if not veh then return end
+  -- THE PROBE (read-only). Once, ~8 s after the command went out, write down whether he actually made
+  -- it. This answers the open question above and nothing else: it never retries, never teleports,
+  -- never touches a gate. ⚠️ If you find yourself wanting to ACT on this line, you are rebuilding the
+  -- reverted ladder — read the postmortem instead.
+  if jlPassenger.veh == veh then
+    if jlPassenger.probeAt and (JL.clock or 0) >= jlPassenger.probeAt then
+      jlPassenger.probeAt = nil
+      local h = JL.summon.spawn and JL.summon.spawn.handle
+      local aboard = h and Native.isMountedTo(h, veh) or false
+      log(("[PassengerProbe] 8 s after the mount command: Jackie is %s. (Read-only — the mod does "
+           .. "NOT retry. If this says NOT ABOARD often, report it; do not add a retry loop.)")
+          :format(aboard and "IN THE CAR" or "NOT ABOARD"))
+    end
+    return                                            -- already sent for this vehicle
+  end
+  if jlIsBikeVeh(veh) then return end
+
+  -- Only a real, promoted companion rides along — not a mid-arrival one still walking in (he'd
+  -- abandon the arrival to chase the car), and not one the dinner or the leaving machine owns.
+  if not (JL.summon.active and JL.summon.companionSet) then return end
+  if JL.varrival and JL.varrival.phase then return end
+  if jlDinnerOwnsBody() or JL.leaving.phase then return end
+  local h = resolveJackieHandle(); if not h then return end
+
+  -- Throttle: the slot scan isn't free, and a failed mount must not be retried every frame for as
+  -- long as V sits in the car.
+  local now = JL.clock or 0
+  if now - (jlPassenger.sentAt or -999) < 2.0 then return end
+  jlPassenger.sentAt = now
+
+  local cmd = Native.mount(h, veh)
+  if cmd then jlPassenger.veh, jlPassenger.cmd, jlPassenger.probeAt = veh, cmd, now + 8.0 end
+end
+
 -- True only during a real locked cutscene (PlayerStateMachine SceneTier >= 4 = FPPCinematic/Cinematic).
 -- NO false positives on holocalls / dialogue / vendors / braindance (those stay tier 1-3). Verified
 -- against psiberx/cp2077-cet-kit GameUI (the base AMM + most companion mods use). Global -> cap-safe.
@@ -9539,6 +9633,12 @@ function jlResetSessionState(id, why)
   JL.follow   = { lastAt = nil }
   JL.abreast  = { lastAt = nil }
   JL.persist  = { gapSince = nil, lastRespawn = nil, worldReadyAt = nil }
+  -- The car-passenger latch holds a VEHICLE HANDLE and a live AI command from the world that just
+  -- died. Nothing here needs cancelling — that world is gone — but the refs must not survive, or the
+  -- first tick of the new session compares a fresh vehicle against a dead pointer and tries to cancel
+  -- a command on a corpse. It lives on a global rather than JL (200-cap), which is exactly why it
+  -- would otherwise be missed by this function.
+  jlPassenger = { veh = nil, cmd = nil, sentAt = -999, probeAt = nil }
   -- dinner: clear only the in-flight outing, keep the cross-session offer schedule
   if JL.dinner then
     JL.dinner.phase, JL.dinner.dest, JL.dinner.destName, JL.dinner.destYaw = nil, nil, nil, nil
@@ -10961,6 +11061,7 @@ registerForEvent("onUpdate", function(dt)
     pcall(jlMainExitTick)
   end
   pcall(jlCruiseTick)     -- v0.85: V on a BIKE -> Jackie trails on his Arch (gated before the foot ticks)
+  pcall(jlPassengerTick)  -- 2026-09-02: V in a CAR -> Jackie gets in (NCLives' v1.64 method; ONE command, no retries)
   pcall(followKeepCloseTick) -- v0.67: hold him a few m behind V (override AMM's long leash)
   pcall(abreastTick)      -- v0.84: OR (when enabled) hold him beside/ahead of V instead of trailing
   pcall(jlWalkProbeTick)  -- v1.8.3: log WHICH gate is refusing walk-beside (self-guards; edge + heartbeat)

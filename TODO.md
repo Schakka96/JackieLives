@@ -118,13 +118,31 @@ Badlands note.
 
 ### Problems & Resolutions
 
-**The car-passenger escalation ladder is GONE (reverted 2026-09-02).** The walk → walk →
-teleport ladder, its busy gate, its verify half and every latch bolted on to steady it
-(`forceVerifySeconds`, `passengerLostSeconds`, `forced`, `gaveUp`) never stopped the "climbs in and
-out of a moving car" report and have been removed from all three mods. JackieLives has no car-passenger code at all again, which is what it shipped with for its whole life before 2026-08-19 — AMM seats him if AMM knows the body. The full record of
-what was attempted and why it failed — including the identical mistake made on the bike mount on
-2026-07-30 — lives OUTSIDE the repos, in `../research/vehicle_passenger_ladder_postmortem.md`. Read
-it before touching this again.
+**The car-passenger escalation ladder is GONE, and Jackie got the SIMPLE method instead
+(2026-09-02).** The walk → walk → teleport ladder, its busy gate and every latch bolted on to steady
+it (`forceVerifySeconds`, `passengerLostSeconds`, `forced`, `gaveUp`) never stopped the "climbs in
+and out of a moving car" report, and was removed from all three mods. In its place Jackie now runs
+NCLives' **v1.64** method: `jlPassengerTick` sends **ONE** `AIMountCommand` per vehicle and then
+stops caring. Nothing re-issues it, so nothing can eject him from a seat he is already in — that is
+the entire safety property, and `loadsim` §11 is a fence around it (it fails on `forceMount`,
+`deadline`, `walkTries`, `tries`, `gaveUp`, `forced`, on a second `Native.mount` call site, or on
+more than one command in 200 frames; verified against a mutant).
+
+⚠️ **UNVERIFIED IN GAME, and honestly so.** The recipe itself was confirmed on 2026-07-02
+(`JackieVehicleTest` 7a — "seats him perfectly WITH the walk-to-door + get-in animation"), but that
+Jackie was AMM-summoned. NCLives shipped the same tick on a *natively spawned* body from 2026-08-04
+and it was never confirmed working — its TODO still lists "the car passenger walk-in" as unverified.
+So it may never have worked AMM-free, and nobody knows.
+
+→ **NEXT WINDOWS SESSION, one test:** summon Jackie, get in a car, drive ~10 s, read the log for
+`[PassengerProbe]`. It prints **IN THE CAR** or **NOT ABOARD** once per journey. The probe is
+READ-ONLY — it never retries or teleports. If it says NOT ABOARD, the fix goes in the single mount
+call (seat choice, `entrySlotName`, cancelling a standing command first), **never** in a ladder
+around it.
+
+The full record — what was attempted, why it failed, and the identical mistake made on the bike
+mount on 2026-07-30 — lives OUTSIDE the repos, in
+`../research/vehicle_passenger_ladder_postmortem.md`. Read it before touching this again.
 
 **A player's Audioware log was full of "cannot load audio: jackie_…Wav" errors.** (2026-08-25,
 user report.) Since v1.66 Jackie speaks through the game's own recordings and nobody needs a voice

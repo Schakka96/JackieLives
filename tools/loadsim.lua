@@ -1038,6 +1038,72 @@ do
 end
 
 -- =============================================================================
+-- 11. THE CAR PASSENGER SENDS ONE COMMAND, AND NEVER A SECOND
+-- =============================================================================
+-- This is not a feature test. It is a FENCE around the worst bug this mod has shipped.
+--
+-- Between 2026-08-19 and 2026-08-22 jlPassengerTick was an escalation ladder: mount, verify, mount
+-- again, teleport, with a busy gate and five latches added over three releases to steady it. It made
+-- Jackie climb in and out of a moving car for the whole journey, because it re-issued a mount at a
+-- body already in a seat — and `Native.mount` opens with StopInDevice, and a car seat IS a workspot,
+-- so the "retry" is an eject. The whole thing was reverted on 2026-09-02 back to NCLives' v1.64
+-- method: ONE AIMountCommand per vehicle, then stop caring.
+--
+-- The checks below pin exactly that, and they are written to fail LOUDLY on the shape of the thing
+-- that came back, not on a renamed variable. Full story:
+-- ../research/vehicle_passenger_ladder_postmortem.md
+do
+  print("\n11. the car passenger sends ONE command, and never a second")
+  local fh = assert(io.open(ROOT .. "init.lua", "r"))
+  local src = fh:read("a"); fh:close()
+  local fn = src:match("\nfunction jlPassengerTick%(.-\n end\n") or
+             src:match("\nfunction jlPassengerTick%(.-\nend\n") or ""
+  check("jlPassengerTick exists", fn ~= "")
+  local code = fn:gsub("%-%-[^\n]*", "")   -- the essay above the tick names all of this on purpose
+
+  check("it does NOT teleport him into the seat", code:find("forceMount") == nil,
+        "Native.forceMount is back in the tick — that is the reverted ladder. Read the postmortem.")
+  for _, word in ipairs({ "deadline", "walkTries", "tries", "gaveUp", "forced" }) do
+    check(("no `%s` retry state"):format(word), code:find(word, 1, true) == nil,
+          "a retry ladder is growing back in jlPassengerTick. Read the postmortem.")
+  end
+  check("Native.mount is called exactly once in the tick",
+        select(2, code:gsub("Native%.mount", "")) == 1,
+        "more than one mount site = a retry. Re-issuing a mount EJECTS a seated body.")
+
+  -- And behaviourally: drive the real tick with V in a car and confirm the second, third and
+  -- hundredth frame send nothing new. A source scan can be fooled; this cannot.
+  local S = JL_ENV
+  local keep = { spawn = S.summon.spawn, active = S.summon.active, set = S.summon.companionSet,
+                 clock = S.clock }
+  local sent = 0
+  local realMount, realIs = Native.mount, Native.isMountedTo
+  Native.mount = function() sent = sent + 1; return { cmd = true } end
+  Native.isMountedTo = function() return true end
+  local car = { GetEntityID = function() return 1 end,
+                GetClassName = function() return "vehicleCarBaseObject" end }
+  local realVeh = jlPlayerVehicleObj
+  jlPlayerVehicleObj = function() return car end
+  S.summon.active, S.summon.companionSet = true, true
+  S.summon.spawn = { handle = { GetWorldPosition = function() return { x = 0, y = 0, z = 0 } end } }
+  jlPassenger = { veh = nil, cmd = nil, sentAt = -999, probeAt = nil }
+  for i = 1, 200 do S.clock = i * 0.5; pcall(jlPassengerTick) end
+  check("200 frames in the same car -> ONE mount command", sent <= 1,
+        ("sent %d — that is the in-out loop, not a mount"):format(sent))
+
+  -- V gets out: the latch clears, so a NEW car is a clean single send (and not a hundred).
+  jlPlayerVehicleObj = function() return nil end
+  S.clock = 200; pcall(jlPassengerTick)
+  check("V leaving the car drops the latch", jlPassenger.veh == nil)
+
+  Native.mount, Native.isMountedTo = realMount, realIs
+  jlPlayerVehicleObj = realVeh
+  jlPassenger = { veh = nil, cmd = nil, sentAt = -999, probeAt = nil }
+  S.summon.spawn, S.summon.active, S.summon.companionSet, S.clock =
+    keep.spawn, keep.active, keep.set, keep.clock
+end
+
+-- =============================================================================
 -- 21. the talk prompt never advertises a key that does nothing
 -- =============================================================================
 do

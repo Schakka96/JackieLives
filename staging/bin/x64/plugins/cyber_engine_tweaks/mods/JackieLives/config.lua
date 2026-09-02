@@ -900,6 +900,21 @@ Config.weaponMirror = {
 Config.follow = {
   enabled  = true,
 
+  -- ---- CAR PASSENGER (NCLives' v1.64 method, ported 2026-09-02) --------------------------------
+  -- V gets in a car -> Jackie walks over and gets in the passenger seat (jlPassengerTick +
+  -- Native.mount). Before this, the only thing that ever seated him was AMM's `Scan:AutoAssignSeats`,
+  -- and that only knows about NPCs AMM itself spawned — so once Jackie moved to the native spawn
+  -- (v1.68) he simply stopped getting in. Bikes are NOT this switch — see Config.cruise.
+  --
+  -- ⚠️ There is no retry, no verify, no teleport, and there must never be one again: the August 2026
+  -- "escalation ladder" is what made him climb in and out of a moving car. If the walk misses, he
+  -- follows on foot and that is the correct behaviour. See
+  -- `../research/vehicle_passenger_ladder_postmortem.md`.
+  --
+  -- Set false if you'd rather he stayed on foot entirely.
+  passenger = true,
+
+
   -- ---- v1.67 FOLLOWER-ROLE WATCHDOG ---------------------------------------------------------------
   -- Two things make Jackie move and they fail independently: our own AIFollowTargetCommand trail
   -- (sendWalkToPlayer / followTick) and the ENGINE's follower role (Native.setCompanion). A role
